@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 from pathlib import Path
+
 setup(
-    name='qy',
+    name='QyLang',
     version='0.0.1',
     description='Qy Lang, a Lisp language implemented in and based on Python',
     long_description=Path('README.md').read_text(encoding='utf-8'),
