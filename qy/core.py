@@ -21,6 +21,10 @@ INTERMEDIATE_LANG = tuple[
 ]
 
 
+class QyEvelError(Exception):
+    pass
+
+
 class symbol:
     __solts__ = ('name', 'value')
 
@@ -93,7 +97,10 @@ class qy:
         operator, *arguments = s_expression
         if isinstance(operator, (symbol, symbolproxy)):
             operator = operator.value
-        return operator(*map(cls.eval, arguments))
+        try:
+            return operator(*map(cls.eval, arguments))
+        except BaseException as e:
+            raise QyEvelError(f'Error: {operator} {arguments}')
 
     @classmethod
     def exec(cls, ast: INTERMEDIATE_LANG):
