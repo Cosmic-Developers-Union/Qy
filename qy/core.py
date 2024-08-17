@@ -65,8 +65,12 @@ class qy:
 
     @classmethod
     def operator(cls, name: str, func: Callable = None) -> None:
+        if not isinstance(name, str):
+            raise TypeError('name must be str')
         if func is None:
             return lambda func: cls.operator(name, func)
+        if not callable(func):
+            raise TypeError('func must be callable')
         s = symbol(name, func)
         cls.SYMBOLSPACE[name] = s
         return s
