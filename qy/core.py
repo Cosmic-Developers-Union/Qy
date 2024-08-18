@@ -92,6 +92,9 @@ class qy:
 
     @classmethod
     def eval(cls, s_expression: SEXPRESSION):
+        from .operator import T, NIL
+        if s_expression in [(), NIL, False]:
+            return NIL
         if not isinstance(s_expression, tuple):
             if isinstance(s_expression, (symbol, symbolproxy)):
                 return s_expression.value
@@ -99,7 +102,7 @@ class qy:
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
-            from .operator import quote, car, cdr, cons
+            from .operator import quote, car, cdr, cons, cond
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')
@@ -116,6 +119,8 @@ class qy:
                 if len(arguments) != 2:
                     raise QyEvelError('Error: cons')
                 return cons(cls.eval(arguments[0]), cls.eval(arguments[1]))
+            if operator is cond:
+                return cond(*arguments)
         try:
             return operator(*map(cls.eval, arguments))
         except BaseException as e:

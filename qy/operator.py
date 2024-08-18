@@ -39,3 +39,11 @@ def cdr(exp: tuple):
 @qy.operator('cons')
 def cons(x, y: tuple):
     return (x,) + y
+
+
+@qy.operator('cond')
+def cond(*cond_ressults: tuple):
+    for c, r in cond_ressults:
+        if not qy.eval(c) in [(), NIL, False]:
+            return qy.eval(r)
+    return NIL

@@ -45,6 +45,27 @@ class TestOperator(unittest.TestCase):
             ('a', 'b', 'c')
         )
 
+    def test_cond(self):
+        from qy.operator import qy, T, NIL
+        from qy.operator import cond, quote
+        self.assertEqual(
+            qy.eval(
+                (cond,
+                 (NIL, (quote, 'exp')),
+                 (T, (quote, 'exp')))
+            ),
+            'exp'
+        )
+        self.assertEqual(
+            qy.eval(
+                (cond,
+                 (NIL, (quote, 'exp')),
+                 (NIL, (quote, 'exp'))
+                 )
+            ),
+            NIL
+        )
+
     def tearDown(self):
         pass
 
