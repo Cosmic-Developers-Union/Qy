@@ -64,6 +64,12 @@ class qy:
     SYMBOLSPACE: dict[str, symbol] = {}
 
     @classmethod
+    def symbol(cls, name: str, value: Any = None) -> symbol:
+        s = symbol(name, value)
+        cls.SYMBOLSPACE[name] = s
+        return s
+
+    @classmethod
     def operator(cls, name: str, func: Callable = None) -> None:
         if not isinstance(name, str):
             raise TypeError('name must be str')
@@ -77,12 +83,6 @@ class qy:
 
     def __init__(self, intermediate_lang: INTERMEDIATE_LANG, *, thread=False) -> None:
         ...
-
-    @classmethod
-    def atom(cls, s: symbol | Any):
-        if isinstance(s, symbol):
-            return s.value
-        return s
 
     @classmethod
     def eval(cls, s_expression: SEXPRESSION):
