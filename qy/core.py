@@ -11,9 +11,15 @@ Created on 2024-08-15
 
 """
 
-from typing import Callable, Any
+from typing import Callable, Any, Union
+PYOBJECT = object
+ATOM = Union[
+    str, int, float, bytes, bool, None, 'symbol',
+    object
+]
 
 SEXPRESSION = tuple['symbol']
+
 INTERMEDIATE_LANG = tuple[
     'INTERMEDIATE_LANG',
     'symbol',
@@ -50,6 +56,9 @@ class symbol:
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.value(*args, **kwds)
+
+    def __bool__(self) -> bool:
+        return bool(self.value)
 
 
 class symbolproxy:
@@ -92,13 +101,22 @@ class qy:
 
     @classmethod
     def eval(cls, s_expression: SEXPRESSION):
+        """
+        if s-expression is atom (symbol? NIL T), return it.
+
+        TODO: should I return the symbol object or the value of the symbol?
+
+        """
         from .operator import T, NIL
-        if s_expression in [(), NIL, False]:
+
+        if s_expression in [(), NIL]:
             return NIL
+
         if not isinstance(s_expression, tuple):
             if isinstance(s_expression, (symbol, symbolproxy)):
                 return s_expression.value
             return s_expression
+
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
@@ -123,6 +141,8 @@ class qy:
                 return cond(*arguments)
         try:
             return operator(*map(cls.eval, arguments))
+        except SystemExit as e:
+            raise e
         except BaseException as e:
             raise QyEvelError(f'Error: {operator} {arguments}')
 
