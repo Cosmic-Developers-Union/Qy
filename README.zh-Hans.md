@@ -36,3 +36,13 @@ QyLang, 一个基于 Python 且由 Python 实现的 LISP 方言。
 ```python
 s_expression = (operator, sybol, 1, 1.0, '1', b'1', s_expression)
 ```
+
+## 内置算符
+
+- quote
+- atom
+- eq
+- car
+- cdr
+- cons
+- cond
