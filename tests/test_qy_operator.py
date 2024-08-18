@@ -28,6 +28,12 @@ class TestOperator(unittest.TestCase):
         self.assertEqual(
             qy.eval((eq, (quote, ('exp',)), (quote, ('exp',)))), NIL)
 
+    def test_car_cdr(self):
+        from qy.operator import qy
+        from qy.operator import car, cdr, quote
+        self.assertEqual(qy.eval((car, (quote, ('exp', 'exp')))), 'exp')
+        self.assertEqual(qy.eval((cdr, (quote, ('exp', 'exp')))), ('exp',))
+
     def tearDown(self):
         pass
 

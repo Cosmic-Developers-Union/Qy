@@ -48,6 +48,9 @@ class symbol:
     def __str__(self) -> str:
         return self.name
 
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        return self.value(*args, **kwds)
+
 
 class symbolproxy:
     __solts__ = ('name')
@@ -58,6 +61,9 @@ class symbolproxy:
     @property
     def value(self) -> symbol:
         return qy.SYMBOLSPACE[self.name].value
+
+    def __call__(self, *args: Any, **kwds: Any) -> Any:
+        return self.value(*args, **kwds)
 
 
 class qy:
@@ -93,12 +99,19 @@ class qy:
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
-            from .operator import quote
+            from .operator import quote, car, cdr
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')
                 return arguments[0]
-            operator = operator.value
+            if operator is car:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: car')
+                return car(cls.eval(arguments[0]))
+            if operator is cdr:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: cdr')
+                return cdr(cls.eval(arguments[0]))
         try:
             return operator(*map(cls.eval, arguments))
         except BaseException as e:

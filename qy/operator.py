@@ -24,3 +24,13 @@ def eq(x, y) -> Literal['T', 'NIL']:
     if not x and not y and isinstance(x, tuple) and isinstance(y, tuple):
         return T
     return T if x == y else NIL
+
+
+@qy.operator('car')
+def car(exp: tuple):
+    return exp[0]
+
+
+@qy.operator('cdr')
+def cdr(exp: tuple):
+    return exp[1:]
