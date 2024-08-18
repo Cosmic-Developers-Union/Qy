@@ -99,7 +99,7 @@ class qy:
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
-            from .operator import quote, car, cdr
+            from .operator import quote, car, cdr, cons
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')
@@ -112,6 +112,10 @@ class qy:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: cdr')
                 return cdr(cls.eval(arguments[0]))
+            if operator is cons:
+                if len(arguments) != 2:
+                    raise QyEvelError('Error: cons')
+                return cons(cls.eval(arguments[0]), cls.eval(arguments[1]))
         try:
             return operator(*map(cls.eval, arguments))
         except BaseException as e:

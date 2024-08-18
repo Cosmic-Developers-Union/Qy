@@ -34,3 +34,8 @@ def car(exp: tuple):
 @qy.operator('cdr')
 def cdr(exp: tuple):
     return exp[1:]
+
+
+@qy.operator('cons')
+def cons(x, y: tuple):
+    return (x,) + y

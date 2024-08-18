@@ -34,6 +34,17 @@ class TestOperator(unittest.TestCase):
         self.assertEqual(qy.eval((car, (quote, ('exp', 'exp')))), 'exp')
         self.assertEqual(qy.eval((cdr, (quote, ('exp', 'exp')))), ('exp',))
 
+    def test_cons(self):
+        from qy.operator import qy
+        from qy.operator import cons, quote
+        self.assertEqual(
+            qy.eval((cons, 'exp', (quote, ('exp',)))), ('exp', 'exp'))
+        # (a b c)
+        self.assertEqual(
+            qy.eval((cons, 'a', (cons, 'b', (cons, 'c', (quote, ()))))),
+            ('a', 'b', 'c')
+        )
+
     def tearDown(self):
         pass
 
