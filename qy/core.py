@@ -104,12 +104,19 @@ class qy:
         """
         if s-expression is atom (symbol? NIL T), return it.
 
+        if s-exp only is exp(need eval) or aotm
+
         TODO: should I return the symbol object or the value of the symbol?
 
         """
-        from .operator import T, NIL
+        from .operator import T, NIL, atom
 
-        if s_expression in [(), NIL]:
+        if atom(s_expression) is T:
+            return s_expression
+
+        # when s-expression is (), return NIL
+        # if you want to return (), you should use quote
+        if s_expression is ():
             return NIL
 
         if not isinstance(s_expression, tuple):

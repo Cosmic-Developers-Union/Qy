@@ -19,6 +19,7 @@ def atom(exp):
 
 @qy.operator('eq')
 def eq(x, y) -> Literal['T', 'NIL']:
+    # TODO: fix bug: the op may be not work correctly
     if x and y and isinstance(x, tuple) and isinstance(y, tuple):
         return NIL
     if not x and not y and isinstance(x, tuple) and isinstance(y, tuple):
