@@ -1,3 +1,4 @@
+from typing import Literal
 from qy.core import qy, symbol
 
 T = qy.symbol('T', True)
@@ -14,3 +15,12 @@ def atom(exp):
     if isinstance(exp, tuple) and len(exp) != 0:
         return NIL
     return T
+
+
+@qy.operator('eq')
+def eq(x, y) -> Literal['T', 'NIL']:
+    if x and y and isinstance(x, tuple) and isinstance(y, tuple):
+        return NIL
+    if not x and not y and isinstance(x, tuple) and isinstance(y, tuple):
+        return T
+    return T if x == y else NIL

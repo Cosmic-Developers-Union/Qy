@@ -19,6 +19,15 @@ class TestOperator(unittest.TestCase):
         self.assertEqual(qy.eval((atom, (quote, ('exp', 'exp')))), NIL)
         self.assertEqual(qy.eval((atom, (quote, ()))), T)
 
+    def test_eq(self):
+        from qy.operator import qy, T, NIL
+        from qy.operator import eq, quote
+        self.assertEqual(qy.eval((eq, 'exp', 'exp')), T)
+        self.assertEqual(qy.eval((eq, 'exp', 'ex')), NIL)
+        self.assertEqual(qy.eval((eq, (quote, ()), (quote, ()))), T)
+        self.assertEqual(
+            qy.eval((eq, (quote, ('exp',)), (quote, ('exp',)))), NIL)
+
     def tearDown(self):
         pass
 
