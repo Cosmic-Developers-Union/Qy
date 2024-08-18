@@ -86,20 +86,18 @@ class qy:
 
     @classmethod
     def eval(cls, s_expression: SEXPRESSION):
-        """
-        eval
-
-        Args:
-            s_expression (SEXPRESSION): s_expression
-                operator: symbol(recommand), Callable, str
-                *argumnets: symbol
-        """
         if not isinstance(s_expression, tuple):
             if isinstance(s_expression, (symbol, symbolproxy)):
                 return s_expression.value
             return s_expression
         operator, *arguments = s_expression
+
         if isinstance(operator, (symbol, symbolproxy)):
+            from .operator import quote
+            if operator is quote:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: quote')
+                return arguments[0]
             operator = operator.value
         try:
             return operator(*map(cls.eval, arguments))
