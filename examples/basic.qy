@@ -1,1 +1,6 @@
-(print Hello World!)
+(print "Hello World")
+(print 't)
+(defun hello-world ()
+  (print "Hello, World!"))
+; This is a comment
+(setq x '(a b c))
