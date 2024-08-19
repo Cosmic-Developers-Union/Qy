@@ -1,5 +1,7 @@
 # Qy
 
+> Warning: The project is being developed rapidly and iteratively except before version 0.1.0, there will not be a truly stable API interface and built-in operators, and it is strongly recommended that you do not use it in production.
+
 Qy Lang, a Lisp language implemented in and based on Python.
 
 ## Install
