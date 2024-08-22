@@ -12,6 +12,7 @@ Created on 2024-08-15
 """
 
 from typing import Callable, Any, Union
+import warnings
 PYOBJECT = object
 ATOM = Union[
     str, int, float, bytes, bool, None, 'symbol',
@@ -93,17 +94,19 @@ class symbolproxy:
         return self.value(*args, **kwds)
 
 
-class qy:
-    SYMBOLSPACE: dict[str, symbol] = {}
+class Qy:
 
-    @classmethod
-    def symbol(cls, name: str, value: Any = None) -> symbol:
+    def __init__(self, intermediate_lang: INTERMEDIATE_LANG, *, thread=False) -> None:
+        self.SYMBOLSPACE: dict[str, symbol] = {}
+
+    def symbol(self, name: str, value: Any = None) -> symbol:
         s = symbol(name, value)
-        cls.SYMBOLSPACE[name] = s
+        if name in self.SYMBOLSPACE:  # warning
+            warnings.warn(f'{name} is already in the symbol space')
+        self.SYMBOLSPACE[name] = s
         return s
 
-    @classmethod
-    def operator(cls, name: str, func: Callable = None) -> None:
+    def operator(self, name: str, func: Callable = None) -> None:
         if not isinstance(name, str):
             raise TypeError('name must be str')
         if func is None:
@@ -111,14 +114,10 @@ class qy:
         if not callable(func):
             raise TypeError('func must be callable')
         s = symbol(name, func)
-        cls.SYMBOLSPACE[name] = s
+        self.SYMBOLSPACE[name] = s
         return s
 
-    def __init__(self, intermediate_lang: INTERMEDIATE_LANG, *, thread=False) -> None:
-        ...
-
-    @classmethod
-    def eval(cls, s_expression: SEXPRESSION):
+    def eval(self, s_expression: SEXPRESSION):
         """
         if s-expression is atom (symbol? NIL T), return it.
 
@@ -153,24 +152,26 @@ class qy:
             if operator is car:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: car')
-                return car(cls.eval(arguments[0]))
+                return car(self.eval(arguments[0]))
             if operator is cdr:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: cdr')
-                return cdr(cls.eval(arguments[0]))
+                return cdr(self.eval(arguments[0]))
             if operator is cons:
                 if len(arguments) != 2:
                     raise QyEvelError('Error: cons')
-                return cons(cls.eval(arguments[0]), cls.eval(arguments[1]))
+                return cons(self.eval(arguments[0]), cls.eval(arguments[1]))
             if operator is cond:
                 return cond(*arguments)
         try:
-            return operator(*map(cls.eval, arguments))
+            return operator(*map(self.eval, arguments))
         except SystemExit as e:
             raise e
         except BaseException as e:
             raise QyEvelError(f'Error: {operator} {arguments}')
 
-    @classmethod
-    def exec(cls, ast: INTERMEDIATE_LANG):
-        cls.eval(ast)
+    def exec(self, ast: INTERMEDIATE_LANG):
+        self.eval(ast)
+
+
+qy = Qy()
