@@ -2,6 +2,11 @@
 
 QyLang, 一个基于 Python 且由 Python 实现的 LISP 方言。
 
+## 开发计划
+
+- [ ] 添加 Qy 类作为解释器实例，qy 改为 qy 默认实例。
+- [ ] 重构 symbol 求值规则与定义规则，兼容性的采用 Lisp-1, Lisp-2 的方式。
+
 ## 概览
 
 Qy 的目标是一个典型的 LISP 方言。Qy 语言的语法和语义与 Scheme 和 Common Lisp 有很多相似之处，但区别任然很明显，Qy 语言的语法和语义更加简单，更加易于理解。
