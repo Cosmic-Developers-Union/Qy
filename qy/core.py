@@ -110,7 +110,7 @@ class Qy:
         if not isinstance(name, str):
             raise TypeError('name must be str')
         if func is None:
-            return lambda func: cls.operator(name, func)
+            return lambda func: self.operator(name, func)
         if not callable(func):
             raise TypeError('func must be callable')
         s = symbol(name, func)
@@ -160,7 +160,7 @@ class Qy:
             if operator is cons:
                 if len(arguments) != 2:
                     raise QyEvelError('Error: cons')
-                return cons(self.eval(arguments[0]), cls.eval(arguments[1]))
+                return cons(self.eval(arguments[0]), self.eval(arguments[1]))
             if operator is cond:
                 return cond(*arguments)
         try:
