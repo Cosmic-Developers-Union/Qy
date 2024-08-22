@@ -32,7 +32,25 @@ class QyEvelError(Exception):
 
 
 class symbol:
-    __solts__ = ('name', 'value')
+    """
+    symbol is different from other symbol.
+    we can use symbol as a function, and we can use symbol as a value.
+    it should be differenciated from the symbol in the symbol space.
+
+    when the symbol is used as a function, it should be evaluated.
+    when the symbol is used as a value, it should be returned
+
+    so, if the symbol is the first element of the s-expression, 
+        evaluator will use symbol.__call__ to evaluate it.
+        for operator, user can require evaluator use orginal value (s-exp)
+        ...
+    if the symbol is not the first element,
+        evaluator will use symbol.value to return the symbol object.
+
+    name is the name of the symbol.
+
+    """
+    __solts__ = ('name', 'value', 'require_eval')
 
     def __init__(self, name: str, value: Any = None) -> None:
         self.name = name
