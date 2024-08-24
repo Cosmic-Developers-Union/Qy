@@ -97,7 +97,7 @@ class symbolproxy:
 
 class Qy:
 
-    def __init__(self, intermediate_lang: INTERMEDIATE_LANG, *, thread=False) -> None:
+    def __init__(self, *, thread=False) -> None:
         self.SYMBOLSPACE: dict[str, symbol] = {}
 
     def symbol(self, name: str, value: Any = None) -> symbol:
