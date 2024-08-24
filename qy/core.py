@@ -11,6 +11,7 @@ Created on 2024-08-15
 
 """
 
+import traceback
 from typing import Callable, Any, Union
 import warnings
 PYOBJECT = object
@@ -168,7 +169,10 @@ class Qy:
         except SystemExit as e:
             raise e
         except BaseException as e:
-            raise QyEvelError(f'Error: {operator} {arguments}')
+            e = '\n'.join(traceback.format_exception(e))
+            raise QyEvelError(
+                f'Error: {operator} {arguments}\n\n{e}'
+            ) from None
 
     def exec(self, ast: INTERMEDIATE_LANG):
         self.eval(ast)
