@@ -2,7 +2,7 @@ import concurrent.futures
 
 
 def qimap(func, *iterables):
-    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+    with concurrent.futures.ThreadPoolExecutor() as executor:
         yield from executor.map(func, *iterables)
 
 
