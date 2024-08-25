@@ -9,13 +9,13 @@ Qy Lang, a Lisp language implemented in and based on Python.
 Use pip and github:
 
 ```shell
-pip3 install -U --force-installed git+https://github.com/Cosmic-Developers-Union/Qy.git
+pip3 install -U -I git+https://github.com/Cosmic-Developers-Union/Qy.git
 ```
 
 or
 
 ```powershell
-python -m pip install -U --force-installed git+https://github.com/Cosmic-Developers-Union/Qy.git
+python -m pip install -U -I git+https://github.com/Cosmic-Developers-Union/Qy.git
 ```
 
 Use PyPi:
