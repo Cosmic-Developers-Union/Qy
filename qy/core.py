@@ -174,6 +174,57 @@ class Qy:
                 f'Error: {operator} {arguments}\n\n{e}'
             ) from None
 
+    async def aeval(self, s_expression: SEXPRESSION):
+        from .operator import T, NIL, atom
+
+        if atom(s_expression) is T:
+            return s_expression
+
+        # when s-expression is (), return NIL
+        # if you want to return (), you should use quote
+        if s_expression is ():
+            return NIL
+
+        if not isinstance(s_expression, tuple):
+            if isinstance(s_expression, (symbol, symbolproxy)):
+                return s_expression.value
+            return s_expression
+
+        operator, *arguments = s_expression
+
+        if isinstance(operator, (symbol, symbolproxy)):
+            from .operator import quote, car, cdr, cons, cond
+            if operator is quote:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: quote')
+                return arguments[0]
+            if operator is car:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: car')
+                return car(await self.aeval(arguments[0]))
+            if operator is cdr:
+                if len(arguments) != 1:
+                    raise QyEvelError('Error: cdr')
+                return cdr(await self.aeval(arguments[0]))
+            if operator is cons:
+                if len(arguments) != 2:
+                    raise QyEvelError('Error: cons')
+                return cons(await self.aeval(arguments[0]), await self.aeval(arguments[1]))
+            if operator is cond:
+                return await cond(*arguments)
+        try:
+            arguments_result = []
+            for arg in arguments:
+                arguments_result.append(await self.aeval(arg))
+            return await operator(*arguments_result)
+        except SystemExit as e:
+            raise e
+        except BaseException as e:
+            e = '\n'.join(traceback.format_exception(e))
+            raise QyEvelError(
+                f'Error: {operator} {arguments}\n\n{e}'
+            ) from None
+
     def exec(self, ast: INTERMEDIATE_LANG):
         self.eval(ast)
 
