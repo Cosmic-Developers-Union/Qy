@@ -1,5 +1,5 @@
 git push
-rm dist/*
+Remove-Item dist/*
 python -m build
 twine upload -r testpypi dist/*
 twine upload dist/*
