@@ -134,7 +134,7 @@ class Qy:
 
         # when s-expression is (), return NIL
         # if you want to return (), you should use quote
-        if s_expression is ():
+        if s_expression == ():
             return NIL
 
         if not isinstance(s_expression, tuple):
@@ -182,7 +182,7 @@ class Qy:
 
         # when s-expression is (), return NIL
         # if you want to return (), you should use quote
-        if s_expression is ():
+        if s_expression == ():
             return NIL
 
         if not isinstance(s_expression, tuple):
