@@ -66,6 +66,21 @@ class TestOperator(unittest.TestCase):
             NIL
         )
 
+    def test_kwargs(self):
+        from qy.operator import qy
+        from qy.operator import kw, quote
+        self.assertEqual(
+            qy.eval((kw, 'a', 1, 'b', 2)),
+            {'a': 1, 'b': 2}
+        )
+
+        def test_kwargs(a, b):
+            return [a, b]
+        self.assertEqual(
+            qy.eval((test_kwargs, (kw, 'a', 1, 'b', 2))),
+            [1, 2]
+        )
+
     def tearDown(self):
         pass
 

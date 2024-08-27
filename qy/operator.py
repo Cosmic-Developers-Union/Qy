@@ -48,3 +48,8 @@ def cond(*cond_ressults: tuple):
         if not qy.eval(c) in [(), NIL, False]:
             return qy.eval(r)
     return NIL
+
+
+@qy.operator('kwargs')
+def kw(*args):
+    return {args[i]: args[i + 1] for i in range(0, len(args), 2)}

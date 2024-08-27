@@ -165,7 +165,16 @@ class Qy:
             if operator is cond:
                 return cond(*arguments)
         try:
-            return operator(*map(self.eval, arguments))
+            from .operator import kw
+            args, kwargs = [], {}
+            for arg in arguments:
+                if isinstance(arg, tuple) and arg and arg[0] is kw:
+                    kwargs.update(kw(*arg[1:]))
+                else:
+                    args.append(arg)
+            for k, v in kwargs.items():
+                kwargs[k] = self.eval(v)
+            return operator(*map(self.eval, args), **kwargs)
         except SystemExit as e:
             raise e
         except BaseException as e:
@@ -214,6 +223,7 @@ class Qy:
                 return await cond(*arguments)
         try:
             arguments_result = []
+
             for arg in arguments:
                 arguments_result.append(await self.aeval(arg))
             return await operator(*arguments_result)
