@@ -61,7 +61,7 @@ class QyTransformer(lark.Transformer):
         return str(token[1:-1])
 
     def symbol(self, name):
-        return symbolproxy(name)
+        return symbolproxy(str(name))
 
     def list(self, *items):
         return items
