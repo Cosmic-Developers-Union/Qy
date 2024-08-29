@@ -26,13 +26,12 @@ class TestReader(unittest.TestCase):
         sys.path.insert(0, '')
 
     def test_(self):
-        from qy.reader import tokenize
+        from qy._reader import tokenize
         from qy import symbol
         tokens = tokenize(Path('examples/data.qy').read_text('utf-8'))
         print(list(tokens))
         parser = lark.Lark(GRAMMER)
         tree = parser.parse(Path('examples/data.qy').read_text('utf-8'))
-        print(tree.pretty())
 
         @lark.v_args(inline=True)
         class QyTransformer(lark.Transformer):
@@ -53,6 +52,12 @@ class TestReader(unittest.TestCase):
         transformer = QyTransformer()
         expr = transformer.transform(tree)
         print(expr)
+
+    def test_reader(self):
+        from qy.core import reader
+        from qy import qy
+        exp = reader("(+ 1 3)")[0]
+        self.assertEqual(qy.eval(exp), 4)
 
     def tearDown(self):
         pass
