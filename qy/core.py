@@ -72,7 +72,23 @@ def reader(source: str):
     return QyTransformer().transform(tree)
 
 
-class QyEvelError(Exception):
+class QyError(Exception):
+    ...
+
+
+class QySyntaxError(QyError):
+    ...
+
+
+class QyRuntimeError(QyError):
+    ...
+
+
+class QySymbolError(QyError):
+    ...
+
+
+class QyEvelError(QyError):
     pass
 
 
@@ -130,18 +146,6 @@ class symbolproxy:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    @property
-    def value(self) -> symbol:
-        if self.name not in qy.SYMBOLSPACE:
-            try:
-                value = float(self.name)
-                if value.is_integer():
-                    value = int(value)
-            except ValueError:
-                value = self.name
-            return value
-        return qy.SYMBOLSPACE[self.name].value
-
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.value(*args, **kwds)
 
@@ -172,7 +176,7 @@ class Qy:
         self.SYMBOLSPACE[name] = s
         return s
 
-    def eval(self, s_expression: SEXPRESSION):
+    def eval(self, s_expression: SEXPRESSION | symbol | symbolproxy):
         """
         if s-expression is atom (symbol? NIL T), return it.
 
@@ -181,11 +185,26 @@ class Qy:
         TODO: should I return the symbol object or the value of the symbol?
 
         """
+        # symbol evaluation
+        if isinstance(s_expression, symbol):
+            return s_expression.value
+        if isinstance(s_expression, symbolproxy):
+            if s_expression.name in self.SYMBOLSPACE:
+                return self.SYMBOLSPACE[s_expression.name].value
+            try:
+                return int(s_expression.name)
+            except ValueError:
+                pass
+            try:
+                return float(s_expression.name)
+            except ValueError:
+                pass
+            raise QySymbolError(
+                f'{s_expression.name} is not in the symbol space')
         if not isinstance(s_expression, tuple):
-            if isinstance(s_expression, (symbol, symbolproxy)):
-                return s_expression.value
             return s_expression
 
+        # s-expression evaluation
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
@@ -220,7 +239,7 @@ class Qy:
                 kwargs[k] = self.eval(v)
             return operator(*map(self.eval, args), **kwargs)
         except SystemExit as e:
-            raise e
+            raise e from None
         except BaseException as e:
             e = '\n'.join(traceback.format_exception(e))
             raise QyEvelError(
