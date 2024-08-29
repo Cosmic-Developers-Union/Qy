@@ -22,7 +22,7 @@ ATOM = Union[
     object
 ]
 
-SEXPRESSION = tuple['symbol']
+SEXPRESSION = Union[ATOM, tuple[ATOM]]
 
 INTERMEDIATE_LANG = tuple[
     'INTERMEDIATE_LANG',
@@ -146,9 +146,6 @@ class symbolproxy:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def __call__(self, *args: Any, **kwds: Any) -> Any:
-        return self.value(*args, **kwds)
-
     def __repr__(self) -> str:
         return f'<symbolproxy {self.name}>'
 
@@ -176,7 +173,7 @@ class Qy:
         self.SYMBOLSPACE[name] = s
         return s
 
-    def eval(self, s_expression: SEXPRESSION | symbol | symbolproxy):
+    def eval(self, s_expression: SEXPRESSION):
         """
         if s-expression is atom (symbol? NIL T), return it.
 
@@ -207,7 +204,12 @@ class Qy:
         # s-expression evaluation
         operator, *arguments = s_expression
 
-        if isinstance(operator, (symbol, symbolproxy)):
+        # search symbol from symbol space
+        if isinstance(operator, symbolproxy):
+            operator: symbol = self.SYMBOLSPACE[operator.name]
+
+        # TODO: optimize the code
+        if isinstance(operator, symbol):
             from .operator import quote, car, cdr, cons, cond
             if operator is quote:
                 if len(arguments) != 1:
