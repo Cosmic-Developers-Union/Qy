@@ -14,6 +14,8 @@ Created on 2024-08-15
 import traceback
 from typing import Callable, Any, Union
 import warnings
+
+import lark
 PYOBJECT = object
 ATOM = Union[
     str, int, float, bytes, bool, None, 'symbol',
@@ -27,6 +29,47 @@ INTERMEDIATE_LANG = tuple[
     'symbol',
     int, float, str, bool, None, bytes
 ]
+
+GRAMMER = f"""
+?start: expressions
+expressions: expression*
+?expression: atom
+    | list
+    | quote_expression -> quote
+?quote_expression: "'" expression
+?list: "(" expression* ")"
+?atom: STRING   -> string
+    | SYMBOL    -> symbol
+STRING: /"[^"]*"/
+SYMBOL: /[a-zA-Z0-9_\-@:\.\+\/]+/
+%import common.WS
+%ignore WS
+"""
+
+parser = lark.Lark(GRAMMER)
+
+
+@lark.v_args(inline=True)
+class QyTransformer(lark.Transformer):
+    def expressions(self, *tokens):
+        return list(tokens)
+
+    def quote(self, tokens):
+        return ('quote', tokens)
+
+    def string(self, token):
+        return str(token[1:-1])
+
+    def symbol(self, name):
+        return symbolproxy(name)
+
+    def list(self, *items):
+        return items
+
+
+def reader(source: str):
+    tree = parser.parse(source)
+    return QyTransformer().transform(tree)
 
 
 class QyEvelError(Exception):
@@ -89,10 +132,21 @@ class symbolproxy:
 
     @property
     def value(self) -> symbol:
+        if self.name not in qy.SYMBOLSPACE:
+            try:
+                value = float(self.name)
+                if value.is_integer():
+                    value = int(value)
+            except ValueError:
+                value = self.name
+            return value
         return qy.SYMBOLSPACE[self.name].value
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.value(*args, **kwds)
+
+    def __repr__(self) -> str:
+        return f'<symbolproxy {self.name}>'
 
 
 class Qy:
@@ -127,16 +181,6 @@ class Qy:
         TODO: should I return the symbol object or the value of the symbol?
 
         """
-        from .operator import T, NIL, atom
-
-        if atom(s_expression) is T:
-            return s_expression
-
-        # when s-expression is (), return NIL
-        # if you want to return (), you should use quote
-        if s_expression == ():
-            return NIL
-
         if not isinstance(s_expression, tuple):
             if isinstance(s_expression, (symbol, symbolproxy)):
                 return s_expression.value
@@ -180,7 +224,7 @@ class Qy:
         except BaseException as e:
             e = '\n'.join(traceback.format_exception(e))
             raise QyEvelError(
-                f'Error: {operator} {arguments}\n\n{e}'
+                f'Error: {operator} {tuple(arguments)}\n\n{e}'
             ) from None
 
     async def aeval(self, s_expression: SEXPRESSION):
