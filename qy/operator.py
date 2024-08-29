@@ -53,3 +53,29 @@ def cond(*cond_ressults: tuple):
 @qy.operator('kwargs')
 def kw(*args):
     return {args[i]: args[i + 1] for i in range(0, len(args), 2)}
+
+
+@qy.operator('+')
+def add(*args):
+    return sum(args)
+
+
+@qy.operator('-')
+def sub(*args):
+    return args[0] - sum(args[1:])
+
+
+@qy.operator('*')
+def mul(*args):
+    result = 1
+    for arg in args:
+        result *= arg
+    return result
+
+
+@qy.operator('/')
+def div(*args):
+    result = args[0]
+    for arg in args[1:]:
+        result /= arg
+    return result
