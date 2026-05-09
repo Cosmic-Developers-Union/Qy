@@ -1,6 +1,5 @@
-from typing import Literal
-
 from qy.core import qy
+from qy.core import symbol
 
 T = qy.symbol("T", True)
 NIL = qy.symbol("NIL", False)
@@ -19,7 +18,7 @@ def atom(exp):
 
 
 @qy.operator("eq")
-def eq(x, y) -> Literal["T", "NIL"]:
+def eq(x, y) -> symbol:
     # TODO: fix bug: the op may be not work correctly
     if x and y and isinstance(x, tuple) and isinstance(y, tuple):
         return NIL

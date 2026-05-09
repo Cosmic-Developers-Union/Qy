@@ -15,6 +15,11 @@ lint:
 	uv run ruff format .
 	uv run ty check .
 
+lint-fix:
+	uv run ruff check . --fix --unsafe-fixes
+	uv run ruff format .
+	uv run ty check .
+
 release:
 	git push
 	$(MAKE) build

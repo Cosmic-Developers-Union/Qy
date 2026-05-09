@@ -1,6 +1,5 @@
 # coding: utf-8
 
-
 """Created on 2024-08-15."""
 
 import traceback
@@ -8,6 +7,7 @@ import warnings
 from collections.abc import Callable
 from typing import Any
 from typing import Union
+from typing import overload
 
 import lark
 
@@ -131,18 +131,28 @@ class symbolproxy:
         return f"<symbolproxy {self.name}>"
 
 
+_Symbol = symbol  # type alias to avoid collision with Qy.symbol method
+
+
 class Qy:
     def __init__(self, *, thread=False) -> None:
-        self.SYMBOLSPACE: dict[str, symbol] = {}
+        self.SYMBOLSPACE: dict[str, _Symbol] = {}
 
-    def symbol(self, name: str, value: Any = None) -> symbol:
+    def symbol(self, name: str, value: Any = None) -> _Symbol:
         s = symbol(name, value)
         if name in self.SYMBOLSPACE:  # warning
             warnings.warn(f"{name} is already in the symbol space", stacklevel=2)
         self.SYMBOLSPACE[name] = s
         return s
 
-    def operator(self, name: str, func: Callable | None = None) -> None:
+    @overload
+    def operator(self, name: str, func: Callable) -> _Symbol: ...
+    @overload
+    def operator(self, name: str, func: None = None) -> Callable[[Callable], _Symbol]: ...
+
+    def operator(
+        self, name: str, func: Callable | None = None
+    ) -> _Symbol | Callable[[Callable], _Symbol]:
         if not isinstance(name, str):
             raise TypeError("name must be str")
         if func is None:
@@ -215,6 +225,8 @@ class Qy:
         try:
             from qy.operator import kw
 
+            if not isinstance(operator, symbol):
+                raise QyEvelError(f"Error: {operator} is not a symbol")
             args, kwargs = [], {}
             for arg in arguments:
                 if isinstance(arg, tuple) and arg and arg[0] is kw:
@@ -244,8 +256,12 @@ class Qy:
             return NIL
 
         if not isinstance(s_expression, tuple):
-            if isinstance(s_expression, (symbol, symbolproxy)):
+            if isinstance(s_expression, symbol):
                 return s_expression.value
+            if isinstance(s_expression, symbolproxy):
+                if s_expression.name in self.SYMBOLSPACE:
+                    return self.SYMBOLSPACE[s_expression.name].value
+                raise QySymbolError(f"{s_expression.name} is not in the symbol space")
             return s_expression
 
         operator, *arguments = s_expression
@@ -276,11 +292,13 @@ class Qy:
             if operator is cond:
                 return await cond(*arguments)
         try:
+            if not isinstance(operator, symbol):
+                raise QyEvelError(f"Error: {operator} is not a symbol")
             arguments_result = []
 
             for arg in arguments:
                 arguments_result.append(await self.aeval(arg))
-            return await operator(*arguments_result)
+            return operator(*arguments_result)
         except SystemExit as e:
             raise e
         except BaseException as e:
