@@ -1,4 +1,3 @@
-
 import unicodedata
 from collections.abc import Iterator
 
@@ -13,7 +12,7 @@ class Token:
 
 
 def tokenize(source: str) -> Iterator[Token]:
-    source = unicodedata.normalize('NFKC', source)
+    source = unicodedata.normalize("NFKC", source)
     buffer: list[str] = []
     in_string = False
     i = 0
@@ -22,9 +21,9 @@ def tokenize(source: str) -> Iterator[Token]:
         char = source[i]
 
         if in_string:
-            if char == '"' and source[i-1] != '\\':
+            if char == '"' and source[i - 1] != "\\":
                 buffer.append(char)
-                yield Token('string', ''.join(buffer))
+                yield Token("string", "".join(buffer))
                 buffer.clear()
                 in_string = False
             else:
@@ -32,37 +31,37 @@ def tokenize(source: str) -> Iterator[Token]:
         else:
             if char.isspace():
                 if buffer:
-                    yield Token('atom', ''.join(buffer))
+                    yield Token("atom", "".join(buffer))
                     buffer.clear()
-                yield Token('whitespace', char)
-            elif char in '()':
+                yield Token("whitespace", char)
+            elif char in "()":
                 if buffer:
-                    yield Token('atom', ''.join(buffer))
+                    yield Token("atom", "".join(buffer))
                     buffer.clear()
-                yield Token('paren', char)
+                yield Token("paren", char)
             elif char == '"':
                 if buffer:
-                    yield Token('atom', ''.join(buffer))
+                    yield Token("atom", "".join(buffer))
                     buffer.clear()
                 buffer.append(char)
                 in_string = True
             elif char == "'":
                 if buffer:
-                    yield Token('atom', ''.join(buffer))
+                    yield Token("atom", "".join(buffer))
                     buffer.clear()
-                yield Token('quote', char)
-            elif char == ';':
+                yield Token("quote", char)
+            elif char == ";":
                 if buffer:
-                    yield Token('atom', ''.join(buffer))
+                    yield Token("atom", "".join(buffer))
                     buffer.clear()
                 comment_buffer = [char]
                 i += 1
-                while i < len(source) and source[i] != '\n':
+                while i < len(source) and source[i] != "\n":
                     comment_buffer.append(source[i])
                     i += 1
                 if i < len(source):  # include the newline in the comment
                     comment_buffer.append(source[i])
-                yield Token('comment', ''.join(comment_buffer))
+                yield Token("comment", "".join(comment_buffer))
             else:
                 buffer.append(char)
 
@@ -70,9 +69,9 @@ def tokenize(source: str) -> Iterator[Token]:
 
     if buffer:
         if in_string:
-            yield Token('string', ''.join(buffer))
+            yield Token("string", "".join(buffer))
         else:
-            yield Token('atom', ''.join(buffer))
+            yield Token("atom", "".join(buffer))
 
 
 def untokenize(tokens: list[Token]) -> str:
@@ -81,49 +80,54 @@ def untokenize(tokens: list[Token]) -> str:
     need_space = False
 
     for i, token in enumerate(tokens):
-        if token.type == 'whitespace':
-            if '\n' in token.value:
-                result.append('\n' + '  ' * indent_level)
+        if token.type == "whitespace":
+            if "\n" in token.value:
+                result.append("\n" + "  " * indent_level)
                 need_space = False
             elif need_space:
-                result.append(' ')
+                result.append(" ")
                 need_space = False
-        elif token.type == 'comment':
+        elif token.type == "comment":
             result.append(token.value)
             need_space = False
-        elif token.type == 'string':
+        elif token.type == "string":
             if need_space:
-                result.append(' ')
+                result.append(" ")
             result.append(token.value)
             need_space = True
-        elif token.type == 'paren':
-            if token.value == '(':
+        elif token.type == "paren":
+            if token.value == "(":
                 if need_space:
-                    result.append(' ')
+                    result.append(" ")
                 result.append(token.value)
                 indent_level += 1
                 need_space = False
-            elif token.value == ')':
+            elif token.value == ")":
                 indent_level = max(0, indent_level - 1)
                 result.append(token.value)
                 need_space = True
-        elif token.type == 'quote':
+        elif token.type == "quote":
             if need_space:
-                result.append(' ')
+                result.append(" ")
             result.append(token.value)
             need_space = False
-        elif token.type == 'atom':
+        elif token.type == "atom":
             if need_space:
-                result.append(' ')
+                result.append(" ")
             result.append(token.value)
             need_space = True
 
         # Handle special cases for improved formatting
         if i < len(tokens) - 1:
-            next_token = tokens[i+1]
-            if token.type == 'paren' and token.value == '(' and next_token.type == 'paren' and next_token.value == ')':
+            next_token = tokens[i + 1]
+            if (
+                token.type == "paren"
+                and token.value == "("
+                and next_token.type == "paren"
+                and next_token.value == ")"
+            ):
                 need_space = False
-            elif token.type == 'quote' and next_token.type != 'whitespace':
+            elif token.type == "quote" and next_token.type != "whitespace":
                 need_space = False
 
-    return ''.join(result).strip()
+    return "".join(result).strip()

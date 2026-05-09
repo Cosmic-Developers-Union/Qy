@@ -1,7 +1,6 @@
 # coding: utf-8
 
 
-
 """Created on 2024-08-15."""
 
 import traceback
@@ -12,24 +11,13 @@ from typing import Union
 
 import lark
 
-__all__ = [
-    'qy',
-    'symbol',
-    'symbolproxy'
-]
+__all__ = ["qy", "symbol", "symbolproxy"]
 PYOBJECT = object
-ATOM = Union[
-    str, int, float, bytes, bool, None, 'symbol',
-    object
-]
+ATOM = Union[str, int, float, bytes, bool, None, "symbol", object]
 
 SEXPRESSION = ATOM | tuple[ATOM]
 
-INTERMEDIATE_LANG = tuple[
-    'INTERMEDIATE_LANG',
-    'symbol',
-    int, float, str, bool, None, bytes
-]
+INTERMEDIATE_LANG = tuple["INTERMEDIATE_LANG", "symbol", int, float, str, bool, None, bytes]
 
 GRAMMER = """
 ?start: expressions
@@ -56,7 +44,7 @@ class QyTransformer(lark.Transformer):
         return list(tokens)
 
     def quote(self, tokens):
-        return ('quote', tokens)
+        return ("quote", tokens)
 
     def string(self, token):
         return str(token[1:-1])
@@ -73,20 +61,16 @@ def reader(source: str):
     return QyTransformer().transform(tree)
 
 
-class QyError(Exception):
-    ...
+class QyError(Exception): ...
 
 
-class QySyntaxError(QyError):
-    ...
+class QySyntaxError(QyError): ...
 
 
-class QyRuntimeError(QyError):
-    ...
+class QyRuntimeError(QyError): ...
 
 
-class QySymbolError(QyError):
-    ...
+class QySymbolError(QyError): ...
 
 
 class QyEvelError(QyError):
@@ -102,7 +86,7 @@ class symbol:
     when the symbol is used as a function, it should be evaluated.
     when the symbol is used as a value, it should be returned
 
-    so, if the symbol is the first element of the s-expression, 
+    so, if the symbol is the first element of the s-expression,
         evaluator will use symbol.__call__ to evaluate it.
         for operator, user can require evaluator use orginal value (s-exp)
         ...
@@ -111,24 +95,21 @@ class symbol:
 
     name is the name of the symbol.
     """
-    __solts__ = ('name', 'value', 'require_eval')
+
+    __solts__ = ("name", "value", "require_eval")
 
     def __init__(self, name: str, value: Any = None) -> None:
         self.name = name
         self.value = value
 
     def __eq__(self, value: object) -> bool:
-        return (
-            isinstance(value, symbol)
-            and value.name == self.name
-            and value.value == self.value
-        )
+        return isinstance(value, symbol) and value.name == self.name and value.value == self.value
 
     def __hash__(self) -> int:
         return hash((self.name, self.value))
 
     def __repr__(self) -> str:
-        return f'<symbol {self.name}>'
+        return f"<symbol {self.name}>"
 
     def __str__(self) -> str:
         return self.name
@@ -141,34 +122,33 @@ class symbol:
 
 
 class symbolproxy:
-    __solts__ = ('name')
+    __solts__ = "name"
 
     def __init__(self, name: str) -> None:
         self.name = name
 
     def __repr__(self) -> str:
-        return f'<symbolproxy {self.name}>'
+        return f"<symbolproxy {self.name}>"
 
 
 class Qy:
-
     def __init__(self, *, thread=False) -> None:
         self.SYMBOLSPACE: dict[str, symbol] = {}
 
     def symbol(self, name: str, value: Any = None) -> symbol:
         s = symbol(name, value)
         if name in self.SYMBOLSPACE:  # warning
-            warnings.warn(f'{name} is already in the symbol space', stacklevel=2)
+            warnings.warn(f"{name} is already in the symbol space", stacklevel=2)
         self.SYMBOLSPACE[name] = s
         return s
 
     def operator(self, name: str, func: Callable | None = None) -> None:
         if not isinstance(name, str):
-            raise TypeError('name must be str')
+            raise TypeError("name must be str")
         if func is None:
             return lambda func: self.operator(name, func)
         if not callable(func):
-            raise TypeError('func must be callable')
+            raise TypeError("func must be callable")
         s = symbol(name, func)
         self.SYMBOLSPACE[name] = s
         return s
@@ -195,8 +175,7 @@ class Qy:
                 return float(s_expression.name)
             except ValueError:
                 pass
-            raise QySymbolError(
-                f'{s_expression.name} is not in the symbol space')
+            raise QySymbolError(f"{s_expression.name} is not in the symbol space")
         if not isinstance(s_expression, tuple):
             return s_expression
 
@@ -214,26 +193,28 @@ class Qy:
             from qy.operator import cond
             from qy.operator import cons
             from qy.operator import quote
+
             if operator is quote:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: quote')
+                    raise QyEvelError("Error: quote")
                 return arguments[0]
             if operator is car:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: car')
+                    raise QyEvelError("Error: car")
                 return car(self.eval(arguments[0]))
             if operator is cdr:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: cdr')
+                    raise QyEvelError("Error: cdr")
                 return cdr(self.eval(arguments[0]))
             if operator is cons:
                 if len(arguments) != 2:
-                    raise QyEvelError('Error: cons')
+                    raise QyEvelError("Error: cons")
                 return cons(self.eval(arguments[0]), self.eval(arguments[1]))
             if operator is cond:
                 return cond(*arguments)
         try:
             from qy.operator import kw
+
             args, kwargs = [], {}
             for arg in arguments:
                 if isinstance(arg, tuple) and arg and arg[0] is kw:
@@ -246,10 +227,8 @@ class Qy:
         except SystemExit as e:
             raise e from None
         except BaseException as e:
-            e = '\n'.join(traceback.format_exception(e))
-            raise QyEvelError(
-                f'Error: {operator} {tuple(arguments)}\n\n{e}'
-            ) from None
+            e = "\n".join(traceback.format_exception(e))
+            raise QyEvelError(f"Error: {operator} {tuple(arguments)}\n\n{e}") from None
 
     async def aeval(self, s_expression: SEXPRESSION):
         from qy.operator import NIL
@@ -277,21 +256,22 @@ class Qy:
             from qy.operator import cond
             from qy.operator import cons
             from qy.operator import quote
+
             if operator is quote:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: quote')
+                    raise QyEvelError("Error: quote")
                 return arguments[0]
             if operator is car:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: car')
+                    raise QyEvelError("Error: car")
                 return car(await self.aeval(arguments[0]))
             if operator is cdr:
                 if len(arguments) != 1:
-                    raise QyEvelError('Error: cdr')
+                    raise QyEvelError("Error: cdr")
                 return cdr(await self.aeval(arguments[0]))
             if operator is cons:
                 if len(arguments) != 2:
-                    raise QyEvelError('Error: cons')
+                    raise QyEvelError("Error: cons")
                 return cons(await self.aeval(arguments[0]), await self.aeval(arguments[1]))
             if operator is cond:
                 return await cond(*arguments)
@@ -304,10 +284,8 @@ class Qy:
         except SystemExit as e:
             raise e
         except BaseException as e:
-            e = '\n'.join(traceback.format_exception(e))
-            raise QyEvelError(
-                f'Error: {operator} {arguments}\n\n{e}'
-            ) from None
+            e = "\n".join(traceback.format_exception(e))
+            raise QyEvelError(f"Error: {operator} {arguments}\n\n{e}") from None
 
     def exec(self, ast: INTERMEDIATE_LANG):
         self.eval(ast)

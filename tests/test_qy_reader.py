@@ -25,15 +25,16 @@ SYMBOL: /[a-zA-Z0-9_\-@:\.]+/
 
 class TestReader(unittest.TestCase):
     def setUp(self):
-        sys.path.insert(0, '')
+        sys.path.insert(0, "")
 
     def test_(self):
         from qy import symbol
         from qy._reader import tokenize
-        tokens = tokenize(Path('examples/data.qy').read_text('utf-8'))
+
+        tokens = tokenize(Path("examples/data.qy").read_text("utf-8"))
         print(list(tokens))
         parser = lark.Lark(GRAMMER)
-        tree = parser.parse(Path('examples/data.qy').read_text('utf-8'))
+        tree = parser.parse(Path("examples/data.qy").read_text("utf-8"))
 
         @lark.v_args(inline=True)
         class QyTransformer(lark.Transformer):
@@ -41,7 +42,7 @@ class TestReader(unittest.TestCase):
                 return list(tokens)
 
             def quote(self, tokens):
-                return ('quote', tokens)
+                return ("quote", tokens)
 
             def string(self, token):
                 return str(token[1:-1])
@@ -51,6 +52,7 @@ class TestReader(unittest.TestCase):
 
             def list(self, *items):
                 return items
+
         transformer = QyTransformer()
         expr = transformer.transform(tree)
         print(expr)
@@ -58,6 +60,7 @@ class TestReader(unittest.TestCase):
     def test_reader(self):
         from qy import qy
         from qy.core import reader
+
         exp = reader("(+ 1 3)")[0]
         self.assertEqual(qy.eval(exp), 4)
 
@@ -65,5 +68,5 @@ class TestReader(unittest.TestCase):
         pass
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()
