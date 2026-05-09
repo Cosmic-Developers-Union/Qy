@@ -1,15 +1,8 @@
 # coding: utf-8
 
-__all__ = [
-    'qy',
-    'symbol',
-    'symbolproxy'
-]
 
-"""
-Created on 2024-08-15
 
-"""
+"""Created on 2024-08-15."""
 
 import traceback
 import warnings
@@ -19,13 +12,18 @@ from typing import Union
 
 import lark
 
+__all__ = [
+    'qy',
+    'symbol',
+    'symbolproxy'
+]
 PYOBJECT = object
 ATOM = Union[
     str, int, float, bytes, bool, None, 'symbol',
     object
 ]
 
-SEXPRESSION = Union[ATOM, tuple[ATOM]]
+SEXPRESSION = ATOM | tuple[ATOM]
 
 INTERMEDIATE_LANG = tuple[
     'INTERMEDIATE_LANG',
@@ -97,6 +95,7 @@ class QyEvelError(QyError):
 
 class symbol:
     """symbol is different from other symbol.
+
     we can use symbol as a function, and we can use symbol as a value.
     it should be differenciated from the symbol in the symbol space.
 
@@ -111,7 +110,6 @@ class symbol:
         evaluator will use symbol.value to return the symbol object.
 
     name is the name of the symbol.
-
     """
     __solts__ = ('name', 'value', 'require_eval')
 
@@ -160,11 +158,11 @@ class Qy:
     def symbol(self, name: str, value: Any = None) -> symbol:
         s = symbol(name, value)
         if name in self.SYMBOLSPACE:  # warning
-            warnings.warn(f'{name} is already in the symbol space')
+            warnings.warn(f'{name} is already in the symbol space', stacklevel=2)
         self.SYMBOLSPACE[name] = s
         return s
 
-    def operator(self, name: str, func: Callable = None) -> None:
+    def operator(self, name: str, func: Callable | None = None) -> None:
         if not isinstance(name, str):
             raise TypeError('name must be str')
         if func is None:
@@ -211,11 +209,11 @@ class Qy:
 
         # TODO: optimize the code
         if isinstance(operator, symbol):
-            from .operator import car
-            from .operator import cdr
-            from .operator import cond
-            from .operator import cons
-            from .operator import quote
+            from qy.operator import car
+            from qy.operator import cdr
+            from qy.operator import cond
+            from qy.operator import cons
+            from qy.operator import quote
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')
@@ -235,7 +233,7 @@ class Qy:
             if operator is cond:
                 return cond(*arguments)
         try:
-            from .operator import kw
+            from qy.operator import kw
             args, kwargs = [], {}
             for arg in arguments:
                 if isinstance(arg, tuple) and arg and arg[0] is kw:
@@ -254,9 +252,9 @@ class Qy:
             ) from None
 
     async def aeval(self, s_expression: SEXPRESSION):
-        from .operator import NIL
-        from .operator import T
-        from .operator import atom
+        from qy.operator import NIL
+        from qy.operator import T
+        from qy.operator import atom
 
         if atom(s_expression) is T:
             return s_expression
@@ -274,11 +272,11 @@ class Qy:
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
-            from .operator import car
-            from .operator import cdr
-            from .operator import cond
-            from .operator import cons
-            from .operator import quote
+            from qy.operator import car
+            from qy.operator import cdr
+            from qy.operator import cond
+            from qy.operator import cons
+            from qy.operator import quote
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')

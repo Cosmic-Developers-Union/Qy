@@ -40,7 +40,7 @@ def cdr(exp: tuple):
 
 @qy.operator('cons')
 def cons(x, y: tuple):
-    return (x,) + y
+    return (x, *y)
 
 
 @qy.operator('cond')

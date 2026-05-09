@@ -1,11 +1,9 @@
 # coding: utf-8
 
-"""Created on 2024-08-15
-
-"""
+"""Created on 2024-08-15."""
 import code
 
-from qy import *
+from qy import *  # noqa: F403
 
 LOCALS = globals()
 
