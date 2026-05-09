@@ -1,0 +1,18 @@
+{
+  "dependencies": {},
+  "devDependencies": {
+    "@commitlint/cli": "^21.0.0",
+    "@commitlint/config-conventional": "^21.0.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.0.4",
+    "prettier": "^3.8.3",
+    "prettier-plugin-toml": "^2.0.6"
+  },
+  "scripts": {
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{toml,yaml,json,md}": "bunx prettier --write",
+    "*.py": ["uv run ruff check --fix", "uv run ruff format", "uv run ty check"]
+  }
+}

@@ -1,3 +1,61 @@
-[build-system]
-requires = ["setuptools", "wheel", 'lark>=1.2.2']
-build-backend = "setuptools.build_meta"
+[project]
+name = "QyLang"
+version = "0.0.4"
+description = "Qy Lang, a Lisp language implemented in and based on Python"
+readme = "README.md"
+requires-python = ">=3.12"
+license = "Apache-2.0"
+authors = [{ name = "Ge", email = "cosplox@outlook.com" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Lisp",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: OS Independent",
+]
+dependencies = ["lark>=1.3.1"]
+
+[project.urls]
+Homepage = "https://github.com/Cosmic-Developers-Union/Qy"
+
+[project.scripts]
+qy = "qy.cli:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I", "UP", "RUF", "D", "TID252"]
+ignore = [
+  "E501",
+  "UP009",
+  "UP045",
+  "RUF001",
+  "RUF002",
+  "RUF003",
+  "RUF012",
+  "D100",   # module
+  "D101",   # class
+  "D102",   # method
+  "D103",   # function
+  "D104",   # package
+  "D105",   # magic method
+  "D106",   # nested class
+  "D107",   # __init__
+]
+[tool.ruff.lint.flake8-tidy-imports]
+# 禁止所有相对导入：from .xxx import yyy / from ..xxx import yyy
+ban-relative-imports = "all"
+[tool.ruff.lint.isort]
+force-single-line = true
+combine-as-imports = false
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ty.src]
+include = ["qy", "tests"]
+exclude = []
+
+[dependency-groups]
+dev = ["ruff>=0.15.12", "ty>=0.0.34"]

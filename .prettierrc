@@ -17,5 +17,8 @@
         "parser": "json"
       }
     }
+  ],
+  "plugins": [
+    "prettier-plugin-toml"
   ]
 }
