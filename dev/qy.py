@@ -1,8 +1,6 @@
-from typing import List
-from typing import List, Iterator
-import unicodedata
 import pathlib
-import re
+import unicodedata
+from collections.abc import Iterator
 
 
 class symbol:
@@ -33,7 +31,7 @@ class Token:
 
 def tokenize(source: str) -> Iterator[Token]:
     source = unicodedata.normalize('NFKC', source)
-    buffer: List[str] = []
+    buffer: list[str] = []
     in_string = False
     i = 0
 
@@ -94,7 +92,7 @@ def tokenize(source: str) -> Iterator[Token]:
             yield Token('atom', ''.join(buffer))
 
 
-def untokenize(tokens: List[Token]) -> str:
+def untokenize(tokens: list[Token]) -> str:
     result = []
     indent_level = 0
     need_space = False

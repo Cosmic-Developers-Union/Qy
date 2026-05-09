@@ -1,9 +1,9 @@
 # coding: utf-8
 
 __all__ = [
+    'qy',
     'symbol',
-    'symbolproxy',
-    'qy'
+    'symbolproxy'
 ]
 
 """
@@ -12,10 +12,13 @@ Created on 2024-08-15
 """
 
 import traceback
-from typing import Callable, Any, Union
 import warnings
+from collections.abc import Callable
+from typing import Any
+from typing import Union
 
 import lark
+
 PYOBJECT = object
 ATOM = Union[
     str, int, float, bytes, bool, None, 'symbol',
@@ -30,7 +33,7 @@ INTERMEDIATE_LANG = tuple[
     int, float, str, bool, None, bytes
 ]
 
-GRAMMER = f"""
+GRAMMER = """
 ?start: expressions
 expressions: expression*
 ?expression: atom
@@ -93,8 +96,7 @@ class QyEvelError(QyError):
 
 
 class symbol:
-    """
-    symbol is different from other symbol.
+    """symbol is different from other symbol.
     we can use symbol as a function, and we can use symbol as a value.
     it should be differenciated from the symbol in the symbol space.
 
@@ -174,8 +176,7 @@ class Qy:
         return s
 
     def eval(self, s_expression: SEXPRESSION):
-        """
-        if s-expression is atom (symbol? NIL T), return it.
+        """If s-expression is atom (symbol? NIL T), return it.
 
         if s-exp only is exp(need eval) or aotm
 
@@ -210,7 +211,11 @@ class Qy:
 
         # TODO: optimize the code
         if isinstance(operator, symbol):
-            from .operator import quote, car, cdr, cons, cond
+            from .operator import car
+            from .operator import cdr
+            from .operator import cond
+            from .operator import cons
+            from .operator import quote
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')
@@ -249,7 +254,9 @@ class Qy:
             ) from None
 
     async def aeval(self, s_expression: SEXPRESSION):
-        from .operator import T, NIL, atom
+        from .operator import NIL
+        from .operator import T
+        from .operator import atom
 
         if atom(s_expression) is T:
             return s_expression
@@ -267,7 +274,11 @@ class Qy:
         operator, *arguments = s_expression
 
         if isinstance(operator, (symbol, symbolproxy)):
-            from .operator import quote, car, cdr, cons, cond
+            from .operator import car
+            from .operator import cdr
+            from .operator import cond
+            from .operator import cons
+            from .operator import quote
             if operator is quote:
                 if len(arguments) != 1:
                     raise QyEvelError('Error: quote')

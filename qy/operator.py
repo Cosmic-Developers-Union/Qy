@@ -1,5 +1,6 @@
 from typing import Literal
-from qy.core import qy, symbol
+
+from qy.core import qy
 
 T = qy.symbol('T', True)
 NIL = qy.symbol('NIL', False)
@@ -45,7 +46,7 @@ def cons(x, y: tuple):
 @qy.operator('cond')
 def cond(*cond_ressults: tuple):
     for c, r in cond_ressults:
-        if not qy.eval(c) in [(), NIL, False]:
+        if qy.eval(c) not in [(), NIL, False]:
             return qy.eval(r)
     return NIL
 

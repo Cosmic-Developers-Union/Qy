@@ -12,6 +12,8 @@ check:
 
 lint:
 	uv run ruff check .
+	uv run ty check .
+	uv run ruff format --check .
 
 release:
 	git push

@@ -3,12 +3,20 @@
 __version__ = '0.0.4'
 __author__ = 'Ge'
 __all__ = [
+    'NIL',
+    'T',
+    'atom',
+    'car',
+    'cdr',
+    'cond',
+    'cons',
+    'eq',
+    'nil',
+    'quote',
     'qy',
     'symbol',
     'symbolproxy',
-    't', 'T',
-    'nil', 'NIL',
-    'quote', 'atom', 'eq', 'car', 'cdr', 'cons', 'cond'
+    't'
 ]
 
 """
@@ -16,9 +24,18 @@ Created on 2024-08-15
 
 """
 
-from qy.core import symbol, symbolproxy
-from qy.operator import qy, T, NIL
-from qy.operator import quote, atom, eq, car, cdr, cons, cond
+from qy.core import symbol
+from qy.core import symbolproxy
+from qy.operator import NIL
+from qy.operator import T
+from qy.operator import atom
+from qy.operator import car
+from qy.operator import cdr
+from qy.operator import cond
+from qy.operator import cons
+from qy.operator import eq
+from qy.operator import quote
+from qy.operator import qy
 
 t = T
 nil = NIL

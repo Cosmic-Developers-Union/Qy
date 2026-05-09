@@ -1,8 +1,10 @@
-from pathlib import Path
 import sys
 import unittest
+from pathlib import Path
+
 import lark
-GRAMMER = f"""
+
+GRAMMER = """
 ?start: expressions
 expressions: expression*
 
@@ -26,8 +28,8 @@ class TestReader(unittest.TestCase):
         sys.path.insert(0, '')
 
     def test_(self):
-        from qy._reader import tokenize
         from qy import symbol
+        from qy._reader import tokenize
         tokens = tokenize(Path('examples/data.qy').read_text('utf-8'))
         print(list(tokens))
         parser = lark.Lark(GRAMMER)
@@ -54,8 +56,8 @@ class TestReader(unittest.TestCase):
         print(expr)
 
     def test_reader(self):
-        from qy.core import reader
         from qy import qy
+        from qy.core import reader
         exp = reader("(+ 1 3)")[0]
         self.assertEqual(qy.eval(exp), 4)
 
