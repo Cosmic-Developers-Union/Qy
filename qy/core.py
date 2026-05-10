@@ -19,7 +19,7 @@ SEXPRESSION = ATOM | tuple[ATOM]
 
 INTERMEDIATE_LANG = tuple["INTERMEDIATE_LANG", "symbol", int, float, str, bool, None, bytes]
 
-GRAMMER = """
+GRAMMER = r"""
 ?start: expressions
 expressions: expression*
 ?expression: atom
