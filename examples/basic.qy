@@ -1,6 +1,9 @@
+;; 基础示例（包含尚未实现的 print/setq，作为语法演示）
+;; 注意：print 和 setq 尚未在标准环境中实现，此文件仅作语法参考
+
 (print "Hello World")
 (print 't)
 (defun hello-world ()
   (print "Hello, World!"))
-; This is a comment
+; 注释：分号开头的行为注释
 (setq x '(a b c))

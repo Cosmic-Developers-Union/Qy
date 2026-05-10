@@ -12,7 +12,11 @@ classifiers = [
   "License :: OSI Approved :: Apache Software License",
   "Operating System :: OS Independent",
 ]
-dependencies = ["lark>=1.3.1", "pygls>=2.1.1"]
+dependencies = ["lark>=1.3.1"]
+
+[project.optional-dependencies]
+cli = ["typer>=0.20.0"]
+lsp = ["pygls>=2.1.1"]
 
 [project.urls]
 Homepage = "https://github.com/Cosmic-Developers-Union/Qy"
@@ -58,4 +62,6 @@ include = ["qy", "tests"]
 exclude = []
 
 [dependency-groups]
-dev = ["ruff>=0.15.12", "ty>=0.0.34"]
+cli = ["typer>=0.20.0"]
+dev = ["pytest>=9.0.3", "ruff>=0.15.12", "ty>=0.0.34"]
+lsp = ["pygls>=2.1.1"]

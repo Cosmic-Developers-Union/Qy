@@ -1,0 +1,92 @@
+;; 递归基础
+;; 展示递归在列表操作、数学计算中的核心用法
+
+; 阶乘：经典递归入门
+(defun fact (n)
+  (cond
+    ((eq n 0) 1)
+    (true (* n (fact (- n 1))))))
+
+(fact 0)                            ; => 1
+(fact 1)                            ; => 1
+(fact 5)                            ; => 120
+(fact 10)                           ; => 3628800
+
+; 列表长度
+(defun length (lst)
+  (cond
+    ((atom lst) 0)                   ; 空列表长度为 0
+    (true (+ 1 (length (cdr lst)))))); 递归 cdr
+
+(length '())                        ; => 0
+(length '(a))                       ; => 1
+(length '(a b c d e))               ; => 5
+
+; 列表求和
+(defun sum (lst)
+  (cond
+    ((atom lst) 0)
+    (true (+ (car lst) (sum (cdr lst))))))
+
+(sum '(1 2 3 4 5))                  ; => 15
+
+; 列表拼接：将两个列表首尾相连
+(defun append (a b)
+  (cond
+    ((atom a) b)                     ; a 为空时直接返回 b
+    (true (cons (car a) (append (cdr a) b)))))
+
+(append '(a b) '(c d))              ; => '(a b c d)
+(append '() '(x y z))               ; => '(x y z)
+
+; 列表反转（使用累加器）
+(defun reverse-helper (lst acc)
+  (cond
+    ((atom lst) acc)
+    (true (reverse-helper (cdr lst) (cons (car lst) acc)))))
+
+(defun reverse (lst)
+  (reverse-helper lst '()))
+
+(reverse '(a b c d))                ; => '(d c b a)
+(reverse '(1))                      ; => '(1)
+
+; 按索引取元素
+(defun nth (n lst)
+  (cond
+    ((eq n 0) (car lst))
+    (true (nth (- n 1) (cdr lst)))))
+
+(nth 0 '(a b c))                    ; => Symbol("a")
+(nth 2 '(a b c))                    ; => Symbol("c")
+
+; Map 模式：对列表每个元素做平方
+(defun map-square (lst)
+  (cond
+    ((atom lst) '())
+    (true (cons (* (car lst) (car lst)) (map-square (cdr lst))))))
+
+(map-square '(1 2 3 4 5))           ; => '(1 4 9 16 25)
+
+; Filter 模式：保留非零元素
+(defun is-positive (n) (cond ((eq n 0) false) (true true)))
+(defun keep-nonzero (lst)
+  (cond
+    ((atom lst) '())
+    ((is-positive (car lst))
+     (cons (car lst) (keep-nonzero (cdr lst))))
+    (true (keep-nonzero (cdr lst)))))
+
+(keep-nonzero '(1 0 3 0 5))         ; => '(1 3 5)
+
+; 斐波那契数列
+(defun fib (n)
+  (cond
+    ((eq n 0) 0)
+    ((eq n 1) 1)
+    (true (+ (fib (- n 1)) (fib (- n 2))))))
+
+(fib 0)                             ; => 0
+(fib 1)                             ; => 1
+(fib 5)                             ; => 5
+(fib 10)                            ; => 55

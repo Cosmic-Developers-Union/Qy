@@ -9,21 +9,37 @@ The current core is intentionally small:
 - analyzer: diagnostics and lightweight type checks
 - evaluator: simple symbolic evaluation
 - formatter: locked qy source formatting
-- CLI: file evaluation, REPL, formatting, AST, and type checking
-- LSP: diagnostics, completion, hover, and formatting over pygls
+- CLI: optional file evaluation, REPL, formatting, AST, and type checking
+- LSP: optional diagnostics, completion, hover, and formatting over pygls
 
 ## Usage
+
+Install optional command line tools:
+
+```shell
+pip install 'QyLang[cli]'
+```
 
 Evaluate a file:
 
 ```shell
 qy examples/codes/code001.qy
+qy run examples/codes/code001.qy
 ```
 
 Start the interactive interpreter:
 
 ```shell
 qy
+qy repl
+```
+
+The REPL keeps one `Qy` instance alive and supports `.help`, `.env`, `.ast`, `.fmt`, `.check`, and `.exit`.
+
+Install optional language-server support:
+
+```shell
+pip install 'QyLang[lsp]'
 ```
 
 Start the language server over stdio:

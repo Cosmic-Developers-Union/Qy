@@ -1,10 +1,9 @@
 # coding: utf-8
 
-from __future__ import annotations
-
-import argparse
 import sys
 from pathlib import Path
+from typing import Annotated
+from typing import Any
 from typing import cast
 
 from qy.analyzer import Diagnostic
@@ -19,83 +18,151 @@ from qy.reader import read
 from qy.reader import write_tuple
 from qy.runtime import Qy
 
+INSTALL_CLI_MESSAGE = (
+    "Qy CLI requires the optional cli dependency. Install with: pip install 'QyLang[cli]'"
+)
+INSTALL_LSP_MESSAGE = (
+    "Qy LSP requires the optional lsp dependency. Install with: pip install 'QyLang[lsp]'"
+)
 
-def main(argv: list[str] | None = None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if not argv:
-        return repl(Qy())
 
-    command = argv[0]
-    if command == "lsp":
-        from qy.lsp import main as lsp_main
-
-        return lsp_main()
-    if command == "fmt":
-        return format_command(argv[1:])
-    if command == "ast":
-        return ast_command(argv[1:])
-    if command in {"check", "typecheck"}:
-        return check_command(argv[1:])
-
-    value = Qy().evaluate_file(Path(command))
-    print(format_value(value))
+def main() -> int:
+    try:
+        app = create_app()
+    except ModuleNotFoundError as e:
+        if e.name == "typer":
+            print(INSTALL_CLI_MESSAGE, file=sys.stderr)
+            return 2
+        raise
+    app()
     return 0
 
 
-def format_command(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="qy fmt")
-    parser.add_argument("-w", "--write", action="store_true", help="rewrite the file in place")
-    parser.add_argument("path")
-    args = parser.parse_args(argv)
+def create_app() -> Any:
+    import click
+    import typer
+    from typer.core import TyperGroup
 
-    path = Path(args.path)
-    formatted = format_source(path.read_text(encoding="utf-8"))
-    if args.write:
-        path.write_text(formatted, encoding="utf-8")
-    else:
-        print(formatted, end="")
-    return 0
+    class QyGroup(TyperGroup):
+        def resolve_command(
+            self, ctx: click.Context, args: list[str]
+        ) -> tuple[str | None, click.Command | None, list[str]]:
+            try:
+                return super().resolve_command(ctx, args)
+            except click.UsageError:
+                if args and not args[0].startswith("-") and Path(args[0]).is_file():
+                    command = self.get_command(ctx, "run")
+                    return "run", command, args
+                raise
 
+    app = typer.Typer(
+        add_completion=False,
+        cls=QyGroup,
+        epilog="Shortcut: qy FILE evaluates FILE.",
+        help="Qy command line tools.",
+        invoke_without_command=True,
+        no_args_is_help=False,
+    )
 
-def ast_command(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="qy ast")
-    parser.add_argument("path")
-    args = parser.parse_args(argv)
+    @app.callback()
+    def root(ctx: typer.Context) -> None:
+        if ctx.invoked_subcommand is not None:
+            return
+        raise typer.Exit(repl(Qy()))
 
-    path = Path(args.path)
-    print(dump_program(read(path.read_text(encoding="utf-8"))))
-    return 0
+    @app.command("run")
+    def run_command(
+        path: Annotated[Path, typer.Argument(help="Qy source file to evaluate.")],
+    ) -> None:
+        typer.echo(format_value(Qy().evaluate_file(path)))
 
+    @app.command("repl")
+    def repl_command() -> None:
+        raise typer.Exit(repl(Qy()))
 
-def check_command(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="qy check")
-    parser.add_argument("path")
-    args = parser.parse_args(argv)
+    @app.command("fmt")
+    def format_command(
+        path: Annotated[Path, typer.Argument(help="Qy source file to format.")],
+        write: Annotated[
+            bool,
+            typer.Option("--write", "-w", help="Rewrite the file in place."),
+        ] = False,
+    ) -> None:
+        formatted = format_source(path.read_text(encoding="utf-8"))
+        if write:
+            path.write_text(formatted, encoding="utf-8")
+            typer.secho(f"formatted {path}", fg=typer.colors.GREEN)
+            return
+        typer.echo(formatted, nl=False)
 
-    path = Path(args.path)
-    analysis = analyze_source(path.read_text(encoding="utf-8"))
-    for diagnostic in analysis.diagnostics:
-        print(_format_diagnostic(path, diagnostic), file=sys.stderr)
-    return 0 if analysis.ok else 1
+    @app.command("ast")
+    def ast_command(
+        path: Annotated[Path, typer.Argument(help="Qy source file to inspect.")],
+    ) -> None:
+        typer.echo(dump_program(read(path.read_text(encoding="utf-8"))))
+
+    @app.command("check")
+    def check_command(
+        path: Annotated[Path, typer.Argument(help="Qy source file to check.")],
+    ) -> None:
+        _check_path(path)
+
+    @app.command("typecheck")
+    def typecheck_command(path: Annotated[Path, typer.Argument(help="Alias for check.")]) -> None:
+        _check_path(path)
+
+    @app.command("lsp")
+    def lsp_command() -> None:
+        try:
+            from qy.lsp import main as lsp_main
+        except ModuleNotFoundError as e:
+            if e.name in {"pygls", "lsprotocol"}:
+                typer.secho(INSTALL_LSP_MESSAGE, fg=typer.colors.RED, err=True)
+                raise typer.Exit(2) from e
+            raise
+        raise typer.Exit(lsp_main())
+
+    return app
 
 
 def repl(qy: Qy) -> int:
-    print("Qy interactive interpreter. Type .exit to quit.")
+    import typer
+
+    typer.secho("Qy interactive interpreter", fg=typer.colors.GREEN, bold=True)
+    typer.echo("Commands: .help .env .ast <expr> .fmt <expr> .check <expr> .exit")
     while True:
         try:
-            source = input("qy> ")
-        except EOFError:
-            print()
+            source = typer.prompt(typer.style("qy>", fg=typer.colors.BLUE), prompt_suffix=" ")
+        except (EOFError, KeyboardInterrupt):
+            typer.echo()
             return 0
-        if source.strip() in {".exit", ".quit"}:
-            return 0
-        if not source.strip():
+
+        source = source.strip()
+        if not source:
             continue
+        if source in {".exit", ".quit"}:
+            return 0
+        if source == ".help":
+            _print_repl_help()
+            continue
+        if source == ".env":
+            _print_environment(qy)
+            continue
+        if source.startswith(".ast "):
+            _print_repl_ast(source[5:])
+            continue
+        if source.startswith(".fmt "):
+            _print_repl_format(source[5:])
+            continue
+        if source.startswith(".check "):
+            _print_repl_check(source[7:])
+            continue
+
         try:
             for form in read(source):
-                print(format_value(qy.evaluate(form)))
+                typer.echo(format_value(qy.evaluate(form)))
         except (EvaluationError, ReaderSyntaxError) as e:
-            print(f"error: {e}", file=sys.stderr)
+            typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
 
 
 def format_value(value: object) -> str:
@@ -107,11 +174,81 @@ def format_value(value: object) -> str:
     return repr(value)
 
 
+def _check_path(path: Path) -> None:
+    import typer
+
+    analysis = analyze_source(path.read_text(encoding="utf-8"))
+    for diagnostic in analysis.diagnostics:
+        typer.secho(
+            _format_diagnostic(path, diagnostic), fg=_diagnostic_color(diagnostic), err=True
+        )
+    if not analysis.ok:
+        raise typer.Exit(1)
+    typer.secho(f"{path}: ok", fg=typer.colors.GREEN)
+
+
 def _format_diagnostic(path: Path, diagnostic: Diagnostic) -> str:
     location = str(path)
     if diagnostic.line is not None and diagnostic.column is not None:
         location = f"{location}:{diagnostic.line}:{diagnostic.column}"
     return f"{location}: {diagnostic.severity}: {diagnostic.message}"
+
+
+def _diagnostic_color(diagnostic: Diagnostic) -> str:
+    import typer
+
+    if diagnostic.severity == "warning":
+        return typer.colors.YELLOW
+    if diagnostic.severity == "hint":
+        return typer.colors.BLUE
+    return typer.colors.RED
+
+
+def _print_repl_help() -> None:
+    import typer
+
+    typer.echo("Enter qy expressions to evaluate them in the current session.")
+    typer.echo(".env          show bound symbols")
+    typer.echo(".ast <expr>   print the parsed syntax tree")
+    typer.echo(".fmt <expr>   print canonical qy formatting")
+    typer.echo(".check <expr> run analyzer diagnostics")
+    typer.echo(".exit         leave the interpreter")
+
+
+def _print_environment(qy: Qy) -> None:
+    import typer
+
+    for symbol in sorted(qy.env.bindings(), key=lambda item: item.name):
+        typer.echo(symbol.name)
+
+
+def _print_repl_ast(source: str) -> None:
+    import typer
+
+    try:
+        typer.echo(dump_program(read(source)))
+    except ReaderSyntaxError as e:
+        typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+
+
+def _print_repl_format(source: str) -> None:
+    import typer
+
+    try:
+        typer.echo(format_source(source), nl=False)
+    except ReaderSyntaxError as e:
+        typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+
+
+def _print_repl_check(source: str) -> None:
+    import typer
+
+    analysis = analyze_source(source)
+    if not analysis.diagnostics:
+        typer.secho("ok", fg=typer.colors.GREEN)
+        return
+    for diagnostic in analysis.diagnostics:
+        typer.secho(diagnostic.message, fg=_diagnostic_color(diagnostic), err=True)
 
 
 if __name__ == "__main__":

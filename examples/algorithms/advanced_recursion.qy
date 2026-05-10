@@ -1,0 +1,108 @@
+;; 高级递归模式
+;; 展示更复杂的列表操作：扁平化、查找、替换、分割、合并
+
+; 扁平化嵌套列表
+(defun flatten (x)
+  (cond
+    ((atom x) (cons x '()))          ; 原子变成单元素列表
+    (true (append-all (map-flatten x)))))
+
+(defun append-all (lst)              ; 拼接列表的列表
+  (cond
+    ((atom lst) '())
+    (true (append (car lst) (append-all (cdr lst))))))
+
+(defun map-flatten (lst)             ; 对每个子元素递归扁平化
+  (cond
+    ((atom lst) '())
+    (true (cons (flatten (car lst)) (map-flatten (cdr lst))))))
+
+; 成员检查：判断元素是否在列表中
+(defun member (x lst)
+  (cond
+    ((atom lst) false)               ; 空列表 => false
+    ((eq x (car lst)) true)          ; 找到 => true
+    (true (member x (cdr lst)))))    ; 继续查找
+
+(member 'b '(a b c))                ; => true
+(member 'z '(a b c))                ; => false
+(member 'a '(a))                    ; => true
+
+; 删除第一个匹配元素
+(defun remove-first (x lst)
+  (cond
+    ((atom lst) '())
+    ((eq x (car lst)) (cdr lst))     ; 找到就跳过
+    (true (cons (car lst) (remove-first x (cdr lst)))))
+
+(remove-first 'b '(a b c d))        ; => '(a c d)
+(remove-first 'z '(a b c))          ; => '(a b c)（未找到，原样返回）
+
+; 计算元素出现次数
+(defun count-all (x lst)
+  (cond
+    ((atom lst) 0)
+    (true (+ (cond ((eq x (car lst)) 1) (true 0))
+             (count-all x (cdr lst))))))
+
+(count-all 'a '(a b a c a))         ; => 3
+(count-all 'x '(a b c))             ; => 0
+
+; 替换：将列表中所有 old 替换为 new
+(defun subst (old new lst)
+  (cond
+    ((atom lst) lst)
+    ((eq old (car lst)) (cons new (subst old new (cdr lst))))
+    (true (cons (car lst) (subst old new (cdr lst))))))
+
+(subst 'b 'x '(a b c b d))          ; => '(a x c x d)
+
+; take：取前 N 个元素
+(defun take (n lst)
+  (cond
+    ((eq n 0) '())
+    ((atom lst) '())
+    (true (cons (car lst) (take (- n 1) (cdr lst))))))
+
+(take 3 '(a b c d e))               ; => '(a b c)
+(take 0 '(a b c))                    ; => ()
+(take 5 '(a b))                      ; => '(a b)（不足则取全部）
+
+; drop：丢弃前 N 个元素
+(defun drop (n lst)
+  (cond
+    ((eq n 0) lst)
+    ((atom lst) '())
+    (true (drop (- n 1) (cdr lst)))))
+
+(drop 2 '(a b c d e))               ; => '(c d e)
+(drop 0 '(a b c))                    ; => '(a b c)
+
+; 拉链：将两个列表配对
+(defun zip (a b)
+  (cond
+    ((atom a) '())
+    ((atom b) '())
+    (true (cons (cons (car a) (car b)) (zip (cdr a) (cdr b))))))
+
+(zip '(a b c) '(1 2 3))             ; => '((a . 1) (b . 2) (c . 3))
+
+; 交错合并：交替取两个列表的元素
+(defun interleave (a b)
+  (cond
+    ((atom a) b)
+    ((atom b) a)
+    (true (cons (car a) (cons (car b) (interleave (cdr a) (cdr b)))))))
+
+(interleave '(a b c) '(1 2 3))      ; => '(a 1 b 2 c 3)
+
+; 全部判断：列表中所有元素是否都是原子
+(defun every-atom (lst)
+  (cond
+    ((atom lst) true)
+    (true (cond
+      ((atom (car lst)) (every-atom (cdr lst)))
+      (true false)))))
+
+(every-atom '(a b c))               ; => true
+(every-atom '(a (b) c))             ; => false

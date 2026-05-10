@@ -1,12 +1,17 @@
 import unittest
 
-from lsprotocol import types
+try:
+    from lsprotocol import types
 
-from qy.lsp import QyLanguageServer
-from qy.lsp import completion_items
-from qy.lsp import create_server
-from qy.lsp import diagnostics_for_source
-from qy.lsp import hover_for_source
+    from qy.lsp import QyLanguageServer
+    from qy.lsp import completion_items
+    from qy.lsp import create_server
+    from qy.lsp import diagnostics_for_source
+    from qy.lsp import hover_for_source
+except ModuleNotFoundError as e:
+    if e.name in {"lsprotocol", "pygls"}:
+        raise unittest.SkipTest("pygls is an optional lsp dependency") from e
+    raise
 
 
 class TestQyLsp(unittest.TestCase):

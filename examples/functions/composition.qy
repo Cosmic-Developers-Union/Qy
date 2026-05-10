@@ -1,0 +1,79 @@
+;; 函数组合与高阶模式
+;; 展示函数组合、累加器、列表构建等常见模式
+
+; 基本组合：f(g(x)) 和 g(f(x))
+(defun f (x) (+ x 1))
+(defun g (x) (* x 2))
+
+(f (g 5))                           ; => 2*5+1 = 11
+(g (f 5))                           ; => (5+1)*2 = 12
+
+; 三重组合
+(defun add3 (x) (+ x 3))
+(defun mul2 (x) (* x 2))
+(defun sub1 (x) (- x 1))
+
+(add3 (mul2 (sub1 10)))             ; => (10-1)*2+3 = 21
+
+; 管道式思维：从内到外读作数据流
+; 10 → add3 → mul2 → sub1 = 21
+(sub1 (mul2 (add3 10)))             ; => (10+3)*2-1 = 25
+
+; 平方和
+(defun sum-of-squares (a b)
+  (+ (* a a) (* b b)))
+
+(sum-of-squares 3 4)                ; => 9 + 16 = 25
+
+; 符号判断（受限于只有 eq，无 > 等比较运算符）
+(defun sign (n)
+  (cond
+    ((eq n 0) 0)
+    (true n)))
+
+(sign 0)                            ; => 0
+(sign 5)                            ; => 5
+(sign (- 3))                        ; => -3
+
+; 相等判断包装
+(defun both-equal (a b)
+  (cond
+    ((eq a b) true)
+    (true false)))
+
+(both-equal 3 3)                    ; => true
+(both-equal 3 4)                    ; => false
+
+; 累加器模式：尾递归优化风格（用 acc 参数积累结果）
+(defun sum-to-n-helper (n acc)
+  (cond
+    ((eq n 0) acc)
+    (true (sum-to-n-helper (- n 1) (+ acc n)))))
+
+(defun sum-to-n (n)
+  (sum-to-n-helper n 0))
+
+(sum-to-n 10)                       ; => 55
+(sum-to-n 100)                      ; => 5050
+
+; 列表构建累加器：生成 [0, n) 的整数列表
+(defun range-helper (n acc)
+  (cond
+    ((eq n 0) acc)
+    (true (range-helper (- n 1) (cons (- n 1) acc)))))
+
+(defun range (n)
+  (range-helper n '()))
+
+(range 0)                           ; => ()
+(range 1)                           ; => (0)
+(range 5)                           ; => (0 1 2 3 4)
+
+; 拉链操作：将两个等长列表配对
+(defun zip-same-length (a b)
+  (cond
+    ((atom a) '())
+    (true (cons (cons (car a) (car b))
+                (zip-same-length (cdr a) (cdr b))))))
+
+(zip-same-length '(a b c) '(1 2 3)) ; => ((a . 1) (b . 2) (c . 3))
