@@ -3,8 +3,10 @@ import unittest
 from lsprotocol import types
 
 from qy.lsp import QyLanguageServer
+from qy.lsp import completion_items
 from qy.lsp import create_server
 from qy.lsp import diagnostics_for_source
+from qy.lsp import hover_for_source
 
 
 class TestQyLsp(unittest.TestCase):
@@ -22,6 +24,19 @@ class TestQyLsp(unittest.TestCase):
         server = create_server()
 
         self.assertIsInstance(server, QyLanguageServer)
+
+    def test_completion_items_include_builtins(self):
+        labels = {item.label for item in completion_items()}
+
+        self.assertIn("let", labels)
+        self.assertIn("defun", labels)
+
+    def test_hover_for_builtin_operator(self):
+        hover = hover_for_source("(let ((x 1)) x)", 0, 1)
+
+        self.assertIsNotNone(hover)
+        assert hover is not None
+        self.assertIsInstance(hover.contents, types.MarkupContent)
 
 
 if __name__ == "__main__":

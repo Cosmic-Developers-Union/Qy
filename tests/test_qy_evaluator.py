@@ -12,6 +12,7 @@ from qy.evaluator import evaluate_file
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
+from qy.runtime import Qy
 
 S = Symbol
 
@@ -60,6 +61,17 @@ class TestQyEvaluator(unittest.TestCase):
         env = Environment({S("1"): 10}, standard_environment())
         self.assertEqual(evaluate((S("+"), S("1"), S("2")), env), 12)
 
+    def test_let_introduces_scope(self):
+        self.assertEqual(evaluate_source("(let ((x 10) (y 20)) (+ x y))"), 30)
+
+        env = standard_environment()
+        self.assertEqual(evaluate_source("(let ((x 10)) x)", env), 10)
+        with self.assertRaises(EvaluationError):
+            evaluate(S("x"), env)
+
+    def test_let_can_override_literals_locally(self):
+        self.assertEqual(evaluate_source("(let ((1 10)) (+ 1 2))"), 12)
+
     def test_defun_syntax_operator(self):
         env = standard_environment()
         function = evaluate_source("(defun square (x) (* x x))", env)
@@ -72,6 +84,29 @@ class TestQyEvaluator(unittest.TestCase):
         evaluate_source("(defun second (x y) x y)", env)
 
         self.assertEqual(evaluate_source("(second 1 2)", env), 2)
+
+    def test_qy_instance_registers_external_operators(self):
+        qy = Qy()
+
+        @qy.register_pure("double")
+        def double(value):
+            return value * 2
+
+        @qy.register_evaluation("unless")
+        def unless(args, env):
+            condition, result = args
+            if evaluate(condition, env):
+                return None
+            return evaluate(result, env)
+
+        @qy.register_syntax("first-symbol")
+        def first_symbol(expression, env):
+            del env
+            return expression[0]
+
+        self.assertEqual(qy.evaluate_source("(double 21)"), 42)
+        self.assertEqual(qy.evaluate_source("(unless false 7)"), 7)
+        self.assertEqual(qy.evaluate_source("(first-symbol unknown)"), S("first-symbol"))
 
     def test_example_code001(self):
         path = Path("examples/codes/code001.qy")

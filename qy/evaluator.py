@@ -31,6 +31,11 @@ __all__ = [
 class PureOperator:
     name: str
     func: Callable[..., object]
+    doc: str = ""
+
+    @property
+    def kind(self) -> str:
+        return "pure"
 
     def __call__(self, *args: object) -> object:
         return self.func(*args)
@@ -40,6 +45,11 @@ class PureOperator:
 class EvaluationOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
+    doc: str = ""
+
+    @property
+    def kind(self) -> str:
+        return "evaluation"
 
     def __call__(self, args: tuple[object, ...], env: Environment) -> object:
         return self.func(args, env)
@@ -49,6 +59,11 @@ class EvaluationOperator:
 class SyntaxOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
+    doc: str = ""
+
+    @property
+    def kind(self) -> str:
+        return "syntax"
 
     def __call__(self, expression: tuple[object, ...], env: Environment) -> object:
         return self.func(expression, env)
@@ -94,22 +109,100 @@ class Environment:
         self._bindings[symbol] = value
         return value
 
+    def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
+        return Environment(bindings, self)
+
+    def bindings(self) -> dict[Symbol, object]:
+        if self._parent is None:
+            return dict(self._bindings)
+        result = self._parent.bindings()
+        result.update(self._bindings)
+        return result
+
+    def register_pure(
+        self,
+        name: str,
+        func: Callable[..., object] | None = None,
+        *,
+        doc: str = "",
+    ) -> Callable[[Callable[..., object]], Callable[..., object]] | Callable[..., object]:
+        def register(func: Callable[..., object]) -> Callable[..., object]:
+            self.define(Symbol(name), PureOperator(name, func, doc))
+            return func
+
+        if func is None:
+            return register
+        return register(func)
+
+    def register_evaluation(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> (
+        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
+        | Callable[..., object]
+    ):
+        def register(
+            func: Callable[[tuple[object, ...], Environment], object],
+        ) -> Callable[..., object]:
+            self.define(Symbol(name), EvaluationOperator(name, func, doc))
+            return func
+
+        if func is None:
+            return register
+        return register(func)
+
+    def register_syntax(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> (
+        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
+        | Callable[..., object]
+    ):
+        def register(
+            func: Callable[[tuple[object, ...], Environment], object],
+        ) -> Callable[..., object]:
+            self.define(Symbol(name), SyntaxOperator(name, func, doc))
+            return func
+
+        if func is None:
+            return register
+        return register(func)
+
 
 def standard_environment() -> Environment:
     return Environment(
         {
-            Symbol("+"): PureOperator("+", _add),
-            Symbol("-"): PureOperator("-", _sub),
-            Symbol("*"): PureOperator("*", _mul),
-            Symbol("/"): PureOperator("/", _div),
-            Symbol("atom"): PureOperator("atom", _atom),
-            Symbol("car"): PureOperator("car", _car),
-            Symbol("cdr"): PureOperator("cdr", _cdr),
-            Symbol("cond"): EvaluationOperator("cond", _cond),
-            Symbol("cons"): PureOperator("cons", _cons),
-            Symbol("defun"): SyntaxOperator("defun", _defun),
-            Symbol("eq"): PureOperator("eq", _eq),
-            Symbol("quote"): EvaluationOperator("quote", _quote),
+            Symbol("+"): PureOperator("+", _add, "Add numbers."),
+            Symbol("-"): PureOperator("-", _sub, "Subtract numbers, or negate one number."),
+            Symbol("*"): PureOperator("*", _mul, "Multiply numbers."),
+            Symbol("/"): PureOperator("/", _div, "Divide numbers, or invert one number."),
+            Symbol("atom"): PureOperator(
+                "atom", _atom, "Return true if the value is not a non-empty list."
+            ),
+            Symbol("car"): PureOperator("car", _car, "Return the first item of a non-empty list."),
+            Symbol("cdr"): PureOperator(
+                "cdr", _cdr, "Return all but the first item of a non-empty list."
+            ),
+            Symbol("cond"): EvaluationOperator(
+                "cond", _cond, "Evaluate the first truthy condition branch."
+            ),
+            Symbol("cons"): PureOperator("cons", _cons, "Prepend an item to a list."),
+            Symbol("defun"): SyntaxOperator(
+                "defun", _defun, "Define a function in the current environment."
+            ),
+            Symbol("eq"): PureOperator("eq", _eq, "Compare atoms and empty lists."),
+            Symbol("let"): EvaluationOperator(
+                "let", _let, "Evaluate a body in a local lexical scope."
+            ),
+            Symbol("quote"): EvaluationOperator(
+                "quote", _quote, "Return one expression without evaluating it."
+            ),
         }
     )
 
@@ -194,6 +287,12 @@ def _evaluate_body(body: tuple[object, ...], env: Environment) -> object:
     return result
 
 
+def _ensure_symbol(value: object, context: str) -> Symbol:
+    if not isinstance(value, Symbol):
+        raise EvaluationError(f"{context} must be a symbol, got {value!r}")
+    return value
+
+
 def _add(*args: object) -> int | float:
     return sum(_ensure_number(arg) for arg in args)
 
@@ -266,13 +365,30 @@ def _cond(args: tuple[object, ...], env: Environment) -> object:
     return None
 
 
+def _let(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) < 2:
+        raise EvaluationError("let expects bindings and at least one body expression")
+
+    bindings, *body = args
+    if not isinstance(bindings, tuple):
+        raise EvaluationError(f"let bindings must be a list, got {bindings!r}")
+
+    local_env = env.child()
+    for binding in bindings:
+        if not isinstance(binding, tuple) or len(binding) != 2:
+            raise EvaluationError(f"let binding must be a pair, got {binding!r}")
+        name, expression = binding
+        local_env.define(_ensure_symbol(name, "let binding name"), evaluate(expression, local_env))
+
+    return _evaluate_body(tuple(body), local_env)
+
+
 def _defun(expression: tuple[object, ...], env: Environment) -> object:
     if len(expression) < 4:
         raise EvaluationError("defun expects a name, parameter list, and body")
 
     _, name, params, *body = expression
-    if not isinstance(name, Symbol):
-        raise EvaluationError(f"defun name must be a symbol, got {name!r}")
+    name = _ensure_symbol(name, "defun name")
     if not isinstance(params, tuple):
         raise EvaluationError(f"defun parameters must be a tuple of symbols, got {params!r}")
 
