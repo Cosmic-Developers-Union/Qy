@@ -35,7 +35,10 @@ class Qy:
         return [self.evaluate(form) for form in read(source)]
 
     def evaluate_file(self, path: str | Path) -> object:
-        return self.evaluate_source(Path(path).read_text(encoding="utf-8"))
+        results = self.evaluate_program(Path(path).read_text(encoding="utf-8"))
+        if not results:
+            return None
+        return results[-1]
 
     def register_pure(
         self,

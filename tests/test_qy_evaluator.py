@@ -1,5 +1,8 @@
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
@@ -13,6 +16,8 @@ from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
 from qy.runtime import Qy
+from qy.stdlib import StandardModule
+from qy.stdlib import register_module
 
 S = Symbol
 
@@ -23,9 +28,14 @@ class TestQyEvaluator(unittest.TestCase):
 
         for name in ["+", "-", "*", "/", "atom", "eq", "car", "cdr", "cons"]:
             self.assertIsInstance(env.resolve(S(name)), PureOperator)
-        for name in ["quote", "cond"]:
+        for name in ["quote", "cond", "print", "echo", "str-upper"]:
             self.assertIsInstance(env.resolve(S(name)), EvaluationOperator)
-        self.assertIsInstance(env.resolve(S("defun")), SyntaxOperator)
+        for name in ["defun", "from"]:
+            self.assertIsInstance(env.resolve(S(name)), SyntaxOperator)
+
+        for name in ["set", "set!", "set*", "setq"]:
+            with self.assertRaises(EvaluationError):
+                env.resolve(S(name))
 
     def test_arithmetic_from_qy_source(self):
         self.assertEqual(evaluate_source("(+ 1 2 3)"), 6)
@@ -85,6 +95,68 @@ class TestQyEvaluator(unittest.TestCase):
 
         self.assertEqual(evaluate_source("(second 1 2)", env), 2)
 
+    def test_from_import_as_operator(self):
+        env = standard_environment()
+        self.assertIsNone(evaluate_source("(from qy.str import str-upper as upper)", env))
+
+        self.assertEqual(evaluate_source('(upper "hello")', env), S("HELLO"))
+
+    def test_from_import_supports_multiple_imports(self):
+        env = standard_environment()
+        evaluate_source("(from qy.str import str-upper as upper str-lower as lower)", env)
+
+        self.assertEqual(evaluate_source('(upper "qy")', env), S("QY"))
+        self.assertEqual(evaluate_source('(lower "QY")', env), S("qy"))
+
+    def test_from_import_respects_local_scope(self):
+        env = standard_environment()
+
+        self.assertEqual(
+            evaluate_source('(let () (from qy.str import str-upper as upper) (upper "qy"))', env),
+            S("QY"),
+        )
+        with self.assertRaises(EvaluationError):
+            evaluate_source('(upper "qy")', env)
+
+    def test_from_import_supports_registered_modules(self):
+        register_module(
+            StandardModule(
+                "test.math",
+                {S("triple"): PureOperator("triple", lambda value: value * 3)},
+            )
+        )
+        env = standard_environment()
+        evaluate_source("(from test.math import triple as t)", env)
+
+        self.assertEqual(evaluate_source("(t 14)", env), 42)
+
+    def test_print_and_echo_return_last_value_without_rebinding(self):
+        env = standard_environment()
+        output = StringIO()
+
+        with redirect_stdout(output):
+            result = evaluate_source('(print "hello" (+ 1 2))', env)
+            echo_result = evaluate_source('(echo "done")', env)
+
+        self.assertEqual(result, 3)
+        self.assertEqual(echo_result, S("done"))
+        self.assertEqual(output.getvalue().splitlines(), ["hello 3", "done"])
+        with self.assertRaises(EvaluationError):
+            evaluate(S("hello"), env)
+
+    def test_str_operators(self):
+        self.assertEqual(evaluate_source('(str "hello")'), S("hello"))
+        self.assertEqual(evaluate_source('(str-upper "hello")'), S("HELLO"))
+        self.assertEqual(evaluate_source('(str-lower "HELLO")'), S("hello"))
+        self.assertEqual(evaluate_source('(str-concat "qy" "lang")'), S("qylang"))
+        self.assertEqual(evaluate_source('(str-len "hello")'), 5)
+        self.assertEqual(evaluate_source('(str-split "a,b,c" ",")'), (S("a"), S("b"), S("c")))
+        self.assertEqual(evaluate_source('(str-join "," \'(a b c))'), S("a,b,c"))
+        self.assertEqual(evaluate_source('(str-replace "hello" "l" "x")'), S("hexxo"))
+        self.assertTrue(evaluate_source('(str-contains? "hello" "ell")'))
+        self.assertTrue(evaluate_source('(str-starts-with? "hello" "he")'))
+        self.assertTrue(evaluate_source('(str-ends-with? "hello" "lo")'))
+
     def test_qy_instance_registers_external_operators(self):
         qy = Qy()
 
@@ -114,6 +186,19 @@ class TestQyEvaluator(unittest.TestCase):
 
         assert isinstance(result, float)
         self.assertAlmostEqual(result, 51926.26973684211)
+
+    def test_evaluate_file_runs_program_and_returns_last_value(self):
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "program.qy"
+            path.write_text(
+                """
+                (from qy.str import str-upper as upper)
+                (upper "qy")
+                """,
+                encoding="utf-8",
+            )
+
+            self.assertEqual(evaluate_file(path), S("QY"))
 
 
 if __name__ == "__main__":

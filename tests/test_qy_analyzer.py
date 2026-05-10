@@ -35,6 +35,42 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source("(let ((x 1)) (+ x 2))"), [])
         self.assertTrue(type_check_source("(+ x 2)"))
 
+    def test_import_alias_scope_is_understood(self):
+        diagnostics = type_check_source("""
+        (from qy.str import str-upper as upper)
+        (upper "hello")
+        """)
+
+        self.assertEqual(diagnostics, [])
+
+    def test_local_import_alias_scope_is_understood(self):
+        diagnostics = type_check_source("""
+        (let ()
+          (from qy.str import str-upper as upper)
+          (upper "hello"))
+        """)
+
+        self.assertEqual(diagnostics, [])
+
+    def test_reports_unknown_imports(self):
+        diagnostics = type_check_source("(from qy.str import missing as m)")
+
+        self.assertTrue(any("has no export 'missing'" in item.message for item in diagnostics))
+
+    def test_print_and_str_accept_text_symbols(self):
+        self.assertEqual(type_check_source('(print "hello")'), [])
+        self.assertEqual(type_check_source('(str-upper "hello")'), [])
+
+    def test_recursive_function_scope_is_understood(self):
+        diagnostics = type_check_source("""
+        (defun countdown (n)
+          (cond
+            ((eq n 0) 0)
+            (true (countdown (- n 1)))))
+        """)
+
+        self.assertEqual(diagnostics, [])
+
 
 if __name__ == "__main__":
     unittest.main()

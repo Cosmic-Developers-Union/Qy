@@ -5,5 +5,3 @@
 (print 't)
 (defun hello-world ()
   (print "Hello, World!"))
-; 注释：分号开头的行为注释
-(setq x '(a b c))

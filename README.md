@@ -56,6 +56,29 @@ qy ast examples/codes/code001.qy
 qy check examples/codes/code001.qy
 ```
 
+Import standard operators with aliases:
+
+```lisp
+(from qy.str import str-upper as upper)
+(upper "hello")
+```
+
+Print values without rebinding anything:
+
+```lisp
+(print "hello" (+ 1 2))
+(echo "done")
+```
+
+String operators work on text symbols and return symbolic values:
+
+```lisp
+(str-upper "hello")
+(str-concat "qy" "lang")
+(str-split "a,b,c" ",")
+(str-join "," '(a b c))
+```
+
 Use the Python API:
 
 ```python
@@ -82,6 +105,10 @@ Embed a qy instance and register application operators:
 
 ```python
 from qy import Qy
+from qy import Symbol
+from qy.evaluator import PureOperator
+from qy.stdlib import StandardModule
+from qy.stdlib import register_module
 
 qy = Qy()
 
@@ -90,6 +117,10 @@ def double(value):
     return value * 2
 
 assert qy.evaluate_source("(double 21)") == 42
+
+register_module(StandardModule("app.math", {Symbol("triple"): PureOperator("triple", lambda x: x * 3)}))
+qy.evaluate_source("(from app.math import triple as t)")
+assert qy.evaluate_source("(t 14)") == 42
 ```
 
 ## Operator Kinds
@@ -103,8 +134,8 @@ Qy currently has three operator kinds:
 Built-ins:
 
 - pure: `atom`, `eq`, `car`, `cdr`, `cons`, `+`, `-`, `*`, `/`
-- evaluation: `quote`, `cond`, `let`
-- syntax: `defun`
+- evaluation: `quote`, `cond`, `let`, `print`, `echo`, `str-*`
+- syntax: `defun`, `from`
 
 Example:
 

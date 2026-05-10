@@ -16,6 +16,8 @@ from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import read
+from qy.stdlib import load_module
+from qy.stdlib.imports import parse_from_import
 
 __all__ = [
     "Analysis",
@@ -29,6 +31,7 @@ Severity = Literal["error", "warning", "hint"]
 TypeName = Literal[
     "any", "bool", "function", "nil", "number", "operator", "symbol", "tuple", "unknown"
 ]
+OperatorKind = Literal["pure", "evaluation", "syntax"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,15 +53,27 @@ class Analysis:
 
 
 @dataclass(frozen=True, slots=True)
-class _Scope:
-    bindings: dict[Symbol, TypeName] | None = None
+class _Binding:
+    type_name: TypeName
+    operator_kind: OperatorKind | None = None
 
-    def define(self, symbol: Symbol, type_name: TypeName = "any") -> _Scope:
+
+@dataclass(frozen=True, slots=True)
+class _Scope:
+    bindings: dict[Symbol, _Binding] | None = None
+
+    def define(
+        self,
+        symbol: Symbol,
+        type_name: TypeName = "any",
+        *,
+        operator_kind: OperatorKind | None = None,
+    ) -> _Scope:
         bindings = dict(self.bindings or {})
-        bindings[symbol] = type_name
+        bindings[symbol] = _Binding(type_name, operator_kind)
         return _Scope(bindings)
 
-    def lookup(self, symbol: Symbol) -> TypeName | None:
+    def lookup(self, symbol: Symbol) -> _Binding | None:
         if self.bindings is None:
             return None
         return self.bindings.get(symbol)
@@ -81,13 +96,7 @@ def analyze(forms: list[Form], env: Environment | None = None) -> Analysis:
     scope = _Scope()
     for form in forms:
         _infer(form, env, scope, diagnostics)
-        if (
-            isinstance(form, tuple)
-            and len(form) >= 2
-            and form[0] == Symbol("defun")
-            and isinstance(form[1], Symbol)
-        ):
-            scope = scope.define(form[1], "function")
+        scope = _scope_after_form(form, env, scope)
     return Analysis(forms, diagnostics)
 
 
@@ -119,6 +128,8 @@ def _infer(
                 return _infer_let(args, env, scope, diagnostics)
             case "defun":
                 return _infer_defun(form, env, scope, diagnostics)
+            case "from":
+                return _infer_from(form, diagnostics)
             case "+" | "-" | "*" | "/":
                 return _infer_numeric_call(operator.name, args, env, scope, diagnostics)
             case "atom" | "eq":
@@ -134,10 +145,33 @@ def _infer(
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
                 return "tuple"
+            case "print" | "echo":
+                return "any"
+            case "str?":
+                return "bool"
+            case "str-len":
+                return "number"
+            case "str-empty?" | "str-contains?" | "str-starts-with?" | "str-ends-with?":
+                return "bool"
+            case "str-split":
+                return "tuple"
+            case (
+                "str"
+                | "str-concat"
+                | "str-upper"
+                | "str-lower"
+                | "str-strip"
+                | "str-trim"
+                | "str-join"
+                | "str-replace"
+            ):
+                return "symbol"
 
     operator_type = _infer(operator, env, scope, diagnostics)
-    for arg in args:
-        _infer(arg, env, scope, diagnostics)
+    operator_kind = _operator_kind(operator, env, scope)
+    if operator_kind not in {"evaluation", "syntax"}:
+        for arg in args:
+            _infer(arg, env, scope, diagnostics)
     if operator_type not in {"operator", "function", "unknown"}:
         diagnostics.append(Diagnostic(f"operator position is {operator_type}, not callable"))
     return "any"
@@ -149,8 +183,8 @@ def _infer_symbol(
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if (type_name := scope.lookup(symbol)) is not None:
-        return type_name
+    if (binding := scope.lookup(symbol)) is not None:
+        return binding.type_name
     try:
         return _value_type(env.resolve(symbol))
     except EvaluationError:
@@ -176,6 +210,27 @@ def _value_type(value: object) -> TypeName:
     if isinstance(value, UserFunction):
         return "function"
     return _literal_type(value)
+
+
+def _operator_kind(operator: object, env: Environment, scope: _Scope) -> OperatorKind | None:
+    if not isinstance(operator, Symbol):
+        return None
+    if (binding := scope.lookup(operator)) is not None:
+        return binding.operator_kind
+    try:
+        return _operator_kind_for_value(env.resolve(operator))
+    except EvaluationError:
+        return None
+
+
+def _operator_kind_for_value(value: object) -> OperatorKind | None:
+    if isinstance(value, PureOperator):
+        return "pure"
+    if isinstance(value, EvaluationOperator):
+        return "evaluation"
+    if isinstance(value, SyntaxOperator):
+        return "syntax"
+    return None
 
 
 def _infer_numeric_call(
@@ -209,6 +264,27 @@ def _infer_cond(
         _infer(condition, env, scope, diagnostics)
         result_type = _infer(result, env, scope, diagnostics)
     return result_type
+
+
+def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> TypeName:
+    try:
+        module_name, specs = parse_from_import(form)
+    except ValueError as e:
+        diagnostics.append(Diagnostic(str(e)))
+        return "nil"
+
+    try:
+        source_module = load_module(module_name.name)
+    except KeyError as e:
+        diagnostics.append(Diagnostic(str(e)))
+        return "nil"
+
+    for spec in specs:
+        if spec.name not in source_module.exports:
+            diagnostics.append(
+                Diagnostic(f"module {module_name.name!r} has no export {spec.name.name!r}")
+            )
+    return "nil"
 
 
 def _infer_let(
@@ -259,6 +335,8 @@ def _infer_defun(
         return "function"
 
     function_scope = scope
+    if isinstance(name, Symbol):
+        function_scope = function_scope.define(name, "function")
     for param in params:
         if isinstance(param, Symbol):
             function_scope = function_scope.define(param)
@@ -279,9 +357,39 @@ def _infer_body(
         diagnostics.append(Diagnostic("body must contain at least one expression"))
         return "unknown"
     result_type: TypeName = "nil"
+    body_scope = scope
     for expression in body:
-        result_type = _infer(expression, env, scope, diagnostics)
+        result_type = _infer(expression, env, body_scope, diagnostics)
+        body_scope = _scope_after_form(expression, env, body_scope)
     return result_type
+
+
+def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
+    if not isinstance(form, tuple) or not form:
+        return scope
+    if len(form) >= 2 and form[0] == Symbol("defun") and isinstance(form[1], Symbol):
+        return scope.define(form[1], "function")
+    if form[0] != Symbol("from"):
+        return scope
+
+    try:
+        module_name, specs = parse_from_import(form)
+        source_module = load_module(module_name.name)
+    except (KeyError, ValueError):
+        return scope
+
+    next_scope = scope
+    for spec in specs:
+        try:
+            value = source_module.resolve(spec.name)
+        except KeyError:
+            continue
+        next_scope = next_scope.define(
+            spec.alias,
+            _value_type(value),
+            operator_kind=_operator_kind_for_value(value),
+        )
+    return next_scope
 
 
 def _check_arity(
