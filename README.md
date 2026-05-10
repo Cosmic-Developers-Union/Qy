@@ -1,51 +1,66 @@
 # Qy
 
-> Warning: The project is being developed rapidly and iteratively except before version 0.1.0, there will not be a truly stable API interface and built-in operators, and it is strongly recommended that you do not use it in production.
+Qy is a symbolic Lisp-like language implemented in Python.
 
-Qy Lang, a Lisp language implemented in and based on Python.
+The current core is intentionally small:
 
-## Install
-
-Use pip and github:
-
-```shell
-pip3 install -U -I git+https://github.com/Cosmic-Developers-Union/Qy.git
-```
-
-or
-
-```powershell
-python -m pip install -U -I git+https://github.com/Cosmic-Developers-Union/Qy.git
-```
-
-Use PyPi:
-
-```shell
-pip3 install QyLang
-```
-
-or
-
-```powershell
-python -m pip install QyLang
-```
+- reader: qy source -> symbolic forms
+- tuple exchange: Python tuple forms with explicit `Symbol(...)`
+- evaluator: simple symbolic evaluation
+- CLI: file evaluation and interactive REPL
+- LSP: syntax diagnostics over pygls
 
 ## Usage
 
-### Operator
+Evaluate a file:
 
-- quote
-- atom
-- eq
-- car
-- cdr
-- cons
-- cond
+```shell
+qy examples/codes/code001.qy
+```
 
-### Middle Langer
+Start the interactive interpreter:
+
+```shell
+qy
+```
+
+Start the language server over stdio:
+
+```shell
+qy lsp
+```
+
+Use the Python API:
 
 ```python
-from qy import qy
+from qy import Symbol
+from qy import evaluate
+from qy import evaluate_source
 
-qy.eval(print, 'Hello World!')
+assert evaluate_source("(+ 1 2)") == 3
+assert evaluate((Symbol("+"), 1, 2)) == 3
 ```
+
+In Python tuple forms, normal Python values are literals. Use `Symbol(...)` when a tuple element is a qy symbol.
+
+```python
+from qy import Symbol
+from qy import evaluate
+
+evaluate((Symbol("+"), 1, 2))  # 3
+evaluate(("+", 1, 2))          # error: "+" is a Python string literal
+```
+
+## Built-in Operators
+
+- `quote`
+- `atom`
+- `eq`
+- `car`
+- `cdr`
+- `cons`
+- `cond`
+- `+`
+- `-`
+- `*`
+- `/`

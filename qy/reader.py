@@ -78,7 +78,16 @@ _parser = lark.Lark(GRAMMAR, parser="lalr", maybe_placeholders=False)
 
 
 class ReaderSyntaxError(Exception):
-    pass
+    def __init__(
+        self,
+        message: str,
+        *,
+        line: int | None = None,
+        column: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.line = line
+        self.column = column
 
 
 @lark.v_args(inline=True)
@@ -115,6 +124,8 @@ def read(source: str) -> list[Form]:
     try:
         tree = _parser.parse(source)
         return _transformer.transform(tree)
+    except lark.UnexpectedInput as e:
+        raise ReaderSyntaxError(str(e), line=e.line, column=e.column) from e
     except (lark.LarkError, SyntaxError, ValueError) as e:
         raise ReaderSyntaxError(str(e)) from e
 
