@@ -15,8 +15,10 @@ from qy.reader import read_one
 __all__ = [
     "Environment",
     "EvaluationError",
-    "Primitive",
-    "SpecialForm",
+    "EvaluationOperator",
+    "PureOperator",
+    "SyntaxOperator",
+    "UserFunction",
     "evaluate",
     "evaluate_file",
     "evaluate_program",
@@ -26,7 +28,7 @@ __all__ = [
 
 
 @dataclass(frozen=True, slots=True)
-class Primitive:
+class PureOperator:
     name: str
     func: Callable[..., object]
 
@@ -35,12 +37,37 @@ class Primitive:
 
 
 @dataclass(frozen=True, slots=True)
-class SpecialForm:
+class EvaluationOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
 
     def __call__(self, args: tuple[object, ...], env: Environment) -> object:
         return self.func(args, env)
+
+
+@dataclass(frozen=True, slots=True)
+class SyntaxOperator:
+    name: str
+    func: Callable[[tuple[object, ...], Environment], object]
+
+    def __call__(self, expression: tuple[object, ...], env: Environment) -> object:
+        return self.func(expression, env)
+
+
+@dataclass(frozen=True, slots=True)
+class UserFunction:
+    name: Symbol
+    params: tuple[Symbol, ...]
+    body: tuple[object, ...]
+    closure: Environment
+
+    def __call__(self, *args: object) -> object:
+        if len(args) != len(self.params):
+            raise EvaluationError(
+                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
+            )
+        local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
+        return _evaluate_body(self.body, local_env)
 
 
 class EvaluationError(Exception):
@@ -63,21 +90,26 @@ class Environment:
             return self._parent.resolve(symbol)
         return _resolve_builtin_literal(symbol)
 
+    def define(self, symbol: Symbol, value: object) -> object:
+        self._bindings[symbol] = value
+        return value
+
 
 def standard_environment() -> Environment:
     return Environment(
         {
-            Symbol("+"): Primitive("+", _add),
-            Symbol("-"): Primitive("-", _sub),
-            Symbol("*"): Primitive("*", _mul),
-            Symbol("/"): Primitive("/", _div),
-            Symbol("atom"): Primitive("atom", _atom),
-            Symbol("car"): Primitive("car", _car),
-            Symbol("cdr"): Primitive("cdr", _cdr),
-            Symbol("cond"): SpecialForm("cond", _cond),
-            Symbol("cons"): Primitive("cons", _cons),
-            Symbol("eq"): Primitive("eq", _eq),
-            Symbol("quote"): SpecialForm("quote", _quote),
+            Symbol("+"): PureOperator("+", _add),
+            Symbol("-"): PureOperator("-", _sub),
+            Symbol("*"): PureOperator("*", _mul),
+            Symbol("/"): PureOperator("/", _div),
+            Symbol("atom"): PureOperator("atom", _atom),
+            Symbol("car"): PureOperator("car", _car),
+            Symbol("cdr"): PureOperator("cdr", _cdr),
+            Symbol("cond"): EvaluationOperator("cond", _cond),
+            Symbol("cons"): PureOperator("cons", _cons),
+            Symbol("defun"): SyntaxOperator("defun", _defun),
+            Symbol("eq"): PureOperator("eq", _eq),
+            Symbol("quote"): EvaluationOperator("quote", _quote),
         }
     )
 
@@ -95,9 +127,11 @@ def evaluate(expression: object, env: Environment | None = None) -> object:
     operator_expression, *argument_expressions = expression
     operator_value = evaluate(operator_expression, env)
 
-    if isinstance(operator_value, SpecialForm):
+    if isinstance(operator_value, SyntaxOperator):
+        return operator_value(expression, env)
+    if isinstance(operator_value, EvaluationOperator):
         return operator_value(tuple(argument_expressions), env)
-    if isinstance(operator_value, Primitive):
+    if isinstance(operator_value, PureOperator | UserFunction):
         arguments = [evaluate(argument, env) for argument in argument_expressions]
         return operator_value(*arguments)
     raise EvaluationError(f"{operator_expression!r} resolved to non-callable {operator_value!r}")
@@ -149,6 +183,15 @@ def _ensure_tuple(value: object) -> tuple[object, ...]:
 
 def _truthy(value: object) -> bool:
     return value not in (False, None, ())
+
+
+def _evaluate_body(body: tuple[object, ...], env: Environment) -> object:
+    if not body:
+        raise EvaluationError("body must contain at least one expression")
+    result = None
+    for expression in body:
+        result = evaluate(expression, env)
+    return result
 
 
 def _add(*args: object) -> int | float:
@@ -221,3 +264,24 @@ def _cond(args: tuple[object, ...], env: Environment) -> object:
         if _truthy(evaluate(condition, env)):
             return evaluate(result, env)
     return None
+
+
+def _defun(expression: tuple[object, ...], env: Environment) -> object:
+    if len(expression) < 4:
+        raise EvaluationError("defun expects a name, parameter list, and body")
+
+    _, name, params, *body = expression
+    if not isinstance(name, Symbol):
+        raise EvaluationError(f"defun name must be a symbol, got {name!r}")
+    if not isinstance(params, tuple):
+        raise EvaluationError(f"defun parameters must be a tuple of symbols, got {params!r}")
+
+    param_symbols = tuple(_ensure_symbol_parameter(param) for param in params)
+    function = UserFunction(name, param_symbols, tuple(body), env)
+    return env.define(name, function)
+
+
+def _ensure_symbol_parameter(value: object) -> Symbol:
+    if not isinstance(value, Symbol):
+        raise EvaluationError(f"defun parameters must be symbols, got {value!r}")
+    return value

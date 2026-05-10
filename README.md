@@ -51,16 +51,25 @@ evaluate((Symbol("+"), 1, 2))  # 3
 evaluate(("+", 1, 2))          # error: "+" is a Python string literal
 ```
 
-## Built-in Operators
+## Operator Kinds
 
-- `quote`
-- `atom`
-- `eq`
-- `car`
-- `cdr`
-- `cons`
-- `cond`
-- `+`
-- `-`
-- `*`
-- `/`
+Qy currently has three operator kinds:
+
+- pure operators: evaluate all arguments, then apply
+- evaluation operators: receive unevaluated arguments and control evaluation order
+- syntax operators: receive the whole syntax tree
+
+Built-ins:
+
+- pure: `atom`, `eq`, `car`, `cdr`, `cons`, `+`, `-`, `*`, `/`
+- evaluation: `quote`, `cond`
+- syntax: `defun`
+
+Example:
+
+```lisp
+(defun square (x)
+  (* x x))
+
+(square 12)
+```

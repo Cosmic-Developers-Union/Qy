@@ -2,8 +2,10 @@
 
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import Primitive
-from qy.evaluator import SpecialForm
+from qy.evaluator import EvaluationOperator
+from qy.evaluator import PureOperator
+from qy.evaluator import SyntaxOperator
+from qy.evaluator import UserFunction
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_file
 from qy.evaluator import evaluate_program
@@ -29,12 +31,14 @@ __author__ = "Ge"
 __all__ = [
     "Environment",
     "EvaluationError",
+    "EvaluationOperator",
     "Form",
-    "Primitive",
+    "PureOperator",
     "ReaderSyntaxError",
-    "SpecialForm",
     "Symbol",
+    "SyntaxOperator",
     "TupleForm",
+    "UserFunction",
     "evaluate",
     "evaluate_file",
     "evaluate_program",
