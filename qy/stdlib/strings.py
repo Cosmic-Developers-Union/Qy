@@ -7,7 +7,7 @@ from typing import cast
 
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import EvaluationOperator
+from qy.evaluator import PureOperator
 from qy.evaluator import evaluate
 from qy.reader import Symbol
 from qy.reader import TupleForm
@@ -50,12 +50,12 @@ def module() -> StandardModule:
     )
 
 
-def _text_operator(name: str, func: Callable[..., object], doc: str) -> EvaluationOperator:
-    def apply(args: tuple[object, ...], env: Environment) -> object:
-        values = tuple(_evaluate_text_arg(arg, env) for arg in args)
-        return func(*values)
+def _text_operator(name: str, func: Callable[..., object], doc: str) -> PureOperator:
+    return PureOperator(name, func, doc, _evaluate_text_args)
 
-    return EvaluationOperator(name, apply, doc)
+
+def _evaluate_text_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
+    return tuple(_evaluate_text_arg(arg, env) for arg in args)
 
 
 def _evaluate_text_arg(expression: object, env: Environment) -> object:

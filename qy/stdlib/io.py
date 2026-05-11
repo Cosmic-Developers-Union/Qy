@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import EvaluationOperator
 from qy.evaluator import evaluate
 from qy.reader import Symbol
 from qy.reader import TupleForm
@@ -15,14 +15,14 @@ from qy.stdlib.module import StandardModule
 
 
 def module() -> StandardModule:
-    print_operator = EvaluationOperator(
+    print_operator = EffectOperator(
         "print", _print, "Print evaluated values and return the last printed value."
     )
     return StandardModule(
         "qy.io",
         {
             Symbol("print"): print_operator,
-            Symbol("echo"): EvaluationOperator(
+            Symbol("echo"): EffectOperator(
                 "echo", _print, "Alias for print; prints values and returns the last value."
             ),
         },

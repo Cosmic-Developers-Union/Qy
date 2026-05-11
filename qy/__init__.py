@@ -5,8 +5,14 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze
 from qy.analyzer import analyze_source
 from qy.analyzer import type_check_source
+from qy.evaluator import ComponentDefinition
+from qy.evaluator import ControlOperator
+from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import MetaOperator
+from qy.evaluator import PureOperator
+from qy.evaluator import ScopeOperator
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_file
 from qy.evaluator import evaluate_program
@@ -37,12 +43,18 @@ __version__ = "0.0.4"
 __author__ = "Ge"
 __all__ = [
     "Analysis",
+    "ComponentDefinition",
+    "ControlOperator",
     "Diagnostic",
+    "EffectOperator",
     "Environment",
     "EvaluationError",
     "Form",
+    "MetaOperator",
+    "PureOperator",
     "Qy",
     "ReaderSyntaxError",
+    "ScopeOperator",
     "Symbol",
     "TupleForm",
     "analyze",

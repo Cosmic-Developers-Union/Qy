@@ -35,6 +35,17 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source("(let ((x 1)) (+ x 2))"), [])
         self.assertTrue(type_check_source("(+ x 2)"))
 
+    def test_lambda_scope_is_understood(self):
+        self.assertEqual(type_check_source("((lambda (x) (+ x 1)) 41)"), [])
+
+    def test_component_scope_is_understood(self):
+        diagnostics = type_check_source("""
+        (component scale (x factor) (* x factor))
+        (scale 7 6)
+        """)
+
+        self.assertEqual(diagnostics, [])
+
     def test_import_alias_scope_is_understood(self):
         diagnostics = type_check_source("""
         (from qy.str import str-upper as upper)

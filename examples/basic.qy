@@ -1,7 +1,56 @@
-;; 基础示例（包含尚未实现的 print/setq，作为语法演示）
-;; 注意：print 和 setq 尚未在标准环境中实现，此文件仅作语法参考
+;; Qy 基础示例
+;; 展示语言核心特性：算术、列表、引用、谓词、条件、作用域、函数与递归
 
-(print "Hello World")
-(print 't)
-(defun hello-world ()
-  (print "Hello, World!"))
+;; === 输出 ===
+(print "Hello, Qy!")
+
+;; === 算术运算：+ - * / ===
+(print (+ 1 2 3))          ; => 6
+(print (- 10 3))           ; => 7
+(print (* 2 3 4))          ; => 24
+(print (/ 20 4))           ; => 5
+
+;; === 引用与符号 ===
+(print 'hello)             ; => hello
+(print '(a b c))           ; => (a b c)
+
+;; === 列表操作：car, cdr, cons ===
+(print (car '(x y z)))     ; => x
+(print (cdr '(x y z)))     ; => (y z)
+(print (cons 'a '(b c)))   ; => (a b c)
+
+;; === 谓词：eq, atom ===
+(print (eq 'a 'a))         ; => true
+(print (atom 'x))          ; => true
+(print (atom '(1 2)))      ; => false
+
+;; === let 局部绑定 ===
+(print (let ((x 10) (y 20))
+  (+ x y)))                ; => 30
+
+;; === defun 函数定义 ===
+(defun square (n)
+  (* n n))
+(print (square 7))         ; => 49
+
+;; === cond 条件分支（Qy 没有 if，用 cond 替代）===
+;; (cond (条件1 值1) (条件2 值2) ... (true 默认值))
+(defun classify (n)
+  (cond
+    ((eq n 0) 'zero)
+    (true 'nonzero)))
+(print (classify 0))       ; => zero
+(print (classify 5))       ; => nonzero
+
+;; === 递归代替循环（Qy 没有 loop/while/for，用递归替代）===
+(defun fact (n)
+  (cond
+    ((eq n 0) 1)
+    (true (* n (fact (- n 1))))))
+(print (fact 10))          ; => 3628800
+
+(defun sum-to (n)
+  (cond
+    ((eq n 0) 0)
+    (true (+ n (sum-to (- n 1))))))
+(print (sum-to 100))       ; => 5050

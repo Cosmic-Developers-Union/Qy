@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
 from qy.evaluator import evaluate
 from qy.evaluator import standard_environment
@@ -46,8 +47,59 @@ class Qy:
         func: Callable[..., object] | None = None,
         *,
         doc: str = "",
+        argument_evaluator: ArgumentEvaluator | None = None,
     ) -> Callable[..., object]:
-        registered = self.env.register_pure(name, func, doc=doc)
+        registered = self.env.register_pure(
+            name, func, doc=doc, argument_evaluator=argument_evaluator
+        )
+        if func is None:
+            return registered
+        return func
+
+    def register_scope(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> Callable[..., object]:
+        registered = self.env.register_scope(name, func, doc=doc)
+        if func is None:
+            return registered
+        return func
+
+    def register_control(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> Callable[..., object]:
+        registered = self.env.register_control(name, func, doc=doc)
+        if func is None:
+            return registered
+        return func
+
+    def register_effect(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> Callable[..., object]:
+        registered = self.env.register_effect(name, func, doc=doc)
+        if func is None:
+            return registered
+        return func
+
+    def register_meta(
+        self,
+        name: str,
+        func: Callable[[tuple[object, ...], Environment], object] | None = None,
+        *,
+        doc: str = "",
+    ) -> Callable[..., object]:
+        registered = self.env.register_meta(name, func, doc=doc)
         if func is None:
             return registered
         return func
@@ -59,10 +111,7 @@ class Qy:
         *,
         doc: str = "",
     ) -> Callable[..., object]:
-        registered = self.env.register_evaluation(name, func, doc=doc)
-        if func is None:
-            return registered
-        return func
+        return self.register_control(name, func, doc=doc)
 
     def register_syntax(
         self,
@@ -71,7 +120,4 @@ class Qy:
         *,
         doc: str = "",
     ) -> Callable[..., object]:
-        registered = self.env.register_syntax(name, func, doc=doc)
-        if func is None:
-            return registered
-        return func
+        return self.register_meta(name, func, doc=doc)

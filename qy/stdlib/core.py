@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import operator
 
+from qy.evaluator import ComponentDefinition
+from qy.evaluator import ControlOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import EvaluationOperator
+from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
-from qy.evaluator import SyntaxOperator
+from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import ensure_symbol
 from qy.evaluator import evaluate
@@ -33,21 +35,24 @@ def module() -> StandardModule:
             Symbol("cdr"): PureOperator(
                 "cdr", _cdr, "Return all but the first item of a non-empty list."
             ),
-            Symbol("cond"): EvaluationOperator(
+            Symbol("cond"): ControlOperator(
                 "cond", _cond, "Evaluate the first truthy condition branch."
             ),
             Symbol("cons"): PureOperator("cons", _cons, "Prepend an item to a list."),
-            Symbol("defun"): SyntaxOperator(
+            Symbol("component"): ScopeOperator(
+                "component", _component, "Define a reusable component in the current scope."
+            ),
+            Symbol("defun"): ScopeOperator(
                 "defun", _defun, "Define a function in the current environment."
             ),
             Symbol("eq"): PureOperator("eq", _eq, "Compare atoms and empty lists."),
-            Symbol("from"): SyntaxOperator(
+            Symbol("from"): ScopeOperator(
                 "from", _from_import, "Import standard module operators into the current scope."
             ),
-            Symbol("let"): EvaluationOperator(
-                "let", _let, "Evaluate a body in a local lexical scope."
-            ),
-            Symbol("quote"): EvaluationOperator(
+            Symbol("lambda"): ScopeOperator("lambda", _lambda, "Create an anonymous function."),
+            Symbol("let"): ScopeOperator("let", _let, "Evaluate a body in a local lexical scope."),
+            Symbol("module"): ScopeOperator("module", _module, "Define and register a module."),
+            Symbol("quote"): MetaOperator(
                 "quote", _quote, "Return one expression without evaluating it."
             ),
         },
@@ -97,8 +102,9 @@ def _div(first: object, *rest: object) -> int | float:
     return result
 
 
-def _quote(args: tuple[object, ...], env: Environment) -> object:
+def _quote(expression: tuple[object, ...], env: Environment) -> object:
     del env
+    args = expression[1:]
     if len(args) != 1:
         raise EvaluationError("quote expects exactly one argument")
     return args[0]
@@ -160,23 +166,74 @@ def _let(args: tuple[object, ...], env: Environment) -> object:
     return evaluate_body(tuple(body), local_env)
 
 
-def _defun(expression: tuple[object, ...], env: Environment) -> object:
-    if len(expression) < 4:
+def _lambda(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) < 2:
+        raise EvaluationError("lambda expects a parameter list and body")
+
+    params, *body = args
+    param_symbols = _ensure_parameter_list(params, "lambda")
+    return UserFunction(Symbol("<lambda>"), param_symbols, tuple(body), env)
+
+
+def _defun(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) < 3:
         raise EvaluationError("defun expects a name, parameter list, and body")
 
-    _, name, params, *body = expression
+    name, params, *body = args
     name = ensure_symbol(name, "defun name")
-    if not isinstance(params, tuple):
-        raise EvaluationError(f"defun parameters must be a tuple of symbols, got {params!r}")
-
-    param_symbols = tuple(_ensure_symbol_parameter(param) for param in params)
+    param_symbols = _ensure_parameter_list(params, "defun")
     function = UserFunction(name, param_symbols, tuple(body), env)
     return env.define(name, function)
 
 
-def _from_import(expression: tuple[object, ...], env: Environment) -> object:
+def _component(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) < 3:
+        raise EvaluationError("component expects a name, parameter list, and body")
+
+    name, params, *body = args
+    name = ensure_symbol(name, "component name")
+    param_symbols = _ensure_parameter_list(params, "component")
+    component = ComponentDefinition(name, param_symbols, tuple(body), env)
+    return env.define(name, component)
+
+
+def _module(args: tuple[object, ...], env: Environment) -> object:
+    if not args:
+        raise EvaluationError("module expects a name and body")
+
+    name, *body = args
+    name = ensure_symbol(name, "module name")
+    module_env = env.child()
+    export_names: list[Symbol] = []
+
+    for form in body:
+        if _is_special_form(form, "exports"):
+            assert isinstance(form, tuple)
+            export_names.extend(_parse_export_names(form[1:]))
+            continue
+        if _is_special_form(form, "imports"):
+            assert isinstance(form, tuple)
+            for import_form in form[1:]:
+                _evaluate_module_import(import_form, module_env)
+            continue
+        evaluate(form, module_env)
+
+    if export_names:
+        exports = {export_name: module_env.resolve(export_name) for export_name in export_names}
+    else:
+        exports = module_env.local_bindings()
+
+    module = StandardModule(name.name, exports)
+
+    from qy.stdlib import register_module
+
+    register_module(module)
+    return env.define(name, module)
+
+
+def _from_import(args: tuple[object, ...], env: Environment) -> object:
     try:
-        module_name, specs = parse_from_import(expression)
+        module_name, specs = parse_from_import((Symbol("from"), *args))
         from qy.stdlib import load_module
 
         source_module = load_module(module_name.name)
@@ -188,7 +245,35 @@ def _from_import(expression: tuple[object, ...], env: Environment) -> object:
     return None
 
 
-def _ensure_symbol_parameter(value: object) -> Symbol:
+def _ensure_parameter_list(value: object, context: str) -> tuple[Symbol, ...]:
+    if not isinstance(value, tuple):
+        raise EvaluationError(f"{context} parameters must be a tuple of symbols, got {value!r}")
+    return tuple(_ensure_symbol_parameter(param, context) for param in value)
+
+
+def _ensure_symbol_parameter(value: object, context: str) -> Symbol:
     if not isinstance(value, Symbol):
-        raise EvaluationError(f"defun parameters must be symbols, got {value!r}")
+        raise EvaluationError(f"{context} parameters must be symbols, got {value!r}")
     return value
+
+
+def _is_special_form(form: object, name: str) -> bool:
+    return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+
+
+def _parse_export_names(items: tuple[object, ...]) -> list[Symbol]:
+    names: list[Symbol] = []
+    for item in items:
+        if isinstance(item, tuple):
+            names.extend(_parse_export_names(item))
+            continue
+        names.append(ensure_symbol(item, "module export"))
+    return names
+
+
+def _evaluate_module_import(form: object, env: Environment) -> None:
+    if not isinstance(form, tuple) or not form:
+        raise EvaluationError(f"module import must be a from form, got {form!r}")
+    if form[0] != Symbol("from"):
+        raise EvaluationError(f"module import must start with from, got {form!r}")
+    evaluate(form, env)
