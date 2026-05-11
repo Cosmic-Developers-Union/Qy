@@ -91,6 +91,14 @@ class TestQyAnalyzer(unittest.TestCase):
             [],
         )
 
+    def test_tagged_literals_are_understood_as_operator_calls(self):
+        diagnostics = type_check_source("""
+        (defun t (source) source)
+        t"hello {name}"
+        """)
+
+        self.assertEqual(diagnostics, [])
+
     def test_import_alias_scope_is_understood(self):
         diagnostics = type_check_source("""
         (from qy.str import str-upper as upper)

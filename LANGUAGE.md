@@ -21,7 +21,15 @@ Qy 语法基于 S-expression，使用前缀表示法。除此之外, 没有其�
 
 ## 词法
 
-TODO
+核心 reader 规则:
+
+- `abc` 读为 symbol.
+- `"abc"` 读为 symbol, 内容为 `abc`.
+- `(f a b)` 读为 tuple form.
+- `'x` 读为 `(quote x)`.
+- `tag"abc"` 读为 `(tag (quote "abc"))`.
+- `tag"""abc"""` 读为 `(tag (quote """abc"""))`.
+- `;` 开始一行注释.
 
 ## Execution Backend 执行后端
 

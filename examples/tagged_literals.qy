@@ -1,0 +1,16 @@
+;; Tagged literal example
+;; tag"..." is read as (tag (quote "...")).
+
+(defun t (source)
+  (str-concat "template:" source))
+
+(print t"hello {name}")
+
+(defun sql (source)
+  (str-concat "sql:" source))
+
+sql"""
+select *
+from docs
+where title = {title}
+"""

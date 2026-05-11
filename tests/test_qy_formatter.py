@@ -18,6 +18,9 @@ class TestQyFormatter(unittest.TestCase):
     def test_format_source_uses_quote_sugar(self):
         self.assertEqual(format_source("(quote abc)"), "'abc\n")
 
+    def test_format_source_normalizes_tagged_literals(self):
+        self.assertEqual(format_source('t"hello"'), "(t 'hello)\n")
+
     def test_dump_program_shows_ast(self):
         ast = dump_program(read("(+ 1 2)"))
 

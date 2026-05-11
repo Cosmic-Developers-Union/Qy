@@ -303,6 +303,12 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source('(str-starts-with? "hello" "he")'))
         self.assertTrue(evaluate_source('(str-ends-with? "hello" "lo")'))
 
+    def test_tagged_literal_calls_user_operator_with_quoted_symbol(self):
+        env = standard_environment()
+        evaluate_source('(defun t (source) (str-concat "template:" source))', env)
+
+        self.assertEqual(evaluate_source('t"hello {name}"', env), S("template:hello {name}"))
+
     def test_qy_instance_registers_external_operators(self):
         qy = Qy()
 

@@ -75,6 +75,21 @@ class TestQySymbolicReader(unittest.TestCase):
             ],
         )
 
+    def test_tagged_literals_expand_to_tagged_quote_calls(self):
+        self.assertEqual(
+            read('t"hello {name}" sql"""select *\nfrom docs"""'),
+            [
+                (S("t"), (S("quote"), S("hello {name}"))),
+                (S("sql"), (S("quote"), S("select *\nfrom docs"))),
+            ],
+        )
+
+    def test_tagged_literals_decode_escapes(self):
+        self.assertEqual(
+            read(r't"hello\n{name}"'),
+            [(S("t"), (S("quote"), S("hello\n{name}")))],
+        )
+
     def test_list_and_quote_forms(self):
         self.assertEqual(
             read("'abc '\"abc\" '(+ 1 2)"),

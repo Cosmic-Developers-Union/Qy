@@ -71,14 +71,18 @@ quote: "'" form
 list: "(" form* ")" -> list_expr
 
 ?atom: RAW_MULTILINE_SYMBOL -> raw_multiline_symbol
+    | TAGGED_MULTILINE_SYMBOL -> tagged_multiline_symbol
     | MULTILINE_SYMBOL       -> multiline_symbol
     | RAW_QUOTED_SYMBOL      -> raw_quoted_symbol
+    | TAGGED_QUOTED_SYMBOL   -> tagged_quoted_symbol
     | QUOTED_SYMBOL          -> quoted_symbol
     | BARE_SYMBOL            -> bare_symbol
 
-RAW_MULTILINE_SYMBOL.10: /(?s:[rR]""".*?""")/
-MULTILINE_SYMBOL.9: /(?s:""".*?""")/
-RAW_QUOTED_SYMBOL.8: /[rR]"[^"]*"/
+RAW_MULTILINE_SYMBOL.12: /(?s:[rR]""".*?""")/
+TAGGED_MULTILINE_SYMBOL.11: /(?s:[^()\s"';]+""".*?""")/
+MULTILINE_SYMBOL.10: /(?s:""".*?""")/
+RAW_QUOTED_SYMBOL.9: /[rR]"[^"]*"/
+TAGGED_QUOTED_SYMBOL.8: /[^()\s"';]+"(?:\\.|[^"\\])*"/
 QUOTED_SYMBOL.7: /"(?:\\.|[^"\\])*"/
 BARE_SYMBOL: /[^()\s"';]+/
 
@@ -139,6 +143,10 @@ class _ReaderTransformer(lark.Transformer):
         del meta
         return Symbol(str(token)[2:-1], self._token_span(token))
 
+    def tagged_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
+        del meta
+        return self._tagged_literal(token)
+
     def multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
         span = self._token_span(token)
@@ -147,6 +155,27 @@ class _ReaderTransformer(lark.Transformer):
     def raw_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
         return Symbol(str(token)[4:-3], self._token_span(token))
+
+    def tagged_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
+        del meta
+        return self._tagged_literal(token)
+
+    def _tagged_literal(self, token: lark.Token) -> Form:
+        span = self._token_span(token)
+        tag, literal = _split_tagged_literal(str(token), span)
+        return SpannedTuple(
+            (
+                Symbol(tag, span),
+                SpannedTuple(
+                    (
+                        Symbol("quote", span),
+                        Symbol(_decode_quoted_symbol(literal, span), span),
+                    ),
+                    span,
+                ),
+            ),
+            span,
+        )
 
     def _span(self, meta: lark.tree.Meta) -> SourceSpan:
         return SourceSpan(
@@ -249,6 +278,13 @@ def _decode_quoted_symbol(token: str, span: SourceSpan | None = None) -> str:
     if not isinstance(value, str):
         raise ReaderSyntaxError(f"expected quoted symbol, got {token}", span=span)
     return value
+
+
+def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[str, str]:
+    quote_index = token.find('"')
+    if quote_index <= 0:
+        raise ReaderSyntaxError(f"invalid tagged literal {token!r}", span=span)
+    return token[:quote_index], token[quote_index:]
 
 
 def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan | None:
