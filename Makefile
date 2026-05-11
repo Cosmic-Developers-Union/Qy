@@ -1,7 +1,7 @@
 .PHONY: clean build check release lint test
 
 test:
-	uv run python -m pytest tests/ -v
+	uv run python -m pytest tests/ -v --cov=qy --cov-report=term-missing
 
 clean:
 	rm -rf dist/ build/ *.egg-info
