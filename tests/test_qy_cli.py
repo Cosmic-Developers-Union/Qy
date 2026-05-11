@@ -40,6 +40,18 @@ class TestQyCli(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.output)
         self.assertIn("Symbol('+')", result.output)
 
+    def test_operators_command(self):
+        result = self.runner.invoke(self.app, ["operators"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("## 内建算子", result.output)
+        self.assertIn("模块：`qy.core`", result.output)
+        self.assertIn("`py` - Effect 算子", result.output)
+        self.assertIn("## 模块 qy.io", result.output)
+        self.assertIn("`print`", result.output)
+        self.assertIn("## 模块 qy.str", result.output)
+        self.assertIn("`str-upper`", result.output)
+
     def test_repl_keeps_session_environment(self):
         result = self.runner.invoke(
             self.app,

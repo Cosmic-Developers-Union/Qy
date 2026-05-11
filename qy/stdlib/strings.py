@@ -19,32 +19,28 @@ def module() -> StandardModule:
     return StandardModule(
         "qy.str",
         {
-            Symbol("str"): _text_operator("str", _str, "Convert a value to a text symbol."),
-            Symbol("str?"): _text_operator("str?", _str_predicate, "Return true for text values."),
-            Symbol("str-len"): _text_operator("str-len", _str_len, "Return text length."),
-            Symbol("str-empty?"): _text_operator(
-                "str-empty?", _str_empty, "Return true if text is empty."
-            ),
-            Symbol("str-concat"): _text_operator(
-                "str-concat", _str_concat, "Concatenate values as text."
-            ),
-            Symbol("str-upper"): _text_operator("str-upper", _str_upper, "Uppercase text."),
-            Symbol("str-lower"): _text_operator("str-lower", _str_lower, "Lowercase text."),
-            Symbol("str-strip"): _text_operator("str-strip", _str_strip, "Strip surrounding text."),
-            Symbol("str-trim"): _text_operator("str-trim", _str_strip, "Alias for str-strip."),
+            Symbol("str"): _text_operator("str", _str, "把值转换为文本 symbol。"),
+            Symbol("str?"): _text_operator("str?", _str_predicate, "判断值是否为文本值。"),
+            Symbol("str-len"): _text_operator("str-len", _str_len, "返回文本长度。"),
+            Symbol("str-empty?"): _text_operator("str-empty?", _str_empty, "判断文本是否为空。"),
+            Symbol("str-concat"): _text_operator("str-concat", _str_concat, "把多个值按文本拼接。"),
+            Symbol("str-upper"): _text_operator("str-upper", _str_upper, "转换为大写文本。"),
+            Symbol("str-lower"): _text_operator("str-lower", _str_lower, "转换为小写文本。"),
+            Symbol("str-strip"): _text_operator("str-strip", _str_strip, "移除两端空白文本。"),
+            Symbol("str-trim"): _text_operator("str-trim", _str_strip, "str-strip 的别名。"),
             Symbol("str-split"): _text_operator(
-                "str-split", _str_split, "Split text into symbols."
+                "str-split", _str_split, "把文本拆分为 symbol tuple。"
             ),
-            Symbol("str-join"): _text_operator("str-join", _str_join, "Join symbols with text."),
-            Symbol("str-replace"): _text_operator("str-replace", _str_replace, "Replace text."),
+            Symbol("str-join"): _text_operator("str-join", _str_join, "用分隔文本连接值。"),
+            Symbol("str-replace"): _text_operator("str-replace", _str_replace, "替换文本。"),
             Symbol("str-contains?"): _text_operator(
-                "str-contains?", _str_contains, "Return true if text contains a needle."
+                "str-contains?", _str_contains, "判断文本是否包含子文本。"
             ),
             Symbol("str-starts-with?"): _text_operator(
-                "str-starts-with?", _str_starts_with, "Return true if text starts with a prefix."
+                "str-starts-with?", _str_starts_with, "判断文本是否以给定前缀开始。"
             ),
             Symbol("str-ends-with?"): _text_operator(
-                "str-ends-with?", _str_ends_with, "Return true if text ends with a suffix."
+                "str-ends-with?", _str_ends_with, "判断文本是否以给定后缀结束。"
             ),
         },
     )

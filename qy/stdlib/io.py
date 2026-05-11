@@ -12,15 +12,13 @@ from qy.stdlib.module import StandardModule
 
 
 def module() -> StandardModule:
-    print_operator = EffectOperator(
-        "print", _print, "Print evaluated values and return the last printed value."
-    )
+    print_operator = EffectOperator("print", _print, "打印求值后的值，并返回最后一个打印值。")
     return StandardModule(
         "qy.io",
         {
             Symbol("print"): print_operator,
             Symbol("echo"): EffectOperator(
-                "echo", _print, "Alias for print; prints values and returns the last value."
+                "echo", _print, "print 的别名；打印值并返回最后一个值。"
             ),
         },
     )

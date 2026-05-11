@@ -1,57 +1,57 @@
-# Qy Language Draft
+# Qy 语言草稿
 
-Qy is a small symbolic language hosted by Python.
+Qy 是一个宿主于 Python 的小型符号语言。
 
-The core language is considered closed after the current set of forms and data types. Future growth should happen in libraries, host operators, analyzers, or runtime policy, not by adding new core semantics.
+在当前 form 与数据类型完成后，核心语言视为冻结。后续扩展应发生在库、宿主算子、分析器或运行时策略中，不再新增核心语义。
 
-## Source
+## 源码
 
-Qy source is a stream of forms.
+Qy 源码是一组 form。
 
-- `abc` is a symbol.
-- `"abc"` is also a symbol with text content `abc`.
-- `(f a b)` is a tuple form and evaluates as a call.
-- `'x` is syntax sugar for `(quote x)`.
-- `;` starts a line comment.
+- `abc` 是 symbol。
+- `"abc"` 也是 symbol，内容为 `abc`。
+- `(f a b)` 是 tuple form，并按调用求值。
+- `'x` 是 `(quote x)` 的语法糖。
+- `;` 开始一行注释。
 
-Qy currently has no separate string value. Text is represented as `Symbol`.
+Qy 当前没有独立的 string value。文本由 `Symbol` 表示。
 
-## Values
+## 值
 
-Core values:
+核心值：
 
 - `nil`
-- `true`, `false`
-- integers and floats
-- symbols
-- tuples
-- lists
-- dicts
-- sets
-- operators
-- continuations
-- effect definitions
-- host object references
+- `true`、`false`
+- 整数和浮点数
+- symbol
+- tuple
+- list
+- dict
+- set
+- 算子
+- continuation
+- effect definition
+- host object reference
 
-Tuples are immutable symbolic sequences and are also the source-level call form. Lists, dicts, and sets are runtime data values used for host interop and normal data processing.
+tuple 是不可变符号序列，同时也是源码层面的调用 form。list、dict、set 是运行时数据值，用于宿主互操作和普通数据处理。
 
-## Evaluation
+## 求值
 
-Evaluation rules:
+求值规则：
 
-- A symbol resolves in the current lexical environment.
-- Built-in literals resolve as `nil`, booleans, integers, or floats.
-- A non-empty tuple evaluates its first item as operator and applies it.
-- `quote` returns its argument without evaluation.
-- A body evaluates forms in order and returns the last value.
+- symbol 在当前词法环境中解析。
+- 内建字面量解析为 `nil`、布尔值、整数或浮点数。
+- 非空 tuple 先求值第一个元素作为算子，然后应用算子。
+- `quote` 返回参数本身，不求值。
+- body 按顺序求值所有 form，并返回最后一个值。
 
-Unresolved symbols are errors in normal evaluation. Some text/data boundary operators, such as `print`, `str-*`, `py`, `tuple`, `list`, `dict`, and `set`, preserve unresolved symbol arguments as symbol values.
+普通求值中，未解析 symbol 是错误。部分文本/数据边界算子会把未解析 symbol 保留为 symbol 值，例如 `print`、`str-*`、`py`、`tuple`、`list`、`dict`、`set`。
 
-If a symbol name is already bound, it resolves to that binding. Use `quote` to force a symbol value, for example `'py`.
+如果 symbol 名称已经被绑定，它会解析为该绑定。需要强制得到 symbol 值时使用 `quote`，例如 `'py`。
 
-## Scope
+## 作用域
 
-Core scope forms:
+核心作用域 form：
 
 - `(let ((name expr) ...) body...)`
 - `(lambda (arg ...) body...)`
@@ -60,35 +60,35 @@ Core scope forms:
 - `(module name body...)`
 - `(from module import name as alias ...)`
 
-Qy uses lexical scope. Functions, components, and macros close over their definition environment.
+Qy 使用词法作用域。函数、组件、宏会捕获其定义环境。
 
-## Data Operators
+## 数据算子
 
-Constructors:
+构造：
 
 - `(tuple value...)`
 - `(list value...)`
 - `(dict key value...)`
 - `(set value...)`
 
-Predicates:
+谓词：
 
 - `(tuple? value)`
 - `(list? value)`
 - `(dict? value)`
 - `(set? value)`
 
-Access:
+访问：
 
 - `(len value)`
 - `(get collection key [default])`
 - `(has? collection key)`
 
-`car`, `cdr`, and `cons` work on tuples and lists.
+`car`、`cdr`、`cons` 支持 tuple 和 list。
 
-## Effects
+## Effect
 
-Core effect forms:
+核心 effect form：
 
 - `(defeffect name)`
 - `(defeffect name :resumable false)`
@@ -96,28 +96,28 @@ Core effect forms:
 - `(handle expr ((effect (arg k) body...) ...))`
 - `(resume k value)`
 
-`perform` raises an effect. `handle` catches matching effects. `resume` continues a resumable effect continuation.
+`perform` 执行 effect。`handle` 捕获匹配的 effect。`resume` 继续一个可恢复 effect 的 continuation。
 
-Non-resumable effects may be handled like catch, but attempting to resume them raises `QY_EFFECT_ERROR`.
+不可恢复 effect 可以像 catch 一样被处理；但尝试恢复它会抛出 `QY_EFFECT_ERROR`。
 
-Built-in non-resumable effects:
+内建不可恢复 effect：
 
 - `python-error`
 - `assert-failed`
 
 ## Assert
 
-`(assert condition [message])` is a debug operator.
+`(assert condition [message])` 是 debug 算子。
 
-If `condition` is truthy, it returns the condition value. If it is falsey, it performs `assert-failed` with `message` or `assertion failed`.
+如果 `condition` 为 truthy，返回该 condition 值。如果为 falsey，执行 `assert-failed`，参数为 `message` 或 `assertion failed`。
 
-`assert-failed` is not resumable.
+`assert-failed` 不可恢复。
 
 ## Async
 
-Qy runs on Python async runtime.
+Qy 运行在 Python async runtime 上。
 
-Async operators:
+异步算子：
 
 - `(spawn expr)`
 - `(await expr...)`
@@ -125,54 +125,54 @@ Async operators:
 - `(cache expr)`
 - `(py source :name value ...)`
 
-`parallel` preserves multiple failures as `QY_AGGREGATE_ERROR`.
+`parallel` 会把多个失败保留为 `QY_AGGREGATE_ERROR`。
 
-## Python Interop
+## Python 互操作
 
-`py` embeds Python code and compiles it as an async function.
+`py` 嵌入 Python 代码，并将其编译为 async function。
 
-Qy to Python:
+Qy 到 Python：
 
 - `nil` -> `None`
-- bool/int/float -> same Python value
+- bool/int/float -> 同名 Python 值
 - `Symbol` -> `str`
 - tuple -> `tuple`
 - list -> `list`
 - dict -> `dict`
 - set -> `set`
 - Qy callable -> async Python callable
-- host object reference -> wrapped Python object
+- host object reference -> 被包装的 Python 对象
 
-Python to Qy:
+Python 到 Qy：
 
 - `None` -> `nil`
-- bool/int/float -> same Qy value
+- bool/int/float -> 同名 Qy 值
 - `str` -> `Symbol`
 - `tuple` -> tuple
 - `list` -> list
 - `dict` -> dict
 - `set` -> set
-- other Python object -> `HostObjectRef`
+- 其他 Python 对象 -> `HostObjectRef`
 
-Python exceptions inside `py` become the non-resumable `python-error` effect.
+`py` 内部的 Python 异常会变为不可恢复 effect：`python-error`。
 
-## Errors
+## 错误
 
-All Qy errors derive from `QyError`.
+所有 Qy 错误都派生自 `QyError`。
 
-Errors carry:
+错误携带：
 
-- stable code
-- message
+- 稳定错误码
+- 消息
 - source span
-- Qy trace frames
+- Qy trace frame
 - cause
 - metadata
 
-Native Python exceptions are wrapped at host boundaries. User-facing output is short by default; debug output may include the Python traceback.
+原生 Python 异常在宿主边界处包装。用户可见输出默认简洁；debug 输出可以包含 Python traceback。
 
-## Static Analysis
+## 静态分析
 
-The analyzer is intentionally lightweight.
+分析器刻意保持轻量。
 
-It checks syntax, unresolved symbols, basic arity, basic type expectations, and declared effects. It does not yet provide a complete effect type system or prove that every effect is handled.
+它检查语法、未解析 symbol、基础 arity、基础类型预期和已声明 effect。它目前不提供完整 effect type system，也不证明所有 effect 都被处理。

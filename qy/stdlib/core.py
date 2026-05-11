@@ -51,96 +51,78 @@ def module() -> StandardModule:
     return StandardModule(
         "qy.core",
         {
-            Symbol("+"): PureOperator("+", _add, "Add numbers."),
-            Symbol("-"): PureOperator("-", _sub, "Subtract numbers, or negate one number."),
-            Symbol("*"): PureOperator("*", _mul, "Multiply numbers."),
-            Symbol("/"): PureOperator("/", _div, "Divide numbers, or invert one number."),
+            Symbol("+"): PureOperator("+", _add, "数字求和。"),
+            Symbol("-"): PureOperator("-", _sub, "数字相减；单参数时取负。"),
+            Symbol("*"): PureOperator("*", _mul, "数字相乘。"),
+            Symbol("/"): PureOperator("/", _div, "数字相除；单参数时取倒数。"),
             Symbol("assert"): EffectOperator(
-                "assert", _special_effect_form, "Assert a debug invariant."
+                "assert", _special_effect_form, "断言 debug 条件；失败时执行 assert-failed。"
             ),
-            Symbol("await"): EffectOperator("await", _await, "Await spawned async work."),
-            Symbol("atom"): PureOperator(
-                "atom", _atom, "Return true if the value is not a non-empty list."
-            ),
-            Symbol("cache"): EffectOperator("cache", _cache, "Cache one evaluated expression."),
-            Symbol("car"): PureOperator("car", _car, "Return the first item of a non-empty list."),
-            Symbol("cdr"): PureOperator(
-                "cdr", _cdr, "Return all but the first item of a non-empty list."
-            ),
-            Symbol("cond"): ControlOperator(
-                "cond", _cond, "Evaluate the first truthy condition branch."
-            ),
-            Symbol("cons"): PureOperator("cons", _cons, "Prepend an item to a list."),
+            Symbol("await"): EffectOperator("await", _await, "等待一个或多个异步值。"),
+            Symbol("atom"): PureOperator("atom", _atom, "如果值不是非空 tuple，则返回 true。"),
+            Symbol("cache"): EffectOperator("cache", _cache, "缓存一个表达式的求值结果。"),
+            Symbol("car"): PureOperator("car", _car, "返回 tuple/list 的第一个元素。"),
+            Symbol("cdr"): PureOperator("cdr", _cdr, "返回 tuple/list 除第一个元素外的剩余部分。"),
+            Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
+            Symbol("cons"): PureOperator("cons", _cons, "把一个值添加到 tuple/list 头部。"),
             Symbol("dict"): PureOperator(
-                "dict", _dict, "Construct a dict from key/value arguments.", _evaluate_data_args
+                "dict", _dict, "用 key/value 参数构造 dict。", _evaluate_data_args
             ),
-            Symbol("dict?"): PureOperator("dict?", _dict_predicate, "Return true for dicts."),
+            Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
             Symbol("component"): ScopeOperator(
-                "component", _component, "Define a reusable component in the current scope."
+                "component", _component, "在当前作用域定义可复用组件。"
             ),
             Symbol("defeffect"): ScopeOperator(
-                "defeffect", _defeffect, "Declare an effect for perform/handle analysis."
+                "defeffect", _defeffect, "声明 effect，供 perform/handle 和分析器使用。"
             ),
-            Symbol("defun"): ScopeOperator(
-                "defun", _defun, "Define a function in the current environment."
-            ),
-            Symbol("eq"): PureOperator("eq", _eq, "Compare atoms and empty lists."),
-            Symbol("eval"): MetaOperator("eval", _eval, "Evaluate one symbolic form."),
-            Symbol("from"): ScopeOperator(
-                "from", _from_import, "Import standard module operators into the current scope."
-            ),
+            Symbol("defun"): ScopeOperator("defun", _defun, "在当前环境定义函数。"),
+            Symbol("eq"): PureOperator("eq", _eq, "比较原子；只有空 tuple 之间相等。"),
+            Symbol("eval"): MetaOperator("eval", _eval, "求值一个符号 form。"),
+            Symbol("from"): ScopeOperator("from", _from_import, "从模块导入算子到当前作用域。"),
             Symbol("get"): PureOperator(
-                "get", _get, "Get an item from a collection.", _evaluate_lookup_args
+                "get", _get, "从 tuple/list/dict 获取项。", _evaluate_lookup_args
             ),
             Symbol("has?"): PureOperator(
                 "has?",
                 _has,
-                "Return true if a collection has a key or member.",
+                "判断 collection 是否包含 key、index 或成员。",
                 _evaluate_lookup_args,
             ),
-            Symbol("lambda"): ScopeOperator("lambda", _lambda, "Create an anonymous function."),
-            Symbol("len"): PureOperator("len", _len, "Return collection length."),
-            Symbol("let"): ScopeOperator("let", _let, "Evaluate a body in a local lexical scope."),
-            Symbol("list"): PureOperator("list", _list, "Construct a list.", _evaluate_data_args),
-            Symbol("list?"): PureOperator("list?", _list_predicate, "Return true for lists."),
-            Symbol("macro"): MetaOperator(
-                "macro", _macro, "Define a macro that expands unevaluated forms."
-            ),
-            Symbol("module"): ScopeOperator("module", _module, "Define and register a module."),
+            Symbol("lambda"): ScopeOperator("lambda", _lambda, "创建匿名函数。"),
+            Symbol("len"): PureOperator("len", _len, "返回 collection 长度。"),
+            Symbol("let"): ScopeOperator("let", _let, "在词法局部作用域中求值 body。"),
+            Symbol("list"): PureOperator("list", _list, "构造 list。", _evaluate_data_args),
+            Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
+            Symbol("macro"): MetaOperator("macro", _macro, "定义接收未求值 form 并展开的宏。"),
+            Symbol("module"): ScopeOperator("module", _module, "定义并注册模块。"),
             Symbol("parallel"): EffectOperator(
-                "parallel", _parallel, "Evaluate expressions concurrently with asyncio tasks."
+                "parallel", _parallel, "用 asyncio task 并发表达式求值。"
             ),
-            Symbol("perform"): EffectOperator(
-                "perform", _special_effect_form, "Perform an effect."
-            ),
+            Symbol("perform"): EffectOperator("perform", _special_effect_form, "执行 effect。"),
             Symbol("py"): EffectOperator(
-                "py", _py, "Execute embedded async Python with keyword-bound values."
+                "py", _py, "执行内嵌 async Python，并用 keyword 参数绑定值。"
             ),
-            Symbol("quote"): MetaOperator(
-                "quote", _quote, "Return one expression without evaluating it."
-            ),
+            Symbol("quote"): MetaOperator("quote", _quote, "返回一个表达式，不求值。"),
             Symbol("resume"): EffectOperator(
-                "resume", _special_effect_form, "Resume a captured effect continuation."
+                "resume", _special_effect_form, "恢复捕获的 effect continuation。"
             ),
-            Symbol("set"): PureOperator("set", _set, "Construct a set.", _evaluate_data_args),
-            Symbol("set?"): PureOperator("set?", _set_predicate, "Return true for sets."),
-            Symbol("spawn"): EffectOperator("spawn", _spawn, "Create an asyncio task."),
+            Symbol("set"): PureOperator("set", _set, "构造 set。", _evaluate_data_args),
+            Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
+            Symbol("spawn"): EffectOperator("spawn", _spawn, "创建 asyncio task。"),
             Symbol("handle"): ControlOperator(
-                "handle", _special_effect_form, "Handle effects from an expression."
+                "handle", _special_effect_form, "处理表达式产生的 effect。"
             ),
-            Symbol("tuple"): PureOperator(
-                "tuple", _tuple, "Construct a tuple.", _evaluate_data_args
-            ),
-            Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "Return true for tuples."),
+            Symbol("tuple"): PureOperator("tuple", _tuple, "构造 tuple。", _evaluate_data_args),
+            Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
             Symbol("assert-failed"): EffectDefinition(
                 Symbol("assert-failed"),
                 resumable=False,
-                doc="Debug assertion failure raised by assert.",
+                doc="assert 失败产生的不可恢复 effect。",
             ),
             Symbol("python-error"): EffectDefinition(
                 Symbol("python-error"),
                 resumable=False,
-                doc="Python exception raised across the py host boundary.",
+                doc="py 宿主边界传播的 Python 异常 effect。",
             ),
         },
     )

@@ -12,6 +12,7 @@ from qy.errors import QyError
 from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
+from qy.operator_docs import format_operator_docs
 from qy.reader import ReaderSyntaxError
 from qy.reader import read
 from qy.runtime import Qy
@@ -112,6 +113,11 @@ def create_app() -> Any:
     @app.command("typecheck")
     def typecheck_command(path: Annotated[Path, typer.Argument(help="Alias for check.")]) -> None:
         _check_path(path)
+
+    @app.command("operators")
+    def operators_command() -> None:
+        """列出当前标准库支持的算子."""
+        typer.echo(format_operator_docs(), nl=False)
 
     @app.command("lsp")
     def lsp_command() -> None:

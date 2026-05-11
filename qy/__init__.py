@@ -48,6 +48,10 @@ from qy.formatter import dump_program
 from qy.formatter import format_form
 from qy.formatter import format_program
 from qy.formatter import format_source
+from qy.operator_docs import OperatorDoc
+from qy.operator_docs import OperatorModuleDoc
+from qy.operator_docs import collect_supported_operators
+from qy.operator_docs import format_operator_docs
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
@@ -79,6 +83,8 @@ __all__ = [
     "HostObjectRef",
     "MacroDefinition",
     "MetaOperator",
+    "OperatorDoc",
+    "OperatorModuleDoc",
     "PureOperator",
     "Qy",
     "QyAggregateError",
@@ -103,6 +109,7 @@ __all__ = [
     "TupleForm",
     "analyze",
     "analyze_source",
+    "collect_supported_operators",
     "dump_form",
     "dump_program",
     "evaluate",
@@ -115,6 +122,7 @@ __all__ = [
     "evaluate_source_async",
     "form_to_tuple",
     "format_form",
+    "format_operator_docs",
     "format_program",
     "format_qy_error",
     "format_source",
