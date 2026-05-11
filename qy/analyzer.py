@@ -24,7 +24,8 @@ from qy.reader import Symbol
 from qy.reader import read
 from qy.stdlib import load_module
 from qy.stdlib.imports import parse_from_import
-from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyCons
 
 __all__ = [
@@ -44,12 +45,14 @@ TypeName = Literal[
     "effect",
     "function",
     "list",
+    "nil",
     "none",
     "number",
     "operator",
     "set",
     "symbol",
     "tuple",
+    "T",
     "unknown",
 ]
 OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
@@ -306,7 +309,11 @@ def _infer_symbol(
 
 
 def _literal_type(value: object) -> TypeName:
-    if value is QY_EMPTY_LIST or isinstance(value, QyCons):
+    if value is QY_NIL:
+        return "nil"
+    if value is QY_T:
+        return "T"
+    if isinstance(value, QyCons):
         return "chain"
     if isinstance(value, bool):
         return "bool"

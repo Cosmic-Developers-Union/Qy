@@ -54,6 +54,8 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 
 - symbol
 - chain
+- `nil`
+- `T`
 - `true`、`false`、`none`
 - 整数和浮点数
 - list
@@ -67,11 +69,15 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 
 Qy 源码只直接产生两类结构：symbol 和 chain。symbol 是符号；chain 是 `()`、`(a b c)`、`(a . b)` 这样的 Lisp 链。
 
-`true`、`false`、`none` 是预定义 symbol，直接映射到 Python `True`、`False`、`None`。`nil` 是兼容别名，也映射到 Python `None`，但不等于空 chain `()`。
+`nil` 是 Qy 自己的空值，使用 `QyNil` 单例表示。`T` 是 Qy 自己的真值，使用独立单例表示。
 
-`none`、`nil`、`false` 和空 chain `()` 为 falsey，数字 `0` 为 truthy。
+`true`、`false`、`none` 是预定义 symbol，直接映射到 Python `True`、`False`、`None`。
 
-`'()` 是空 chain，不是 `none`，也不是 Python `list`。`'(a b c)` 是 proper chain，`'(a . b)` 是 dotted chain。
+`'()` 与 `nil` 是同一个 Qy 值，因此 `(eq nil '())` 为 `true`。`nil` 不是 Python `None`，也不是 Python `list`。
+
+`nil`、`false`、`none` 和空 chain `()` 为 falsey，数字 `0` 为 truthy。
+
+`'(a b c)` 是 proper chain，`'(a . b)` 是 dotted chain。`cons` 构造 pair，pair 串起来组成 chain。
 
 Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子显式转换得到，用于宿主互操作和普通数据处理。它们和 chain 保持边界清晰。
 
@@ -80,6 +86,7 @@ Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子
 求值规则：
 
 - symbol 在当前词法环境中解析。
+- 内建 symbol `nil`、`T` 解析为 Qy 自有值。
 - 内建 symbol `true`、`false`、`none` 解析为 Python 值。
 - 数字符号解析为整数或浮点数。
 - 非空 chain 先求值第一个元素作为算子，然后应用算子。
@@ -95,6 +102,7 @@ Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子
 构造：
 
 - `(cons head tail)` 构造 chain cell；`tail` 为 chain 时得到 proper chain，为其他值时得到 dotted chain。
+- `(chain value)` 把 Python list/tuple 转换为 Qy chain；chain 原样返回。
 - `(list value...)` 转换为 Python list；单参数为 chain 时展开 chain。
 - `(tuple value...)` 转换为 Python tuple；单参数为 chain 时展开 chain。
 - `(dict key value...)` 转换为 Python dict；单参数为 pair chain 时转为 dict。
@@ -102,8 +110,8 @@ Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子
 
 访问：
 
-- `(car value)` 返回 chain/tuple/list 的第一个元素。
-- `(cdr value)` 返回 chain/tuple/list 的剩余部分；对 dotted chain 返回 tail。
+- `(car value)` 返回 chain 的第一个元素；`nil` 返回 `nil`。
+- `(cdr value)` 返回 chain 的剩余部分；`nil` 返回 `nil`，dotted chain 返回 tail。
 - `(len value)`
 - `(get collection key [default])`
 - `(has? collection key)`
@@ -113,7 +121,7 @@ Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子
 
 - `(== a b)` 使用 Python `==` 语义。
 - `(is a b)` 使用 Python `is` identity 语义。
-- `(eq a b)` 使用 Lisp 风格 eq；symbol 按名称比较，chain 按 identity 比较，`()` 只等于 `()`。
+- `(eq a b)` 使用 Lisp 风格 eq；symbol 按名称比较，chain 按 identity 比较，`nil` 与 `'()` 相等。
 
 谓词：
 

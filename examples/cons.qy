@@ -1,6 +1,6 @@
 ; 兼容示例：cons 仍然是构造 chain cell 的算子
 
-(print '())                 ; => ()
+(print '())                 ; => nil
 (print '(a b c))            ; => (a b c)
 (print '(a . b))            ; => (a . b)
 
@@ -9,5 +9,6 @@
 (print (cons 'a 'b))        ; => (a . b)
 
 (print (type '(a b c)))     ; => chain
+(print (eq nil '()))        ; => true
 (print (== '(a b) '(a b)))  ; => true
 (eq '(a b) '(a b))          ; => false

@@ -11,6 +11,7 @@ from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyPythonError
 from qy.errors import QyResolveError
+from qy.errors import QyTypeError
 from qy.errors import format_qy_error
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
@@ -33,6 +34,8 @@ from qy.runtime import Qy
 from qy.stdlib import StandardModule
 from qy.stdlib import register_module
 from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import list_to_qy_cons
 
@@ -54,6 +57,7 @@ class TestQyEvaluator(unittest.TestCase):
             "is",
             "car",
             "cdr",
+            "chain",
             "cons",
             "str-upper",
             "tuple",
@@ -118,13 +122,23 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source("(eq '() '())"))
         self.assertFalse(evaluate_source("(eq '() none)"))
         self.assertFalse(evaluate_source("(== '() none)"))
-        self.assertTrue(evaluate_source("(eq none nil)"))
+        self.assertTrue(evaluate_source("(eq nil '())"))
+        self.assertFalse(evaluate_source("(eq none nil)"))
+        self.assertFalse(evaluate_source("(eq T true)"))
+        self.assertFalse(evaluate_source("(== T true)"))
+        self.assertIs(evaluate_source("nil"), QY_NIL)
+        self.assertIs(evaluate_source("T"), QY_T)
+        self.assertIs(evaluate_source("none"), None)
         self.assertTrue(evaluate_source("(== '(abc) '(abc))"))
         self.assertFalse(evaluate_source("(is '(abc) '(abc))"))
         self.assertTrue(evaluate_source("(is '() '())"))
         self.assertEqual(evaluate_source("(type '(abc def))"), S("chain"))
         self.assertEqual(evaluate_source("(type 'abc)"), S("symbol"))
+        self.assertEqual(evaluate_source("(type nil)"), S("nil"))
+        self.assertEqual(evaluate_source("(type T)"), S("T"))
         self.assertEqual(evaluate_source("(type none)"), S("NoneType"))
+        self.assertIs(evaluate_source("(car nil)"), QY_NIL)
+        self.assertIs(evaluate_source("(cdr nil)"), QY_NIL)
         self.assertEqual(evaluate_source("(car '(abc def))"), S("abc"))
         self.assertEqual(
             evaluate_source("(cdr '(abc def ghi))"),
@@ -149,6 +163,14 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source("(tuple? (tuple 'a 'b))"))
         self.assertFalse(evaluate_source("(list? '(a b))"))
         self.assertTrue(evaluate_source("(list? (list 1 2))"))
+        self.assertEqual(
+            evaluate_source("(chain (list 'a 'b))"),
+            list_to_qy_cons([S("a"), S("b")]),
+        )
+        self.assertEqual(
+            evaluate_source("(chain (tuple 'a 'b))"),
+            list_to_qy_cons([S("a"), S("b")]),
+        )
         self.assertEqual(evaluate_source("(list '(a b))"), [S("a"), S("b")])
         self.assertEqual(evaluate_source("(tuple '(a b))"), (S("a"), S("b")))
         self.assertTrue(evaluate_source('(dict? (dict "name" "Qy"))'))
@@ -170,9 +192,14 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source('(has? (list "a" "b") 1)'))
 
     def test_list_values_work_with_car_cdr_cons(self):
-        self.assertEqual(evaluate_source('(car (list "a" "b"))'), S("a"))
-        self.assertEqual(evaluate_source('(cdr (list "a" "b" "c"))'), [S("b"), S("c")])
-        self.assertEqual(evaluate_source('(cons \'a (list "b" "c"))'), [S("a"), S("b"), S("c")])
+        with self.assertRaises(QyTypeError):
+            evaluate_source('(car (list "a" "b"))')
+        with self.assertRaises(QyTypeError):
+            evaluate_source('(cdr (list "a" "b" "c"))')
+        self.assertEqual(
+            evaluate_source('(cons \'a (list "b" "c"))'),
+            QyChain(S("a"), [S("b"), S("c")]),
+        )
 
     def test_eval_evaluates_symbolic_forms(self):
         self.assertEqual(evaluate_source("(eval '(+ 20 22))"), 42)
@@ -620,7 +647,7 @@ return [
             result,
             [
                 S("QyChain"),
-                S("QyEmptyChain"),
+                S("QyNil"),
                 [1, 2],
                 True,
                 True,

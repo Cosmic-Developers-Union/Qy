@@ -1,6 +1,6 @@
 ; Qy chain 与 Python list 是不同的数据结构
 
-(print '())                 ; => ()
+(print '())                 ; => nil
 (print '(a b c))            ; => (a b c)
 (print '(a . b))            ; => (a . b)
 
@@ -11,8 +11,10 @@
 (print (car '(a b c)))      ; => a
 (print (cdr '(a b c)))      ; => (b c)
 (print (cdr '(a . b)))      ; => b
+(print (eq nil '()))        ; => true
 
 (print (type '(a b c)))     ; => chain
+(print (type nil))          ; => nil
 (print (== '(a b) '(a b)))  ; => true
 (print (eq '(a b) '(a b)))  ; => false
 

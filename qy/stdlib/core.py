@@ -44,6 +44,8 @@ from qy.reader import get_span
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule
 from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyCons
 from qy.values import list_to_qy_cons
 from qy.values import map_qy_cons
@@ -70,9 +72,10 @@ def module() -> StandardModule:
                 "atom", _atom, "如果值不是非空 chain 或 tuple，则返回 true。"
             ),
             Symbol("cache"): EffectOperator("cache", _cache, "缓存一个表达式的求值结果。"),
-            Symbol("car"): PureOperator("car", _car, "返回 chain/tuple/list 的第一个元素。"),
-            Symbol("cdr"): PureOperator(
-                "cdr", _cdr, "返回 chain/tuple/list 除第一个元素外的剩余部分。"
+            Symbol("car"): PureOperator("car", _car, "返回 chain 的第一个元素。"),
+            Symbol("cdr"): PureOperator("cdr", _cdr, "返回 chain 除第一个元素外的剩余部分。"),
+            Symbol("chain"): PureOperator(
+                "chain", _chain, "把 Python list/tuple 转换为 Qy chain。"
             ),
             Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
             Symbol("cons"): PureOperator(
@@ -112,7 +115,8 @@ def module() -> StandardModule:
             Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
             Symbol("macro"): MetaOperator("macro", _macro, "定义接收未求值 form 并展开的宏。"),
             Symbol("module"): ScopeOperator("module", _module, "定义并注册模块。"),
-            Symbol("nil"): None,
+            Symbol("T"): QY_T,
+            Symbol("nil"): QY_NIL,
             Symbol("none"): None,
             Symbol("parallel"): EffectOperator(
                 "parallel", _parallel, "用 asyncio task 并发表达式求值。"
@@ -192,7 +196,7 @@ def _ensure_index(value: object) -> int:
 
 
 def _truthy(value: object) -> bool:
-    return value is not False and value is not None and value != () and value is not QY_EMPTY_LIST
+    return value is not False and value is not None and value is not QY_NIL and value != ()
 
 
 def _add(*args: object) -> int | float:
@@ -280,8 +284,10 @@ def _is(left: object, right: object) -> bool:
 
 
 def _eq(left: object, right: object) -> bool:
-    if left is QY_EMPTY_LIST or right is QY_EMPTY_LIST:
-        return left is QY_EMPTY_LIST and right is QY_EMPTY_LIST
+    if left is QY_NIL or right is QY_NIL:
+        return left is QY_NIL and right is QY_NIL
+    if left is QY_T or right is QY_T:
+        return left is QY_T and right is QY_T
     if isinstance(left, QyCons) or isinstance(right, QyCons):
         return left is right
     if isinstance(left, Symbol) or isinstance(right, Symbol):
@@ -298,7 +304,11 @@ def _eq(left: object, right: object) -> bool:
 
 
 def _type(value: object) -> Symbol:
-    if value is QY_EMPTY_LIST or isinstance(value, QyCons):
+    if value is QY_NIL:
+        return Symbol("nil")
+    if value is QY_T:
+        return Symbol("T")
+    if isinstance(value, QyCons):
         return Symbol("chain")
     if isinstance(value, Symbol):
         return Symbol("symbol")
@@ -306,37 +316,43 @@ def _type(value: object) -> Symbol:
 
 
 def _car(value: object) -> object:
+    if value is QY_NIL:
+        return QY_NIL
     if isinstance(value, QyCons):
         return value.head
-    if value is QY_EMPTY_LIST:
-        raise QyArityError("car expects a non-empty chain, tuple, or list")
-    items = _ensure_sequence(value)
-    if not items:
-        raise QyArityError("car expects a non-empty chain, tuple, or list")
-    return items[0]
+    raise QyTypeError(
+        f"car expects a chain, got {value!r}",
+        span=get_span(value),
+        metadata={"value": value},
+    )
 
 
 def _cdr(value: object) -> object:
+    if value is QY_NIL:
+        return QY_NIL
     if isinstance(value, QyCons):
         return value.tail
-    if value is QY_EMPTY_LIST:
-        raise QyArityError("cdr expects a non-empty chain, tuple, or list")
-    items = _ensure_sequence(value)
-    if not items:
-        raise QyArityError("cdr expects a non-empty chain, tuple, or list")
-    if isinstance(items, list):
-        return list(items[1:])
-    return items[1:]
+    raise QyTypeError(
+        f"cdr expects a chain, got {value!r}",
+        span=get_span(value),
+        metadata={"value": value},
+    )
 
 
 def _cons(head: object, tail: object) -> object:
-    if tail is QY_EMPTY_LIST or isinstance(tail, QyCons):
-        return QyCons(head, tail)
-    if isinstance(tail, list):
-        return [head, *tail]
-    if isinstance(tail, tuple):
-        return (head, *tail)
     return QyCons(head, tail)
+
+
+def _chain(value: object) -> object:
+    if value is QY_NIL or isinstance(value, QyCons):
+        return value
+    if isinstance(value, list | tuple):
+        return list_to_qy_cons(value)
+    raise QyTypeError(
+        f"chain expects a Python list or tuple, got {value!r}",
+        span=get_span(value),
+        metadata={"value": value},
+    )
 
 
 def _tuple(*args: object) -> tuple[object, ...]:
@@ -949,8 +965,8 @@ async def _await_py_result(value: object) -> object:
 def _qy_to_python(value: object, env: Environment) -> object:
     if isinstance(value, HostObjectRef):
         return value.value
-    if value is QY_EMPTY_LIST:
-        return QY_EMPTY_LIST
+    if value is QY_NIL or value is QY_T:
+        return value
     if isinstance(value, QyCons):
         return map_qy_cons(value, lambda item: _qy_to_python(item, env))
     if _is_qy_callable(value):
@@ -969,12 +985,6 @@ def _qy_to_python(value: object, env: Environment) -> object:
 
 
 def _symbol_to_python(value: Symbol) -> object:
-    if value.name == "true":
-        return True
-    if value.name == "false":
-        return False
-    if value.name in {"nil", "none"}:
-        return None
     try:
         return int(value.name)
     except ValueError:
@@ -987,8 +997,8 @@ def _symbol_to_python(value: Symbol) -> object:
 
 
 def _python_to_qy(value: object) -> object:
-    if value is QY_EMPTY_LIST:
-        return QY_EMPTY_LIST
+    if value is QY_NIL or value is QY_T:
+        return value
     if isinstance(value, QyCons):
         return map_qy_cons(value, _python_to_qy)
     if isinstance(value, HostObjectRef | Symbol):

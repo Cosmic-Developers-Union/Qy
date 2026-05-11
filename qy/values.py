@@ -10,10 +10,14 @@ from typing import Final
 __all__ = [
     "QY_EMPTY_CHAIN",
     "QY_EMPTY_LIST",
+    "QY_NIL",
+    "QY_T",
     "QyChain",
     "QyCons",
     "QyEmptyChain",
     "QyEmptyList",
+    "QyNil",
+    "QyT",
     "iter_qy_chain",
     "iter_qy_list",
     "list_to_qy_chain",
@@ -28,17 +32,29 @@ __all__ = [
 
 
 @dataclass(frozen=True, slots=True, eq=False)
-class QyEmptyChain:
+class QyNil:
     def __iter__(self):
         return iter(())
 
     def __len__(self) -> int:
         return 0
 
+    def __bool__(self) -> bool:
+        return False
 
-QY_EMPTY_CHAIN: Final = QyEmptyChain()
-QY_EMPTY_LIST: Final = QY_EMPTY_CHAIN
-QyEmptyList = QyEmptyChain
+
+@dataclass(frozen=True, slots=True, eq=False)
+class QyT:
+    def __bool__(self) -> bool:
+        return True
+
+
+QY_NIL: Final = QyNil()
+QY_T: Final = QyT()
+QY_EMPTY_CHAIN: Final = QY_NIL
+QY_EMPTY_LIST: Final = QY_NIL
+QyEmptyChain = QyNil
+QyEmptyList = QyNil
 
 
 @dataclass(frozen=True, slots=True)

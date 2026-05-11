@@ -14,6 +14,8 @@ from qy.reader import TupleForm
 from qy.reader import write_tuple
 from qy.stdlib.module import StandardModule
 from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyCons
 from qy.values import iter_qy_list
 
@@ -67,6 +69,10 @@ async def _evaluate_text_arg(expression: object, env: Environment) -> object:
 
 
 def _to_text(value: object) -> str:
+    if value is QY_NIL:
+        return "nil"
+    if value is QY_T:
+        return "T"
     if isinstance(value, Symbol):
         return value.name
     if isinstance(value, str):

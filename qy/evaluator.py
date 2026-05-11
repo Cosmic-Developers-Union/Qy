@@ -31,6 +31,8 @@ from qy.reader import read
 from qy.reader import read_one
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import QyCons
 from qy.values import qy_cons_to_tuple
@@ -38,6 +40,8 @@ from qy.values import qy_cons_to_tuple
 __all__ = [
     "QY_EMPTY_CHAIN",
     "QY_EMPTY_LIST",
+    "QY_NIL",
+    "QY_T",
     "ComponentDefinition",
     "ControlOperator",
     "EffectDefinition",
@@ -422,7 +426,7 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
 
     if isinstance(expression, Symbol):
         return env.resolve(expression)
-    if expression is QY_EMPTY_LIST:
+    if expression is QY_NIL:
         return expression
     if isinstance(expression, QyCons):
         try:
@@ -439,7 +443,7 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
     if isinstance(expression, DottedTuple):
         raise QyRuntimeError("cannot evaluate dotted form as a call", span=span)
     if not expression:
-        raise QyRuntimeError("cannot evaluate empty expression", span=span)
+        return QY_NIL
 
     operator_expression, *argument_expressions = expression
     if isinstance(operator_expression, Symbol):
@@ -545,11 +549,15 @@ async def evaluate_file_async(path: str | Path, env: Environment | None = None) 
 
 
 def _resolve_builtin_literal(symbol: Symbol) -> object:
+    if symbol.name == "T":
+        return QY_T
+    if symbol.name == "nil":
+        return QY_NIL
     if symbol.name == "true":
         return True
     if symbol.name == "false":
         return False
-    if symbol.name in {"nil", "none"}:
+    if symbol.name == "none":
         return None
     try:
         return int(symbol.name)

@@ -15,6 +15,8 @@ import lark
 from qy.errors import QySyntaxError
 from qy.errors import SourceSpan
 from qy.values import QY_EMPTY_LIST
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyCons
 
 __all__ = [
@@ -293,8 +295,10 @@ def write_program(forms: Iterable[Form]) -> str:
 
 
 def write_tuple(form: TupleForm) -> str:
-    if form is QY_EMPTY_LIST:
-        return "()"
+    if form is QY_NIL:
+        return "nil"
+    if form is QY_T:
+        return "T"
     if isinstance(form, QyCons):
         return _write_cons(form)
     if isinstance(form, Symbol):
