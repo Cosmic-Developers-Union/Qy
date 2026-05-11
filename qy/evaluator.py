@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
+import threading
 from collections.abc import Callable
+from collections.abc import Coroutine
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from typing import cast
 
 from qy.reader import Symbol
 from qy.reader import read
@@ -26,15 +31,21 @@ __all__ = [
     "UserFunction",
     "ensure_symbol",
     "evaluate",
+    "evaluate_async",
     "evaluate_body",
+    "evaluate_body_async",
     "evaluate_file",
+    "evaluate_file_async",
     "evaluate_program",
+    "evaluate_program_async",
     "evaluate_source",
+    "evaluate_source_async",
+    "run_async",
     "standard_environment",
 ]
 
 OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
-ArgumentEvaluator = Callable[[tuple[object, ...], "Environment"], tuple[object, ...]]
+ArgumentEvaluator = Callable[[tuple[object, ...], "Environment"], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,13 +130,13 @@ class UserFunction:
     body: tuple[object, ...]
     closure: Environment
 
-    def __call__(self, *args: object) -> object:
+    async def __call__(self, *args: object) -> object:
         if len(args) != len(self.params):
             raise EvaluationError(
                 f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
-        return evaluate_body(self.body, local_env)
+        return await evaluate_body_async(self.body, local_env)
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,13 +146,13 @@ class ComponentDefinition:
     body: tuple[object, ...]
     closure: Environment
 
-    def __call__(self, *args: object) -> object:
+    async def __call__(self, *args: object) -> object:
         if len(args) != len(self.params):
             raise EvaluationError(
                 f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
-        return evaluate_body(self.body, local_env)
+        return await evaluate_body_async(self.body, local_env)
 
 
 class EvaluationError(Exception):
@@ -156,6 +167,7 @@ class Environment:
     ) -> None:
         self._bindings = dict(bindings or {})
         self._parent = parent
+        self._cache: dict[object, object] = parent._cache if parent is not None else {}
 
     def resolve(self, symbol: Symbol) -> object:
         if symbol in self._bindings:
@@ -180,6 +192,16 @@ class Environment:
 
     def local_bindings(self) -> dict[Symbol, object]:
         return dict(self._bindings)
+
+    def cache_lookup(self, key: object) -> object:
+        return self._cache[key]
+
+    def cache_define(self, key: object, value: object) -> object:
+        self._cache[key] = value
+        return value
+
+    def cache_discard(self, key: object) -> None:
+        self._cache.pop(key, None)
 
     def register_pure(
         self,
@@ -309,6 +331,10 @@ def standard_environment() -> Environment:
 
 
 def evaluate(expression: object, env: Environment | None = None) -> object:
+    return run_async(evaluate_async(expression, env))
+
+
+async def evaluate_async(expression: object, env: Environment | None = None) -> object:
     env = env or standard_environment()
 
     if isinstance(expression, Symbol):
@@ -319,33 +345,47 @@ def evaluate(expression: object, env: Environment | None = None) -> object:
         raise EvaluationError("cannot evaluate empty expression")
 
     operator_expression, *argument_expressions = expression
-    operator_value = evaluate(operator_expression, env)
+    operator_value = await evaluate_async(operator_expression, env)
 
     if isinstance(operator_value, MetaOperator):
-        return operator_value(expression, env)
+        return await _await_if_needed(operator_value(expression, env))
     if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
-        return operator_value(tuple(argument_expressions), env)
+        return await _await_if_needed(operator_value(tuple(argument_expressions), env))
     if isinstance(operator_value, PureOperator):
-        arguments = _evaluate_pure_arguments(operator_value, tuple(argument_expressions), env)
-        return operator_value(*arguments)
+        arguments = await _evaluate_pure_arguments_async(
+            operator_value, tuple(argument_expressions), env
+        )
+        return await _await_if_needed(operator_value(*arguments))
     if isinstance(operator_value, UserFunction | ComponentDefinition):
-        arguments = [evaluate(argument, env) for argument in argument_expressions]
-        return operator_value(*arguments)
+        arguments = [await evaluate_async(argument, env) for argument in argument_expressions]
+        return await _await_if_needed(operator_value(*arguments))
     raise EvaluationError(f"{operator_expression!r} resolved to non-callable {operator_value!r}")
 
 
 def evaluate_source(source: str, env: Environment | None = None) -> object:
-    return evaluate(read_one(source), env)
+    return run_async(evaluate_source_async(source, env))
+
+
+async def evaluate_source_async(source: str, env: Environment | None = None) -> object:
+    return await evaluate_async(read_one(source), env)
 
 
 def evaluate_program(source: str, env: Environment | None = None) -> list[object]:
+    return cast(list[object], run_async(evaluate_program_async(source, env)))
+
+
+async def evaluate_program_async(source: str, env: Environment | None = None) -> list[object]:
     env = env or standard_environment()
-    return [evaluate(form, env) for form in read(source)]
+    return [await evaluate_async(form, env) for form in read(source)]
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
+    return run_async(evaluate_file_async(path, env))
+
+
+async def evaluate_file_async(path: str | Path, env: Environment | None = None) -> object:
     source = Path(path).read_text(encoding="utf-8")
-    results = evaluate_program(source, env)
+    results = await evaluate_program_async(source, env)
     if not results:
         return None
     return results[-1]
@@ -370,11 +410,15 @@ def _resolve_builtin_literal(symbol: Symbol) -> object:
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
+    return run_async(evaluate_body_async(body, env))
+
+
+async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:
     if not body:
         raise EvaluationError("body must contain at least one expression")
     result = None
     for expression in body:
-        result = evaluate(expression, env)
+        result = await evaluate_async(expression, env)
     return result
 
 
@@ -384,11 +428,48 @@ def ensure_symbol(value: object, context: str) -> Symbol:
     return value
 
 
-def _evaluate_pure_arguments(
+async def _evaluate_pure_arguments_async(
     operator: PureOperator,
     argument_expressions: tuple[object, ...],
     env: Environment,
 ) -> tuple[object, ...]:
     if operator.argument_evaluator is not None:
-        return operator.argument_evaluator(argument_expressions, env)
-    return tuple(evaluate(argument, env) for argument in argument_expressions)
+        arguments = await _await_if_needed(operator.argument_evaluator(argument_expressions, env))
+        if not isinstance(arguments, tuple):
+            raise EvaluationError(
+                f"{operator.name} argument evaluator must return a tuple, got {arguments!r}"
+            )
+        return arguments
+    return tuple([await evaluate_async(argument, env) for argument in argument_expressions])
+
+
+async def _await_if_needed(value: object) -> object:
+    if inspect.iscoroutine(value):
+        return await value
+    return value
+
+
+def run_async(awaitable: object) -> object:
+    if not inspect.isawaitable(awaitable):
+        return awaitable
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(cast(Coroutine[object, object, object], awaitable))
+
+    result: object = None
+    error: BaseException | None = None
+
+    def run_in_thread() -> None:
+        nonlocal result, error
+        try:
+            result = asyncio.run(cast(Coroutine[object, object, object], awaitable))
+        except BaseException as e:
+            error = e
+
+    thread = threading.Thread(target=run_in_thread, daemon=True)
+    thread.start()
+    thread.join()
+    if error is not None:
+        raise error
+    return result

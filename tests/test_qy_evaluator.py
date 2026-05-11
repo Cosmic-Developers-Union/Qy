@@ -1,8 +1,10 @@
+import asyncio
 import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from typing import cast
 
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
@@ -46,7 +48,7 @@ class TestQyEvaluator(unittest.TestCase):
             self.assertIsInstance(env.resolve(S(name)), ScopeOperator)
         for name in ["cond"]:
             self.assertIsInstance(env.resolve(S(name)), ControlOperator)
-        for name in ["print", "echo"]:
+        for name in ["print", "echo", "parallel", "cache", "spawn", "await"]:
             self.assertIsInstance(env.resolve(S(name)), EffectOperator)
         for name in ["quote"]:
             self.assertIsInstance(env.resolve(S(name)), MetaOperator)
@@ -299,6 +301,52 @@ def plus_one(value):
 
             self.assertEqual(evaluate_source("(t 14)", env), 42)
             self.assertEqual(evaluate_source("(plus-one 41)", env), 42)
+
+
+class TestQyAsyncEvaluator(unittest.IsolatedAsyncioTestCase):
+    async def test_async_api_awaits_python_coroutines(self):
+        qy = Qy()
+
+        @qy.register_pure("delayed-double")
+        async def delayed_double(value):
+            await asyncio.sleep(0)
+            return value * 2
+
+        self.assertEqual(await qy.evaluate_source_async("(delayed-double 21)"), 42)
+
+    async def test_parallel_evaluates_expressions_concurrently(self):
+        qy = Qy()
+
+        @qy.register_pure("delayed")
+        async def delayed(value):
+            await asyncio.sleep(0)
+            return value
+
+        self.assertEqual(
+            await qy.evaluate_source_async("(parallel (delayed 1) (delayed 2))"), (1, 2)
+        )
+
+    async def test_spawn_and_await_use_asyncio_tasks(self):
+        qy = Qy()
+
+        task = cast(asyncio.Task[object], await qy.evaluate_source_async("(spawn (+ 1 2))"))
+
+        self.assertIsInstance(task, asyncio.Task)
+        self.assertEqual(await task, 3)
+        self.assertEqual(await qy.evaluate_source_async("(await (spawn (+ 20 22)))"), 42)
+
+    async def test_cache_reuses_expression_result(self):
+        qy = Qy()
+        calls: list[int] = []
+
+        @qy.register_pure("counted")
+        def counted(value):
+            calls.append(value)
+            return value * 2
+
+        self.assertEqual(await qy.evaluate_source_async("(cache (counted 21))"), 42)
+        self.assertEqual(await qy.evaluate_source_async("(cache (counted 21))"), 42)
+        self.assertEqual(calls, [21])
 
 
 if __name__ == "__main__":

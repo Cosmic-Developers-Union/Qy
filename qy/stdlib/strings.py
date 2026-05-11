@@ -8,7 +8,7 @@ from typing import cast
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
 from qy.evaluator import PureOperator
-from qy.evaluator import evaluate
+from qy.evaluator import evaluate_async
 from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple
@@ -54,13 +54,13 @@ def _text_operator(name: str, func: Callable[..., object], doc: str) -> PureOper
     return PureOperator(name, func, doc, _evaluate_text_args)
 
 
-def _evaluate_text_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
-    return tuple(_evaluate_text_arg(arg, env) for arg in args)
+async def _evaluate_text_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
+    return tuple([await _evaluate_text_arg(arg, env) for arg in args])
 
 
-def _evaluate_text_arg(expression: object, env: Environment) -> object:
+async def _evaluate_text_arg(expression: object, env: Environment) -> object:
     try:
-        return evaluate(expression, env)
+        return await evaluate_async(expression, env)
     except EvaluationError:
         if isinstance(expression, Symbol):
             return expression

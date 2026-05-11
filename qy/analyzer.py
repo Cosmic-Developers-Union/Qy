@@ -141,6 +141,19 @@ def _infer(
                 return _infer_module(form, env, scope, diagnostics)
             case "from":
                 return _infer_from(form, diagnostics)
+            case "parallel":
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "tuple"
+            case "cache" | "spawn":
+                _check_arity(operator.name, args, diagnostics, exact=1)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "any"
+            case "await":
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "any"
             case "+" | "-" | "*" | "/":
                 return _infer_numeric_call(operator.name, args, env, scope, diagnostics)
             case "atom" | "eq":

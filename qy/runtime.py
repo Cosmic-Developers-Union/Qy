@@ -8,6 +8,9 @@ from pathlib import Path
 from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
 from qy.evaluator import evaluate
+from qy.evaluator import evaluate_async
+from qy.evaluator import evaluate_file_async
+from qy.evaluator import evaluate_program_async
 from qy.evaluator import standard_environment
 from qy.reader import Form
 from qy.reader import read
@@ -29,17 +32,29 @@ class Qy:
     def evaluate(self, expression: object) -> object:
         return evaluate(expression, self.env)
 
+    async def evaluate_async(self, expression: object) -> object:
+        return await evaluate_async(expression, self.env)
+
     def evaluate_source(self, source: str) -> object:
         return self.evaluate(read_one(source))
 
+    async def evaluate_source_async(self, source: str) -> object:
+        return await self.evaluate_async(read_one(source))
+
     def evaluate_program(self, source: str) -> list[object]:
         return [self.evaluate(form) for form in read(source)]
+
+    async def evaluate_program_async(self, source: str) -> list[object]:
+        return await evaluate_program_async(source, self.env)
 
     def evaluate_file(self, path: str | Path) -> object:
         results = self.evaluate_program(Path(path).read_text(encoding="utf-8"))
         if not results:
             return None
         return results[-1]
+
+    async def evaluate_file_async(self, path: str | Path) -> object:
+        return await evaluate_file_async(path, self.env)
 
     def register_pure(
         self,

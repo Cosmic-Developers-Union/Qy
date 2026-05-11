@@ -7,7 +7,7 @@ from typing import cast
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import evaluate
+from qy.evaluator import evaluate_async
 from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple
@@ -29,17 +29,17 @@ def module() -> StandardModule:
     )
 
 
-def _print(args: tuple[object, ...], env: Environment) -> object:
-    values = tuple(_evaluate_print_arg(arg, env) for arg in args)
+async def _print(args: tuple[object, ...], env: Environment) -> object:
+    values = tuple([await _evaluate_print_arg(arg, env) for arg in args])
     print(" ".join(_format_value(value) for value in values))
     if not values:
         return None
     return values[-1]
 
 
-def _evaluate_print_arg(expression: object, env: Environment) -> object:
+async def _evaluate_print_arg(expression: object, env: Environment) -> object:
     try:
-        return evaluate(expression, env)
+        return await evaluate_async(expression, env)
     except EvaluationError:
         if isinstance(expression, Symbol):
             return expression

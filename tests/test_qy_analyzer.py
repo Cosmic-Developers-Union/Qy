@@ -46,6 +46,11 @@ class TestQyAnalyzer(unittest.TestCase):
 
         self.assertEqual(diagnostics, [])
 
+    def test_async_effect_operators_are_understood(self):
+        self.assertEqual(type_check_source("(parallel (+ 1 2) (+ 3 4))"), [])
+        self.assertEqual(type_check_source("(cache (+ 1 2))"), [])
+        self.assertEqual(type_check_source("(await (spawn (+ 1 2)))"), [])
+
     def test_import_alias_scope_is_understood(self):
         diagnostics = type_check_source("""
         (from qy.str import str-upper as upper)

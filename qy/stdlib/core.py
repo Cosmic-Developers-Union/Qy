@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import inspect
 import operator
 
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
+from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
 from qy.evaluator import MetaOperator
@@ -13,8 +16,8 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import ensure_symbol
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_body
+from qy.evaluator import evaluate_async
+from qy.evaluator import evaluate_body_async
 from qy.reader import Symbol
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule
@@ -28,9 +31,11 @@ def module() -> StandardModule:
             Symbol("-"): PureOperator("-", _sub, "Subtract numbers, or negate one number."),
             Symbol("*"): PureOperator("*", _mul, "Multiply numbers."),
             Symbol("/"): PureOperator("/", _div, "Divide numbers, or invert one number."),
+            Symbol("await"): EffectOperator("await", _await, "Await spawned async work."),
             Symbol("atom"): PureOperator(
                 "atom", _atom, "Return true if the value is not a non-empty list."
             ),
+            Symbol("cache"): EffectOperator("cache", _cache, "Cache one evaluated expression."),
             Symbol("car"): PureOperator("car", _car, "Return the first item of a non-empty list."),
             Symbol("cdr"): PureOperator(
                 "cdr", _cdr, "Return all but the first item of a non-empty list."
@@ -52,9 +57,13 @@ def module() -> StandardModule:
             Symbol("lambda"): ScopeOperator("lambda", _lambda, "Create an anonymous function."),
             Symbol("let"): ScopeOperator("let", _let, "Evaluate a body in a local lexical scope."),
             Symbol("module"): ScopeOperator("module", _module, "Define and register a module."),
+            Symbol("parallel"): EffectOperator(
+                "parallel", _parallel, "Evaluate expressions concurrently with asyncio tasks."
+            ),
             Symbol("quote"): MetaOperator(
                 "quote", _quote, "Return one expression without evaluating it."
             ),
+            Symbol("spawn"): EffectOperator("spawn", _spawn, "Create an asyncio task."),
         },
     )
 
@@ -138,17 +147,17 @@ def _cons(head: object, tail: object) -> tuple[object, ...]:
     return (head, *_ensure_tuple(tail))
 
 
-def _cond(args: tuple[object, ...], env: Environment) -> object:
+async def _cond(args: tuple[object, ...], env: Environment) -> object:
     for clause in args:
         if not isinstance(clause, tuple) or len(clause) != 2:
             raise EvaluationError(f"cond clause must be a pair, got {clause!r}")
         condition, result = clause
-        if _truthy(evaluate(condition, env)):
-            return evaluate(result, env)
+        if _truthy(await evaluate_async(condition, env)):
+            return await evaluate_async(result, env)
     return None
 
 
-def _let(args: tuple[object, ...], env: Environment) -> object:
+async def _let(args: tuple[object, ...], env: Environment) -> object:
     if len(args) < 2:
         raise EvaluationError("let expects bindings and at least one body expression")
 
@@ -161,9 +170,12 @@ def _let(args: tuple[object, ...], env: Environment) -> object:
         if not isinstance(binding, tuple) or len(binding) != 2:
             raise EvaluationError(f"let binding must be a pair, got {binding!r}")
         name, expression = binding
-        local_env.define(ensure_symbol(name, "let binding name"), evaluate(expression, local_env))
+        local_env.define(
+            ensure_symbol(name, "let binding name"),
+            await evaluate_async(expression, local_env),
+        )
 
-    return evaluate_body(tuple(body), local_env)
+    return await evaluate_body_async(tuple(body), local_env)
 
 
 def _lambda(args: tuple[object, ...], env: Environment) -> object:
@@ -197,7 +209,7 @@ def _component(args: tuple[object, ...], env: Environment) -> object:
     return env.define(name, component)
 
 
-def _module(args: tuple[object, ...], env: Environment) -> object:
+async def _module(args: tuple[object, ...], env: Environment) -> object:
     if not args:
         raise EvaluationError("module expects a name and body")
 
@@ -214,9 +226,9 @@ def _module(args: tuple[object, ...], env: Environment) -> object:
         if _is_special_form(form, "imports"):
             assert isinstance(form, tuple)
             for import_form in form[1:]:
-                _evaluate_module_import(import_form, module_env)
+                await _evaluate_module_import(import_form, module_env)
             continue
-        evaluate(form, module_env)
+        await evaluate_async(form, module_env)
 
     if export_names:
         exports = {export_name: module_env.resolve(export_name) for export_name in export_names}
@@ -231,18 +243,64 @@ def _module(args: tuple[object, ...], env: Environment) -> object:
     return env.define(name, module)
 
 
-def _from_import(args: tuple[object, ...], env: Environment) -> object:
+async def _from_import(args: tuple[object, ...], env: Environment) -> object:
     try:
         module_name, specs = parse_from_import((Symbol("from"), *args))
-        from qy.stdlib import load_module
+        from qy.stdlib import load_module_async
 
-        source_module = load_module(module_name.name)
+        source_module = await load_module_async(module_name.name)
         for spec in specs:
             env.define(spec.alias, source_module.resolve(spec.name))
     except (KeyError, ValueError) as e:
         raise EvaluationError(str(e)) from e
 
     return None
+
+
+async def _parallel(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
+    tasks = [asyncio.create_task(evaluate_async(arg, env)) for arg in args]
+    return tuple(await asyncio.gather(*tasks))
+
+
+async def _cache(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) != 1:
+        raise EvaluationError(f"cache expects exactly one argument, got {len(args)}")
+
+    key = _cache_key(args[0])
+    try:
+        return await _await_cached_value(env.cache_lookup(key))
+    except KeyError:
+        pass
+
+    task = asyncio.create_task(evaluate_async(args[0], env))
+    env.cache_define(key, task)
+    try:
+        result = await task
+    except Exception:
+        env.cache_discard(key)
+        raise
+    env.cache_define(key, result)
+    return result
+
+
+def _spawn(args: tuple[object, ...], env: Environment) -> asyncio.Task[object]:
+    if len(args) != 1:
+        raise EvaluationError(f"spawn expects exactly one argument, got {len(args)}")
+    return asyncio.create_task(evaluate_async(args[0], env))
+
+
+async def _await(args: tuple[object, ...], env: Environment) -> object:
+    if not args:
+        raise EvaluationError("await expects at least one argument")
+
+    values: list[object] = []
+    for arg in args:
+        value = await evaluate_async(arg, env)
+        values.append(await _await_cached_value(value))
+
+    if len(values) == 1:
+        return values[0]
+    return tuple(values)
 
 
 def _ensure_parameter_list(value: object, context: str) -> tuple[Symbol, ...]:
@@ -271,9 +329,23 @@ def _parse_export_names(items: tuple[object, ...]) -> list[Symbol]:
     return names
 
 
-def _evaluate_module_import(form: object, env: Environment) -> None:
+async def _evaluate_module_import(form: object, env: Environment) -> None:
     if not isinstance(form, tuple) or not form:
         raise EvaluationError(f"module import must be a from form, got {form!r}")
     if form[0] != Symbol("from"):
         raise EvaluationError(f"module import must start with from, got {form!r}")
-    evaluate(form, env)
+    await evaluate_async(form, env)
+
+
+def _cache_key(expression: object) -> object:
+    try:
+        hash(expression)
+    except TypeError:
+        return repr(expression)
+    return expression
+
+
+async def _await_cached_value(value: object) -> object:
+    if inspect.isawaitable(value):
+        return await value
+    return value

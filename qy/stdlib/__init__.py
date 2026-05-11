@@ -8,6 +8,7 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Mapping
 from pathlib import Path
+from typing import cast
 
 from qy.reader import Symbol
 from qy.stdlib.module import StandardModule
@@ -16,6 +17,7 @@ __all__ = [
     "PRELUDE_MODULES",
     "StandardModule",
     "load_module",
+    "load_module_async",
     "module_names",
     "register_module",
     "register_module_loader",
@@ -48,6 +50,16 @@ def load_module(name: str) -> StandardModule:
     except KeyError as e:
         if _looks_like_file_module(name):
             return _load_file_module(name)
+        raise KeyError(f"unknown module {name!r}") from e
+
+
+async def load_module_async(name: str) -> StandardModule:
+    _install_builtin_loaders()
+    try:
+        return _MODULE_LOADERS[name]()
+    except KeyError as e:
+        if _looks_like_file_module(name):
+            return await _load_file_module_async(name)
         raise KeyError(f"unknown module {name!r}") from e
 
 
@@ -97,7 +109,23 @@ def _load_file_module(name: str) -> StandardModule:
     if path.suffix == ".py":
         return _load_python_file_module(path)
     if path.suffix == ".qy":
-        return _load_qy_file_module(path)
+        from qy.evaluator import run_async
+
+        return cast(StandardModule, run_async(_load_qy_file_module_async(path)))
+    raise KeyError(f"unsupported module file type {path.suffix!r}")
+
+
+async def _load_file_module_async(name: str) -> StandardModule:
+    path = Path(name).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    path = path.resolve()
+    if not path.is_file():
+        raise KeyError(f"module file {name!r} does not exist")
+    if path.suffix == ".py":
+        return _load_python_file_module(path)
+    if path.suffix == ".qy":
+        return await _load_qy_file_module_async(path)
     raise KeyError(f"unsupported module file type {path.suffix!r}")
 
 
@@ -122,8 +150,8 @@ def _load_python_file_module(path: Path) -> StandardModule:
     return _module_from_public_callables(python_module, path)
 
 
-def _load_qy_file_module(path: Path) -> StandardModule:
-    from qy.evaluator import evaluate
+async def _load_qy_file_module_async(path: Path) -> StandardModule:
+    from qy.evaluator import evaluate_async
     from qy.evaluator import standard_environment
     from qy.reader import read
 
@@ -132,7 +160,7 @@ def _load_qy_file_module(path: Path) -> StandardModule:
     last_result: object = None
 
     for form in read(path.read_text(encoding="utf-8")):
-        last_result = evaluate(form, env)
+        last_result = await evaluate_async(form, env)
 
     if isinstance(last_result, StandardModule):
         return last_result
