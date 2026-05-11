@@ -1,4 +1,7 @@
-.PHONY: clean build check release lint
+.PHONY: clean build check release lint test
+
+test:
+	uv run python -m pytest tests/ -v
 
 clean:
 	rm -rf dist/ build/ *.egg-info
