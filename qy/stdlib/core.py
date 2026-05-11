@@ -71,6 +71,10 @@ def module() -> StandardModule:
                 "cond", _cond, "Evaluate the first truthy condition branch."
             ),
             Symbol("cons"): PureOperator("cons", _cons, "Prepend an item to a list."),
+            Symbol("dict"): PureOperator(
+                "dict", _dict, "Construct a dict from key/value arguments.", _evaluate_data_args
+            ),
+            Symbol("dict?"): PureOperator("dict?", _dict_predicate, "Return true for dicts."),
             Symbol("component"): ScopeOperator(
                 "component", _component, "Define a reusable component in the current scope."
             ),
@@ -85,8 +89,20 @@ def module() -> StandardModule:
             Symbol("from"): ScopeOperator(
                 "from", _from_import, "Import standard module operators into the current scope."
             ),
+            Symbol("get"): PureOperator(
+                "get", _get, "Get an item from a collection.", _evaluate_lookup_args
+            ),
+            Symbol("has?"): PureOperator(
+                "has?",
+                _has,
+                "Return true if a collection has a key or member.",
+                _evaluate_lookup_args,
+            ),
             Symbol("lambda"): ScopeOperator("lambda", _lambda, "Create an anonymous function."),
+            Symbol("len"): PureOperator("len", _len, "Return collection length."),
             Symbol("let"): ScopeOperator("let", _let, "Evaluate a body in a local lexical scope."),
+            Symbol("list"): PureOperator("list", _list, "Construct a list.", _evaluate_data_args),
+            Symbol("list?"): PureOperator("list?", _list_predicate, "Return true for lists."),
             Symbol("macro"): MetaOperator(
                 "macro", _macro, "Define a macro that expands unevaluated forms."
             ),
@@ -106,10 +122,16 @@ def module() -> StandardModule:
             Symbol("resume"): EffectOperator(
                 "resume", _special_effect_form, "Resume a captured effect continuation."
             ),
+            Symbol("set"): PureOperator("set", _set, "Construct a set.", _evaluate_data_args),
+            Symbol("set?"): PureOperator("set?", _set_predicate, "Return true for sets."),
             Symbol("spawn"): EffectOperator("spawn", _spawn, "Create an asyncio task."),
             Symbol("handle"): ControlOperator(
                 "handle", _special_effect_form, "Handle effects from an expression."
             ),
+            Symbol("tuple"): PureOperator(
+                "tuple", _tuple, "Construct a tuple.", _evaluate_data_args
+            ),
+            Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "Return true for tuples."),
             Symbol("assert-failed"): EffectDefinition(
                 Symbol("assert-failed"),
                 resumable=False,
@@ -134,6 +156,28 @@ def _ensure_tuple(value: object) -> tuple[object, ...]:
     if not isinstance(value, tuple):
         raise QyTypeError(
             f"expected tuple, got {value!r}",
+            span=get_span(value),
+            metadata={"value": value},
+        )
+    return value
+
+
+def _ensure_sequence(value: object) -> tuple[object, ...] | list[object]:
+    if isinstance(value, list):
+        return cast(list[object], value)
+    if not isinstance(value, tuple):
+        raise QyTypeError(
+            f"expected tuple or list, got {value!r}",
+            span=get_span(value),
+            metadata={"value": value},
+        )
+    return value
+
+
+def _ensure_index(value: object) -> int:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise QyTypeError(
+            f"expected integer index, got {value!r}",
             span=get_span(value),
             metadata={"value": value},
         )
@@ -215,21 +259,173 @@ def _eq(left: object, right: object) -> bool:
 
 
 def _car(value: object) -> object:
-    items = _ensure_tuple(value)
+    items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("car expects a non-empty tuple")
+        raise QyArityError("car expects a non-empty tuple or list")
     return items[0]
 
 
-def _cdr(value: object) -> tuple[object, ...]:
-    items = _ensure_tuple(value)
+def _cdr(value: object) -> tuple[object, ...] | list[object]:
+    items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("cdr expects a non-empty tuple")
+        raise QyArityError("cdr expects a non-empty tuple or list")
+    if isinstance(items, list):
+        return list(items[1:])
     return items[1:]
 
 
-def _cons(head: object, tail: object) -> tuple[object, ...]:
-    return (head, *_ensure_tuple(tail))
+def _cons(head: object, tail: object) -> tuple[object, ...] | list[object]:
+    items = _ensure_sequence(tail)
+    if isinstance(items, list):
+        return [head, *items]
+    return (head, *items)
+
+
+def _tuple(*args: object) -> tuple[object, ...]:
+    return tuple(args)
+
+
+def _list(*args: object) -> list[object]:
+    return list(args)
+
+
+def _dict(*args: object) -> dict[object, object]:
+    if len(args) % 2 != 0:
+        raise QyArityError(
+            f"dict expects key/value pairs, got {len(args)} argument(s)",
+            metadata={"actual": len(args)},
+        )
+    result: dict[object, object] = {}
+    for index in range(0, len(args), 2):
+        key = args[index]
+        value = args[index + 1]
+        try:
+            result[key] = value
+        except TypeError as e:
+            raise QyTypeError(
+                f"dict key must be hashable, got {key!r}",
+                span=get_span(key),
+                cause=e,
+                metadata={"key": key},
+            ) from e
+    return result
+
+
+def _set(*args: object) -> set[object]:
+    result: set[object] = set()
+    for value in args:
+        try:
+            result.add(value)
+        except TypeError as e:
+            raise QyTypeError(
+                f"set item must be hashable, got {value!r}",
+                span=get_span(value),
+                cause=e,
+                metadata={"value": value},
+            ) from e
+    return result
+
+
+def _tuple_predicate(value: object) -> bool:
+    return isinstance(value, tuple)
+
+
+def _list_predicate(value: object) -> bool:
+    return isinstance(value, list)
+
+
+def _dict_predicate(value: object) -> bool:
+    return isinstance(value, dict)
+
+
+def _set_predicate(value: object) -> bool:
+    return isinstance(value, set)
+
+
+def _len(value: object) -> int:
+    if isinstance(value, Symbol):
+        return len(value.name)
+    if isinstance(value, str | tuple | list | dict | set):
+        return len(value)
+    raise QyTypeError(
+        f"len expects a collection, got {value!r}",
+        span=get_span(value),
+        metadata={"value": value},
+    )
+
+
+def _get(collection: object, key: object, *default_values: object) -> object:
+    if len(default_values) > 1:
+        raise QyArityError(
+            f"get expects two or three arguments, got {len(default_values) + 2}",
+            metadata={"expected": "2..3", "actual": len(default_values) + 2},
+        )
+    default = default_values[0] if default_values else None
+    if isinstance(collection, dict):
+        mapping = cast(dict[object, object], collection)
+        try:
+            return mapping[key]
+        except (KeyError, TypeError):
+            return default
+    if isinstance(collection, tuple | list):
+        index = _ensure_index(key)
+        try:
+            return collection[index]
+        except IndexError:
+            return default
+    raise QyTypeError(
+        f"get expects a tuple, list, or dict, got {collection!r}",
+        span=get_span(collection),
+        metadata={"collection": collection},
+    )
+
+
+def _has(*args: object) -> bool:
+    if len(args) != 2:
+        raise QyArityError(
+            f"has? expects exactly two arguments, got {len(args)}",
+            metadata={"expected": 2, "actual": len(args)},
+        )
+    collection, key = args
+    if isinstance(collection, dict):
+        try:
+            return key in collection
+        except TypeError:
+            return False
+    if isinstance(collection, set):
+        try:
+            return key in collection
+        except TypeError:
+            return False
+    if isinstance(collection, tuple | list):
+        index = _ensure_index(key)
+        return -len(collection) <= index < len(collection)
+    raise QyTypeError(
+        f"has? expects a tuple, list, dict, or set, got {collection!r}",
+        span=get_span(collection),
+        metadata={"collection": collection},
+    )
+
+
+async def _evaluate_data_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
+    return tuple([await _evaluate_data_arg(arg, env) for arg in args])
+
+
+async def _evaluate_lookup_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
+    if not args:
+        return ()
+    collection = await evaluate_async(args[0], env)
+    rest = tuple([await _evaluate_data_arg(arg, env) for arg in args[1:]])
+    return (collection, *rest)
+
+
+async def _evaluate_data_arg(expression: object, env: Environment) -> object:
+    try:
+        return await evaluate_async(expression, env)
+    except EvaluationError:
+        if isinstance(expression, Symbol):
+            return expression
+        raise
 
 
 async def _cond(args: tuple[object, ...], env: Environment) -> object:
@@ -653,7 +849,9 @@ def _python_to_qy(value: object) -> object:
         return value
     if isinstance(value, str):
         return Symbol(value)
-    if isinstance(value, list | tuple):
+    if isinstance(value, list):
+        return [_python_to_qy(item) for item in value]
+    if isinstance(value, tuple):
         return tuple(_python_to_qy(item) for item in value)
     if isinstance(value, dict):
         return {_python_to_qy(key): _python_to_qy(item) for key, item in value.items()}

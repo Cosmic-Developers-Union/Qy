@@ -117,6 +117,19 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source('(print "hello")'), [])
         self.assertEqual(type_check_source('(str-upper "hello")'), [])
 
+    def test_core_data_types_are_understood(self):
+        self.assertEqual(type_check_source('(tuple 1 "two" true)'), [])
+        self.assertEqual(type_check_source('(list 1 "two" true)'), [])
+        self.assertEqual(type_check_source('(dict "name" "Qy" "items" (list 1 2))'), [])
+        self.assertEqual(type_check_source('(set "qy" "core")'), [])
+        self.assertEqual(type_check_source('(get (dict "name" "Qy") "name")'), [])
+        self.assertEqual(type_check_source('(has? (set "core") "core")'), [])
+
+    def test_reports_invalid_dict_pairs(self):
+        diagnostics = type_check_source('(dict "name")')
+
+        self.assertTrue(any("dict expects key/value pairs" in item.message for item in diagnostics))
+
     def test_recursive_function_scope_is_understood(self):
         diagnostics = type_check_source("""
         (defun countdown (n)

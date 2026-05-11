@@ -5,6 +5,7 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze
 from qy.analyzer import analyze_source
 from qy.analyzer import type_check_source
+from qy.display import format_value
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
@@ -117,6 +118,7 @@ __all__ = [
     "format_program",
     "format_qy_error",
     "format_source",
+    "format_value",
     "read",
     "read_one",
     "read_one_tuple",

@@ -34,7 +34,19 @@ __all__ = [
 
 Severity = Literal["error", "warning", "hint"]
 TypeName = Literal[
-    "any", "bool", "effect", "function", "nil", "number", "operator", "symbol", "tuple", "unknown"
+    "any",
+    "bool",
+    "dict",
+    "effect",
+    "function",
+    "list",
+    "nil",
+    "number",
+    "operator",
+    "set",
+    "symbol",
+    "tuple",
+    "unknown",
 ]
 OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
 
@@ -167,6 +179,45 @@ def _infer(
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
                 return "tuple"
+            case "tuple":
+                _infer_data_args(args, env, scope, diagnostics)
+                return "tuple"
+            case "list":
+                _infer_data_args(args, env, scope, diagnostics)
+                return "list"
+            case "dict":
+                if len(args) % 2 != 0:
+                    diagnostics.append(Diagnostic("dict expects key/value pairs"))
+                _infer_data_args(args, env, scope, diagnostics)
+                return "dict"
+            case "set":
+                _infer_data_args(args, env, scope, diagnostics)
+                return "set"
+            case "tuple?" | "list?" | "dict?" | "set?":
+                _check_arity(operator.name, args, diagnostics, exact=1)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "bool"
+            case "len":
+                _check_arity(operator.name, args, diagnostics, exact=1)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "number"
+            case "get":
+                if len(args) not in {2, 3}:
+                    diagnostics.append(
+                        Diagnostic(f"get expects two or three arguments, got {len(args)}")
+                    )
+                if args:
+                    _infer(args[0], env, scope, diagnostics)
+                _infer_data_args(args[1:], env, scope, diagnostics)
+                return "any"
+            case "has?":
+                _check_arity(operator.name, args, diagnostics, exact=2)
+                if args:
+                    _infer(args[0], env, scope, diagnostics)
+                _infer_data_args(args[1:], env, scope, diagnostics)
+                return "bool"
             case "py":
                 return _infer_py(args, env, scope, diagnostics)
             case "cache" | "spawn":
@@ -251,6 +302,12 @@ def _literal_type(value: object) -> TypeName:
         return "nil"
     if isinstance(value, tuple):
         return "tuple"
+    if isinstance(value, list):
+        return "list"
+    if isinstance(value, dict):
+        return "dict"
+    if isinstance(value, set):
+        return "set"
     return "any"
 
 
@@ -389,6 +446,32 @@ def _infer_assert(
     if len(args) == 2 and not isinstance(args[1], Symbol):
         _infer(args[1], env, scope, diagnostics)
     return condition_type
+
+
+def _infer_data_args(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> None:
+    for arg in args:
+        _infer_data_arg(arg, env, scope, diagnostics)
+
+
+def _infer_data_arg(
+    arg: object,
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if isinstance(arg, Symbol):
+        if (binding := scope.lookup(arg)) is not None:
+            return binding.type_name
+        try:
+            return _value_type(env.resolve(arg))
+        except EvaluationError:
+            return "symbol"
+    return _infer(arg, env, scope, diagnostics)
 
 
 def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> TypeName:

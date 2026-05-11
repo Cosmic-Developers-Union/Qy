@@ -4,19 +4,16 @@ import sys
 from pathlib import Path
 from typing import Annotated
 from typing import Any
-from typing import cast
 
 from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
+from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
 from qy.reader import ReaderSyntaxError
-from qy.reader import Symbol
-from qy.reader import TupleForm
 from qy.reader import read
-from qy.reader import write_tuple
 from qy.runtime import Qy
 
 INSTALL_CLI_MESSAGE = (
@@ -168,15 +165,6 @@ def repl(qy: Qy) -> int:
                 typer.echo(format_value(qy.evaluate(form)))
         except QyError as e:
             typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
-
-
-def format_value(value: object) -> str:
-    if isinstance(value, Symbol | tuple | int | float | bool) or value is None:
-        try:
-            return write_tuple(cast(TupleForm, value))
-        except TypeError:
-            pass
-    return repr(value)
 
 
 def _check_path(path: Path) -> None:

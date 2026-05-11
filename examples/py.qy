@@ -43,7 +43,7 @@ for i in range(count):
     result.append(i * i)
 return result
 """
-  :count 5))               ; => (0 1 4 9 16)
+  :count 5))               ; => [0 1 4 9 16]
 
 ;; === 异步操作 ===
 ;; py 总是 async，可以使用 await
@@ -68,7 +68,7 @@ for v in values:
 return results
 """
   :values '(1 2 3 4 5)
-  :transform double))      ; => (2 4 6 8 10)
+  :transform double))      ; => [2 4 6 8 10]
 
 ;; === 复杂数据处理 ===
 (print (py
@@ -76,7 +76,7 @@ return results
 return [x for x in items if x > threshold]
 """
   :items '(1 5 3 8 2 7 4 6)
-  :threshold 4))           ; => (5 8 7 6)
+  :threshold 4))           ; => [5 8 7 6]
 
 ;; === 混合 Qy 与 Python ===
 (defun add (a b)

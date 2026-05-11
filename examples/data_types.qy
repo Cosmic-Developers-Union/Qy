@@ -1,0 +1,25 @@
+;; Core data types: tuple, list, dict, set
+
+(let ((xs (list 1 2 3))
+      (point (tuple "x" 10 "y" 20))
+      (tags (set "core" "effect" "host"))
+      (doc (dict "title" "Qy" "version" 1 "scores" (list 10 20 30))))
+  (print xs)
+  (print point)
+  (print (get doc "title"))
+  (print (has? tags "effect"))
+  (py
+    """
+return {
+    "xs": type(xs).__name__,
+    "point": type(point).__name__,
+    "doc": type(doc).__name__,
+    "tags": type(tags).__name__,
+    "total": sum(xs),
+    "title": doc["title"],
+}
+"""
+    :xs xs
+    :point point
+    :doc doc
+    :tags tags))

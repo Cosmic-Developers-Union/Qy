@@ -51,6 +51,17 @@ class TestQyEvaluator(unittest.TestCase):
             "cdr",
             "cons",
             "str-upper",
+            "tuple",
+            "list",
+            "dict",
+            "set",
+            "tuple?",
+            "list?",
+            "dict?",
+            "set?",
+            "len",
+            "get",
+            "has?",
         ]:
             self.assertIsInstance(env.resolve(S(name)), PureOperator)
         for name in ["let", "lambda", "defun", "component", "defeffect", "module", "from"]:
@@ -79,7 +90,7 @@ class TestQyEvaluator(unittest.TestCase):
             assert isinstance(effect, EffectDefinition)
             self.assertFalse(effect.resumable)
 
-        for name in ["set", "set!", "set*", "setq"]:
+        for name in ["set!", "set*", "setq"]:
             with self.assertRaises(EvaluationError):
                 env.resolve(S(name))
 
@@ -101,6 +112,32 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertEqual(evaluate_source("(cdr '(abc def ghi))"), (S("def"), S("ghi")))
         self.assertEqual(evaluate_source("(cons 'abc '(def ghi))"), (S("abc"), S("def"), S("ghi")))
         self.assertEqual(evaluate_source("(cond (false 1) (true (+ 1 2)))"), 3)
+
+    def test_core_data_type_operators(self):
+        self.assertEqual(evaluate_source('(tuple 1 "two" true)'), (1, S("two"), True))
+        self.assertEqual(evaluate_source('(list 1 "two" true)'), [1, S("two"), True])
+        self.assertEqual(
+            evaluate_source('(dict "name" "Qy" "items" (list 1 2))'),
+            {S("name"): S("Qy"), S("items"): [1, 2]},
+        )
+        self.assertEqual(evaluate_source('(set "qy" "core" "qy")'), {S("qy"), S("core")})
+        self.assertTrue(evaluate_source("(tuple? '(a b))"))
+        self.assertTrue(evaluate_source("(list? (list 1 2))"))
+        self.assertTrue(evaluate_source('(dict? (dict "name" "Qy"))'))
+        self.assertTrue(evaluate_source('(set? (set "qy"))'))
+        self.assertEqual(evaluate_source("(len (list 1 2 3))"), 3)
+        self.assertEqual(evaluate_source('(get (dict "name" "Qy") "name")'), S("Qy"))
+        self.assertEqual(evaluate_source('(get (list "a" "b") 1)'), S("b"))
+        self.assertEqual(
+            evaluate_source('(get (dict "name" "Qy") "missing" "fallback")'), S("fallback")
+        )
+        self.assertTrue(evaluate_source('(has? (set "core") "core")'))
+        self.assertTrue(evaluate_source('(has? (list "a" "b") 1)'))
+
+    def test_list_values_work_with_car_cdr_cons(self):
+        self.assertEqual(evaluate_source('(car (list "a" "b"))'), S("a"))
+        self.assertEqual(evaluate_source('(cdr (list "a" "b" "c"))'), [S("b"), S("c")])
+        self.assertEqual(evaluate_source('(cons \'a (list "b" "c"))'), [S("a"), S("b"), S("c")])
 
     def test_eval_evaluates_symbolic_forms(self):
         self.assertEqual(evaluate_source("(eval '(+ 20 22))"), 42)
@@ -494,7 +531,7 @@ return results
             '''
         )
 
-        self.assertEqual(result, (2, 4, 6, 8, 10))
+        self.assertEqual(result, [2, 4, 6, 8, 10])
 
     async def test_py_converts_python_values_back_to_qy_values(self):
         qy = Qy()
@@ -508,7 +545,32 @@ return ["qy", 1, None, {"name": "Qy"}]
             '''
         )
 
-        self.assertEqual(result, (S("qy"), 1, None, {S("name"): S("Qy")}))
+        self.assertEqual(result, [S("qy"), 1, None, {S("name"): S("Qy")}])
+
+    async def test_py_preserves_core_data_types_across_bindings(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return [
+    isinstance(xs, list),
+    isinstance(point, tuple),
+    isinstance(doc, dict),
+    isinstance(tags, set),
+    doc["name"],
+    sorted(tags),
+]
+"""
+              :xs (list 1 2 3)
+              :point (tuple 10 20)
+              :doc (dict "name" "Qy")
+              :tags (set "core" "host"))
+            '''
+        )
+
+        self.assertEqual(result, [True, True, True, True, S("Qy"), [S("core"), S("host")]])
 
     async def test_py_wraps_unknown_python_objects_as_host_refs(self):
         qy = Qy()
