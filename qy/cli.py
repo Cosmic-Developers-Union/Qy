@@ -147,7 +147,7 @@ def create_app() -> Any:
             raise typer.Exit(2) from e
 
     @app.command("lsp")
-    def lsp_command() -> None:
+    def lsp_command(stdio: bool = typer.Option(False, "--stdio", hidden=True)) -> None:
         try:
             from qy.lsp import main as lsp_main
         except ModuleNotFoundError as e:

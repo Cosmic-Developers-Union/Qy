@@ -2,16 +2,16 @@
   "main": "./dist/extension.cjs",
   "module": "index.ts",
   "dependencies": {
-    "@types/vscode": "^1.86.0",
+    "@types/vscode": "^1.118.0",
     "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@vscode/vsce": "^2.23.0",
-    "esbuild": "^0.20.0"
+    "@vscode/vsce": "^2.32.0",
+    "esbuild": "^0.20.2"
   },
   "peerDependencies": {
-    "typescript": "^5.0.0"
+    "typescript": "^5.3.3"
   },
   "type": "module",
   "scripts": {
