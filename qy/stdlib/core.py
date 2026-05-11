@@ -545,7 +545,7 @@ def _qy_to_python(value: object, env: Environment) -> object:
     if _is_qy_callable(value):
         return _wrap_qy_callable(value, env)
     if isinstance(value, Symbol):
-        return value.name
+        return _symbol_to_python(value)
     if isinstance(value, tuple):
         return tuple(_qy_to_python(item, env) for item in value)
     if isinstance(value, list):
@@ -555,6 +555,24 @@ def _qy_to_python(value: object, env: Environment) -> object:
     if isinstance(value, set):
         return {_qy_to_python(item, env) for item in value}
     return value
+
+
+def _symbol_to_python(value: Symbol) -> object:
+    if value.name == "true":
+        return True
+    if value.name == "false":
+        return False
+    if value.name == "nil":
+        return None
+    try:
+        return int(value.name)
+    except ValueError:
+        pass
+    try:
+        return float(value.name)
+    except ValueError:
+        pass
+    return value.name
 
 
 def _python_to_qy(value: object) -> object:

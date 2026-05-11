@@ -456,6 +456,26 @@ return await normalize(doc)
 
         self.assertEqual(result, S("QY"))
 
+    async def test_py_converts_quoted_symbolic_literals_to_python_values(self):
+        qy = Qy()
+        await qy.evaluate_source_async("(defun double (x) (* x 2))")
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+results = []
+for v in values:
+    results.append(await transform(v))
+return results
+"""
+              :values '(1 2 3 4 5)
+              :transform double)
+            '''
+        )
+
+        self.assertEqual(result, (2, 4, 6, 8, 10))
+
     async def test_py_converts_python_values_back_to_qy_values(self):
         qy = Qy()
 
