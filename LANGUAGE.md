@@ -1,20 +1,43 @@
 # Qy 语言草稿
 
-Qy 是一个宿主于 Python 的小型符号语言。
+Qy 是一个嵌入式、动态类型(强类型)、函数式、基于 effect 的 Lisp 方言，运行在 Python async runtime 上.
 
-在当前 form 与数据类型完成后，核心语言视为冻结。后续扩展应发生在库、宿主算子、分析器或运行时策略中，不再新增核心语义。
+## 设计哲学
 
-## 源码
+- 一切皆符号.
+- 简单.
 
-Qy 源码是一组 form。
+## 语法
 
-- `abc` 是 symbol。
-- `"abc"` 也是 symbol，内容为 `abc`。
-- `(f a b)` 是 tuple form，并按调用求值。
-- `'x` 是 `(quote x)` 的语法糖。
-- `;` 开始一行注释。
+Qy 语法基于 S-expression，使用前缀表示法。除此之外, 没有其他任何规则.
 
-Qy 当前没有独立的 string value。文本由 `Symbol` 表示。
+对于单个的文件, 支持多个 S-expression, 以及注释. 例如:
+
+```qy
+; 这是一个注释
+(op ...)
+(op ...)
+```
+
+## 词法
+
+TODO
+
+## Execution Backend 执行后端
+
+Qy 通过 python 完成`执行后端`的设计.
+
+Qy 支持如下特性:
+
+- REPL, 解释执行
+- JIT and AOT 编译
+- 编译为纯 Python 代码
+
+## 求值模型
+
+Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symbol 进行求值时, Qy 首先会在 symbol space (env) 中查找该 symbol 的绑定. 如果找到了, 就返回绑定的值. 如果没有找到, 将会采用求职模型的默认求值规则进行求值. 默认求值规则如下:
+
+- 基本尊重
 
 ## 值
 
@@ -45,7 +68,7 @@ tuple 是不可变符号序列，同时也是源码层面的调用 form。list�
 - `quote` 返回参数本身，不求值。
 - body 按顺序求值所有 form，并返回最后一个值。
 
-普通求值中，未解析 symbol 是错误。部分文本/数据边界算子会把未解析 symbol 保留为 symbol 值，例如 `print`、`str-*`、`py`、`tuple`、`list`、`dict`、`set`。
+普通求值中，未解析 symbol 是错误。部分文本/数据边界算子会把未解析 symbol 保留为 symbol 值，例如 `print`、`str-*`、`py`、 `tuple`、`list`、`dict`、`set`。
 
 如果 symbol 名称已经被绑定，它会解析为该绑定。需要强制得到 symbol 值时使用 `quote`，例如 `'py`。
 
