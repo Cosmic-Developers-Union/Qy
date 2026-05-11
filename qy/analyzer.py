@@ -161,6 +161,8 @@ def _infer(
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
                 return "any"
+            case "assert":
+                return _infer_assert(args, env, scope, diagnostics)
             case "parallel":
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
@@ -372,6 +374,21 @@ def _infer_py(
             continue
         _infer(args[index + 1], env, scope, diagnostics)
     return "any"
+
+
+def _infer_assert(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(args) not in {1, 2}:
+        diagnostics.append(Diagnostic(f"assert expects one or two arguments, got {len(args)}"))
+        return "unknown"
+    condition_type = _infer(args[0], env, scope, diagnostics)
+    if len(args) == 2 and not isinstance(args[1], Symbol):
+        _infer(args[1], env, scope, diagnostics)
+    return condition_type
 
 
 def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> TypeName:

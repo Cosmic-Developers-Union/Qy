@@ -1,0 +1,19 @@
+;; assert operator example
+;; assert succeeds by returning the truthy condition value.
+(print (assert true "boot invariant passed"))
+
+;; assert failure performs the built-in non-resumable assert-failed effect.
+;; Handling it without resume behaves like catch.
+(print
+  (handle
+    (assert false "document title must not be empty")
+    ((assert-failed (err k)
+       (print "assert failed:" err)
+       'debug-assertion-handled))))
+
+;; assert-failed cannot be resumed. Uncommenting resume raises QY_EFFECT_ERROR.
+(handle
+  (assert false "non-resumable assertion")
+  ((assert-failed (err k)
+     ;; (resume k true)
+     'not-resumed)))

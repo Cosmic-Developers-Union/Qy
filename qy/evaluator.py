@@ -426,6 +426,8 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
             return await _evaluate_handle_form(tuple(argument_expressions), env, span)
         if operator_expression.name == "resume":
             return await _evaluate_resume_form(tuple(argument_expressions), env, span)
+        if operator_expression.name == "assert":
+            return await _evaluate_assert_form(tuple(argument_expressions), env, span)
 
     operator_value: object | None = None
     try:
@@ -797,6 +799,77 @@ async def _evaluate_resume_form(
         )
     value = await evaluate_async(args[1], env)
     return await continuation.resume(value)
+
+
+async def _evaluate_assert_form(
+    args: tuple[object, ...], env: Environment, span: SourceSpan | None
+) -> object:
+    if len(args) not in {1, 2}:
+        raise QyArityError(
+            f"assert expects one or two arguments, got {len(args)}",
+            span=span,
+            metadata={"expected": "1..2", "actual": len(args)},
+        )
+    try:
+        condition = await evaluate_async(args[0], env)
+    except QyEffectSignal as e:
+        _compose_effect_continuation(
+            e,
+            lambda resumed: _finish_assert_form(args, env, span, resumed),
+        )
+        raise
+    return await _finish_assert_form(args, env, span, condition)
+
+
+async def _finish_assert_form(
+    args: tuple[object, ...],
+    env: Environment,
+    span: SourceSpan | None,
+    condition: object,
+) -> object:
+    if _truthy(condition):
+        return condition
+
+    if len(args) == 1:
+        message: object = Symbol("assertion failed")
+    else:
+        try:
+            message = await _evaluate_assert_message(args[1], env)
+        except QyEffectSignal as e:
+            _compose_effect_continuation(
+                e,
+                lambda resumed: _raise_assert_failed(resumed, condition, span),
+            )
+            raise
+    return await _raise_assert_failed(message, condition, get_span(args[0]) or span)
+
+
+async def _evaluate_assert_message(expression: object, env: Environment) -> object:
+    if isinstance(expression, Symbol):
+        try:
+            return await evaluate_async(expression, env)
+        except EvaluationError:
+            return expression
+    return await evaluate_async(expression, env)
+
+
+async def _raise_assert_failed(
+    message: object,
+    condition: object,
+    span: SourceSpan | None,
+) -> object:
+    raise QyEffectSignal(
+        "assert-failed",
+        message,
+        _identity_continuation("assert-failed", False),
+        resumable=False,
+        span=span,
+        metadata={"condition": condition},
+    )
+
+
+def _truthy(value: object) -> bool:
+    return value not in (False, None, ())
 
 
 def _parse_effect_handlers(

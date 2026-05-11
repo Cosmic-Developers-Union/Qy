@@ -55,6 +55,9 @@ def module() -> StandardModule:
             Symbol("-"): PureOperator("-", _sub, "Subtract numbers, or negate one number."),
             Symbol("*"): PureOperator("*", _mul, "Multiply numbers."),
             Symbol("/"): PureOperator("/", _div, "Divide numbers, or invert one number."),
+            Symbol("assert"): EffectOperator(
+                "assert", _special_effect_form, "Assert a debug invariant."
+            ),
             Symbol("await"): EffectOperator("await", _await, "Await spawned async work."),
             Symbol("atom"): PureOperator(
                 "atom", _atom, "Return true if the value is not a non-empty list."
@@ -106,6 +109,11 @@ def module() -> StandardModule:
             Symbol("spawn"): EffectOperator("spawn", _spawn, "Create an asyncio task."),
             Symbol("handle"): ControlOperator(
                 "handle", _special_effect_form, "Handle effects from an expression."
+            ),
+            Symbol("assert-failed"): EffectDefinition(
+                Symbol("assert-failed"),
+                resumable=False,
+                doc="Debug assertion failure raised by assert.",
             ),
             Symbol("python-error"): EffectDefinition(
                 Symbol("python-error"),

@@ -14,6 +14,7 @@ from qy.errors import QyResolveError
 from qy.errors import format_qy_error
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
+from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
@@ -59,6 +60,7 @@ class TestQyEvaluator(unittest.TestCase):
         for name in [
             "print",
             "echo",
+            "assert",
             "parallel",
             "cache",
             "spawn",
@@ -70,6 +72,12 @@ class TestQyEvaluator(unittest.TestCase):
             self.assertIsInstance(env.resolve(S(name)), EffectOperator)
         for name in ["quote", "eval", "macro"]:
             self.assertIsInstance(env.resolve(S(name)), MetaOperator)
+
+        for name in ["assert-failed", "python-error"]:
+            effect = env.resolve(S(name))
+            self.assertIsInstance(effect, EffectDefinition)
+            assert isinstance(effect, EffectDefinition)
+            self.assertFalse(effect.resumable)
 
         for name in ["set", "set!", "set*", "setq"]:
             with self.assertRaises(EvaluationError):
@@ -631,6 +639,65 @@ raise ValueError("bad")
         )
 
         self.assertEqual(result, 42)
+
+    async def test_assert_returns_truthy_condition(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async('(assert true "ready")')
+
+        self.assertTrue(result)
+
+    async def test_assert_failure_raises_non_resumable_effect(self):
+        qy = Qy()
+
+        with self.assertRaises(QyEffectSignal) as raised:
+            await qy.evaluate_source_async('(assert false "missing title")')
+
+        error = raised.exception
+        self.assertEqual(error.effect, "assert-failed")
+        self.assertEqual(error.arg, S("missing title"))
+        self.assertFalse(error.resumable)
+        self.assertIsNotNone(error.span)
+
+    async def test_handle_can_catch_assert_failure_without_resume(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            """
+            (handle
+              (assert false "missing title")
+              ((assert-failed (err k) 'debugged)))
+            """
+        )
+
+        self.assertEqual(result, S("debugged"))
+
+    async def test_resume_rejects_non_resumable_assert_failure(self):
+        qy = Qy()
+
+        with self.assertRaisesRegex(QyEffectError, "not resumable"):
+            await qy.evaluate_source_async(
+                """
+                (handle
+                  (assert false "missing title")
+                  ((assert-failed (err k) (resume k true))))
+                """
+            )
+
+    async def test_resume_continues_into_assert_condition(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            """
+            (let ()
+              (defeffect ask)
+              (handle
+                (assert (perform ask nil) "missing title")
+                ((ask (arg k) (resume k true)))))
+            """
+        )
+
+        self.assertTrue(result)
 
     async def test_parallel_raises_aggregate_error(self):
         qy = Qy()

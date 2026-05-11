@@ -50,6 +50,7 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source("(parallel (+ 1 2) (+ 3 4))"), [])
         self.assertEqual(type_check_source("(cache (+ 1 2))"), [])
         self.assertEqual(type_check_source("(await (spawn (+ 1 2)))"), [])
+        self.assertEqual(type_check_source('(assert true "ready")'), [])
         self.assertEqual(type_check_source('(py "return a + b" :a 1 :b (+ 2 3))'), [])
         self.assertEqual(
             type_check_source(
@@ -59,6 +60,16 @@ class TestQyAnalyzer(unittest.TestCase):
                   (handle
                     (+ 1 (perform ask 41))
                     ((ask (arg k) (resume k arg)))))
+                """
+            ),
+            [],
+        )
+        self.assertEqual(
+            type_check_source(
+                """
+                (handle
+                  (assert false "missing title")
+                  ((assert-failed (err k) 'debugged)))
                 """
             ),
             [],
