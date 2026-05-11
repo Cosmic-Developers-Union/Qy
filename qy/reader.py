@@ -7,16 +7,23 @@ import json
 import math
 from collections.abc import Iterable
 from dataclasses import dataclass
+from dataclasses import field
 
 import lark
+
+from qy.errors import QySyntaxError
+from qy.errors import SourceSpan
 
 __all__ = [
     "GRAMMAR",
     "Form",
     "ReaderSyntaxError",
+    "SourceSpan",
+    "SpannedTuple",
     "Symbol",
     "TupleForm",
     "form_to_tuple",
+    "get_span",
     "read",
     "read_one",
     "read_one_tuple",
@@ -32,9 +39,17 @@ __all__ = [
 @dataclass(frozen=True, slots=True)
 class Symbol:
     name: str
+    span: SourceSpan | None = field(default=None, compare=False, repr=False)
 
     def __str__(self) -> str:
         return self.name
+
+
+class SpannedTuple(tuple):
+    def __new__(cls, items: Iterable[object] = (), span: SourceSpan | None = None) -> SpannedTuple:
+        value = super().__new__(cls, items)
+        value.span = span
+        return value
 
 
 type Form = Symbol | tuple["Form", ...]
@@ -74,64 +89,99 @@ COMMENT: /;[^\n]*/
 %ignore COMMENT
 '''
 
-_parser = lark.Lark(GRAMMAR, parser="lalr", maybe_placeholders=False)
+_parser = lark.Lark(
+    GRAMMAR,
+    parser="lalr",
+    maybe_placeholders=False,
+    propagate_positions=True,
+)
 
 
-class ReaderSyntaxError(Exception):
+class ReaderSyntaxError(QySyntaxError):
     def __init__(
         self,
         message: str,
         *,
         line: int | None = None,
         column: int | None = None,
+        span: SourceSpan | None = None,
     ) -> None:
-        super().__init__(message)
-        self.line = line
-        self.column = column
+        super().__init__(message, span=span or _span_from_line_column(line, column))
 
 
-@lark.v_args(inline=True)
+@lark.v_args(inline=True, meta=True)
 class _ReaderTransformer(lark.Transformer):
-    def program(self, *forms: Form) -> list[Form]:
+    def __init__(self, source_name: str | None = None) -> None:
+        super().__init__()
+        self.source_name = source_name
+
+    def program(self, meta: lark.tree.Meta, *forms: Form) -> list[Form]:
+        del meta
         return list(forms)
 
-    def quote(self, form: Form) -> Form:
-        return (Symbol("quote"), form)
+    def quote(self, meta: lark.tree.Meta, form: Form) -> Form:
+        span = self._span(meta)
+        return SpannedTuple((Symbol("quote", span), form), span)
 
-    def list_expr(self, *forms: Form) -> Form:
-        return forms
+    def list_expr(self, meta: lark.tree.Meta, *forms: Form) -> Form:
+        return SpannedTuple(forms, self._span(meta))
 
-    def bare_symbol(self, token: lark.Token) -> Symbol:
-        return Symbol(str(token))
+    def bare_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
+        del meta
+        return Symbol(str(token), self._token_span(token))
 
-    def quoted_symbol(self, token: lark.Token) -> Symbol:
-        return Symbol(_decode_quoted_symbol(str(token)))
+    def quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
+        del meta
+        span = self._token_span(token)
+        return Symbol(_decode_quoted_symbol(str(token), span), span)
 
-    def raw_quoted_symbol(self, token: lark.Token) -> Symbol:
-        return Symbol(str(token)[2:-1])
+    def raw_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
+        del meta
+        return Symbol(str(token)[2:-1], self._token_span(token))
 
-    def multiline_symbol(self, token: lark.Token) -> Symbol:
-        return Symbol(_decode_quoted_symbol(str(token)))
+    def multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
+        del meta
+        span = self._token_span(token)
+        return Symbol(_decode_quoted_symbol(str(token), span), span)
 
-    def raw_multiline_symbol(self, token: lark.Token) -> Symbol:
-        return Symbol(str(token)[4:-3])
+    def raw_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
+        del meta
+        return Symbol(str(token)[4:-3], self._token_span(token))
+
+    def _span(self, meta: lark.tree.Meta) -> SourceSpan:
+        return SourceSpan(
+            self.source_name,
+            meta.line,
+            meta.column,
+            meta.end_line,
+            meta.end_column,
+        )
+
+    def _token_span(self, token: lark.Token) -> SourceSpan:
+        return SourceSpan(
+            self.source_name,
+            token.line,
+            token.column,
+            token.end_line,
+            token.end_column,
+        )
 
 
-_transformer = _ReaderTransformer()
-
-
-def read(source: str) -> list[Form]:
+def read(source: str, *, source_name: str | None = None) -> list[Form]:
     try:
         tree = _parser.parse(source)
-        return _transformer.transform(tree)
+        return _ReaderTransformer(source_name).transform(tree)
     except lark.UnexpectedInput as e:
-        raise ReaderSyntaxError(str(e), line=e.line, column=e.column) from e
+        raise ReaderSyntaxError(
+            str(e),
+            span=SourceSpan(source_name, e.line, e.column, e.line, e.column),
+        ) from e
     except (lark.LarkError, SyntaxError, ValueError) as e:
         raise ReaderSyntaxError(str(e)) from e
 
 
-def read_one(source: str) -> Form:
-    forms = read(source)
+def read_one(source: str, *, source_name: str | None = None) -> Form:
+    forms = read(source, source_name=source_name)
     if len(forms) != 1:
         raise ReaderSyntaxError(f"expected exactly one form, got {len(forms)}")
     return forms[0]
@@ -185,11 +235,26 @@ def write_tuple_program(forms: Iterable[TupleForm]) -> str:
     return "\n".join(write_tuple(form) for form in forms)
 
 
-def _decode_quoted_symbol(token: str) -> str:
-    value = ast.literal_eval(token)
+def get_span(value: object) -> SourceSpan | None:
+    if isinstance(value, Symbol):
+        return value.span
+    return getattr(value, "span", None)
+
+
+def _decode_quoted_symbol(token: str, span: SourceSpan | None = None) -> str:
+    try:
+        value = ast.literal_eval(token)
+    except (SyntaxError, ValueError) as e:
+        raise ReaderSyntaxError(str(e), span=span) from e
     if not isinstance(value, str):
-        raise ReaderSyntaxError(f"expected quoted symbol, got {token}")
+        raise ReaderSyntaxError(f"expected quoted symbol, got {token}", span=span)
     return value
+
+
+def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan | None:
+    if line is None and column is None:
+        return None
+    return SourceSpan(None, line, column, line, column)
 
 
 def _encode_symbol(name: str) -> str:

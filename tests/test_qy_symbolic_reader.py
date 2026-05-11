@@ -3,6 +3,7 @@ import unittest
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import form_to_tuple
+from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
 from qy.reader import read_one_tuple
@@ -103,6 +104,19 @@ class TestQySymbolicReader(unittest.TestCase):
                 S(";not comment"),
             ],
         )
+
+    def test_forms_keep_source_spans(self):
+        form = read_one("(+ 1\n 2)")
+        assert isinstance(form, tuple)
+        form_span = get_span(form)
+        last_item_span = get_span(form[2])
+
+        assert form_span is not None
+        assert last_item_span is not None
+        self.assertEqual(form_span.line, 1)
+        self.assertEqual(form_span.column, 1)
+        self.assertEqual(last_item_span.line, 2)
+        self.assertEqual(last_item_span.column, 2)
 
     def test_read_one_requires_exactly_one_form(self):
         with self.assertRaises(ReaderSyntaxError):

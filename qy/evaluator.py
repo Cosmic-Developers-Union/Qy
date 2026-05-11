@@ -13,7 +13,17 @@ from pathlib import Path
 from typing import Literal
 from typing import cast
 
+from qy.errors import EvaluationError
+from qy.errors import QyArityError
+from qy.errors import QyCancelledError
+from qy.errors import QyError
+from qy.errors import QyResolveError
+from qy.errors import QyRuntimeError
+from qy.errors import QyTypeError
+from qy.errors import SourceSpan
+from qy.errors import TraceFrame
 from qy.reader import Symbol
+from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
 
@@ -24,6 +34,7 @@ __all__ = [
     "Environment",
     "EvaluationError",
     "EvaluationOperator",
+    "HostObjectRef",
     "MacroDefinition",
     "MetaOperator",
     "PureOperator",
@@ -133,8 +144,14 @@ class UserFunction:
 
     async def __call__(self, *args: object) -> object:
         if len(args) != len(self.params):
-            raise EvaluationError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
+            raise QyArityError(
+                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
+                span=self.name.span,
+                metadata={
+                    "expected": len(self.params),
+                    "actual": len(args),
+                    "function": self.name.name,
+                },
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
         return await evaluate_body_async(self.body, local_env)
@@ -149,8 +166,14 @@ class ComponentDefinition:
 
     async def __call__(self, *args: object) -> object:
         if len(args) != len(self.params):
-            raise EvaluationError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
+            raise QyArityError(
+                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
+                span=self.name.span,
+                metadata={
+                    "expected": len(self.params),
+                    "actual": len(args),
+                    "component": self.name.name,
+                },
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
         return await evaluate_body_async(self.body, local_env)
@@ -165,15 +188,22 @@ class MacroDefinition:
 
     async def expand(self, args: tuple[object, ...]) -> object:
         if len(args) != len(self.params):
-            raise EvaluationError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
+            raise QyArityError(
+                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
+                span=self.name.span,
+                metadata={
+                    "expected": len(self.params),
+                    "actual": len(args),
+                    "macro": self.name.name,
+                },
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
         return await evaluate_body_async(self.body, local_env)
 
 
-class EvaluationError(Exception):
-    pass
+@dataclass(frozen=True, slots=True, eq=False)
+class HostObjectRef:
+    value: object
 
 
 class Environment:
@@ -358,45 +388,84 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
         return env.resolve(expression)
     if not isinstance(expression, tuple):
         return expression
+    span = get_span(expression)
     if not expression:
-        raise EvaluationError("cannot evaluate empty expression")
+        raise QyRuntimeError("cannot evaluate empty expression", span=span)
 
     operator_expression, *argument_expressions = expression
-    operator_value = await evaluate_async(operator_expression, env)
+    operator_value: object | None = None
+    try:
+        operator_value = await evaluate_async(operator_expression, env)
 
-    if isinstance(operator_value, MetaOperator):
-        return await _await_if_needed(operator_value(expression, env))
-    if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
-        return await _await_if_needed(operator_value(tuple(argument_expressions), env))
-    if isinstance(operator_value, MacroDefinition):
-        expanded = await operator_value.expand(tuple(argument_expressions))
-        return await evaluate_async(expanded, env)
-    if isinstance(operator_value, PureOperator):
-        arguments = await _evaluate_pure_arguments_async(
-            operator_value, tuple(argument_expressions), env
+        if isinstance(operator_value, MetaOperator):
+            return await _await_if_needed(operator_value(expression, env))
+        if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
+            return await _await_if_needed(operator_value(tuple(argument_expressions), env))
+        if isinstance(operator_value, MacroDefinition):
+            expanded = await operator_value.expand(tuple(argument_expressions))
+            return await evaluate_async(expanded, env)
+        if isinstance(operator_value, PureOperator):
+            arguments = await _evaluate_pure_arguments_async(
+                operator_value, tuple(argument_expressions), env
+            )
+            return await _await_if_needed(operator_value(*arguments))
+        if isinstance(operator_value, UserFunction | ComponentDefinition):
+            arguments = [await evaluate_async(argument, env) for argument in argument_expressions]
+            return await _await_if_needed(operator_value(*arguments))
+        raise QyTypeError(
+            f"{operator_expression!r} resolved to non-callable {operator_value!r}",
+            span=get_span(operator_expression) or span,
+            metadata={"operator": operator_value},
         )
-        return await _await_if_needed(operator_value(*arguments))
-    if isinstance(operator_value, UserFunction | ComponentDefinition):
-        arguments = [await evaluate_async(argument, env) for argument in argument_expressions]
-        return await _await_if_needed(operator_value(*arguments))
-    raise EvaluationError(f"{operator_expression!r} resolved to non-callable {operator_value!r}")
+    except QyError as e:
+        e.set_span_if_missing(span)
+        e.add_frame(_trace_frame(operator_expression, operator_value, span))
+        raise
+    except asyncio.CancelledError as e:
+        qy_error = QyCancelledError(
+            "evaluation cancelled",
+            span=span,
+            cause=e,
+        )
+        qy_error.add_frame(_trace_frame(operator_expression, operator_value, span))
+        raise qy_error from e
+    except Exception as e:
+        qy_error = QyRuntimeError(
+            str(e),
+            span=span,
+            cause=e,
+            metadata={"python_exception": type(e).__name__},
+        )
+        qy_error.add_frame(_trace_frame(operator_expression, operator_value, span))
+        raise qy_error from e
 
 
-def evaluate_source(source: str, env: Environment | None = None) -> object:
-    return run_async(evaluate_source_async(source, env))
+def evaluate_source(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> object:
+    return run_async(evaluate_source_async(source, env, source_name=source_name))
 
 
-async def evaluate_source_async(source: str, env: Environment | None = None) -> object:
-    return await evaluate_async(read_one(source), env)
+async def evaluate_source_async(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> object:
+    return await evaluate_async(read_one(source, source_name=source_name), env)
 
 
-def evaluate_program(source: str, env: Environment | None = None) -> list[object]:
-    return cast(list[object], run_async(evaluate_program_async(source, env)))
+def evaluate_program(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> list[object]:
+    return cast(
+        list[object],
+        run_async(evaluate_program_async(source, env, source_name=source_name)),
+    )
 
 
-async def evaluate_program_async(source: str, env: Environment | None = None) -> list[object]:
+async def evaluate_program_async(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> list[object]:
     env = env or standard_environment()
-    return [await evaluate_async(form, env) for form in read(source)]
+    return [await evaluate_async(form, env) for form in read(source, source_name=source_name)]
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
@@ -404,8 +473,9 @@ def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
 
 
 async def evaluate_file_async(path: str | Path, env: Environment | None = None) -> object:
-    source = Path(path).read_text(encoding="utf-8")
-    results = await evaluate_program_async(source, env)
+    path = Path(path)
+    source = path.read_text(encoding="utf-8")
+    results = await evaluate_program_async(source, env, source_name=str(path))
     if not results:
         return None
     return results[-1]
@@ -426,7 +496,11 @@ def _resolve_builtin_literal(symbol: Symbol) -> object:
         return float(symbol.name)
     except ValueError:
         pass
-    raise EvaluationError(f"unresolved symbol {symbol.name!r}")
+    raise QyResolveError(
+        f"unresolved symbol {symbol.name!r}",
+        span=symbol.span,
+        metadata={"symbol": symbol.name},
+    )
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
@@ -435,7 +509,7 @@ def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
 
 async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:
     if not body:
-        raise EvaluationError("body must contain at least one expression")
+        raise QyArityError("body must contain at least one expression")
     result = None
     for expression in body:
         result = await evaluate_async(expression, env)
@@ -444,7 +518,11 @@ async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> obj
 
 def ensure_symbol(value: object, context: str) -> Symbol:
     if not isinstance(value, Symbol):
-        raise EvaluationError(f"{context} must be a symbol, got {value!r}")
+        raise QyTypeError(
+            f"{context} must be a symbol, got {value!r}",
+            span=get_span(value),
+            metadata={"context": context, "value": value},
+        )
     return value
 
 
@@ -456,8 +534,9 @@ async def _evaluate_pure_arguments_async(
     if operator.argument_evaluator is not None:
         arguments = await _await_if_needed(operator.argument_evaluator(argument_expressions, env))
         if not isinstance(arguments, tuple):
-            raise EvaluationError(
-                f"{operator.name} argument evaluator must return a tuple, got {arguments!r}"
+            raise QyTypeError(
+                f"{operator.name} argument evaluator must return a tuple, got {arguments!r}",
+                metadata={"operator": operator.name, "value": arguments},
             )
         return arguments
     return tuple([await evaluate_async(argument, env) for argument in argument_expressions])
@@ -467,6 +546,29 @@ async def _await_if_needed(value: object) -> object:
     if inspect.iscoroutine(value):
         return await value
     return value
+
+
+def _trace_frame(
+    operator_expression: object,
+    operator_value: object | None,
+    span: SourceSpan | None,
+) -> TraceFrame:
+    if isinstance(operator_value, ComponentDefinition):
+        return TraceFrame("component", operator_value.name.name, get_span(operator_expression))
+    if isinstance(operator_value, UserFunction):
+        name = None if operator_value.name.name == "<lambda>" else operator_value.name.name
+        kind = "lambda" if name is None else "call"
+        return TraceFrame(kind, name, get_span(operator_expression))
+    if isinstance(operator_value, MacroDefinition):
+        return TraceFrame("macro", operator_value.name.name, get_span(operator_expression))
+    if isinstance(
+        operator_value,
+        PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator,
+    ):
+        return TraceFrame("operator", operator_value.name, get_span(operator_expression))
+    if isinstance(operator_expression, Symbol):
+        return TraceFrame("call", operator_expression.name, get_span(operator_expression))
+    return TraceFrame("call", None, span)
 
 
 def run_async(awaitable: object) -> object:

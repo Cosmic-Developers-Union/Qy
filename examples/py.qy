@@ -1,0 +1,93 @@
+;; py 算子示例
+;; py 是 Qy 的宿主转义算子，用于嵌入 Python 代码
+;; 语法：(py <body-string> :param1 value1 :param2 value2 ...)
+
+;; === 基础用法：算术 ===
+;; 关键字参数 :a 1 :b 2 映射为 Python 函数参数 a=1, b=2
+(print (py
+  """
+return a + b
+"""
+  :a 1
+  :b 2))                  ; => 3
+
+;; === 字符串操作 ===
+(print (py
+  """
+return name.upper()
+"""
+  :name "qy"))             ; => "QY"
+
+;; === 使用 Python 标准库 ===
+(print (py
+  """
+import math
+return math.sqrt(n)
+"""
+  :n 144))                 ; => 12.0
+
+;; === JSON 处理 ===
+(print (py
+  """
+import json
+data = json.loads(raw)
+return data.get("lang", "unknown")
+"""
+  :raw "{\"lang\": \"Qy\", \"ver\": \"0.1\"}"))  ; => "Qy"
+
+;; === 多行逻辑 ===
+(print (py
+  """
+result = []
+for i in range(count):
+    result.append(i * i)
+return result
+"""
+  :count 5))               ; => (0 1 4 9 16)
+
+;; === 异步操作 ===
+;; py 总是 async，可以使用 await
+(print (py
+  """
+import asyncio
+await asyncio.sleep(0)
+return "async done"
+"""
+  ))
+
+;; === Qy 算子作为参数传入 ===
+;; Qy callable 在 Python 中表现为 async function
+(defun double (x)
+  (* x 2))
+(print (py
+  """
+results = []
+for v in values:
+    r = await transform(v)
+    results.append(r)
+return results
+"""
+  :values '(1 2 3 4 5)
+  :transform double))      ; => (2 4 6 8 10)
+
+;; === 复杂数据处理 ===
+(print (py
+  """
+return [x for x in items if x > threshold]
+"""
+  :items '(1 5 3 8 2 7 4 6)
+  :threshold 4))           ; => (5 8 7 6)
+
+;; === 混合 Qy 与 Python ===
+(defun add (a b)
+  (+ a b))
+
+(let ((x 10)
+      (y 20))
+  (print (py
+    """
+total = a + b
+return f"sum = {total}"
+"""
+    :a x
+    :b y)))                ; => "sum = 30"

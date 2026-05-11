@@ -6,11 +6,16 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import cast
 
+from qy.errors import QyAggregateError
+from qy.errors import QyPythonError
+from qy.errors import QyResolveError
+from qy.errors import format_qy_error
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import HostObjectRef
 from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
@@ -49,7 +54,7 @@ class TestQyEvaluator(unittest.TestCase):
             self.assertIsInstance(env.resolve(S(name)), ScopeOperator)
         for name in ["cond"]:
             self.assertIsInstance(env.resolve(S(name)), ControlOperator)
-        for name in ["print", "echo", "parallel", "cache", "spawn", "await"]:
+        for name in ["print", "echo", "parallel", "cache", "spawn", "await", "py"]:
             self.assertIsInstance(env.resolve(S(name)), EffectOperator)
         for name in ["quote", "eval", "macro"]:
             self.assertIsInstance(env.resolve(S(name)), MetaOperator)
@@ -114,6 +119,19 @@ class TestQyEvaluator(unittest.TestCase):
     def test_environment_binding_overrides_builtin_literal(self):
         env = Environment({S("1"): 10}, standard_environment())
         self.assertEqual(evaluate((S("+"), S("1"), S("2")), env), 12)
+
+    def test_unresolved_symbol_errors_include_code_span_and_qy_stack(self):
+        with self.assertRaises(QyResolveError) as raised:
+            evaluate_source("(+ missing 1)")
+
+        error = raised.exception
+        self.assertEqual(error.code, "QY_UNBOUND_SYMBOL")
+        self.assertIsNotNone(error.span)
+        assert error.span is not None
+        self.assertEqual(error.span.line, 1)
+        self.assertEqual(error.span.column, 4)
+        self.assertTrue(error.frames)
+        self.assertIn("Qy stack:", format_qy_error(error))
 
     def test_let_introduces_scope(self):
         self.assertEqual(evaluate_source("(let ((x 10) (y 20)) (+ x y))"), 30)
@@ -371,6 +389,145 @@ class TestQyAsyncEvaluator(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await qy.evaluate_source_async("(cache (counted 21))"), 42)
         self.assertEqual(await qy.evaluate_source_async("(cache (counted 21))"), 42)
         self.assertEqual(calls, [21])
+
+    async def test_py_runs_async_python_with_keyword_bindings(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return a + b
+"""
+              :a 20
+              :b 22)
+            '''
+        )
+
+        self.assertEqual(result, 42)
+
+    async def test_py_converts_hyphenated_keywords_to_python_identifiers(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return user_name.upper()
+"""
+              :user-name "qy")
+            '''
+        )
+
+        self.assertEqual(result, S("QY"))
+
+    async def test_py_supports_await_and_awaits_returned_coroutines(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+async def later():
+    await asyncio.sleep(0)
+    return value * 2
+return later()
+"""
+              :value 21)
+            '''
+        )
+
+        self.assertEqual(result, 42)
+
+    async def test_py_wraps_qy_callables_as_async_python_functions(self):
+        qy = Qy()
+        await qy.evaluate_source_async("(defun normalize-doc (doc) (str-upper doc))")
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return await normalize(doc)
+"""
+              :doc "qy"
+              :normalize normalize-doc)
+            '''
+        )
+
+        self.assertEqual(result, S("QY"))
+
+    async def test_py_converts_python_values_back_to_qy_values(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return ["qy", 1, None, {"name": "Qy"}]
+""")
+            '''
+        )
+
+        self.assertEqual(result, (S("qy"), 1, None, {S("name"): S("Qy")}))
+
+    async def test_py_wraps_unknown_python_objects_as_host_refs(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (py
+              """
+return object()
+""")
+            '''
+        )
+
+        self.assertIsInstance(result, HostObjectRef)
+
+    async def test_py_rejects_invalid_python_parameter_names(self):
+        qy = Qy()
+
+        with self.assertRaisesRegex(EvaluationError, "valid Python identifier"):
+            await qy.evaluate_source_async(
+                '''
+                (py
+                  """
+return invalid_name
+"""
+                  :invalid-name? 1)
+                '''
+            )
+
+    async def test_py_wraps_native_python_exceptions(self):
+        qy = Qy()
+
+        with self.assertRaises(QyPythonError) as raised:
+            await qy.evaluate_source_async(
+                '''
+                (py
+                  """
+raise ValueError("bad")
+""")
+                '''
+            )
+
+        error = raised.exception
+        self.assertIsInstance(error.cause, ValueError)
+        formatted = format_qy_error(error, debug=True)
+        self.assertIn("QY_PYTHON_ERROR", formatted)
+        self.assertIn("Python stack:", formatted)
+        self.assertIn("ValueError: bad", formatted)
+
+    async def test_parallel_raises_aggregate_error(self):
+        qy = Qy()
+
+        with self.assertRaises(QyAggregateError) as raised:
+            await qy.evaluate_source_async("(parallel missing absent)")
+
+        error = raised.exception
+        self.assertEqual(error.code, "QY_AGGREGATE_ERROR")
+        self.assertEqual(len(error.errors), 2)
+        self.assertTrue(all(item.code == "QY_UNBOUND_SYMBOL" for item in error.errors))
 
 
 if __name__ == "__main__":

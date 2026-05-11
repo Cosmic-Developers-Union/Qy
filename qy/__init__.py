@@ -5,11 +5,27 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze
 from qy.analyzer import analyze_source
 from qy.analyzer import type_check_source
+from qy.errors import QyAggregateError
+from qy.errors import QyArityError
+from qy.errors import QyCancelledError
+from qy.errors import QyCapabilityError
+from qy.errors import QyEffectError
+from qy.errors import QyError
+from qy.errors import QyPythonError
+from qy.errors import QyResolveError
+from qy.errors import QyRuntimeError
+from qy.errors import QySyntaxError
+from qy.errors import QyTimeoutError
+from qy.errors import QyTypeError
+from qy.errors import SourceSpan
+from qy.errors import TraceFrame
+from qy.errors import format_qy_error
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import HostObjectRef
 from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
@@ -55,13 +71,28 @@ __all__ = [
     "Environment",
     "EvaluationError",
     "Form",
+    "HostObjectRef",
     "MacroDefinition",
     "MetaOperator",
     "PureOperator",
     "Qy",
+    "QyAggregateError",
+    "QyArityError",
+    "QyCancelledError",
+    "QyCapabilityError",
+    "QyEffectError",
+    "QyError",
+    "QyPythonError",
+    "QyResolveError",
+    "QyRuntimeError",
+    "QySyntaxError",
+    "QyTimeoutError",
+    "QyTypeError",
     "ReaderSyntaxError",
     "ScopeOperator",
+    "SourceSpan",
     "Symbol",
+    "TraceFrame",
     "TupleForm",
     "analyze",
     "analyze_source",
@@ -78,6 +109,7 @@ __all__ = [
     "form_to_tuple",
     "format_form",
     "format_program",
+    "format_qy_error",
     "format_source",
     "read",
     "read_one",

@@ -153,6 +153,8 @@ def _infer(
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
                 return "tuple"
+            case "py":
+                return _infer_py(args, env, scope, diagnostics)
             case "cache" | "spawn":
                 _check_arity(operator.name, args, diagnostics, exact=1)
                 for arg in args:
@@ -323,6 +325,30 @@ def _infer_cond(
         _infer(condition, env, scope, diagnostics)
         result_type = _infer(result, env, scope, diagnostics)
     return result_type
+
+
+def _infer_py(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if not args:
+        diagnostics.append(Diagnostic("py expects Python source and optional keyword arguments"))
+        return "unknown"
+    if len(args[1:]) % 2 != 0:
+        diagnostics.append(Diagnostic("py keyword arguments must be :name value pairs"))
+        return "any"
+
+    for index in range(1, len(args), 2):
+        keyword_name = args[index]
+        if not isinstance(keyword_name, Symbol) or not keyword_name.name.startswith(":"):
+            diagnostics.append(
+                Diagnostic(f"py keyword name must be a :keyword symbol, got {keyword_name!r}")
+            )
+            continue
+        _infer(args[index + 1], env, scope, diagnostics)
+    return "any"
 
 
 def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> TypeName:

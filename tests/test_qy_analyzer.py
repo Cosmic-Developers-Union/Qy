@@ -50,6 +50,7 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source("(parallel (+ 1 2) (+ 3 4))"), [])
         self.assertEqual(type_check_source("(cache (+ 1 2))"), [])
         self.assertEqual(type_check_source("(await (spawn (+ 1 2)))"), [])
+        self.assertEqual(type_check_source('(py "return a + b" :a 1 :b (+ 2 3))'), [])
 
     def test_meta_operators_are_understood(self):
         self.assertEqual(type_check_source("(eval '(+ 1 2))"), [])

@@ -8,7 +8,8 @@ from typing import cast
 
 from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
-from qy.evaluator import EvaluationError
+from qy.errors import QyError
+from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
 from qy.reader import ReaderSyntaxError
@@ -74,7 +75,11 @@ def create_app() -> Any:
     def run_command(
         path: Annotated[Path, typer.Argument(help="Qy source file to evaluate.")],
     ) -> None:
-        typer.echo(format_value(Qy().evaluate_file(path)))
+        try:
+            typer.echo(format_value(Qy().evaluate_file(path)))
+        except QyError as e:
+            typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from e
 
     @app.command("repl")
     def repl_command() -> None:
@@ -161,8 +166,8 @@ def repl(qy: Qy) -> int:
         try:
             for form in read(source):
                 typer.echo(format_value(qy.evaluate(form)))
-        except (EvaluationError, ReaderSyntaxError) as e:
-            typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+        except QyError as e:
+            typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
 
 
 def format_value(value: object) -> str:

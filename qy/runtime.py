@@ -35,20 +35,26 @@ class Qy:
     async def evaluate_async(self, expression: object) -> object:
         return await evaluate_async(expression, self.env)
 
-    def evaluate_source(self, source: str) -> object:
-        return self.evaluate(read_one(source))
+    def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
+        return self.evaluate(read_one(source, source_name=source_name))
 
-    async def evaluate_source_async(self, source: str) -> object:
-        return await self.evaluate_async(read_one(source))
+    async def evaluate_source_async(self, source: str, *, source_name: str | None = None) -> object:
+        return await self.evaluate_async(read_one(source, source_name=source_name))
 
-    def evaluate_program(self, source: str) -> list[object]:
-        return [self.evaluate(form) for form in read(source)]
+    def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
+        return [self.evaluate(form) for form in read(source, source_name=source_name)]
 
-    async def evaluate_program_async(self, source: str) -> list[object]:
-        return await evaluate_program_async(source, self.env)
+    async def evaluate_program_async(
+        self, source: str, *, source_name: str | None = None
+    ) -> list[object]:
+        return await evaluate_program_async(source, self.env, source_name=source_name)
 
     def evaluate_file(self, path: str | Path) -> object:
-        results = self.evaluate_program(Path(path).read_text(encoding="utf-8"))
+        path = Path(path)
+        results = self.evaluate_program(
+            path.read_text(encoding="utf-8"),
+            source_name=str(path),
+        )
         if not results:
             return None
         return results[-1]
