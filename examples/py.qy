@@ -84,10 +84,10 @@ return [x for x in items if x > threshold]
 
 (let ((x 10)
       (y 20))
-  (print (py
+  (py
     """
 total = a + b
 return f"sum = {total}"
 """
     :a x
-    :b y)))                ; => "sum = 30"
+    :b y))                 ; => "sum = 30"

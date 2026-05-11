@@ -7,6 +7,8 @@ from tempfile import TemporaryDirectory
 from typing import cast
 
 from qy.errors import QyAggregateError
+from qy.errors import QyEffectError
+from qy.errors import QyEffectSignal
 from qy.errors import QyPythonError
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
@@ -50,11 +52,21 @@ class TestQyEvaluator(unittest.TestCase):
             "str-upper",
         ]:
             self.assertIsInstance(env.resolve(S(name)), PureOperator)
-        for name in ["let", "lambda", "defun", "component", "module", "from"]:
+        for name in ["let", "lambda", "defun", "component", "defeffect", "module", "from"]:
             self.assertIsInstance(env.resolve(S(name)), ScopeOperator)
-        for name in ["cond"]:
+        for name in ["cond", "handle"]:
             self.assertIsInstance(env.resolve(S(name)), ControlOperator)
-        for name in ["print", "echo", "parallel", "cache", "spawn", "await", "py"]:
+        for name in [
+            "print",
+            "echo",
+            "parallel",
+            "cache",
+            "spawn",
+            "await",
+            "perform",
+            "py",
+            "resume",
+        ]:
             self.assertIsInstance(env.resolve(S(name)), EffectOperator)
         for name in ["quote", "eval", "macro"]:
             self.assertIsInstance(env.resolve(S(name)), MetaOperator)
@@ -518,10 +530,10 @@ return invalid_name
                 '''
             )
 
-    async def test_py_wraps_native_python_exceptions(self):
+    async def test_py_native_python_exceptions_escape_as_unhandled_effect(self):
         qy = Qy()
 
-        with self.assertRaises(QyPythonError) as raised:
+        with self.assertRaises(QyEffectSignal) as raised:
             await qy.evaluate_source_async(
                 '''
                 (py
@@ -532,11 +544,93 @@ raise ValueError("bad")
             )
 
         error = raised.exception
-        self.assertIsInstance(error.cause, ValueError)
+        self.assertEqual(error.effect, "python-error")
+        self.assertIsInstance(error.cause, QyPythonError)
+        assert isinstance(error.cause, QyPythonError)
+        self.assertIsInstance(error.cause.cause, ValueError)
         formatted = format_qy_error(error, debug=True)
-        self.assertIn("QY_PYTHON_ERROR", formatted)
+        self.assertIn("QY_UNHANDLED_EFFECT", formatted)
+        self.assertIn("effect: python-error", formatted)
         self.assertIn("Python stack:", formatted)
         self.assertIn("ValueError: bad", formatted)
+
+    async def test_handle_can_catch_python_error_without_resume(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            '''
+            (handle
+              (py
+                """
+raise ValueError("bad")
+""")
+              ((python-error (err k) 'recovered)))
+            '''
+        )
+
+        self.assertEqual(result, S("recovered"))
+
+    async def test_resume_rejects_non_resumable_python_error(self):
+        qy = Qy()
+
+        with self.assertRaisesRegex(QyEffectError, "not resumable"):
+            await qy.evaluate_source_async(
+                '''
+                (handle
+                  (py
+                    """
+raise ValueError("bad")
+""")
+                  ((python-error (err k) (resume k 'ignored))))
+                '''
+            )
+
+    async def test_perform_handle_resume_resumable_effect(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            """
+            (let ()
+              (defeffect ask)
+              (handle
+                (+ 1 (perform ask 41))
+                ((ask (arg k) (resume k arg)))))
+            """
+        )
+
+        self.assertEqual(result, 42)
+
+    async def test_handle_without_resume_behaves_like_catch(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            """
+            (let ()
+              (defeffect fail)
+              (handle
+                (+ 1 (perform fail 41))
+                ((fail (arg k) arg))))
+            """
+        )
+
+        self.assertEqual(result, 41)
+
+    async def test_resume_continues_body_after_perform(self):
+        qy = Qy()
+
+        result = await qy.evaluate_source_async(
+            """
+            (let ()
+              (defeffect ask)
+              (handle
+                (let ()
+                  (perform ask 1)
+                  42)
+                ((ask (arg k) (resume k arg)))))
+            """
+        )
+
+        self.assertEqual(result, 42)
 
     async def test_parallel_raises_aggregate_error(self):
         qy = Qy()

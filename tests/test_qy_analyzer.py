@@ -51,6 +51,23 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source("(cache (+ 1 2))"), [])
         self.assertEqual(type_check_source("(await (spawn (+ 1 2)))"), [])
         self.assertEqual(type_check_source('(py "return a + b" :a 1 :b (+ 2 3))'), [])
+        self.assertEqual(
+            type_check_source(
+                """
+                (let ()
+                  (defeffect ask)
+                  (handle
+                    (+ 1 (perform ask 41))
+                    ((ask (arg k) (resume k arg)))))
+                """
+            ),
+            [],
+        )
+
+    def test_reports_undeclared_perform_effect(self):
+        diagnostics = type_check_source("(perform ask 41)")
+
+        self.assertTrue(any("effect 'ask' is not declared" in item.message for item in diagnostics))
 
     def test_meta_operators_are_understood(self):
         self.assertEqual(type_check_source("(eval '(+ 1 2))"), [])

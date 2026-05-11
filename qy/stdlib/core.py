@@ -17,12 +17,14 @@ from typing import cast
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
+from qy.errors import QyEffectSignal
 from qy.errors import QyError
 from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
+from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
@@ -30,6 +32,7 @@ from qy.evaluator import HostObjectRef
 from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
+from qy.evaluator import QyContinuation
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import ensure_symbol
@@ -68,6 +71,9 @@ def module() -> StandardModule:
             Symbol("component"): ScopeOperator(
                 "component", _component, "Define a reusable component in the current scope."
             ),
+            Symbol("defeffect"): ScopeOperator(
+                "defeffect", _defeffect, "Declare an effect for perform/handle analysis."
+            ),
             Symbol("defun"): ScopeOperator(
                 "defun", _defun, "Define a function in the current environment."
             ),
@@ -85,13 +91,27 @@ def module() -> StandardModule:
             Symbol("parallel"): EffectOperator(
                 "parallel", _parallel, "Evaluate expressions concurrently with asyncio tasks."
             ),
+            Symbol("perform"): EffectOperator(
+                "perform", _special_effect_form, "Perform an effect."
+            ),
             Symbol("py"): EffectOperator(
                 "py", _py, "Execute embedded async Python with keyword-bound values."
             ),
             Symbol("quote"): MetaOperator(
                 "quote", _quote, "Return one expression without evaluating it."
             ),
+            Symbol("resume"): EffectOperator(
+                "resume", _special_effect_form, "Resume a captured effect continuation."
+            ),
             Symbol("spawn"): EffectOperator("spawn", _spawn, "Create an asyncio task."),
+            Symbol("handle"): ControlOperator(
+                "handle", _special_effect_form, "Handle effects from an expression."
+            ),
+            Symbol("python-error"): EffectDefinition(
+                Symbol("python-error"),
+                resumable=False,
+                doc="Python exception raised across the py host boundary.",
+            ),
         },
     )
 
@@ -276,6 +296,41 @@ def _component(args: tuple[object, ...], env: Environment) -> object:
     return env.define(name, component)
 
 
+def _defeffect(args: tuple[object, ...], env: Environment) -> object:
+    if not args:
+        raise QyArityError("defeffect expects an effect name")
+
+    name, *options = args
+    name = ensure_symbol(name, "defeffect name")
+    resumable = _parse_defeffect_resumable(tuple(options))
+    effect = EffectDefinition(name, resumable=resumable)
+    return env.define(name, effect)
+
+
+def _parse_defeffect_resumable(options: tuple[object, ...]) -> bool:
+    if not options:
+        return True
+    if len(options) != 2 or options[0] != Symbol(":resumable"):
+        raise QyTypeError(
+            "defeffect options must be empty or :resumable true|false",
+            span=get_span(options[0]) if options else None,
+        )
+    value = options[1]
+    if value == Symbol("true"):
+        return True
+    if value == Symbol("false"):
+        return False
+    raise QyTypeError(
+        f"defeffect :resumable expects true or false, got {value!r}",
+        span=get_span(value),
+    )
+
+
+def _special_effect_form(args: tuple[object, ...], env: Environment) -> object:
+    del args, env
+    raise QyRuntimeError("effect special forms are handled by the evaluator")
+
+
 async def _module(args: tuple[object, ...], env: Environment) -> object:
     if not args:
         raise QyArityError("module expects a name and body")
@@ -402,11 +457,19 @@ async def _py(args: tuple[object, ...], env: Environment) -> object:
     except asyncio.CancelledError as e:
         raise QyCancelledError("py execution cancelled", span=get_span(args[0]), cause=e) from e
     except Exception as e:
-        raise QyPythonError(
+        python_error = QyPythonError(
             f"Python error in py: {e}",
             span=get_span(args[0]),
             cause=e,
             metadata={"python_exception": type(e).__name__},
+        )
+        raise QyEffectSignal(
+            "python-error",
+            python_error,
+            _non_resumable_python_continuation(),
+            resumable=False,
+            span=get_span(args[0]),
+            cause=python_error,
         ) from e
 
 
@@ -707,3 +770,10 @@ def _exception_to_qy_error(error: BaseException) -> QyError:
         cause=error,
         metadata={"python_exception": type(error).__name__},
     )
+
+
+def _non_resumable_python_continuation() -> QyContinuation:
+    async def resume(value: object) -> object:
+        return value
+
+    return QyContinuation("python-error", False, resume)

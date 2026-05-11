@@ -10,6 +10,7 @@ from qy.errors import QyArityError
 from qy.errors import QyCancelledError
 from qy.errors import QyCapabilityError
 from qy.errors import QyEffectError
+from qy.errors import QyEffectSignal
 from qy.errors import QyError
 from qy.errors import QyPythonError
 from qy.errors import QyResolveError
@@ -22,6 +23,7 @@ from qy.errors import TraceFrame
 from qy.errors import format_qy_error
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
+from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
@@ -29,6 +31,7 @@ from qy.evaluator import HostObjectRef
 from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
+from qy.evaluator import QyContinuation
 from qy.evaluator import ScopeOperator
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_async
@@ -67,6 +70,7 @@ __all__ = [
     "ComponentDefinition",
     "ControlOperator",
     "Diagnostic",
+    "EffectDefinition",
     "EffectOperator",
     "Environment",
     "EvaluationError",
@@ -80,7 +84,9 @@ __all__ = [
     "QyArityError",
     "QyCancelledError",
     "QyCapabilityError",
+    "QyContinuation",
     "QyEffectError",
+    "QyEffectSignal",
     "QyError",
     "QyPythonError",
     "QyResolveError",

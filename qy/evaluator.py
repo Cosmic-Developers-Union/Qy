@@ -16,6 +16,8 @@ from typing import cast
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
+from qy.errors import QyEffectError
+from qy.errors import QyEffectSignal
 from qy.errors import QyError
 from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
@@ -30,6 +32,7 @@ from qy.reader import read_one
 __all__ = [
     "ComponentDefinition",
     "ControlOperator",
+    "EffectDefinition",
     "EffectOperator",
     "Environment",
     "EvaluationError",
@@ -38,6 +41,7 @@ __all__ = [
     "MacroDefinition",
     "MetaOperator",
     "PureOperator",
+    "QyContinuation",
     "ScopeOperator",
     "SyntaxOperator",
     "UserFunction",
@@ -133,6 +137,28 @@ class MetaOperator:
 
 EvaluationOperator = ControlOperator
 SyntaxOperator = MetaOperator
+
+
+@dataclass(frozen=True, slots=True)
+class EffectDefinition:
+    name: Symbol
+    resumable: bool = True
+    doc: str = ""
+
+
+@dataclass(slots=True)
+class QyContinuation:
+    effect: str
+    resumable: bool
+    _resume: Callable[[object], object]
+
+    async def resume(self, value: object) -> object:
+        if not self.resumable:
+            raise QyEffectError(
+                f"effect {self.effect!r} is not resumable",
+                metadata={"effect": self.effect, "value": value},
+            )
+        return await _await_if_needed(self._resume(value))
 
 
 @dataclass(frozen=True, slots=True)
@@ -393,30 +419,42 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
         raise QyRuntimeError("cannot evaluate empty expression", span=span)
 
     operator_expression, *argument_expressions = expression
+    if isinstance(operator_expression, Symbol):
+        if operator_expression.name == "perform":
+            return await _evaluate_perform_form(tuple(argument_expressions), env, span)
+        if operator_expression.name == "handle":
+            return await _evaluate_handle_form(tuple(argument_expressions), env, span)
+        if operator_expression.name == "resume":
+            return await _evaluate_resume_form(tuple(argument_expressions), env, span)
+
     operator_value: object | None = None
     try:
-        operator_value = await evaluate_async(operator_expression, env)
-
-        if isinstance(operator_value, MetaOperator):
-            return await _await_if_needed(operator_value(expression, env))
-        if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
-            return await _await_if_needed(operator_value(tuple(argument_expressions), env))
-        if isinstance(operator_value, MacroDefinition):
-            expanded = await operator_value.expand(tuple(argument_expressions))
-            return await evaluate_async(expanded, env)
-        if isinstance(operator_value, PureOperator):
-            arguments = await _evaluate_pure_arguments_async(
-                operator_value, tuple(argument_expressions), env
+        try:
+            operator_value = await evaluate_async(operator_expression, env)
+        except QyEffectSignal as e:
+            _compose_effect_continuation(
+                e,
+                lambda resumed_operator: _apply_operator(
+                    operator_expression,
+                    resumed_operator,
+                    tuple(argument_expressions),
+                    env,
+                    span,
+                ),
             )
-            return await _await_if_needed(operator_value(*arguments))
-        if isinstance(operator_value, UserFunction | ComponentDefinition):
-            arguments = [await evaluate_async(argument, env) for argument in argument_expressions]
-            return await _await_if_needed(operator_value(*arguments))
-        raise QyTypeError(
-            f"{operator_expression!r} resolved to non-callable {operator_value!r}",
-            span=get_span(operator_expression) or span,
-            metadata={"operator": operator_value},
+            raise
+
+        return await _apply_operator(
+            operator_expression,
+            operator_value,
+            tuple(argument_expressions),
+            env,
+            span,
         )
+    except QyEffectSignal as e:
+        e.set_span_if_missing(span)
+        e.add_frame(_trace_frame(operator_expression, operator_value, span))
+        raise
     except QyError as e:
         e.set_span_if_missing(span)
         e.add_frame(_trace_frame(operator_expression, operator_value, span))
@@ -510,10 +548,41 @@ def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
 async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:
     if not body:
         raise QyArityError("body must contain at least one expression")
+    return await _evaluate_body_from(body, 0, env)
+
+
+async def _evaluate_body_from(
+    body: tuple[object, ...],
+    index: int,
+    env: Environment,
+) -> object:
     result = None
-    for expression in body:
-        result = await evaluate_async(expression, env)
+    for current in range(index, len(body)):
+        try:
+            result = await evaluate_async(body[current], env)
+        except QyEffectSignal as e:
+            _compose_effect_continuation(
+                e,
+                lambda resumed, next_index=current + 1: _continue_body_after_resume(
+                    body,
+                    next_index,
+                    resumed,
+                    env,
+                ),
+            )
+            raise
     return result
+
+
+async def _continue_body_after_resume(
+    body: tuple[object, ...],
+    index: int,
+    resumed: object,
+    env: Environment,
+) -> object:
+    if index >= len(body):
+        return resumed
+    return await _evaluate_body_from(body, index, env)
 
 
 def ensure_symbol(value: object, context: str) -> Symbol:
@@ -546,6 +615,275 @@ async def _await_if_needed(value: object) -> object:
     if inspect.iscoroutine(value):
         return await value
     return value
+
+
+async def _apply_operator(
+    operator_expression: object,
+    operator_value: object,
+    argument_expressions: tuple[object, ...],
+    env: Environment,
+    span: SourceSpan | None,
+) -> object:
+    if isinstance(operator_value, MetaOperator):
+        return await _await_if_needed(
+            operator_value((operator_expression, *argument_expressions), env)
+        )
+    if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
+        return await _await_if_needed(operator_value(argument_expressions, env))
+    if isinstance(operator_value, MacroDefinition):
+        try:
+            expanded = await operator_value.expand(argument_expressions)
+        except QyEffectSignal as e:
+            _compose_effect_continuation(e, lambda expanded: evaluate_async(expanded, env))
+            raise
+        return await evaluate_async(expanded, env)
+    if isinstance(operator_value, PureOperator):
+        if operator_value.argument_evaluator is not None:
+            try:
+                arguments = await _evaluate_pure_arguments_async(
+                    operator_value, argument_expressions, env
+                )
+            except QyEffectSignal as e:
+                _compose_effect_continuation(
+                    e,
+                    lambda arguments: _await_if_needed(
+                        operator_value(*cast(tuple[object, ...], arguments))
+                    ),
+                )
+                raise
+            return await _await_if_needed(operator_value(*arguments))
+        return await _evaluate_values(
+            argument_expressions,
+            env,
+            lambda arguments: _await_if_needed(operator_value(*arguments)),
+        )
+    if isinstance(operator_value, UserFunction | ComponentDefinition):
+        return await _evaluate_values(
+            argument_expressions,
+            env,
+            lambda arguments: _await_if_needed(operator_value(*arguments)),
+        )
+    raise QyTypeError(
+        f"{operator_expression!r} resolved to non-callable {operator_value!r}",
+        span=get_span(operator_expression) or span,
+        metadata={"operator": operator_value},
+    )
+
+
+async def _evaluate_values(
+    expressions: tuple[object, ...],
+    env: Environment,
+    then: Callable[[tuple[object, ...]], object],
+) -> object:
+    return await _evaluate_values_from(expressions, 0, (), env, then)
+
+
+async def _evaluate_values_from(
+    expressions: tuple[object, ...],
+    index: int,
+    values: tuple[object, ...],
+    env: Environment,
+    then: Callable[[tuple[object, ...]], object],
+) -> object:
+    if index >= len(expressions):
+        return await _await_if_needed(then(values))
+    try:
+        value = await evaluate_async(expressions[index], env)
+    except QyEffectSignal as e:
+        _compose_effect_continuation(
+            e,
+            lambda resumed: _evaluate_values_from(
+                expressions,
+                index + 1,
+                (*values, resumed),
+                env,
+                then,
+            ),
+        )
+        raise
+    return await _evaluate_values_from(expressions, index + 1, (*values, value), env, then)
+
+
+async def _evaluate_perform_form(
+    args: tuple[object, ...], env: Environment, span: SourceSpan | None
+) -> object:
+    if len(args) != 2:
+        raise QyArityError(
+            f"perform expects exactly two arguments, got {len(args)}",
+            span=span,
+            metadata={"expected": 2, "actual": len(args)},
+        )
+    effect_name = _effect_name(args[0])
+    definition = _resolve_effect_definition(effect_name, env, span)
+    try:
+        arg = await evaluate_async(args[1], env)
+    except QyEffectSignal as e:
+        _compose_effect_continuation(
+            e,
+            lambda resumed: _raise_effect_signal(effect_name, resumed, definition.resumable, span),
+        )
+        raise
+    return await _raise_effect_signal(effect_name, arg, definition.resumable, span)
+
+
+async def _raise_effect_signal(
+    effect_name: str,
+    arg: object,
+    resumable: bool,
+    span: SourceSpan | None,
+) -> object:
+    raise QyEffectSignal(
+        effect_name,
+        arg,
+        _identity_continuation(effect_name, resumable),
+        resumable=resumable,
+        span=span,
+    )
+
+
+async def _evaluate_handle_form(
+    args: tuple[object, ...], env: Environment, span: SourceSpan | None
+) -> object:
+    if len(args) != 2:
+        raise QyArityError(
+            f"handle expects exactly two arguments, got {len(args)}",
+            span=span,
+            metadata={"expected": 2, "actual": len(args)},
+        )
+    expr, handler_form = args
+    handlers = _parse_effect_handlers(handler_form)
+    try:
+        return await evaluate_async(expr, env)
+    except QyEffectSignal as e:
+        return await _handle_effect_signal(e, handlers, env)
+
+
+async def _handle_effect_signal(
+    signal: QyEffectSignal,
+    handlers: Mapping[str, tuple[Symbol, Symbol, tuple[object, ...]]],
+    env: Environment,
+) -> object:
+    try:
+        arg_name, continuation_name, body = handlers[signal.effect]
+    except KeyError:
+        raise signal from None
+    local_env = env.child(
+        {
+            arg_name: signal.arg,
+            continuation_name: signal.continuation,
+        }
+    )
+    try:
+        return await evaluate_body_async(body, local_env)
+    except QyEffectSignal as nested:
+        return await _handle_effect_signal(nested, handlers, env)
+
+
+async def _evaluate_resume_form(
+    args: tuple[object, ...], env: Environment, span: SourceSpan | None
+) -> object:
+    if len(args) != 2:
+        raise QyArityError(
+            f"resume expects exactly two arguments, got {len(args)}",
+            span=span,
+            metadata={"expected": 2, "actual": len(args)},
+        )
+    continuation = await evaluate_async(args[0], env)
+    if not isinstance(continuation, QyContinuation):
+        raise QyTypeError(
+            f"resume expects a continuation, got {continuation!r}",
+            span=get_span(args[0]) or span,
+            metadata={"value": continuation},
+        )
+    value = await evaluate_async(args[1], env)
+    return await continuation.resume(value)
+
+
+def _parse_effect_handlers(
+    handler_form: object,
+) -> dict[str, tuple[Symbol, Symbol, tuple[object, ...]]]:
+    if not isinstance(handler_form, tuple):
+        raise QyTypeError(
+            f"handle clauses must be a tuple, got {handler_form!r}",
+            span=get_span(handler_form),
+        )
+    handlers: dict[str, tuple[Symbol, Symbol, tuple[object, ...]]] = {}
+    for clause in handler_form:
+        if not isinstance(clause, tuple) or len(clause) < 3:
+            raise QyTypeError(
+                f"handle clause must be (effect (arg k) body...), got {clause!r}",
+                span=get_span(clause),
+            )
+        effect, params, *body = clause
+        effect_name = _effect_name(effect)
+        if not isinstance(params, tuple) or len(params) != 2:
+            raise QyTypeError(
+                f"handle clause parameters must be (arg k), got {params!r}",
+                span=get_span(params),
+            )
+        arg_name, continuation_name = params
+        if not isinstance(arg_name, Symbol) or not isinstance(continuation_name, Symbol):
+            raise QyTypeError(
+                f"handle clause parameters must be symbols, got {params!r}",
+                span=get_span(params),
+            )
+        if not body:
+            raise QyArityError("handle clause body must contain at least one expression")
+        handlers[effect_name] = (arg_name, continuation_name, tuple(body))
+    return handlers
+
+
+def _effect_name(value: object) -> str:
+    if not isinstance(value, Symbol):
+        raise QyTypeError(
+            f"effect name must be a symbol, got {value!r}",
+            span=get_span(value),
+            metadata={"value": value},
+        )
+    return value.name
+
+
+def _resolve_effect_definition(
+    effect_name: str, env: Environment, span: SourceSpan | None
+) -> EffectDefinition:
+    try:
+        value = env.resolve(Symbol(effect_name))
+    except QyError as e:
+        raise QyEffectError(
+            f"effect {effect_name!r} is not declared; use defeffect before perform",
+            span=span,
+            cause=e,
+            metadata={"effect": effect_name},
+        ) from e
+    if not isinstance(value, EffectDefinition):
+        raise QyTypeError(
+            f"{effect_name!r} is not an effect definition",
+            span=span,
+            metadata={"effect": effect_name, "value": value},
+        )
+    return value
+
+
+def _identity_continuation(effect_name: str, resumable: bool) -> QyContinuation:
+    async def resume(value: object) -> object:
+        return value
+
+    return QyContinuation(effect_name, resumable, resume)
+
+
+def _compose_effect_continuation(
+    signal: QyEffectSignal,
+    then: Callable[[object], object],
+) -> None:
+    previous = signal.continuation
+    if not isinstance(previous, QyContinuation):
+        return
+
+    async def resume(value: object) -> object:
+        previous_result = await previous.resume(value)
+        return await _await_if_needed(then(previous_result))
+
+    signal.continuation = QyContinuation(signal.effect, previous.resumable, resume)
 
 
 def _trace_frame(

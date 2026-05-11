@@ -7,6 +7,7 @@ from typing import Literal
 
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
+from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
@@ -33,7 +34,7 @@ __all__ = [
 
 Severity = Literal["error", "warning", "hint"]
 TypeName = Literal[
-    "any", "bool", "function", "nil", "number", "operator", "symbol", "tuple", "unknown"
+    "any", "bool", "effect", "function", "nil", "number", "operator", "symbol", "tuple", "unknown"
 ]
 OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
 
@@ -145,10 +146,21 @@ def _infer(
                 return _infer_defun(form, env, scope, diagnostics)
             case "component":
                 return _infer_component(form, env, scope, diagnostics)
+            case "defeffect":
+                return _infer_defeffect(form, diagnostics)
             case "module":
                 return _infer_module(form, env, scope, diagnostics)
             case "from":
                 return _infer_from(form, diagnostics)
+            case "perform":
+                return _infer_perform(args, env, scope, diagnostics)
+            case "handle":
+                return _infer_handle(args, env, scope, diagnostics)
+            case "resume":
+                _check_arity(operator.name, args, diagnostics, exact=2)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "any"
             case "parallel":
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
@@ -249,6 +261,8 @@ def _value_type(value: object) -> TypeName:
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"
+    if isinstance(value, EffectDefinition):
+        return "effect"
     return _literal_type(value)
 
 
@@ -292,6 +306,15 @@ def _operator_kind_for_value(value: object) -> OperatorKind | None:
 
 def _value_uses_eager_arguments(value: object) -> bool:
     return isinstance(value, PureOperator) and value.argument_evaluator is None
+
+
+def _effect_is_declared(effect: Symbol, env: Environment, scope: _Scope) -> bool:
+    if (binding := scope.lookup(effect)) is not None:
+        return binding.type_name == "effect"
+    try:
+        return isinstance(env.resolve(effect), EffectDefinition)
+    except EvaluationError:
+        return False
 
 
 def _infer_numeric_call(
@@ -469,6 +492,25 @@ def _infer_component(
     return "function"
 
 
+def _infer_defeffect(
+    form: tuple[object, ...],
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(form) < 2:
+        diagnostics.append(Diagnostic("defeffect expects an effect name"))
+        return "unknown"
+    _, name, *options = form
+    if not isinstance(name, Symbol):
+        diagnostics.append(Diagnostic(f"defeffect name must be a symbol, got {name!r}"))
+    if options and (
+        len(options) != 2
+        or options[0] != Symbol(":resumable")
+        or options[1] not in {Symbol("true"), Symbol("false")}
+    ):
+        diagnostics.append(Diagnostic("defeffect options must be empty or :resumable true|false"))
+    return "effect"
+
+
 def _infer_macro(
     form: tuple[object, ...],
     env: Environment,
@@ -490,6 +532,61 @@ def _infer_macro(
     macro_scope = _scope_with_parameters(params, macro_scope, diagnostics, "macro")
     _infer_body(tuple(body), env, macro_scope, diagnostics)
     return "operator"
+
+
+def _infer_perform(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    _check_arity("perform", args, diagnostics, exact=2)
+    if len(args) < 2:
+        return "unknown"
+    effect, arg = args
+    if not isinstance(effect, Symbol):
+        diagnostics.append(Diagnostic(f"perform effect name must be a symbol, got {effect!r}"))
+    elif not _effect_is_declared(effect, env, scope):
+        diagnostics.append(
+            Diagnostic(f"effect {effect.name!r} is not declared; add defeffect before perform")
+        )
+    _infer(arg, env, scope, diagnostics)
+    return "any"
+
+
+def _infer_handle(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    _check_arity("handle", args, diagnostics, exact=2)
+    if len(args) < 2:
+        return "unknown"
+    expr, handler_form = args
+    result_type = _infer(expr, env, scope, diagnostics)
+    if not isinstance(handler_form, tuple):
+        diagnostics.append(Diagnostic(f"handle clauses must be a list, got {handler_form!r}"))
+        return result_type
+    for clause in handler_form:
+        if not isinstance(clause, tuple) or len(clause) < 3:
+            diagnostics.append(
+                Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
+            )
+            continue
+        effect, params, *body = clause
+        if isinstance(effect, Symbol):
+            if not _effect_is_declared(effect, env, scope):
+                diagnostics.append(
+                    Diagnostic(
+                        f"effect {effect.name!r} is not declared; add defeffect before handle"
+                    )
+                )
+        else:
+            diagnostics.append(Diagnostic(f"handle effect name must be a symbol, got {effect!r}"))
+        handler_scope = _scope_with_parameters(params, scope, diagnostics, "handle")
+        result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
+    return result_type
 
 
 def _infer_module(
@@ -547,6 +644,8 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         and isinstance(form[1], Symbol)
     ):
         return scope.define(form[1], "function")
+    if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
+        return scope.define(form[1], "effect")
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
         return scope.define(form[1], "operator", operator_kind="meta", eager_arguments=False)
     if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):

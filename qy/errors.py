@@ -13,6 +13,7 @@ __all__ = [
     "QyCancelledError",
     "QyCapabilityError",
     "QyEffectError",
+    "QyEffectSignal",
     "QyError",
     "QyPythonError",
     "QyResolveError",
@@ -130,6 +131,37 @@ class QyEffectError(EvaluationError):
     default_code = "QY_EFFECT_ERROR"
 
 
+class QyEffectSignal(QyEffectError):
+    default_code = "QY_UNHANDLED_EFFECT"
+
+    def __init__(
+        self,
+        effect: str,
+        arg: object,
+        continuation: object,
+        *,
+        resumable: bool = True,
+        span: SourceSpan | None = None,
+        cause: BaseException | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            f"unhandled effect {effect!r}",
+            span=span,
+            cause=cause,
+            metadata={
+                "effect": effect,
+                "arg": arg,
+                "resumable": resumable,
+                **dict(metadata or {}),
+            },
+        )
+        self.effect = effect
+        self.arg = arg
+        self.continuation = continuation
+        self.resumable = resumable
+
+
 class QyRuntimeError(EvaluationError):
     default_code = "QY_RUNTIME_ERROR"
 
@@ -171,6 +203,8 @@ class QyAggregateError(EvaluationError):
 
 def format_qy_error(error: QyError, *, debug: bool = False) -> str:
     lines = [f"{error.code}: {error.message}"]
+    if isinstance(error, QyEffectSignal):
+        lines.append(f"effect: {error.effect}")
     if error.span is not None:
         lines.append(f"span: {error.span.format()}")
     if error.frames:
@@ -180,9 +214,16 @@ def format_qy_error(error: QyError, *, debug: bool = False) -> str:
         lines.append("Errors:")
         for index, item in enumerate(error.errors, start=1):
             lines.append(f"  {index}. {item.code}: {item.message}")
-    if debug and isinstance(error, QyPythonError) and error.cause is not None:
+    python_error = error
+    if isinstance(error, QyEffectSignal) and isinstance(error.cause, QyPythonError):
+        python_error = error.cause
+    if debug and isinstance(python_error, QyPythonError) and python_error.cause is not None:
         lines.append("Python stack:")
         lines.extend(
-            traceback.format_exception(type(error.cause), error.cause, error.cause.__traceback__)
+            traceback.format_exception(
+                type(python_error.cause),
+                python_error.cause,
+                python_error.cause.__traceback__,
+            )
         )
     return "\n".join(line.rstrip("\n") for line in lines)
