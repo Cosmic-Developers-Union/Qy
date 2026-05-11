@@ -8,14 +8,18 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field
+from typing import cast
 
 import lark
 
 from qy.errors import QySyntaxError
 from qy.errors import SourceSpan
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
 
 __all__ = [
     "GRAMMAR",
+    "DottedTuple",
     "Form",
     "ReaderSyntaxError",
     "SourceSpan",
@@ -46,8 +50,26 @@ class Symbol:
 
 
 class SpannedTuple(tuple):
+    span: SourceSpan | None
+
     def __new__(cls, items: Iterable[object] = (), span: SourceSpan | None = None) -> SpannedTuple:
         value = super().__new__(cls, items)
+        value.span = span
+        return value
+
+
+class DottedTuple(tuple):
+    tail: object
+    span: SourceSpan | None
+
+    def __new__(
+        cls,
+        items: Iterable[object] = (),
+        tail: object = None,
+        span: SourceSpan | None = None,
+    ) -> DottedTuple:
+        value = super().__new__(cls, items)
+        value.tail = tail
         value.span = span
         return value
 
@@ -68,7 +90,7 @@ program: form*
 
 quote: "'" form
 
-list: "(" form* ")" -> list_expr
+list: "(" form* (DOT form)? ")" -> list_expr
 
 ?atom: RAW_MULTILINE_SYMBOL -> raw_multiline_symbol
     | TAGGED_MULTILINE_SYMBOL -> tagged_multiline_symbol
@@ -84,6 +106,7 @@ MULTILINE_SYMBOL.10: /(?s:""".*?""")/
 RAW_QUOTED_SYMBOL.9: /[rR]"[^"]*"/
 TAGGED_QUOTED_SYMBOL.8: /[^()\s"';]+"(?:\\.|[^"\\])*"/
 QUOTED_SYMBOL.7: /"(?:\\.|[^"\\])*"/
+DOT.13: "."
 BARE_SYMBOL: /[^()\s"';]+/
 
 COMMENT: /;[^\n]*/
@@ -127,8 +150,16 @@ class _ReaderTransformer(lark.Transformer):
         span = self._span(meta)
         return SpannedTuple((Symbol("quote", span), form), span)
 
-    def list_expr(self, meta: lark.tree.Meta, *forms: Form) -> Form:
-        return SpannedTuple(forms, self._span(meta))
+    def list_expr(self, meta: lark.tree.Meta, *items: object) -> Form:
+        span = self._span(meta)
+        dot_index = _dot_index(items)
+        if dot_index is None:
+            return SpannedTuple(items, span)
+        if dot_index == 0:
+            raise ReaderSyntaxError("dotted pair must have a head before .", span=span)
+        if dot_index != len(items) - 2:
+            raise ReaderSyntaxError("dotted pair must have exactly one tail after .", span=span)
+        return DottedTuple(items[:dot_index], items[dot_index + 1], span)
 
     def bare_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
@@ -227,6 +258,12 @@ def read_one_tuple(source: str) -> TupleForm:
 def form_to_tuple(form: Form) -> TupleForm:
     if isinstance(form, Symbol):
         return form
+    if isinstance(form, DottedTuple):
+        return (
+            *tuple(form_to_tuple(item) for item in form),
+            Symbol("."),
+            form_to_tuple(cast(Form, form.tail)),
+        )
     if isinstance(form, tuple):
         return tuple(form_to_tuple(item) for item in form)
     raise TypeError(f"expected qy form, got {type(form).__name__}")
@@ -243,6 +280,9 @@ def tuple_to_form(form: TupleForm) -> Form:
 def write(form: Form) -> str:
     if isinstance(form, Symbol):
         return _encode_symbol(form.name)
+    if isinstance(form, DottedTuple):
+        head = " ".join(write(item) for item in form)
+        return f"({head} . {write(cast(Form, form.tail))})"
     if isinstance(form, tuple):
         return f"({' '.join(write(item) for item in form)})"
     raise TypeError(f"expected qy form, got {type(form).__name__}")
@@ -253,8 +293,15 @@ def write_program(forms: Iterable[Form]) -> str:
 
 
 def write_tuple(form: TupleForm) -> str:
+    if form is QY_EMPTY_LIST:
+        return "()"
+    if isinstance(form, QyCons):
+        return _write_cons(form)
     if isinstance(form, Symbol):
         return write(form)
+    if isinstance(form, DottedTuple):
+        head = " ".join(write_tuple(item) for item in form)
+        return f"({head} . {write_tuple(cast(TupleForm, form.tail))})"
     if isinstance(form, tuple):
         return f"({' '.join(write_tuple(item) for item in form)})"
     return _encode_literal(form)
@@ -285,6 +332,24 @@ def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[s
     if quote_index <= 0:
         raise ReaderSyntaxError(f"invalid tagged literal {token!r}", span=span)
     return token[:quote_index], token[quote_index:]
+
+
+def _write_cons(value: QyCons) -> str:
+    parts: list[str] = []
+    current: object = value
+    while isinstance(current, QyCons):
+        parts.append(write_tuple(cast(TupleForm, current.head)))
+        current = current.tail
+    if current is QY_EMPTY_LIST:
+        return f"({' '.join(parts)})"
+    return f"({' '.join(parts)} . {write_tuple(cast(TupleForm, current))})"
+
+
+def _dot_index(items: tuple[object, ...]) -> int | None:
+    for index, item in enumerate(items):
+        if isinstance(item, lark.Token) and item.type == "DOT":
+            return index
+    return None
 
 
 def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan | None:

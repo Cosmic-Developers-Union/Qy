@@ -1,5 +1,6 @@
 import unittest
 
+from qy.reader import DottedTuple
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import form_to_tuple
@@ -99,6 +100,19 @@ class TestQySymbolicReader(unittest.TestCase):
                 (S("quote"), (S("+"), S("1"), S("2"))),
             ],
         )
+
+    def test_dotted_pair_forms(self):
+        form = read_one("(a . b)")
+
+        self.assertIsInstance(form, DottedTuple)
+        assert isinstance(form, DottedTuple)
+        self.assertEqual(tuple(form), (S("a"),))
+        self.assertEqual(form.tail, S("b"))
+        self.assertEqual(write(form), "(a . b)")
+
+    def test_invalid_dotted_pair_forms_are_rejected(self):
+        with self.assertRaises(ReaderSyntaxError):
+            read_one("(. b)")
 
     def test_let_binding_symbols_can_be_written_with_quotes(self):
         self.assertEqual(

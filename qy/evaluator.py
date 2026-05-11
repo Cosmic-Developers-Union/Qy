@@ -24,12 +24,17 @@ from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
+from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
+from qy.values import qy_cons_to_tuple
 
 __all__ = [
+    "QY_EMPTY_LIST",
     "ComponentDefinition",
     "ControlOperator",
     "EffectDefinition",
@@ -41,6 +46,7 @@ __all__ = [
     "MacroDefinition",
     "MetaOperator",
     "PureOperator",
+    "QyCons",
     "QyContinuation",
     "ScopeOperator",
     "SyntaxOperator",
@@ -412,9 +418,22 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
 
     if isinstance(expression, Symbol):
         return env.resolve(expression)
+    if expression is QY_EMPTY_LIST:
+        return expression
+    if isinstance(expression, QyCons):
+        try:
+            expression = qy_cons_to_tuple(expression)
+        except TypeError as e:
+            raise QyRuntimeError(
+                "cannot evaluate an improper Qy cons list as a call",
+                span=get_span(expression),
+                cause=e,
+            ) from e
     if not isinstance(expression, tuple):
         return expression
     span = get_span(expression)
+    if isinstance(expression, DottedTuple):
+        raise QyRuntimeError("cannot evaluate dotted form as a call", span=span)
     if not expression:
         raise QyRuntimeError("cannot evaluate empty expression", span=span)
 

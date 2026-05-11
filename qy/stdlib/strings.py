@@ -13,6 +13,9 @@ from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple
 from qy.stdlib.module import StandardModule
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
+from qy.values import iter_qy_list
 
 
 def module() -> StandardModule:
@@ -124,8 +127,14 @@ def _str_split(value: object, separator: object = None) -> tuple[Symbol, ...]:
 
 
 def _str_join(separator: object, values: object) -> Symbol:
-    if not isinstance(values, tuple):
-        raise EvaluationError(f"str-join expects a tuple as the second argument, got {values!r}")
+    if values is QY_EMPTY_LIST or isinstance(values, QyCons):
+        return _to_symbol(
+            _to_text(separator).join(_to_text(value) for value in iter_qy_list(values))
+        )
+    if not isinstance(values, tuple | list):
+        raise EvaluationError(
+            f"str-join expects a list-like value as the second argument, got {values!r}"
+        )
     return _to_symbol(_to_text(separator).join(_to_text(value) for value in values))
 
 

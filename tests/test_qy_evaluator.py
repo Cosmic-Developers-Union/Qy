@@ -32,6 +32,9 @@ from qy.reader import Symbol
 from qy.runtime import Qy
 from qy.stdlib import StandardModule
 from qy.stdlib import register_module
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
+from qy.values import list_to_qy_cons
 
 S = Symbol
 
@@ -104,13 +107,23 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertEqual(evaluate_source("'abc"), S("abc"))
         self.assertTrue(evaluate_source("(atom 'abc)"))
         self.assertFalse(evaluate_source("(atom '(abc def))"))
+        self.assertFalse(evaluate_source("(atom '(abc . def))"))
         self.assertTrue(evaluate_source("(atom '())"))
+        self.assertEqual(evaluate_source("(cond (0 'truthy))"), S("truthy"))
         self.assertTrue(evaluate_source("(eq 'abc 'abc)"))
         self.assertFalse(evaluate_source("(eq '(abc) '(abc))"))
         self.assertTrue(evaluate_source("(eq '() '())"))
         self.assertEqual(evaluate_source("(car '(abc def))"), S("abc"))
-        self.assertEqual(evaluate_source("(cdr '(abc def ghi))"), (S("def"), S("ghi")))
-        self.assertEqual(evaluate_source("(cons 'abc '(def ghi))"), (S("abc"), S("def"), S("ghi")))
+        self.assertEqual(
+            evaluate_source("(cdr '(abc def ghi))"),
+            list_to_qy_cons([S("def"), S("ghi")]),
+        )
+        self.assertEqual(
+            evaluate_source("(cons 'abc '(def ghi))"),
+            list_to_qy_cons([S("abc"), S("def"), S("ghi")]),
+        )
+        self.assertIs(evaluate_source("'()"), QY_EMPTY_LIST)
+        self.assertEqual(evaluate_source("'(abc . def)"), QyCons(S("abc"), S("def")))
         self.assertEqual(evaluate_source("(cond (false 1) (true (+ 1 2)))"), 3)
 
     def test_core_data_type_operators(self):
@@ -121,13 +134,16 @@ class TestQyEvaluator(unittest.TestCase):
             {S("name"): S("Qy"), S("items"): [1, 2]},
         )
         self.assertEqual(evaluate_source('(set "qy" "core" "qy")'), {S("qy"), S("core")})
-        self.assertTrue(evaluate_source("(tuple? '(a b))"))
+        self.assertTrue(evaluate_source("(tuple? (tuple 'a 'b))"))
+        self.assertFalse(evaluate_source("(list? '(a b))"))
         self.assertTrue(evaluate_source("(list? (list 1 2))"))
         self.assertTrue(evaluate_source('(dict? (dict "name" "Qy"))'))
         self.assertTrue(evaluate_source('(set? (set "qy"))'))
         self.assertEqual(evaluate_source("(len (list 1 2 3))"), 3)
+        self.assertEqual(evaluate_source("(len '(a b c))"), 3)
         self.assertEqual(evaluate_source('(get (dict "name" "Qy") "name")'), S("Qy"))
         self.assertEqual(evaluate_source('(get (list "a" "b") 1)'), S("b"))
+        self.assertEqual(evaluate_source("(get '(a b c) 1)"), S("b"))
         self.assertEqual(
             evaluate_source('(get (dict "name" "Qy") "missing" "fallback")'), S("fallback")
         )
@@ -561,6 +577,9 @@ return ["qy", 1, None, {"name": "Qy"}]
             (py
               """
 return [
+    type(quoted).__name__,
+    type(empty).__name__,
+    list(quoted),
     isinstance(xs, list),
     isinstance(point, tuple),
     isinstance(doc, dict),
@@ -569,6 +588,8 @@ return [
     sorted(tags),
 ]
 """
+              :quoted '(1 2)
+              :empty '()
               :xs (list 1 2 3)
               :point (tuple 10 20)
               :doc (dict "name" "Qy")
@@ -576,7 +597,20 @@ return [
             '''
         )
 
-        self.assertEqual(result, [True, True, True, True, S("Qy"), [S("core"), S("host")]])
+        self.assertEqual(
+            result,
+            [
+                S("QyCons"),
+                S("QyEmptyList"),
+                [1, 2],
+                True,
+                True,
+                True,
+                True,
+                S("Qy"),
+                [S("core"), S("host")],
+            ],
+        )
 
     async def test_py_wraps_unknown_python_objects_as_host_refs(self):
         qy = Qy()

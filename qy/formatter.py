@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import cast
 
+from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import Symbol
 from qy.reader import read
@@ -26,6 +28,8 @@ def format_program(forms: Iterable[Form]) -> str:
 def format_form(form: Form, indent: int = 0) -> str:
     if isinstance(form, Symbol):
         return write(form)
+    if isinstance(form, DottedTuple):
+        return _format_dotted(form, indent)
     if _is_quote_form(form):
         return "'" + format_form(form[1], indent)
 
@@ -54,6 +58,13 @@ def dump_form(form: Form, indent: int = 0) -> str:
     prefix = INDENT * indent
     if isinstance(form, Symbol):
         return f"{prefix}Symbol({form.name!r})"
+    if isinstance(form, DottedTuple):
+        lines: list[str] = [f"{prefix}DottedTuple("]
+        lines.extend(f"{dump_form(item, indent + 1)}," for item in form)
+        lines.append(f"{prefix}{INDENT}.")
+        lines.append(f"{dump_form(cast(Form, form.tail), indent + 1)},")
+        lines.append(f"{prefix})")
+        return "\n".join(lines)
     if not form:
         return f"{prefix}()"
 
@@ -66,9 +77,17 @@ def dump_form(form: Form, indent: int = 0) -> str:
 def _format_inline(form: Form) -> str:
     if isinstance(form, Symbol):
         return write(form)
+    if isinstance(form, DottedTuple):
+        head = " ".join(_format_inline(item) for item in form)
+        return f"({head} . {_format_inline(cast(Form, form.tail))})"
     if _is_quote_form(form):
         return "'" + _format_inline(form[1])
     return f"({' '.join(_format_inline(item) for item in form)})"
+
+
+def _format_dotted(form: DottedTuple, indent: int) -> str:
+    del indent
+    return _format_inline(form)
 
 
 def _contains_complex_list(form: Form) -> bool:

@@ -26,6 +26,7 @@ Qy 语法基于 S-expression，使用前缀表示法。除此之外, 没有其�
 - `abc` 读为 symbol.
 - `"abc"` 读为 symbol, 内容为 `abc`.
 - `(f a b)` 读为 tuple form.
+- `(a . b)` 读为 dotted form；作为数据时表示 cons cell.
 - `'x` 读为 `(quote x)`.
 - `tag"abc"` 读为 `(tag (quote "abc"))`.
 - `tag"""abc"""` 读为 `(tag (quote """abc"""))`.
@@ -56,6 +57,7 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 - 整数和浮点数
 - symbol
 - tuple
+- cons list
 - list
 - dict
 - set
@@ -64,7 +66,13 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 - effect definition
 - host object reference
 
-tuple 是不可变符号序列，同时也是源码层面的调用 form。list、dict、set 是运行时数据值，用于宿主互操作和普通数据处理。
+`nil` 是空值，映射到 Python `None`。`false` 是布尔假值。`nil`、`false` 和空 cons list `()` 为 falsey，数字 `0` 为 truthy。
+
+tuple 是不可变符号序列，同时也是源码层面的调用 form。
+
+cons list 是 Qy 自己的 Lisp 数据结构。`'()` 是空 cons list，不是 `nil`，也不是 Python `list`。`'(a b c)` 等价于由 cons cell 构成的 proper list，`'(a . b)` 是 dotted pair。
+
+Python `list`、`dict`、`set` 是运行时数据值，用于宿主互操作和普通数据处理。它们和 cons list 保持边界清晰。
 
 ## 求值
 
@@ -80,6 +88,31 @@ tuple 是不可变符号序列，同时也是源码层面的调用 form。list�
 
 如果 symbol 名称已经被绑定，它会解析为该绑定。需要强制得到 symbol 值时使用 `quote`，例如 `'py`。
 
+## 数据算子
+
+构造：
+
+- `(cons head tail)` 构造 cons cell；`tail` 为 cons list 时得到 proper list，为其他值时得到 dotted pair。
+- `(tuple value...)` 构造 Python tuple。
+- `(list value...)` 构造 Python list。
+- `(dict key value...)` 构造 Python dict。
+- `(set value...)` 构造 Python set。
+
+访问：
+
+- `(car value)` 返回 cons/tuple/list 的第一个元素。
+- `(cdr value)` 返回 cons/tuple/list 的剩余部分；对 dotted pair 返回 tail。
+- `(len value)`
+- `(get collection key [default])`
+- `(has? collection key)`
+
+谓词：
+
+- `(tuple? value)`
+- `(list? value)`
+- `(dict? value)`
+- `(set? value)`
+
 ## 作用域
 
 核心作用域 form：
@@ -92,30 +125,6 @@ tuple 是不可变符号序列，同时也是源码层面的调用 form。list�
 - `(from module import name as alias ...)`
 
 Qy 使用词法作用域。函数、组件、宏会捕获其定义环境。
-
-## 数据算子
-
-构造：
-
-- `(tuple value...)`
-- `(list value...)`
-- `(dict key value...)`
-- `(set value...)`
-
-谓词：
-
-- `(tuple? value)`
-- `(list? value)`
-- `(dict? value)`
-- `(set? value)`
-
-访问：
-
-- `(len value)`
-- `(get collection key [default])`
-- `(has? collection key)`
-
-`car`、`cdr`、`cons` 支持 tuple 和 list。
 
 ## Effect
 
@@ -135,75 +144,3 @@ Qy 使用词法作用域。函数、组件、宏会捕获其定义环境。
 
 - `python-error`
 - `assert-failed`
-
-## Assert
-
-`(assert condition [message])` 是 debug 算子。
-
-如果 `condition` 为 truthy，返回该 condition 值。如果为 falsey，执行 `assert-failed`，参数为 `message` 或 `assertion failed`。
-
-`assert-failed` 不可恢复。
-
-## Async
-
-Qy 运行在 Python async runtime 上。
-
-异步算子：
-
-- `(spawn expr)`
-- `(await expr...)`
-- `(parallel expr...)`
-- `(cache expr)`
-- `(py source :name value ...)`
-
-`parallel` 会把多个失败保留为 `QY_AGGREGATE_ERROR`。
-
-## Python 互操作
-
-`py` 嵌入 Python 代码，并将其编译为 async function。
-
-Qy 到 Python：
-
-- `nil` -> `None`
-- bool/int/float -> 同名 Python 值
-- `Symbol` -> `str`
-- tuple -> `tuple`
-- list -> `list`
-- dict -> `dict`
-- set -> `set`
-- Qy callable -> async Python callable
-- host object reference -> 被包装的 Python 对象
-
-Python 到 Qy：
-
-- `None` -> `nil`
-- bool/int/float -> 同名 Qy 值
-- `str` -> `Symbol`
-- `tuple` -> tuple
-- `list` -> list
-- `dict` -> dict
-- `set` -> set
-- 其他 Python 对象 -> `HostObjectRef`
-
-`py` 内部的 Python 异常会变为不可恢复 effect：`python-error`。
-
-## 错误
-
-所有 Qy 错误都派生自 `QyError`。
-
-错误携带：
-
-- 稳定错误码
-- 消息
-- source span
-- Qy trace frame
-- cause
-- metadata
-
-原生 Python 异常在宿主边界处包装。用户可见输出默认简洁；debug 输出可以包含 Python traceback。
-
-## 静态分析
-
-分析器刻意保持轻量。
-
-它检查语法、未解析 symbol、基础 arity、基础类型预期和已声明 effect。它目前不提供完整 effect type system，也不证明所有 effect 都被处理。

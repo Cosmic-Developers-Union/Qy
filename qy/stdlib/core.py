@@ -38,10 +38,16 @@ from qy.evaluator import UserFunction
 from qy.evaluator import ensure_symbol
 from qy.evaluator import evaluate_async
 from qy.evaluator import evaluate_body_async
+from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
+from qy.values import list_to_qy_cons
+from qy.values import map_qy_cons
+from qy.values import qy_cons_to_tuple
 
 _PY_FUNCTION_NAME = "__qy_py__"
 _PY_FUNCTION_CACHE: dict[tuple[str, tuple[str, ...]], Callable[..., Awaitable[object]]] = {}
@@ -59,12 +65,18 @@ def module() -> StandardModule:
                 "assert", _special_effect_form, "断言 debug 条件；失败时执行 assert-failed。"
             ),
             Symbol("await"): EffectOperator("await", _await, "等待一个或多个异步值。"),
-            Symbol("atom"): PureOperator("atom", _atom, "如果值不是非空 tuple，则返回 true。"),
+            Symbol("atom"): PureOperator(
+                "atom", _atom, "如果值不是非空 cons 或 tuple，则返回 true。"
+            ),
             Symbol("cache"): EffectOperator("cache", _cache, "缓存一个表达式的求值结果。"),
-            Symbol("car"): PureOperator("car", _car, "返回 tuple/list 的第一个元素。"),
-            Symbol("cdr"): PureOperator("cdr", _cdr, "返回 tuple/list 除第一个元素外的剩余部分。"),
+            Symbol("car"): PureOperator("car", _car, "返回 cons/tuple/list 的第一个元素。"),
+            Symbol("cdr"): PureOperator(
+                "cdr", _cdr, "返回 cons/tuple/list 除第一个元素外的剩余部分。"
+            ),
             Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
-            Symbol("cons"): PureOperator("cons", _cons, "把一个值添加到 tuple/list 头部。"),
+            Symbol("cons"): PureOperator(
+                "cons", _cons, "构造 cons；对 Python tuple/list 保持同类拼接。"
+            ),
             Symbol("dict"): PureOperator(
                 "dict", _dict, "用 key/value 参数构造 dict。", _evaluate_data_args
             ),
@@ -76,7 +88,7 @@ def module() -> StandardModule:
                 "defeffect", _defeffect, "声明 effect，供 perform/handle 和分析器使用。"
             ),
             Symbol("defun"): ScopeOperator("defun", _defun, "在当前环境定义函数。"),
-            Symbol("eq"): PureOperator("eq", _eq, "比较原子；只有空 tuple 之间相等。"),
+            Symbol("eq"): PureOperator("eq", _eq, "比较原子；非空 cons 按 identity 比较。"),
             Symbol("eval"): MetaOperator("eval", _eval, "求值一个符号 form。"),
             Symbol("from"): ScopeOperator("from", _from_import, "从模块导入算子到当前作用域。"),
             Symbol("get"): PureOperator(
@@ -167,7 +179,7 @@ def _ensure_index(value: object) -> int:
 
 
 def _truthy(value: object) -> bool:
-    return value not in (False, None, ())
+    return value is not False and value is not None and value != () and value is not QY_EMPTY_LIST
 
 
 def _add(*args: object) -> int | float:
@@ -202,7 +214,15 @@ def _quote(expression: tuple[object, ...], env: Environment) -> object:
     args = expression[1:]
     if len(args) != 1:
         raise QyArityError("quote expects exactly one argument", span=get_span(expression))
-    return args[0]
+    return _quote_data(args[0])
+
+
+def _quote_data(value: object) -> object:
+    if isinstance(value, DottedTuple):
+        return list_to_qy_cons((_quote_data(item) for item in value), _quote_data(value.tail))
+    if isinstance(value, tuple):
+        return list_to_qy_cons(_quote_data(item) for item in value)
+    return value
 
 
 async def _eval(expression: tuple[object, ...], env: Environment) -> object:
@@ -231,36 +251,55 @@ def _macro(expression: tuple[object, ...], env: Environment) -> object:
 
 
 def _atom(value: object) -> bool:
+    if value is QY_EMPTY_LIST:
+        return True
+    if isinstance(value, QyCons):
+        return False
     return not isinstance(value, tuple) or len(value) == 0
 
 
 def _eq(left: object, right: object) -> bool:
+    if left is QY_EMPTY_LIST or right is QY_EMPTY_LIST:
+        return left is QY_EMPTY_LIST and right is QY_EMPTY_LIST
+    if isinstance(left, QyCons) or isinstance(right, QyCons):
+        return left is right
     if isinstance(left, tuple) and isinstance(right, tuple):
         return len(left) == 0 and len(right) == 0
     return left == right
 
 
 def _car(value: object) -> object:
+    if isinstance(value, QyCons):
+        return value.head
+    if value is QY_EMPTY_LIST:
+        raise QyArityError("car expects a non-empty cons, tuple, or list")
     items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("car expects a non-empty tuple or list")
+        raise QyArityError("car expects a non-empty cons, tuple, or list")
     return items[0]
 
 
-def _cdr(value: object) -> tuple[object, ...] | list[object]:
+def _cdr(value: object) -> object:
+    if isinstance(value, QyCons):
+        return value.tail
+    if value is QY_EMPTY_LIST:
+        raise QyArityError("cdr expects a non-empty cons, tuple, or list")
     items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("cdr expects a non-empty tuple or list")
+        raise QyArityError("cdr expects a non-empty cons, tuple, or list")
     if isinstance(items, list):
         return list(items[1:])
     return items[1:]
 
 
-def _cons(head: object, tail: object) -> tuple[object, ...] | list[object]:
-    items = _ensure_sequence(tail)
-    if isinstance(items, list):
-        return [head, *items]
-    return (head, *items)
+def _cons(head: object, tail: object) -> object:
+    if tail is QY_EMPTY_LIST or isinstance(tail, QyCons):
+        return QyCons(head, tail)
+    if isinstance(tail, list):
+        return [head, *tail]
+    if isinstance(tail, tuple):
+        return (head, *tail)
+    return QyCons(head, tail)
 
 
 def _tuple(*args: object) -> tuple[object, ...]:
@@ -327,6 +366,13 @@ def _set_predicate(value: object) -> bool:
 def _len(value: object) -> int:
     if isinstance(value, Symbol):
         return len(value.name)
+    if value is QY_EMPTY_LIST:
+        return 0
+    if isinstance(value, QyCons):
+        try:
+            return len(qy_cons_to_tuple(value))
+        except TypeError as e:
+            raise QyTypeError("len expects a proper Qy cons list", cause=e) from e
     if isinstance(value, str | tuple | list | dict | set):
         return len(value)
     raise QyTypeError(
@@ -355,8 +401,16 @@ def _get(collection: object, key: object, *default_values: object) -> object:
             return collection[index]
         except IndexError:
             return default
+    if collection is QY_EMPTY_LIST:
+        return default
+    if isinstance(collection, QyCons):
+        index = _ensure_index(key)
+        try:
+            return qy_cons_to_tuple(collection)[index]
+        except (IndexError, TypeError):
+            return default
     raise QyTypeError(
-        f"get expects a tuple, list, or dict, got {collection!r}",
+        f"get expects a cons, tuple, list, or dict, got {collection!r}",
         span=get_span(collection),
         metadata={"collection": collection},
     )
@@ -382,8 +436,17 @@ def _has(*args: object) -> bool:
     if isinstance(collection, tuple | list):
         index = _ensure_index(key)
         return -len(collection) <= index < len(collection)
+    if collection is QY_EMPTY_LIST:
+        return False
+    if isinstance(collection, QyCons):
+        index = _ensure_index(key)
+        try:
+            length = len(qy_cons_to_tuple(collection))
+        except TypeError:
+            return False
+        return -length <= index < length
     raise QyTypeError(
-        f"has? expects a tuple, list, dict, or set, got {collection!r}",
+        f"has? expects a cons, tuple, list, dict, or set, got {collection!r}",
         span=get_span(collection),
         metadata={"collection": collection},
     )
@@ -791,6 +854,10 @@ async def _await_py_result(value: object) -> object:
 def _qy_to_python(value: object, env: Environment) -> object:
     if isinstance(value, HostObjectRef):
         return value.value
+    if value is QY_EMPTY_LIST:
+        return QY_EMPTY_LIST
+    if isinstance(value, QyCons):
+        return map_qy_cons(value, lambda item: _qy_to_python(item, env))
     if _is_qy_callable(value):
         return _wrap_qy_callable(value, env)
     if isinstance(value, Symbol):
@@ -825,6 +892,10 @@ def _symbol_to_python(value: Symbol) -> object:
 
 
 def _python_to_qy(value: object) -> object:
+    if value is QY_EMPTY_LIST:
+        return QY_EMPTY_LIST
+    if isinstance(value, QyCons):
+        return map_qy_cons(value, _python_to_qy)
     if isinstance(value, HostObjectRef | Symbol):
         return value
     if value is None or isinstance(value, bool | int | float):

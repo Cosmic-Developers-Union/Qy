@@ -17,6 +17,7 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
+from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
@@ -130,6 +131,9 @@ def _infer(
         return _infer_symbol(form, env, scope, diagnostics)
     if not isinstance(form, tuple):
         return _literal_type(form)
+    if isinstance(form, DottedTuple):
+        diagnostics.append(Diagnostic("dotted form cannot be evaluated as a call"))
+        return "unknown"
     if not form:
         return "tuple"
 
