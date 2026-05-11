@@ -2,7 +2,8 @@
   "main": "./dist/extension.cjs",
   "module": "index.ts",
   "dependencies": {
-    "@types/vscode": "^1.86.0"
+    "@types/vscode": "^1.86.0",
+    "vscode-languageclient": "^9.0.1"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -21,24 +22,74 @@
     "package": "bun run build && bun run vsce-package",
     "clean": "rm -r ./dist"
   },
-  "//": "START EXTENSION ATTRIBUTES",
   "name": "qylang-support",
+  "publisher": "Cosmic-Developers-Union",
   "version": "0.0.1",
-  "description": "All-in-one support for [LanguageName]: includes type checking, linting, and auto-formatting via LSP.",
+  "description": "All-in-one support for QyLang: type checking, diagnostics, completions, hover, and formatting via LSP.",
   "displayName": "QyLang Support",
+  "license": "Apache-2.0",
+  "categories": ["Programming Languages", "Linters", "Formatters"],
+  "keywords": ["qy", "qylang", "lisp"],
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOURNAME"
-  },
-  "contributes": {
-    "commands": [
-      {
-        "command": "bun-vscode-extension.helloworld",
-        "title": "Hello World"
-      }
-    ]
+    "url": "https://github.com/Cosmic-Developers-Union/Qy"
   },
   "engines": {
     "vscode": "^1.86.0"
+  },
+  "activationEvents": ["onLanguage:qy"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "qy",
+        "aliases": ["Qy", "QyLang"],
+        "extensions": [".qy"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "qy",
+        "scopeName": "source.qy",
+        "path": "./syntaxes/qylang.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "QyLang",
+      "properties": {
+        "qylang.path": {
+          "type": "string",
+          "default": "qy",
+          "description": "Path to the qy executable."
+        },
+        "qylang.format.lineWidth": {
+          "type": "number",
+          "default": 80,
+          "description": "Maximum line width for formatting."
+        },
+        "qylang.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Traces the communication between VS Code and the QyLang language server."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[qy]": {
+        "editor.defaultFormatter": "Cosmic-Developers-Union.qylang-support",
+        "editor.formatOnSave": true,
+        "editor.tabSize": 2,
+        "editor.insertSpaces": true,
+        "editor.autoClosingBrackets": "always",
+        "editor.wordSeparators": "()[]{}'\";,"
+      }
+    },
+    "commands": [
+      {
+        "command": "qylang.restartServer",
+        "title": "QyLang: Restart Language Server"
+      }
+    ]
   }
 }

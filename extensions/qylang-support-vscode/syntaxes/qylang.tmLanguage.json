@@ -1,0 +1,201 @@
+{
+  "scopeName": "source.qy",
+  "name": "Qy",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#tagged-multiline-string" },
+    { "include": "#tagged-string" },
+    { "include": "#raw-multiline-string" },
+    { "include": "#multiline-string" },
+    { "include": "#raw-string" },
+    { "include": "#string" },
+    { "include": "#quote" },
+    { "include": "#number" },
+    { "include": "#keyword-arg" },
+    { "include": "#constant" },
+    { "include": "#keyword-definition" },
+    { "include": "#keyword-control" },
+    { "include": "#keyword-effect" },
+    { "include": "#keyword-module" },
+    { "include": "#keyword-meta" },
+    { "include": "#operator-arithmetic" },
+    { "include": "#operator-named" },
+    { "include": "#predicate" },
+    { "include": "#builtin-collection" },
+    { "include": "#builtin-io" },
+    { "include": "#punctuation" },
+    { "include": "#symbol" }
+  ],
+  "repository": {
+    "comment": {
+      "name": "comment.line.semicolon.qy",
+      "match": ";.*$"
+    },
+    "tagged-multiline-string": {
+      "contentName": "string.unquoted.qy",
+      "begin": "([a-zA-Z_][a-zA-Z0-9_\\-]*)(\"\"\")",
+      "beginCaptures": {
+        "1": { "name": "entity.name.tag.qy" },
+        "2": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"\"\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.qy" }
+      }
+    },
+    "tagged-string": {
+      "contentName": "string.quoted.double.qy",
+      "begin": "([a-zA-Z_][a-zA-Z0-9_\\-]*)(\")",
+      "beginCaptures": {
+        "1": { "name": "entity.name.tag.qy" },
+        "2": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.qy" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.qy",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "raw-multiline-string": {
+      "name": "string.quoted.triple.raw.qy",
+      "begin": "[rR]\"\"\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"\"\"",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.qy" } }
+    },
+    "multiline-string": {
+      "name": "string.quoted.triple.qy",
+      "begin": "\"\"\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"\"\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.qy" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.qy",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "raw-string": {
+      "name": "string.quoted.double.raw.qy",
+      "begin": "[rR]\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"",
+      "endCaptures": { "0": { "name": "punctuation.definition.string.end.qy" } }
+    },
+    "string": {
+      "name": "string.quoted.double.qy",
+      "begin": "\"",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.string.begin.qy" }
+      },
+      "end": "\"",
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.string.end.qy" }
+      },
+      "patterns": [
+        {
+          "name": "constant.character.escape.qy",
+          "match": "\\\\."
+        }
+      ]
+    },
+    "quote": {
+      "name": "keyword.operator.quote.qy",
+      "match": "'"
+    },
+    "number": {
+      "name": "constant.numeric.qy",
+      "match": "\\b\\d+(\\.\\d+)?\\b"
+    },
+    "keyword-arg": {
+      "name": "entity.other.attribute-name.qy",
+      "match": ":[a-zA-Z_][a-zA-Z0-9_\\-]*"
+    },
+    "constant": {
+      "name": "constant.language.qy",
+      "match": "\\b(true|false|nil|none|T)\\b"
+    },
+    "keyword-definition": {
+      "name": "keyword.control.definition.qy",
+      "match": "\\b(defun|component|defeffect|module)\\b"
+    },
+    "keyword-control": {
+      "name": "keyword.control.flow.qy",
+      "match": "\\b(cond|let|lambda|assert|parallel)\\b"
+    },
+    "keyword-effect": {
+      "name": "keyword.control.effect.qy",
+      "match": "\\b(perform|handle|resume)\\b"
+    },
+    "keyword-module": {
+      "name": "keyword.control.module.qy",
+      "match": "\\b(from|exports|imports)\\b"
+    },
+    "keyword-meta": {
+      "name": "keyword.control.meta.qy",
+      "match": "\\b(quote|eval|macro|py)\\b"
+    },
+    "operator-arithmetic": {
+      "name": "keyword.operator.arithmetic.qy",
+      "match": "[+*/]|\\b(-)\\b"
+    },
+    "operator-named": {
+      "name": "keyword.operator.word.qy",
+      "match": "\\b(eq|==|is|atom|not|and|or|car|cdr|cons|len|get|has\\?|set|put)\\b"
+    },
+    "predicate": {
+      "name": "support.function.predicate.qy",
+      "match": "\\b(tuple\\?|list\\?|dict\\?|set\\?|str\\?|number\\?|symbol\\?|nil\\?|bool\\?|fn\\?|effect\\?|none\\?)\\b"
+    },
+    "builtin-collection": {
+      "name": "support.function.collection.qy",
+      "match": "\\b(list|tuple|dict|set)\\b"
+    },
+    "builtin-io": {
+      "name": "support.function.io.qy",
+      "match": "\\b(print|echo)\\b"
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.section.parens.begin.qy",
+          "match": "\\("
+        },
+        {
+          "name": "punctuation.section.parens.end.qy",
+          "match": "\\)"
+        },
+        {
+          "name": "punctuation.section.brackets.begin.qy",
+          "match": "\\["
+        },
+        {
+          "name": "punctuation.section.brackets.end.qy",
+          "match": "\\]"
+        },
+        {
+          "name": "punctuation.accessor.dot.qy",
+          "match": "(?<=\\s)\\.(?=\\s)"
+        }
+      ]
+    },
+    "symbol": {
+      "name": "meta.symbol.qy",
+      "match": "[a-zA-Z_][a-zA-Z0-9_\\-?!*]*"
+    }
+  }
+}
