@@ -61,7 +61,12 @@ def format_form(form: Form, indent: int = 0) -> str:
     current_indent = INDENT * indent
     child_indent = INDENT * (indent + 1)
     lines = [f"({format_form(form[0], indent)}"]
-    lines.extend(f"{child_indent}{format_form(item, indent + 1)}" for item in form[1:])
+    for item in form[1:]:
+        formatted = format_form(item, indent + 1)
+        if "\n" in formatted:
+            lines.append(formatted)
+        else:
+            lines.append(f"{child_indent}{formatted}")
     lines[-1] = f"{lines[-1]})"
     return "\n".join(
         f"{current_indent}{line}" if index == 0 else line for index, line in enumerate(lines)

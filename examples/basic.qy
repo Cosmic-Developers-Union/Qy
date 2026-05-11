@@ -5,52 +5,86 @@
 (print "Hello, Qy!")
 
 ;; === 算术运算：+ - * / ===
-(print (+ 1 2 3))          ; => 6
-(print (- 10 3))           ; => 7
-(print (* 2 3 4))          ; => 24
-(print (/ 20 4))           ; => 5
+(print
+  (+ 1 2 3))  ; => 6
+(print
+  (- 10 3))   ; => 7
+(print
+  (* 2 3 4))  ; => 24
+(print
+  (/ 20 4))   ; => 5
 
 ;; === 引用与符号 ===
-(print 'hello)             ; => hello
-(print '(a b c))           ; => (a b c)
+(print 'hello)    ; => hello
+(print '(a b c))  ; => (a b c)
 
 ;; === 列表操作：car, cdr, cons ===
-(print (car '(x y z)))     ; => x
-(print (cdr '(x y z)))     ; => (y z)
-(print (cons 'a '(b c)))   ; => (a b c)
+(print
+  (car '(x y z)))    ; => x
+(print
+  (cdr '(x y z)))    ; => (y z)
+(print
+  (cons 'a '(b c)))  ; => (a b c)
 
 ;; === 谓词：eq, atom ===
-(print (eq 'a 'a))         ; => true
-(print (atom 'x))          ; => true
-(print (atom '(1 2)))      ; => false
+(print
+  (eq 'a 'a))     ; => true
+(print
+  (atom 'x))      ; => true
+(print
+  (atom '(1 2)))  ; => false
 
 ;; === let 局部绑定 ===
-(print (let ((x 10) (y 20))
-  (+ x y)))                ; => 30
+(print
+  (let
+    ((x 10)
+      (y 20))
+    (+ x y)))  ; => 30
 
 ;; === defun 函数定义 ===
-(defun square (n)
+(defun
+  square
+  (n)
   (* n n))
-(print (square 7))         ; => 49
+(print
+  (square 7))  ; => 49
 
 ;; === cond 条件分支（Qy 没有 if，用 cond 替代）===
 ;; (cond (条件1 值1) (条件2 值2) ... (true 默认值))
-(defun classify (n)
+(defun
+  classify
+  (n)
   (cond
     ((eq n 0) 'zero)
     (true 'nonzero)))
-(print (classify 0))       ; => zero
-(print (classify 5))       ; => nonzero
+(print
+  (classify 0))  ; => zero
+(print
+  (classify 5))  ; => nonzero
 
 ;; === 递归代替循环（Qy 没有 loop/while/for，用递归替代）===
-(defun fact (n)
+(defun
+  fact
+  (n)
   (cond
     ((eq n 0) 1)
-    (true (* n (fact (- n 1))))))
-(print (fact 10))          ; => 3628800
+    (true
+      (*
+        n
+        (fact
+          (- n 1))))))
+(print
+  (fact 10))  ; => 3628800
 
-(defun sum-to (n)
+(defun
+  sum-to
+  (n)
   (cond
     ((eq n 0) 0)
-    (true (+ n (sum-to (- n 1))))))
-(print (sum-to 100))       ; => 5050
+    (true
+      (+
+        n
+        (sum-to
+          (- n 1))))))
+(print
+  (sum-to 100))  ; => 5050
