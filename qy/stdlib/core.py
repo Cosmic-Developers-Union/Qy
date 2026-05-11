@@ -11,6 +11,7 @@ from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
@@ -51,11 +52,15 @@ def module() -> StandardModule:
                 "defun", _defun, "Define a function in the current environment."
             ),
             Symbol("eq"): PureOperator("eq", _eq, "Compare atoms and empty lists."),
+            Symbol("eval"): MetaOperator("eval", _eval, "Evaluate one symbolic form."),
             Symbol("from"): ScopeOperator(
                 "from", _from_import, "Import standard module operators into the current scope."
             ),
             Symbol("lambda"): ScopeOperator("lambda", _lambda, "Create an anonymous function."),
             Symbol("let"): ScopeOperator("let", _let, "Evaluate a body in a local lexical scope."),
+            Symbol("macro"): MetaOperator(
+                "macro", _macro, "Define a macro that expands unevaluated forms."
+            ),
             Symbol("module"): ScopeOperator("module", _module, "Define and register a module."),
             Symbol("parallel"): EffectOperator(
                 "parallel", _parallel, "Evaluate expressions concurrently with asyncio tasks."
@@ -117,6 +122,25 @@ def _quote(expression: tuple[object, ...], env: Environment) -> object:
     if len(args) != 1:
         raise EvaluationError("quote expects exactly one argument")
     return args[0]
+
+
+async def _eval(expression: tuple[object, ...], env: Environment) -> object:
+    args = expression[1:]
+    if len(args) != 1:
+        raise EvaluationError(f"eval expects exactly one argument, got {len(args)}")
+    form = await evaluate_async(args[0], env)
+    return await evaluate_async(form, env)
+
+
+def _macro(expression: tuple[object, ...], env: Environment) -> object:
+    if len(expression) < 4:
+        raise EvaluationError("macro expects a name, parameter list, and body")
+
+    _, name, params, *body = expression
+    name = ensure_symbol(name, "macro name")
+    param_symbols = _ensure_parameter_list(params, "macro")
+    macro = MacroDefinition(name, param_symbols, tuple(body), env)
+    return env.define(name, macro)
 
 
 def _atom(value: object) -> bool:

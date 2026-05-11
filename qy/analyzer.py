@@ -10,6 +10,7 @@ from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
@@ -127,6 +128,13 @@ def _infer(
             case "quote":
                 _check_arity(operator.name, args, diagnostics, exact=1)
                 return "any"
+            case "eval":
+                _check_arity(operator.name, args, diagnostics, exact=1)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "any"
+            case "macro":
+                return _infer_macro(form, env, scope, diagnostics)
             case "cond":
                 return _infer_cond(args, env, scope, diagnostics)
             case "let":
@@ -237,6 +245,8 @@ def _value_type(value: object) -> TypeName:
         return "operator"
     if isinstance(value, UserFunction | ComponentDefinition):
         return "function"
+    if isinstance(value, MacroDefinition):
+        return "operator"
     return _literal_type(value)
 
 
@@ -272,6 +282,8 @@ def _operator_kind_for_value(value: object) -> OperatorKind | None:
     if isinstance(value, EffectOperator):
         return "effect"
     if isinstance(value, MetaOperator):
+        return "meta"
+    if isinstance(value, MacroDefinition):
         return "meta"
     return None
 
@@ -431,6 +443,29 @@ def _infer_component(
     return "function"
 
 
+def _infer_macro(
+    form: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(form) < 4:
+        diagnostics.append(Diagnostic("macro expects a name, parameter list, and body"))
+        return "unknown"
+
+    _, name, params, *body = form
+    if not isinstance(name, Symbol):
+        diagnostics.append(Diagnostic(f"macro name must be a symbol, got {name!r}"))
+    macro_scope = scope
+    if isinstance(name, Symbol):
+        macro_scope = macro_scope.define(
+            name, "operator", operator_kind="meta", eager_arguments=False
+        )
+    macro_scope = _scope_with_parameters(params, macro_scope, diagnostics, "macro")
+    _infer_body(tuple(body), env, macro_scope, diagnostics)
+    return "operator"
+
+
 def _infer_module(
     form: tuple[object, ...],
     env: Environment,
@@ -486,6 +521,8 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         and isinstance(form[1], Symbol)
     ):
         return scope.define(form[1], "function")
+    if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
+        return scope.define(form[1], "operator", operator_kind="meta", eager_arguments=False)
     if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
         return scope.define(form[1])
     if form[0] != Symbol("from"):

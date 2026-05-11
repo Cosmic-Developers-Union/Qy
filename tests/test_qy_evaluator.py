@@ -11,6 +11,7 @@ from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
@@ -50,7 +51,7 @@ class TestQyEvaluator(unittest.TestCase):
             self.assertIsInstance(env.resolve(S(name)), ControlOperator)
         for name in ["print", "echo", "parallel", "cache", "spawn", "await"]:
             self.assertIsInstance(env.resolve(S(name)), EffectOperator)
-        for name in ["quote"]:
+        for name in ["quote", "eval", "macro"]:
             self.assertIsInstance(env.resolve(S(name)), MetaOperator)
 
         for name in ["set", "set!", "set*", "setq"]:
@@ -75,6 +76,29 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertEqual(evaluate_source("(cdr '(abc def ghi))"), (S("def"), S("ghi")))
         self.assertEqual(evaluate_source("(cons 'abc '(def ghi))"), (S("abc"), S("def"), S("ghi")))
         self.assertEqual(evaluate_source("(cond (false 1) (true (+ 1 2)))"), 3)
+
+    def test_eval_evaluates_symbolic_forms(self):
+        self.assertEqual(evaluate_source("(eval '(+ 20 22))"), 42)
+        self.assertEqual(evaluate_source("(let ((form '(+ 20 22))) (eval form))"), 42)
+
+    def test_macro_defines_ast_transform(self):
+        env = standard_environment()
+        macro = evaluate_source("(macro identity-form (form) form)", env)
+
+        self.assertIsInstance(macro, MacroDefinition)
+        self.assertEqual(evaluate_source("(identity-form (+ 20 22))", env), 42)
+
+    def test_macro_receives_unevaluated_arguments(self):
+        env = standard_environment()
+        evaluate_source("(macro const-answer (ignored) '(+ 20 22))", env)
+
+        self.assertEqual(evaluate_source("(const-answer missing)", env), 42)
+
+    def test_macro_can_construct_ast_with_cons(self):
+        env = standard_environment()
+        evaluate_source("(macro twice (form) (cons '+ (cons form (cons form '()))))", env)
+
+        self.assertEqual(evaluate_source("(twice (+ 1 2))", env), 6)
 
     def test_arithmetic_from_python_tuple_requires_symbol_operator(self):
         self.assertEqual(evaluate((S("+"), 1, 2, 3)), 6)

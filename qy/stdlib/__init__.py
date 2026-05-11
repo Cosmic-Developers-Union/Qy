@@ -204,6 +204,7 @@ def _coerce_python_export(name: str, value: object) -> object:
     from qy.evaluator import ComponentDefinition
     from qy.evaluator import ControlOperator
     from qy.evaluator import EffectOperator
+    from qy.evaluator import MacroDefinition
     from qy.evaluator import MetaOperator
     from qy.evaluator import PureOperator
     from qy.evaluator import ScopeOperator
@@ -216,6 +217,7 @@ def _coerce_python_export(name: str, value: object) -> object:
         | ControlOperator
         | EffectOperator
         | MetaOperator
+        | MacroDefinition
         | UserFunction
         | ComponentDefinition,
     ):

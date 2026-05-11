@@ -10,6 +10,7 @@ from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
+from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
@@ -54,6 +55,7 @@ __all__ = [
     "Environment",
     "EvaluationError",
     "Form",
+    "MacroDefinition",
     "MetaOperator",
     "PureOperator",
     "Qy",

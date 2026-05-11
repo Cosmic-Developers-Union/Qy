@@ -24,6 +24,7 @@ __all__ = [
     "Environment",
     "EvaluationError",
     "EvaluationOperator",
+    "MacroDefinition",
     "MetaOperator",
     "PureOperator",
     "ScopeOperator",
@@ -147,6 +148,22 @@ class ComponentDefinition:
     closure: Environment
 
     async def __call__(self, *args: object) -> object:
+        if len(args) != len(self.params):
+            raise EvaluationError(
+                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
+            )
+        local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
+        return await evaluate_body_async(self.body, local_env)
+
+
+@dataclass(frozen=True, slots=True)
+class MacroDefinition:
+    name: Symbol
+    params: tuple[Symbol, ...]
+    body: tuple[object, ...]
+    closure: Environment
+
+    async def expand(self, args: tuple[object, ...]) -> object:
         if len(args) != len(self.params):
             raise EvaluationError(
                 f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}"
@@ -351,6 +368,9 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
         return await _await_if_needed(operator_value(expression, env))
     if isinstance(operator_value, ScopeOperator | ControlOperator | EffectOperator):
         return await _await_if_needed(operator_value(tuple(argument_expressions), env))
+    if isinstance(operator_value, MacroDefinition):
+        expanded = await operator_value.expand(tuple(argument_expressions))
+        return await evaluate_async(expanded, env)
     if isinstance(operator_value, PureOperator):
         arguments = await _evaluate_pure_arguments_async(
             operator_value, tuple(argument_expressions), env
