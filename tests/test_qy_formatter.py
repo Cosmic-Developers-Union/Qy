@@ -24,6 +24,21 @@ class TestQyFormatter(unittest.TestCase):
     def test_format_source_preserves_dotted_pairs(self):
         self.assertEqual(format_source("(a . b)"), "(a . b)\n")
 
+    def test_format_source_preserves_comments_and_blank_lines(self):
+        self.assertEqual(
+            format_source("; head\n\n(+  1 2) ; sum\n; tail\n"),
+            "; head\n\n(+ 1 2)  ; sum\n; tail\n",
+        )
+
+    def test_format_source_aligns_trailing_comments(self):
+        self.assertEqual(
+            format_source("(+ 1 2) ; a\n(* 10 20) ; b\n"),
+            "(+ 1 2)    ; a\n(* 10 20)  ; b\n",
+        )
+
+    def test_format_source_ignores_semicolon_inside_strings(self):
+        self.assertEqual(format_source('(print "a;b") ; ok'), '(print "a;b")  ; ok\n')
+
     def test_dump_program_shows_ast(self):
         ast = dump_program(read("(+ 1 2)"))
 

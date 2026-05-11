@@ -1,5 +1,6 @@
 # coding: utf-8
 
+import atexit
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -23,6 +24,18 @@ INSTALL_CLI_MESSAGE = (
 INSTALL_LSP_MESSAGE = (
     "Qy LSP requires the optional lsp dependency. Install with: pip install 'QyLang[lsp]'"
 )
+CLI_COMMANDS = (
+    "run",
+    "repl",
+    "fmt",
+    "ast",
+    "check",
+    "typecheck",
+    "operators",
+    "lsp",
+    "completion",
+)
+REPL_COMMANDS = (".help", ".env", ".ast", ".fmt", ".check", ".exit", ".quit")
 
 
 def main() -> int:
@@ -119,6 +132,20 @@ def create_app() -> Any:
         """列出当前标准库支持的算子."""
         typer.echo(format_operator_docs(), nl=False)
 
+    @app.command("completion")
+    def completion_command(
+        shell: Annotated[
+            str,
+            typer.Argument(help="Shell name: bash, zsh, or sh."),
+        ],
+    ) -> None:
+        """输出 shell completion 脚本."""
+        try:
+            typer.echo(_completion_script(shell), nl=False)
+        except ValueError as e:
+            typer.secho(str(e), fg=typer.colors.RED, err=True)
+            raise typer.Exit(2) from e
+
     @app.command("lsp")
     def lsp_command() -> None:
         try:
@@ -136,11 +163,12 @@ def create_app() -> Any:
 def repl(qy: Qy) -> int:
     import typer
 
+    _install_repl_readline(qy)
     typer.secho("Qy interactive interpreter", fg=typer.colors.GREEN, bold=True)
     typer.echo("Commands: .help .env .ast <expr> .fmt <expr> .check <expr> .exit")
     while True:
         try:
-            source = typer.prompt(typer.style("qy>", fg=typer.colors.BLUE), prompt_suffix=" ")
+            source = _read_repl_source()
         except (EOFError, KeyboardInterrupt):
             typer.echo()
             return 0
@@ -171,6 +199,98 @@ def repl(qy: Qy) -> int:
                 typer.echo(format_value(qy.evaluate(form)))
         except QyError as e:
             typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
+
+
+def _read_repl_source() -> str:
+    import typer
+
+    return input(f"{typer.style('qy>', fg=typer.colors.BLUE)} ")
+
+
+def _install_repl_readline(qy: Qy) -> None:
+    try:
+        import readline
+    except ImportError:
+        return
+
+    history_path = Path.home() / ".qy_history"
+    try:
+        readline.read_history_file(history_path)
+    except OSError:
+        pass
+    atexit.register(_write_repl_history, readline, history_path)
+    readline.set_completer_delims(" \t\n()\"'")
+    readline.set_completer(_repl_completer(qy))
+    readline.parse_and_bind("tab: complete")
+
+
+def _write_repl_history(readline_module: Any, history_path: Path) -> None:
+    try:
+        readline_module.write_history_file(history_path)
+    except OSError:
+        pass
+
+
+def _repl_completer(qy: Qy):
+    def complete(text: str, state: int) -> str | None:
+        matches = _repl_completions(qy, text)
+        try:
+            return matches[state]
+        except IndexError:
+            return None
+
+    return complete
+
+
+def _repl_completions(qy: Qy, text: str) -> list[str]:
+    symbols = [symbol.name for symbol in qy.env.bindings()]
+    candidates = (*REPL_COMMANDS, *symbols)
+    return sorted(candidate for candidate in candidates if candidate.startswith(text))
+
+
+def _completion_script(shell: str) -> str:
+    shell = shell.lower()
+    commands = " ".join(CLI_COMMANDS)
+    if shell == "bash":
+        return f"""# qy bash completion
+_qy_complete() {{
+  local cur
+  COMPREPLY=()
+  cur="${{COMP_WORDS[COMP_CWORD]}}"
+  if [[ $COMP_CWORD -eq 1 ]]; then
+    COMPREPLY=( $(compgen -W "{commands}" -- "$cur") $(compgen -f -- "$cur") )
+  else
+    COMPREPLY=( $(compgen -f -- "$cur") )
+  fi
+}}
+complete -o default -o bashdefault -F _qy_complete qy
+"""
+    if shell == "zsh":
+        command_specs = " ".join(f"'{command}:qy {command}'" for command in CLI_COMMANDS)
+        return f"""#compdef qy
+_qy() {{
+  local -a commands
+  commands=({command_specs})
+  _arguments \\
+    '1:command:->commands' \\
+    '*:file:_files'
+  case $state in
+    commands)
+      _describe 'command' commands
+      _files
+      ;;
+  esac
+}}
+compdef _qy qy
+"""
+    if shell == "sh":
+        return f"""# POSIX sh has no standard programmable completion API.
+# Source this file to expose a portable helper with qy command names.
+qy_completion_commands() {{
+  printf '%s\\n' {commands}
+}}
+"""
+    raise ValueError("unsupported shell; expected one of: bash, zsh, sh")
 
 
 def _check_path(path: Path) -> None:

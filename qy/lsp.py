@@ -10,7 +10,11 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
 from qy.evaluator import standard_environment
 from qy.formatter import format_source
+from qy.reader import Form
+from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
+from qy.reader import get_span
+from qy.reader import read
 
 SERVER_NAME = "qy-lsp"
 
@@ -24,8 +28,27 @@ def diagnostics_for_source(source: str) -> list[types.Diagnostic]:
     return [_diagnostic_to_lsp(diagnostic) for diagnostic in analyze_source(source).diagnostics]
 
 
-def completion_items() -> list[types.CompletionItem]:
+_SIGNATURES = {
+    "defun": "(defun name (arg ...) body...)",
+    "component": "(component name (arg ...) body...)",
+    "lambda": "(lambda (arg ...) body...)",
+    "let": "(let ((name expr) ...) body...)",
+    "cond": "(cond (condition result) ...)",
+    "handle": "(handle expr ((effect (arg k) body...) ...))",
+    "perform": "(perform effect arg)",
+    "resume": "(resume k value)",
+    "py": "(py source :name value ...)",
+}
+
+
+def completion_items(
+    source: str | None = None,
+    line: int | None = None,
+    character: int | None = None,
+) -> list[types.CompletionItem]:
     items: list[types.CompletionItem] = []
+    prefix = _completion_prefix_at(source, line, character) if source is not None else ""
+    items.extend(_snippet_completion_items())
     for symbol, value in sorted(
         standard_environment().bindings().items(), key=lambda item: item[0].name
     ):
@@ -41,6 +64,10 @@ def completion_items() -> list[types.CompletionItem]:
                 documentation=doc,
             )
         )
+    if source is not None:
+        items.extend(_document_completion_items(source))
+    if prefix:
+        return [item for item in items if item.label.startswith(prefix)]
     return items
 
 
@@ -56,7 +83,8 @@ def hover_for_source(source: str, line: int, character: int) -> types.Hover | No
     kind = getattr(value, "kind", None)
     doc = getattr(value, "doc", "")
     if kind is None:
-        return None
+        doc = f"Qy value: `{type(value).__name__}`"
+        kind = "value"
     return types.Hover(
         contents=types.MarkupContent(
             kind=types.MarkupKind.Markdown,
@@ -91,8 +119,15 @@ def create_server() -> QyLanguageServer:
         ls: QyLanguageServer,
         params: types.CompletionParams,
     ) -> types.CompletionList:
-        del ls, params
-        return types.CompletionList(is_incomplete=False, items=completion_items())
+        document = ls.workspace.get_text_document(params.text_document.uri)
+        return types.CompletionList(
+            is_incomplete=False,
+            items=completion_items(
+                document.source,
+                params.position.line,
+                params.position.character,
+            ),
+        )
 
     @server.feature(types.TEXT_DOCUMENT_HOVER)
     def hover(ls: QyLanguageServer, params: types.HoverParams) -> types.Hover | None:
@@ -116,7 +151,70 @@ def create_server() -> QyLanguageServer:
             )
         ]
 
+    @server.feature(types.TEXT_DOCUMENT_DOCUMENT_SYMBOL)
+    def document_symbol(
+        ls: QyLanguageServer,
+        params: types.DocumentSymbolParams,
+    ) -> list[types.DocumentSymbol]:
+        document = ls.workspace.get_text_document(params.text_document.uri)
+        return document_symbols_for_source(document.source)
+
+    @server.feature(types.TEXT_DOCUMENT_SIGNATURE_HELP)
+    def signature_help(
+        ls: QyLanguageServer,
+        params: types.SignatureHelpParams,
+    ) -> types.SignatureHelp | None:
+        document = ls.workspace.get_text_document(params.text_document.uri)
+        return signature_help_for_source(
+            document.source,
+            params.position.line,
+            params.position.character,
+        )
+
     return server
+
+
+def document_symbols_for_source(source: str) -> list[types.DocumentSymbol]:
+    try:
+        forms = read(source)
+    except ReaderSyntaxError:
+        return []
+    symbols: list[types.DocumentSymbol] = []
+    for form in forms:
+        symbol = _document_symbol_for_form(form)
+        if symbol is not None:
+            symbols.append(symbol)
+    return symbols
+
+
+def signature_help_for_source(
+    source: str,
+    line: int,
+    character: int,
+) -> types.SignatureHelp | None:
+    operator = _operator_before_position(source, line, character)
+    if operator is None:
+        return None
+    label = _SIGNATURES.get(operator)
+    if label is None:
+        try:
+            value = standard_environment().resolve(Symbol(operator))
+        except Exception:
+            return None
+        doc = getattr(value, "doc", "")
+        label = f"({operator} ...)"
+    else:
+        doc = ""
+    return types.SignatureHelp(
+        signatures=[
+            types.SignatureInformation(
+                label=label,
+                documentation=doc or None,
+            )
+        ],
+        active_signature=0,
+        active_parameter=_active_parameter(source, line, character),
+    )
 
 
 def main() -> int:
@@ -186,6 +284,152 @@ def _symbol_name_at(source: str, line: int, character: int) -> str | None:
 
 def _is_symbol_character(char: str) -> bool:
     return not char.isspace() and char not in """()"';"""
+
+
+def _snippet_completion_items() -> list[types.CompletionItem]:
+    snippets = {
+        "defun form": "(defun ${1:name} (${2:args})\n  ${0:body})",
+        "let form": "(let ((${1:name} ${2:expr}))\n  ${0:body})",
+        "lambda form": "(lambda (${1:arg})\n  ${0:body})",
+        "cond form": "(cond\n  (${1:condition} ${0:result}))",
+        "handle form": "(handle\n  ${1:expr}\n  ((${2:effect} (${3:arg} ${4:k}) ${0:body})))",
+        "py form": '(py\n  """\n${0:return None}\n""")',
+    }
+    return [
+        types.CompletionItem(
+            label=label,
+            kind=types.CompletionItemKind.Snippet,
+            detail="Qy snippet",
+            insert_text=insert_text,
+            insert_text_format=types.InsertTextFormat.Snippet,
+        )
+        for label, insert_text in snippets.items()
+    ]
+
+
+def _document_completion_items(source: str) -> list[types.CompletionItem]:
+    try:
+        forms = read(source)
+    except ReaderSyntaxError:
+        return []
+    names = sorted({name.name for form in forms if (name := _defined_name(form)) is not None})
+    return [
+        types.CompletionItem(
+            label=name,
+            kind=types.CompletionItemKind.Function,
+            detail="document symbol",
+        )
+        for name in names
+    ]
+
+
+def _document_symbol_for_form(form: Form) -> types.DocumentSymbol | None:
+    name = _defined_name(form)
+    if name is None:
+        return None
+    span = get_span(form) or name.span
+    if span is None:
+        return None
+    kind = types.SymbolKind.Function
+    if isinstance(form, tuple) and form and form[0] == Symbol("module"):
+        kind = types.SymbolKind.Module
+    elif isinstance(form, tuple) and form and form[0] == Symbol("defeffect"):
+        kind = types.SymbolKind.Event
+    return types.DocumentSymbol(
+        name=name.name,
+        kind=kind,
+        range=_span_to_range(span),
+        selection_range=_span_to_range(name.span or span),
+    )
+
+
+def _defined_name(form: Form) -> Symbol | None:
+    if not isinstance(form, tuple) or len(form) < 2 or not isinstance(form[0], Symbol):
+        return None
+    if form[0].name not in {"defun", "component", "macro", "module", "defeffect"}:
+        return None
+    return form[1] if isinstance(form[1], Symbol) else None
+
+
+def _span_to_range(span) -> types.Range:
+    return types.Range(
+        start=types.Position(
+            line=max((span.line or 1) - 1, 0), character=max((span.column or 1) - 1, 0)
+        ),
+        end=types.Position(
+            line=max((span.end_line or span.line or 1) - 1, 0),
+            character=max((span.end_column or span.column or 1) - 1, 0),
+        ),
+    )
+
+
+def _completion_prefix_at(
+    source: str | None,
+    line: int | None,
+    character: int | None,
+) -> str:
+    if source is None or line is None or character is None:
+        return ""
+    name = _symbol_name_at(source, line, character)
+    if name is None:
+        return ""
+    return name[: max(character - _symbol_start_at(source, line, character), 0)]
+
+
+def _symbol_start_at(source: str, line: int, character: int) -> int:
+    lines = source.splitlines()
+    if line >= len(lines):
+        return character
+    text = lines[line]
+    start = min(character, len(text))
+    while start > 0 and _is_symbol_character(text[start - 1]):
+        start -= 1
+    return start
+
+
+def _operator_before_position(source: str, line: int, character: int) -> str | None:
+    offset = _offset_at(source, line, character)
+    prefix = source[:offset]
+    open_index = prefix.rfind("(")
+    if open_index == -1:
+        return None
+    index = open_index + 1
+    while index < len(source) and source[index].isspace():
+        index += 1
+    start = index
+    while index < len(source) and _is_symbol_character(source[index]):
+        index += 1
+    return source[start:index] or None
+
+
+def _active_parameter(source: str, line: int, character: int) -> int:
+    offset = _offset_at(source, line, character)
+    prefix = source[:offset]
+    open_index = prefix.rfind("(")
+    if open_index == -1:
+        return 0
+    depth = 0
+    count = 0
+    in_token = False
+    for char in prefix[open_index + 1 :]:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(depth - 1, 0)
+        elif depth == 0 and char.isspace():
+            if in_token:
+                count += 1
+                in_token = False
+        elif depth == 0:
+            in_token = True
+    return max(count - 1, 0)
+
+
+def _offset_at(source: str, line: int, character: int) -> int:
+    lines = source.splitlines(keepends=True)
+    if line >= len(lines):
+        return len(source)
+    return sum(len(item) for item in lines[:line]) + min(character, len(lines[line]))
 
 
 if __name__ == "__main__":
