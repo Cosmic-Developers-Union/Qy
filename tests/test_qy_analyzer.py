@@ -132,6 +132,9 @@ class TestQyAnalyzer(unittest.TestCase):
         self.assertEqual(type_check_source('(set "qy" "core")'), [])
         self.assertEqual(type_check_source('(get (dict "name" "Qy") "name")'), [])
         self.assertEqual(type_check_source('(has? (set "core") "core")'), [])
+        self.assertEqual(type_check_source("(type '(a b c))"), [])
+        self.assertEqual(type_check_source("(== '(a b) '(a b))"), [])
+        self.assertEqual(type_check_source("(is '() none)"), [])
 
     def test_reports_invalid_dict_pairs(self):
         diagnostics = type_check_source('(dict "name")')

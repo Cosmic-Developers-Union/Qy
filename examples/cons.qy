@@ -1,4 +1,4 @@
-; Qy cons list 与 Python list 是不同的数据结构
+; 兼容示例：cons 仍然是构造 chain cell 的算子
 
 (print '())                 ; => ()
 (print '(a b c))            ; => (a b c)
@@ -8,17 +8,6 @@
 (print (cons 'a '(b c)))    ; => (a b c)
 (print (cons 'a 'b))        ; => (a . b)
 
-(print (car '(a b c)))      ; => a
-(print (cdr '(a b c)))      ; => (b c)
-(print (cdr '(a . b)))      ; => b
-
-(print (list 'a 'b 'c))     ; => [a b c]
-(print (py
-  """
-return [type(qy_list).__name__, list(qy_list), isinstance(py_list, list)]
-"""
-  :qy-list '(1 2)
-  :py-list (list 1 2)))     ; => [QyCons [1 2] true]
-
-(print (list? '(a b c)))    ; => false
-(list? (list 'a))           ; => true
+(print (type '(a b c)))     ; => chain
+(print (== '(a b) '(a b)))  ; => true
+(eq '(a b) '(a b))          ; => false

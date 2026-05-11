@@ -380,7 +380,7 @@ def _encode_literal(value: TupleAtom) -> str:
     if value is False:
         return "false"
     if value is None:
-        return "nil"
+        return "none"
     if isinstance(value, int):
         return str(value)
     if isinstance(value, float):

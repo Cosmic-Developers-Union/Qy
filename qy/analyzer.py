@@ -24,6 +24,8 @@ from qy.reader import Symbol
 from qy.reader import read
 from qy.stdlib import load_module
 from qy.stdlib.imports import parse_from_import
+from qy.values import QY_EMPTY_LIST
+from qy.values import QyCons
 
 __all__ = [
     "Analysis",
@@ -37,11 +39,12 @@ Severity = Literal["error", "warning", "hint"]
 TypeName = Literal[
     "any",
     "bool",
+    "chain",
     "dict",
     "effect",
     "function",
     "list",
-    "nil",
+    "none",
     "number",
     "operator",
     "set",
@@ -235,10 +238,15 @@ def _infer(
                 return "any"
             case "+" | "-" | "*" | "/":
                 return _infer_numeric_call(operator.name, args, env, scope, diagnostics)
-            case "atom" | "eq":
+            case "atom" | "eq" | "==" | "is":
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
                 return "bool"
+            case "type":
+                _check_arity(operator.name, args, diagnostics, exact=1)
+                for arg in args:
+                    _infer(arg, env, scope, diagnostics)
+                return "symbol"
             case "car":
                 _check_arity(operator.name, args, diagnostics, exact=1)
                 for arg in args:
@@ -247,7 +255,7 @@ def _infer(
             case "cdr" | "cons":
                 for arg in args:
                     _infer(arg, env, scope, diagnostics)
-                return "tuple"
+                return "any"
             case "print" | "echo":
                 return "any"
             case "str?":
@@ -298,12 +306,14 @@ def _infer_symbol(
 
 
 def _literal_type(value: object) -> TypeName:
+    if value is QY_EMPTY_LIST or isinstance(value, QyCons):
+        return "chain"
     if isinstance(value, bool):
         return "bool"
     if isinstance(value, int | float):
         return "number"
     if value is None:
-        return "nil"
+        return "none"
     if isinstance(value, tuple):
         return "tuple"
     if isinstance(value, list):
@@ -402,7 +412,7 @@ def _infer_cond(
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    result_type: TypeName = "nil"
+    result_type: TypeName = "none"
     for clause in args:
         if not isinstance(clause, tuple) or len(clause) != 2:
             diagnostics.append(Diagnostic(f"cond clause must be a pair, got {clause!r}"))
@@ -483,20 +493,20 @@ def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> Type
         module_name, specs = parse_from_import(form)
     except ValueError as e:
         diagnostics.append(Diagnostic(str(e)))
-        return "nil"
+        return "none"
 
     try:
         source_module = load_module(module_name.name)
     except KeyError as e:
         diagnostics.append(Diagnostic(str(e)))
-        return "nil"
+        return "none"
 
     for spec in specs:
         if spec.name not in source_module.exports:
             diagnostics.append(
                 Diagnostic(f"module {module_name.name!r} has no export {spec.name.name!r}")
             )
-    return "nil"
+    return "none"
 
 
 def _infer_let(
@@ -731,7 +741,7 @@ def _infer_body(
     if not body:
         diagnostics.append(Diagnostic("body must contain at least one expression"))
         return "unknown"
-    result_type: TypeName = "nil"
+    result_type: TypeName = "none"
     body_scope = scope
     for expression in body:
         result_type = _infer(expression, env, body_scope, diagnostics)

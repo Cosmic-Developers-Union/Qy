@@ -25,8 +25,8 @@ Qy 语法基于 S-expression，使用前缀表示法。除此之外, 没有其�
 
 - `abc` 读为 symbol.
 - `"abc"` 读为 symbol, 内容为 `abc`.
-- `(f a b)` 读为 tuple form.
-- `(a . b)` 读为 dotted form；作为数据时表示 cons cell.
+- `(f a b)` 读为 chain form.
+- `(a . b)` 读为 dotted chain form.
 - `'x` 读为 `(quote x)`.
 - `tag"abc"` 读为 `(tag (quote "abc"))`.
 - `tag"""abc"""` 读为 `(tag (quote """abc"""))`.
@@ -52,13 +52,12 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 
 核心值：
 
-- `nil`
-- `true`、`false`
-- 整数和浮点数
 - symbol
-- tuple
-- cons list
+- chain
+- `true`、`false`、`none`
+- 整数和浮点数
 - list
+- tuple
 - dict
 - set
 - 算子
@@ -66,21 +65,24 @@ Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symb
 - effect definition
 - host object reference
 
-`nil` 是空值，映射到 Python `None`。`false` 是布尔假值。`nil`、`false` 和空 cons list `()` 为 falsey，数字 `0` 为 truthy。
+Qy 源码只直接产生两类结构：symbol 和 chain。symbol 是符号；chain 是 `()`、`(a b c)`、`(a . b)` 这样的 Lisp 链。
 
-tuple 是不可变符号序列，同时也是源码层面的调用 form。
+`true`、`false`、`none` 是预定义 symbol，直接映射到 Python `True`、`False`、`None`。`nil` 是兼容别名，也映射到 Python `None`，但不等于空 chain `()`。
 
-cons list 是 Qy 自己的 Lisp 数据结构。`'()` 是空 cons list，不是 `nil`，也不是 Python `list`。`'(a b c)` 等价于由 cons cell 构成的 proper list，`'(a . b)` 是 dotted pair。
+`none`、`nil`、`false` 和空 chain `()` 为 falsey，数字 `0` 为 truthy。
 
-Python `list`、`dict`、`set` 是运行时数据值，用于宿主互操作和普通数据处理。它们和 cons list 保持边界清晰。
+`'()` 是空 chain，不是 `none`，也不是 Python `list`。`'(a b c)` 是 proper chain，`'(a . b)` 是 dotted chain。
+
+Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子显式转换得到，用于宿主互操作和普通数据处理。它们和 chain 保持边界清晰。
 
 ## 求值
 
 求值规则：
 
 - symbol 在当前词法环境中解析。
-- 内建字面量解析为 `nil`、布尔值、整数或浮点数。
-- 非空 tuple 先求值第一个元素作为算子，然后应用算子。
+- 内建 symbol `true`、`false`、`none` 解析为 Python 值。
+- 数字符号解析为整数或浮点数。
+- 非空 chain 先求值第一个元素作为算子，然后应用算子。
 - `quote` 返回参数本身，不求值。
 - body 按顺序求值所有 form，并返回最后一个值。
 
@@ -92,19 +94,26 @@ Python `list`、`dict`、`set` 是运行时数据值，用于宿主互操作和�
 
 构造：
 
-- `(cons head tail)` 构造 cons cell；`tail` 为 cons list 时得到 proper list，为其他值时得到 dotted pair。
-- `(tuple value...)` 构造 Python tuple。
-- `(list value...)` 构造 Python list。
-- `(dict key value...)` 构造 Python dict。
-- `(set value...)` 构造 Python set。
+- `(cons head tail)` 构造 chain cell；`tail` 为 chain 时得到 proper chain，为其他值时得到 dotted chain。
+- `(list value...)` 转换为 Python list；单参数为 chain 时展开 chain。
+- `(tuple value...)` 转换为 Python tuple；单参数为 chain 时展开 chain。
+- `(dict key value...)` 转换为 Python dict；单参数为 pair chain 时转为 dict。
+- `(set value...)` 转换为 Python set；单参数为 chain 时展开 chain。
 
 访问：
 
-- `(car value)` 返回 cons/tuple/list 的第一个元素。
-- `(cdr value)` 返回 cons/tuple/list 的剩余部分；对 dotted pair 返回 tail。
+- `(car value)` 返回 chain/tuple/list 的第一个元素。
+- `(cdr value)` 返回 chain/tuple/list 的剩余部分；对 dotted chain 返回 tail。
 - `(len value)`
 - `(get collection key [default])`
 - `(has? collection key)`
+- `(type value)` 返回类型名称；`(type '(1 2 3))` 返回 `chain`。
+
+比较：
+
+- `(== a b)` 使用 Python `==` 语义。
+- `(is a b)` 使用 Python `is` identity 语义。
+- `(eq a b)` 使用 Lisp 风格 eq；symbol 按名称比较，chain 按 identity 比较，`()` 只等于 `()`。
 
 谓词：
 

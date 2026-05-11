@@ -33,7 +33,7 @@ from qy.runtime import Qy
 from qy.stdlib import StandardModule
 from qy.stdlib import register_module
 from qy.values import QY_EMPTY_LIST
-from qy.values import QyCons
+from qy.values import QyChain
 from qy.values import list_to_qy_cons
 
 S = Symbol
@@ -48,8 +48,10 @@ class TestQyEvaluator(unittest.TestCase):
             "-",
             "*",
             "/",
+            "==",
             "atom",
             "eq",
+            "is",
             "car",
             "cdr",
             "cons",
@@ -65,6 +67,7 @@ class TestQyEvaluator(unittest.TestCase):
             "len",
             "get",
             "has?",
+            "type",
         ]:
             self.assertIsInstance(env.resolve(S(name)), PureOperator)
         for name in ["let", "lambda", "defun", "component", "defeffect", "module", "from"]:
@@ -113,6 +116,15 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source("(eq 'abc 'abc)"))
         self.assertFalse(evaluate_source("(eq '(abc) '(abc))"))
         self.assertTrue(evaluate_source("(eq '() '())"))
+        self.assertFalse(evaluate_source("(eq '() none)"))
+        self.assertFalse(evaluate_source("(== '() none)"))
+        self.assertTrue(evaluate_source("(eq none nil)"))
+        self.assertTrue(evaluate_source("(== '(abc) '(abc))"))
+        self.assertFalse(evaluate_source("(is '(abc) '(abc))"))
+        self.assertTrue(evaluate_source("(is '() '())"))
+        self.assertEqual(evaluate_source("(type '(abc def))"), S("chain"))
+        self.assertEqual(evaluate_source("(type 'abc)"), S("symbol"))
+        self.assertEqual(evaluate_source("(type none)"), S("NoneType"))
         self.assertEqual(evaluate_source("(car '(abc def))"), S("abc"))
         self.assertEqual(
             evaluate_source("(cdr '(abc def ghi))"),
@@ -123,7 +135,7 @@ class TestQyEvaluator(unittest.TestCase):
             list_to_qy_cons([S("abc"), S("def"), S("ghi")]),
         )
         self.assertIs(evaluate_source("'()"), QY_EMPTY_LIST)
-        self.assertEqual(evaluate_source("'(abc . def)"), QyCons(S("abc"), S("def")))
+        self.assertEqual(evaluate_source("'(abc . def)"), QyChain(S("abc"), S("def")))
         self.assertEqual(evaluate_source("(cond (false 1) (true (+ 1 2)))"), 3)
 
     def test_core_data_type_operators(self):
@@ -137,8 +149,15 @@ class TestQyEvaluator(unittest.TestCase):
         self.assertTrue(evaluate_source("(tuple? (tuple 'a 'b))"))
         self.assertFalse(evaluate_source("(list? '(a b))"))
         self.assertTrue(evaluate_source("(list? (list 1 2))"))
+        self.assertEqual(evaluate_source("(list '(a b))"), [S("a"), S("b")])
+        self.assertEqual(evaluate_source("(tuple '(a b))"), (S("a"), S("b")))
         self.assertTrue(evaluate_source('(dict? (dict "name" "Qy"))'))
+        self.assertEqual(
+            evaluate_source("(dict '((name . Qy) (mode test)))"),
+            {S("name"): S("Qy"), S("mode"): S("test")},
+        )
         self.assertTrue(evaluate_source('(set? (set "qy"))'))
+        self.assertEqual(evaluate_source("(set '(a b a))"), {S("a"), S("b")})
         self.assertEqual(evaluate_source("(len (list 1 2 3))"), 3)
         self.assertEqual(evaluate_source("(len '(a b c))"), 3)
         self.assertEqual(evaluate_source('(get (dict "name" "Qy") "name")'), S("Qy"))
@@ -600,8 +619,8 @@ return [
         self.assertEqual(
             result,
             [
-                S("QyCons"),
-                S("QyEmptyList"),
+                S("QyChain"),
+                S("QyEmptyChain"),
                 [1, 2],
                 True,
                 True,

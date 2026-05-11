@@ -76,7 +76,7 @@ def _to_text(value: object) -> str:
     if value is False:
         return "false"
     if value is None:
-        return "nil"
+        return "none"
     if isinstance(value, tuple):
         try:
             return write_tuple(cast(TupleForm, value))

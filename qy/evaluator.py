@@ -29,11 +29,14 @@ from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
+from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
+from qy.values import QyChain
 from qy.values import QyCons
 from qy.values import qy_cons_to_tuple
 
 __all__ = [
+    "QY_EMPTY_CHAIN",
     "QY_EMPTY_LIST",
     "ComponentDefinition",
     "ControlOperator",
@@ -46,6 +49,7 @@ __all__ = [
     "MacroDefinition",
     "MetaOperator",
     "PureOperator",
+    "QyChain",
     "QyCons",
     "QyContinuation",
     "ScopeOperator",
@@ -425,7 +429,7 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
             expression = qy_cons_to_tuple(expression)
         except TypeError as e:
             raise QyRuntimeError(
-                "cannot evaluate an improper Qy cons list as a call",
+                "cannot evaluate an improper Qy chain as a call",
                 span=get_span(expression),
                 cause=e,
             ) from e
@@ -545,7 +549,7 @@ def _resolve_builtin_literal(symbol: Symbol) -> object:
         return True
     if symbol.name == "false":
         return False
-    if symbol.name == "nil":
+    if symbol.name in {"nil", "none"}:
         return None
     try:
         return int(symbol.name)

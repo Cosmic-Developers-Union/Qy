@@ -57,6 +57,7 @@ def module() -> StandardModule:
     return StandardModule(
         "qy.core",
         {
+            Symbol("=="): PureOperator("==", _py_eq, "按 Python == 语义比较两个值。"),
             Symbol("+"): PureOperator("+", _add, "数字求和。"),
             Symbol("-"): PureOperator("-", _sub, "数字相减；单参数时取负。"),
             Symbol("*"): PureOperator("*", _mul, "数字相乘。"),
@@ -66,19 +67,19 @@ def module() -> StandardModule:
             ),
             Symbol("await"): EffectOperator("await", _await, "等待一个或多个异步值。"),
             Symbol("atom"): PureOperator(
-                "atom", _atom, "如果值不是非空 cons 或 tuple，则返回 true。"
+                "atom", _atom, "如果值不是非空 chain 或 tuple，则返回 true。"
             ),
             Symbol("cache"): EffectOperator("cache", _cache, "缓存一个表达式的求值结果。"),
-            Symbol("car"): PureOperator("car", _car, "返回 cons/tuple/list 的第一个元素。"),
+            Symbol("car"): PureOperator("car", _car, "返回 chain/tuple/list 的第一个元素。"),
             Symbol("cdr"): PureOperator(
-                "cdr", _cdr, "返回 cons/tuple/list 除第一个元素外的剩余部分。"
+                "cdr", _cdr, "返回 chain/tuple/list 除第一个元素外的剩余部分。"
             ),
             Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
             Symbol("cons"): PureOperator(
-                "cons", _cons, "构造 cons；对 Python tuple/list 保持同类拼接。"
+                "cons", _cons, "构造 chain cell；对 Python tuple/list 保持同类拼接。"
             ),
             Symbol("dict"): PureOperator(
-                "dict", _dict, "用 key/value 参数构造 dict。", _evaluate_data_args
+                "dict", _dict, "把 key/value 参数转换为 Python dict。", _evaluate_data_args
             ),
             Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
             Symbol("component"): ScopeOperator(
@@ -88,11 +89,12 @@ def module() -> StandardModule:
                 "defeffect", _defeffect, "声明 effect，供 perform/handle 和分析器使用。"
             ),
             Symbol("defun"): ScopeOperator("defun", _defun, "在当前环境定义函数。"),
-            Symbol("eq"): PureOperator("eq", _eq, "比较原子；非空 cons 按 identity 比较。"),
+            Symbol("eq"): PureOperator("eq", _eq, "Lisp 风格 eq；chain 按 identity 比较。"),
             Symbol("eval"): MetaOperator("eval", _eval, "求值一个符号 form。"),
+            Symbol("false"): False,
             Symbol("from"): ScopeOperator("from", _from_import, "从模块导入算子到当前作用域。"),
             Symbol("get"): PureOperator(
-                "get", _get, "从 tuple/list/dict 获取项。", _evaluate_lookup_args
+                "get", _get, "从 chain/tuple/list/dict 获取项。", _evaluate_lookup_args
             ),
             Symbol("has?"): PureOperator(
                 "has?",
@@ -100,13 +102,18 @@ def module() -> StandardModule:
                 "判断 collection 是否包含 key、index 或成员。",
                 _evaluate_lookup_args,
             ),
+            Symbol("is"): PureOperator("is", _is, "按 Python is 语义比较 identity。"),
             Symbol("lambda"): ScopeOperator("lambda", _lambda, "创建匿名函数。"),
             Symbol("len"): PureOperator("len", _len, "返回 collection 长度。"),
             Symbol("let"): ScopeOperator("let", _let, "在词法局部作用域中求值 body。"),
-            Symbol("list"): PureOperator("list", _list, "构造 list。", _evaluate_data_args),
+            Symbol("list"): PureOperator(
+                "list", _list, "把参数转换为 Python list。", _evaluate_data_args
+            ),
             Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
             Symbol("macro"): MetaOperator("macro", _macro, "定义接收未求值 form 并展开的宏。"),
             Symbol("module"): ScopeOperator("module", _module, "定义并注册模块。"),
+            Symbol("nil"): None,
+            Symbol("none"): None,
             Symbol("parallel"): EffectOperator(
                 "parallel", _parallel, "用 asyncio task 并发表达式求值。"
             ),
@@ -118,14 +125,20 @@ def module() -> StandardModule:
             Symbol("resume"): EffectOperator(
                 "resume", _special_effect_form, "恢复捕获的 effect continuation。"
             ),
-            Symbol("set"): PureOperator("set", _set, "构造 set。", _evaluate_data_args),
+            Symbol("set"): PureOperator(
+                "set", _set, "把参数转换为 Python set。", _evaluate_data_args
+            ),
             Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
             Symbol("spawn"): EffectOperator("spawn", _spawn, "创建 asyncio task。"),
             Symbol("handle"): ControlOperator(
                 "handle", _special_effect_form, "处理表达式产生的 effect。"
             ),
-            Symbol("tuple"): PureOperator("tuple", _tuple, "构造 tuple。", _evaluate_data_args),
+            Symbol("true"): True,
+            Symbol("tuple"): PureOperator(
+                "tuple", _tuple, "把参数转换为 Python tuple。", _evaluate_data_args
+            ),
             Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
+            Symbol("type"): PureOperator("type", _type, "返回值的类型名称。"),
             Symbol("assert-failed"): EffectDefinition(
                 Symbol("assert-failed"),
                 resumable=False,
@@ -258,24 +271,48 @@ def _atom(value: object) -> bool:
     return not isinstance(value, tuple) or len(value) == 0
 
 
+def _py_eq(left: object, right: object) -> bool:
+    return left == right
+
+
+def _is(left: object, right: object) -> bool:
+    return left is right
+
+
 def _eq(left: object, right: object) -> bool:
     if left is QY_EMPTY_LIST or right is QY_EMPTY_LIST:
         return left is QY_EMPTY_LIST and right is QY_EMPTY_LIST
     if isinstance(left, QyCons) or isinstance(right, QyCons):
         return left is right
+    if isinstance(left, Symbol) or isinstance(right, Symbol):
+        return isinstance(left, Symbol) and isinstance(right, Symbol) and left.name == right.name
+    if left is None or right is None:
+        return left is None and right is None
+    if isinstance(left, bool) or isinstance(right, bool):
+        return left is right
+    if isinstance(left, int | float) and isinstance(right, int | float):
+        return left == right
     if isinstance(left, tuple) and isinstance(right, tuple):
         return len(left) == 0 and len(right) == 0
-    return left == right
+    return left is right
+
+
+def _type(value: object) -> Symbol:
+    if value is QY_EMPTY_LIST or isinstance(value, QyCons):
+        return Symbol("chain")
+    if isinstance(value, Symbol):
+        return Symbol("symbol")
+    return Symbol(type(value).__name__)
 
 
 def _car(value: object) -> object:
     if isinstance(value, QyCons):
         return value.head
     if value is QY_EMPTY_LIST:
-        raise QyArityError("car expects a non-empty cons, tuple, or list")
+        raise QyArityError("car expects a non-empty chain, tuple, or list")
     items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("car expects a non-empty cons, tuple, or list")
+        raise QyArityError("car expects a non-empty chain, tuple, or list")
     return items[0]
 
 
@@ -283,10 +320,10 @@ def _cdr(value: object) -> object:
     if isinstance(value, QyCons):
         return value.tail
     if value is QY_EMPTY_LIST:
-        raise QyArityError("cdr expects a non-empty cons, tuple, or list")
+        raise QyArityError("cdr expects a non-empty chain, tuple, or list")
     items = _ensure_sequence(value)
     if not items:
-        raise QyArityError("cdr expects a non-empty cons, tuple, or list")
+        raise QyArityError("cdr expects a non-empty chain, tuple, or list")
     if isinstance(items, list):
         return list(items[1:])
     return items[1:]
@@ -303,14 +340,20 @@ def _cons(head: object, tail: object) -> object:
 
 
 def _tuple(*args: object) -> tuple[object, ...]:
+    if len(args) == 1 and _is_qy_chain(args[0]):
+        return _proper_chain_items(args[0], "tuple")
     return tuple(args)
 
 
 def _list(*args: object) -> list[object]:
+    if len(args) == 1 and _is_qy_chain(args[0]):
+        return list(_proper_chain_items(args[0], "list"))
     return list(args)
 
 
 def _dict(*args: object) -> dict[object, object]:
+    if len(args) == 1 and _is_qy_chain(args[0]):
+        return _dict_from_chain(args[0])
     if len(args) % 2 != 0:
         raise QyArityError(
             f"dict expects key/value pairs, got {len(args)} argument(s)",
@@ -333,8 +376,11 @@ def _dict(*args: object) -> dict[object, object]:
 
 
 def _set(*args: object) -> set[object]:
+    values = (
+        _proper_chain_items(args[0], "set") if len(args) == 1 and _is_qy_chain(args[0]) else args
+    )
     result: set[object] = set()
-    for value in args:
+    for value in values:
         try:
             result.add(value)
         except TypeError as e:
@@ -345,6 +391,55 @@ def _set(*args: object) -> set[object]:
                 metadata={"value": value},
             ) from e
     return result
+
+
+def _is_qy_chain(value: object) -> bool:
+    return value is QY_EMPTY_LIST or isinstance(value, QyCons)
+
+
+def _proper_chain_items(value: object, context: str) -> tuple[object, ...]:
+    try:
+        return qy_cons_to_tuple(value)
+    except TypeError as e:
+        raise QyTypeError(f"{context} expects a proper Qy chain", cause=e) from e
+
+
+def _dict_from_chain(value: object) -> dict[object, object]:
+    result: dict[object, object] = {}
+    for entry in _proper_chain_items(value, "dict"):
+        key, item = _dict_entry_pair(entry)
+        try:
+            result[key] = item
+        except TypeError as e:
+            raise QyTypeError(
+                f"dict key must be hashable, got {key!r}",
+                span=get_span(key),
+                cause=e,
+                metadata={"key": key},
+            ) from e
+    return result
+
+
+def _dict_entry_pair(entry: object) -> tuple[object, object]:
+    if isinstance(entry, QyCons):
+        if entry.tail is not QY_EMPTY_LIST and not isinstance(entry.tail, QyCons):
+            return entry.head, entry.tail
+        items = _proper_chain_items(entry, "dict entry")
+    elif isinstance(entry, tuple | list):
+        items = tuple(entry)
+    else:
+        raise QyTypeError(
+            f"dict chain entry must be a pair, got {entry!r}",
+            span=get_span(entry),
+            metadata={"entry": entry},
+        )
+    if len(items) != 2:
+        raise QyTypeError(
+            f"dict chain entry must contain two values, got {len(items)}",
+            span=get_span(entry),
+            metadata={"entry": entry},
+        )
+    return items[0], items[1]
 
 
 def _tuple_predicate(value: object) -> bool:
@@ -372,7 +467,7 @@ def _len(value: object) -> int:
         try:
             return len(qy_cons_to_tuple(value))
         except TypeError as e:
-            raise QyTypeError("len expects a proper Qy cons list", cause=e) from e
+            raise QyTypeError("len expects a proper Qy chain", cause=e) from e
     if isinstance(value, str | tuple | list | dict | set):
         return len(value)
     raise QyTypeError(
@@ -410,7 +505,7 @@ def _get(collection: object, key: object, *default_values: object) -> object:
         except (IndexError, TypeError):
             return default
     raise QyTypeError(
-        f"get expects a cons, tuple, list, or dict, got {collection!r}",
+        f"get expects a chain, tuple, list, or dict, got {collection!r}",
         span=get_span(collection),
         metadata={"collection": collection},
     )
@@ -446,7 +541,7 @@ def _has(*args: object) -> bool:
             return False
         return -length <= index < length
     raise QyTypeError(
-        f"has? expects a cons, tuple, list, dict, or set, got {collection!r}",
+        f"has? expects a chain, tuple, list, dict, or set, got {collection!r}",
         span=get_span(collection),
         metadata={"collection": collection},
     )
@@ -878,7 +973,7 @@ def _symbol_to_python(value: Symbol) -> object:
         return True
     if value.name == "false":
         return False
-    if value.name == "nil":
+    if value.name in {"nil", "none"}:
         return None
     try:
         return int(value.name)
