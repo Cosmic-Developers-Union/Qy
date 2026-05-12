@@ -64,7 +64,7 @@ def test_print_and_str_accept_text_symbols():
     assert type_check_source('(str-upper "hello")') == []
 
 
-def test_core_data_types_are_understood():
+def test_legacy_data_operators_are_treated_as_non_core_calls():
     assert type_check_source('(tuple 1 "two" true)') == []
     assert type_check_source('(list 1 "two" true)') == []
     assert type_check_source('(dict "name" "Qy" "items" (list 1 2))') == []
@@ -76,7 +76,5 @@ def test_core_data_types_are_understood():
     assert type_check_source("(is '() none)") == []
 
 
-def test_reports_invalid_dict_pairs():
-    diagnostics = type_check_source('(dict "name")')
-
-    assert any("dict expects key/value pairs" in item.message for item in diagnostics)
+def test_non_core_data_operator_arities_are_not_hard_coded():
+    assert type_check_source('(dict "name")') == []

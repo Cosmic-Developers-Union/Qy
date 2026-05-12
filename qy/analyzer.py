@@ -17,6 +17,7 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
+from qy.operator_signature import OperatorSignature
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -54,6 +55,7 @@ class _Binding:
     type_name: TypeName
     operator_kind: OperatorKind | None = None
     eager_arguments: bool = True
+    signature: OperatorSignature | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,9 +69,10 @@ class _Scope:
         *,
         operator_kind: OperatorKind | None = None,
         eager_arguments: bool = True,
+        signature: OperatorSignature | None = None,
     ) -> _Scope:
         bindings = dict(self.bindings or {})
-        bindings[symbol] = _Binding(type_name, operator_kind, eager_arguments)
+        bindings[symbol] = _Binding(type_name, operator_kind, eager_arguments, signature)
         return _Scope(bindings)
 
     def lookup(self, symbol: Symbol) -> _Binding | None:
@@ -158,103 +161,18 @@ def _infer(
                 return "any"
             case "assert":
                 return _infer_assert(args, env, scope, diagnostics)
-            case "parallel":
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "tuple"
-            case "tuple":
-                _infer_data_args(args, env, scope, diagnostics)
-                return "tuple"
-            case "list":
-                _infer_data_args(args, env, scope, diagnostics)
-                return "list"
-            case "dict":
-                if len(args) % 2 != 0:
-                    diagnostics.append(Diagnostic("dict expects key/value pairs"))
-                _infer_data_args(args, env, scope, diagnostics)
-                return "dict"
-            case "set":
-                _infer_data_args(args, env, scope, diagnostics)
-                return "set"
-            case "tuple?" | "list?" | "dict?" | "set?":
-                _check_arity(operator.name, args, diagnostics, exact=1)
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "bool"
-            case "len":
-                _check_arity(operator.name, args, diagnostics, exact=1)
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "number"
-            case "get":
-                if len(args) not in {2, 3}:
-                    diagnostics.append(
-                        Diagnostic(f"get expects two or three arguments, got {len(args)}")
-                    )
-                if args:
-                    _infer(args[0], env, scope, diagnostics)
-                _infer_data_args(args[1:], env, scope, diagnostics)
-                return "any"
-            case "has?":
-                _check_arity(operator.name, args, diagnostics, exact=2)
-                if args:
-                    _infer(args[0], env, scope, diagnostics)
-                _infer_data_args(args[1:], env, scope, diagnostics)
-                return "bool"
-            case "py":
-                return _infer_py(args, env, scope, diagnostics)
-            case "cache" | "spawn":
-                _check_arity(operator.name, args, diagnostics, exact=1)
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "any"
-            case "await":
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "any"
-            case "+" | "-" | "*" | "/":
-                return _infer_numeric_call(operator.name, args, env, scope, diagnostics)
-            case "atom" | "eq" | "==" | "is":
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "bool"
-            case "type":
-                _check_arity(operator.name, args, diagnostics, exact=1)
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "symbol"
-            case "car":
-                _check_arity(operator.name, args, diagnostics, exact=1)
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "any"
-            case "cdr" | "cons":
-                for arg in args:
-                    _infer(arg, env, scope, diagnostics)
-                return "any"
-            case "print" | "echo":
-                return "any"
-            case "str?":
-                return "bool"
-            case "str-len":
-                return "number"
-            case "str-empty?" | "str-contains?" | "str-starts-with?" | "str-ends-with?":
-                return "bool"
-            case "str-split":
-                return "tuple"
-            case (
-                "str"
-                | "str-concat"
-                | "str-upper"
-                | "str-lower"
-                | "str-strip"
-                | "str-trim"
-                | "str-join"
-                | "str-replace"
-            ):
-                return "symbol"
 
     operator_type = _infer(operator, env, scope, diagnostics)
+    signature = _operator_signature(operator, env, scope)
+    if signature is not None:
+        return _infer_signature_call(
+            operator,
+            args,
+            signature,
+            env,
+            scope,
+            diagnostics,
+        )
     if _operator_uses_eager_arguments(operator, env, scope) or operator_type in {
         "function",
         "unknown",
@@ -359,6 +277,72 @@ def _operator_kind_for_value(value: object) -> OperatorKind | None:
 
 def _value_uses_eager_arguments(value: object) -> bool:
     return isinstance(value, PureOperator) and value.argument_evaluator is None
+
+
+def _value_signature(value: object) -> OperatorSignature | None:
+    return getattr(value, "signature", None)
+
+
+def _operator_signature(
+    operator: object,
+    env: Environment,
+    scope: _Scope,
+) -> OperatorSignature | None:
+    if not isinstance(operator, Symbol):
+        return None
+    if (binding := scope.lookup(operator)) is not None:
+        return binding.signature
+    try:
+        return _value_signature(env.resolve(operator))
+    except EvaluationError:
+        return None
+
+
+def _infer_signature_call(
+    operator: object,
+    args: tuple[object, ...],
+    signature: OperatorSignature,
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    name = operator.name if isinstance(operator, Symbol) else "call"
+    if not signature.arity.accepts(len(args)):
+        diagnostics.append(Diagnostic(_arity_message(name, signature, len(args))))
+    for index, arg in enumerate(args):
+        if not _signature_argument_is_eager(signature, index):
+            continue
+        arg_type = _infer(arg, env, scope, diagnostics)
+        expected = _signature_argument_type(signature, index)
+        if expected is not None and arg_type not in {expected, "unknown", "any"}:
+            diagnostics.append(Diagnostic(f"{name} expects {expected} arguments, got {arg_type}"))
+    return signature.return_type
+
+
+def _signature_argument_is_eager(signature: OperatorSignature, index: int) -> bool:
+    try:
+        policy = signature.argument_policy[index]
+    except IndexError:
+        policy = "eager"
+    return policy == "eager"
+
+
+def _signature_argument_type(signature: OperatorSignature, index: int) -> TypeName | None:
+    try:
+        return signature.argument_types[index]
+    except IndexError:
+        return signature.rest_type
+
+
+def _arity_message(name: str, signature: OperatorSignature, actual: int) -> str:
+    if signature.arity.max is None:
+        return f"{name} expects at least {signature.arity.min} arguments, got {actual}"
+    if signature.arity.min == signature.arity.max:
+        return f"{name} expects exactly {signature.arity.min} arguments, got {actual}"
+    return (
+        f"{name} expects between {signature.arity.min} and {signature.arity.max} "
+        f"arguments, got {actual}"
+    )
 
 
 def _effect_is_declared(effect: Symbol, env: Environment, scope: _Scope) -> bool:
@@ -764,6 +748,7 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
             _value_type(value),
             operator_kind=_operator_kind_for_value(value),
             eager_arguments=_value_uses_eager_arguments(value),
+            signature=_value_signature(value),
         )
     return next_scope
 

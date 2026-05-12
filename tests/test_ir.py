@@ -71,3 +71,9 @@ def test_tail_position_is_marked_inside_function_body():
     recursive_call = cond.clauses[1].result
     assert isinstance(recursive_call, CallExpr)
     assert recursive_call.tail_position
+
+
+def test_lowering_uses_operator_signature_argument_types():
+    program = lower_source("(+ true 1)")
+
+    assert any("expects number arguments" in item.message for item in program.diagnostics)

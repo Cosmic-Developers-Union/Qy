@@ -42,6 +42,8 @@ class OperatorSignature:
     return_type: TypeName
     arity: Arity = field(default_factory=Arity)
     argument_policy: tuple[ArgumentPolicy, ...] = ()
+    argument_types: tuple[TypeName, ...] = ()
+    rest_type: TypeName | None = None
     effects: tuple[EffectSpec, ...] = ()
     compile_time: bool = False
     runtime_meta: bool = False
@@ -49,10 +51,10 @@ class OperatorSignature:
 
 
 CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
-    "*": OperatorSignature("number", Arity()),
-    "+": OperatorSignature("number", Arity()),
-    "-": OperatorSignature("number", Arity(1)),
-    "/": OperatorSignature("number", Arity(1)),
+    "*": OperatorSignature("number", Arity(), rest_type="number"),
+    "+": OperatorSignature("number", Arity(), rest_type="number"),
+    "-": OperatorSignature("number", Arity(1), rest_type="number"),
+    "/": OperatorSignature("number", Arity(1), rest_type="number"),
     "==": OperatorSignature("bool", Arity(2, 2)),
     "assert": OperatorSignature(
         "any",

@@ -718,15 +718,23 @@ def _infer_call_type(
 ) -> TypeName:
     signature = _operator_signature(operator_expr)
     if signature is not None:
+        name = operator.name if isinstance(operator, Symbol) else "call"
         if not signature.arity.accepts(len(args)):
             context.diagnostic(
                 _arity_message(
-                    operator.name if isinstance(operator, Symbol) else "call",
+                    name,
                     signature,
                     len(args),
                 ),
                 form,
             )
+        for index, arg in enumerate(args):
+            expected = _signature_argument_type(signature, index)
+            if expected is not None and _type_of(arg) not in {expected, "unknown", "any"}:
+                context.diagnostic(
+                    f"{name} expects {expected} arguments, got {_type_of(arg)}",
+                    form,
+                )
         return signature.return_type
 
     if isinstance(operator, Symbol):
@@ -762,6 +770,13 @@ def _arity_message(name: str, signature: OperatorSignature, actual: int) -> str:
         f"{name} expects between {signature.arity.min} and {signature.arity.max} "
         f"arguments, got {actual}"
     )
+
+
+def _signature_argument_type(signature: OperatorSignature, index: int) -> TypeName | None:
+    try:
+        return signature.argument_types[index]
+    except IndexError:
+        return signature.rest_type
 
 
 def _type_of(expr: IRExpr) -> TypeName:

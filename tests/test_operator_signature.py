@@ -15,7 +15,7 @@ def test_core_operators_expose_static_signatures():
 
     plus = qy.env.resolve(S("+"))
     assert isinstance(plus, PureOperator)
-    assert plus.signature == OperatorSignature("number", Arity())
+    assert plus.signature == OperatorSignature("number", Arity(), rest_type="number")
 
     quote = qy.env.resolve(S("quote"))
     assert isinstance(quote, MetaOperator)
