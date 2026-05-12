@@ -76,6 +76,12 @@ from qy.macroexpand import macroexpand
 from qy.macroexpand import macroexpand_async
 from qy.macroexpand import macroexpand_source
 from qy.macroexpand import macroexpand_source_async
+from qy.mir import MIRBlock
+from qy.mir import MIRFunction
+from qy.mir import MIRInstruction
+from qy.mir import MIRProgram
+from qy.mir import MIRTerminator
+from qy.mir_lowering import lower_mir
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
 from qy.operator_docs import collect_supported_operators
@@ -146,6 +152,11 @@ __all__ = [
     "IRVirtualMachine",
     "Instruction",
     "LiteralExpr",
+    "MIRBlock",
+    "MIRFunction",
+    "MIRInstruction",
+    "MIRProgram",
+    "MIRTerminator",
     "MacroDefinition",
     "MacroEffectPolicy",
     "MacroExpansion",
@@ -218,6 +229,7 @@ __all__ = [
     "format_source",
     "format_value",
     "lower",
+    "lower_mir",
     "lower_source",
     "macroexpand",
     "macroexpand_async",
