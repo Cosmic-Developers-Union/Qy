@@ -6,12 +6,12 @@ from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.ir_vm import IRFunction
+from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.types import OperatorKind
 from qy.types import TypeName

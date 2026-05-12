@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
+from qy.macro import MacroDefinition
 from qy.stdlib import PRELUDE_MODULES
 from qy.stdlib import load_module
 

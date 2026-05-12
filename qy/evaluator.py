@@ -24,6 +24,7 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.literals import resolve_default_literal
+from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import lookup_operator_signature
 from qy.reader import Form
@@ -255,28 +256,6 @@ class ComponentDefinition:
                     "expected": len(self.params),
                     "actual": len(args),
                     "component": self.name.name,
-                },
-            )
-        local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
-        return await evaluate_body_async(self.body, local_env)
-
-
-@dataclass(frozen=True, slots=True)
-class MacroDefinition:
-    name: Symbol
-    params: tuple[Symbol, ...]
-    body: tuple[object, ...]
-    closure: Environment
-
-    async def expand(self, args: tuple[object, ...]) -> object:
-        if len(args) != len(self.params):
-            raise QyArityError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
-                span=self.name.span,
-                metadata={
-                    "expected": len(self.params),
-                    "actual": len(args),
-                    "macro": self.name.name,
                 },
             )
         local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)

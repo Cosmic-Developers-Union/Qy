@@ -9,10 +9,10 @@ from qy.errors import QyArityError
 from qy.errors import SourceSpan
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
+from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
 

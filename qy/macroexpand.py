@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from typing import cast
 
 from qy.diagnostics import Diagnostic
@@ -10,12 +11,13 @@ from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.evaluator import Environment
-from qy.evaluator import MacroDefinition
 from qy.evaluator import run_async
 from qy.evaluator import standard_environment
+from qy.macro import MacroDefinition
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
+from qy.reader import SourceSpan
 from qy.reader import SpannedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
@@ -25,6 +27,8 @@ from qy.values import qy_cons_to_tuple
 
 __all__ = [
     "MacroExpansion",
+    "MacroExpansionTrace",
+    "MacroSourceMapEntry",
     "macroexpand",
     "macroexpand_async",
     "macroexpand_source",
@@ -35,13 +39,39 @@ _MAX_MACRO_EXPANSION_DEPTH = 100
 
 
 @dataclass(frozen=True, slots=True)
+class MacroSourceMapEntry:
+    macro: Symbol
+    original_span: SourceSpan | None
+    expanded_span: SourceSpan | None
+    depth: int
+
+
+@dataclass(frozen=True, slots=True)
+class MacroExpansionTrace:
+    macro: Symbol
+    input_span: SourceSpan | None
+    output_span: SourceSpan | None
+    depth: int
+    input_form: object = field(compare=False, repr=False)
+    output_form: object = field(compare=False, repr=False)
+
+    def source_map_entry(self) -> MacroSourceMapEntry:
+        return MacroSourceMapEntry(self.macro, self.input_span, self.output_span, self.depth)
+
+
+@dataclass(frozen=True, slots=True)
 class MacroExpansion:
     forms: list[Form]
     diagnostics: tuple[Diagnostic, ...] = ()
+    traces: tuple[MacroExpansionTrace, ...] = ()
 
     @property
     def ok(self) -> bool:
         return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
+
+    @property
+    def source_map(self) -> tuple[MacroSourceMapEntry, ...]:
+        return tuple(trace.source_map_entry() for trace in self.traces)
 
 
 def macroexpand(forms: list[Form], env: Environment | None = None) -> MacroExpansion:
@@ -54,11 +84,21 @@ async def macroexpand_async(
 ) -> MacroExpansion:
     runtime_env = env or standard_environment()
     diagnostics: list[Diagnostic] = []
+    traces: list[MacroExpansionTrace] = []
     expanded_forms: list[Form] = []
     for form in forms:
         try:
             expanded_forms.append(
-                cast(Form, await _macroexpand_form(form, runtime_env, diagnostics, depth=0))
+                cast(
+                    Form,
+                    await _macroexpand_form(
+                        form,
+                        runtime_env,
+                        diagnostics,
+                        traces,
+                        depth=0,
+                    ),
+                )
             )
         except EvaluationError as e:
             diagnostics.append(
@@ -68,7 +108,7 @@ async def macroexpand_async(
                     column=e.column,
                 )
             )
-    return MacroExpansion(expanded_forms, tuple(diagnostics))
+    return MacroExpansion(expanded_forms, tuple(diagnostics), tuple(traces))
 
 
 def macroexpand_source(
@@ -103,6 +143,7 @@ async def _macroexpand_form(
     form: object,
     env: Environment,
     diagnostics: list[Diagnostic],
+    traces: list[MacroExpansionTrace],
     *,
     depth: int,
 ) -> object:
@@ -131,11 +172,27 @@ async def _macroexpand_form(
             expanded = await value.expand(args)
             if isinstance(expanded, QyCons):
                 expanded = qy_cons_to_tuple(expanded)
-            return await _macroexpand_form(expanded, env, diagnostics, depth=depth + 1)
+            traces.append(
+                MacroExpansionTrace(
+                    operator,
+                    get_span(form),
+                    get_span(expanded),
+                    depth + 1,
+                    form,
+                    expanded,
+                )
+            )
+            return await _macroexpand_form(
+                expanded,
+                env,
+                diagnostics,
+                traces,
+                depth=depth + 1,
+            )
 
     return _tuple_like(
         form,
-        [await _macroexpand_form(item, env, diagnostics, depth=depth) for item in form],
+        [await _macroexpand_form(item, env, diagnostics, traces, depth=depth) for item in form],
     )
 
 

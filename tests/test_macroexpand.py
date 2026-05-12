@@ -11,6 +11,10 @@ def test_macroexpand_expands_bound_macro_call():
 
     assert expansion.ok
     assert expansion.forms == [(Symbol("+"), Symbol("20"), Symbol("22"))]
+    assert len(expansion.traces) == 1
+    assert expansion.traces[0].macro == Symbol("const-answer")
+    assert expansion.traces[0].depth == 1
+    assert expansion.source_map[0].macro == Symbol("const-answer")
 
 
 def test_macroexpand_keeps_quote_boundary():

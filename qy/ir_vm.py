@@ -20,7 +20,6 @@ from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
@@ -51,6 +50,7 @@ from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
+from qy.macro import MacroDefinition
 from qy.operator_runtime import operator_uses_raw_args
 from qy.operator_runtime import validate_operator_arity
 from qy.reader import DottedTuple
@@ -63,6 +63,9 @@ from qy.values import QY_NIL
 from qy.values import QyCons
 from qy.values import list_to_qy_cons
 from qy.values import qy_cons_to_tuple
+from qy.virtual_stack import TailCall
+from qy.virtual_stack import VirtualStack
+from qy.virtual_stack import VirtualStackFrame
 
 __all__ = [
     "IRCallableKind",
@@ -89,26 +92,29 @@ class IRFunction:
         return await IRVirtualMachine(self.closure)._apply_ir_function(self, args)
 
 
-@dataclass(frozen=True, slots=True)
-class _TailCall:
-    function: IRFunction
-    args: tuple[object, ...]
-
-
 class IRVirtualMachine:
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env or standard_environment()
+        self.stack = VirtualStack()
 
     async def evaluate_program(self, program: ProgramIR) -> list[object]:
         _raise_for_diagnostics(program)
         results: list[object] = []
         self._bind_callable_definitions(program.body, self.env)
-        for expression in program.body:
-            results.append(await self.evaluate(expression, self.env))
-        return results
+        try:
+            for expression in program.body:
+                results.append(await self.evaluate(expression, self.env))
+            return results
+        except EvaluationError as e:
+            self._attach_virtual_stack(e)
+            raise
 
     async def evaluate(self, expression: IRExpr, env: Environment | None = None) -> object:
-        return await self._eval(expression, env or self.env, current_function=None)
+        try:
+            return await self._eval(expression, env or self.env, current_function=None)
+        except EvaluationError as e:
+            self._attach_virtual_stack(e)
+            raise
 
     async def _eval(
         self,
@@ -216,7 +222,7 @@ class IRVirtualMachine:
                     ),
                 )
                 raise
-            if isinstance(result, _TailCall):
+            if isinstance(result, TailCall):
                 return result
         return result
 
@@ -336,7 +342,7 @@ class IRVirtualMachine:
             and current_function is not None
             and isinstance(operator, IRFunction)
         ):
-            return _TailCall(operator, args)
+            return TailCall(operator, args, expression.span)
         validate_operator_arity(operator, len(expression.raw_args), span=expression.span)
         return await self._apply_operator(operator, args, expression, env)
 
@@ -769,7 +775,7 @@ class IRVirtualMachine:
     ) -> object:
         try:
             if isinstance(operator, IRFunction):
-                return await self._apply_ir_function(operator, args)
+                return await self._apply_ir_function(operator, args, span=expression.span)
             if isinstance(operator, MetaOperator):
                 return await _await_if_needed(
                     operator((_raw_operator_expression(expression), *expression.raw_args), env)
@@ -814,34 +820,46 @@ class IRVirtualMachine:
         self,
         function: IRFunction,
         args: tuple[object, ...],
+        *,
+        span: SourceSpan | None = None,
     ) -> object:
         current_function = function
         current_args = args
-        while True:
-            if len(current_args) != len(current_function.params):
-                raise QyArityError(
-                    f"{current_function.name.name} expects "
-                    f"{len(current_function.params)} arguments, got {len(current_args)}",
-                    span=current_function.name.span,
-                    metadata={
-                        "expected": len(current_function.params),
-                        "actual": len(current_args),
-                        "function": current_function.name.name,
-                    },
-                )
+        current_span = span
+        with self.stack.frame(_function_stack_frame(current_function, current_span)):
+            try:
+                while True:
+                    self.stack.replace_top(_function_stack_frame(current_function, current_span))
+                    if len(current_args) != len(current_function.params):
+                        raise QyArityError(
+                            f"{current_function.name.name} expects "
+                            f"{len(current_function.params)} arguments, got {len(current_args)}",
+                            span=current_function.name.span,
+                            metadata={
+                                "expected": len(current_function.params),
+                                "actual": len(current_args),
+                                "function": current_function.name.name,
+                            },
+                        )
 
-            local_env = current_function.closure.child(
-                dict(zip(current_function.params, current_args, strict=True))
-            )
-            result = await self._eval_body(
-                current_function.body,
-                local_env,
-                current_function=current_function,
-            )
-            if not isinstance(result, _TailCall):
-                return result
-            current_function = result.function
-            current_args = result.args
+                    local_env = current_function.closure.child(
+                        dict(zip(current_function.params, current_args, strict=True))
+                    )
+                    result = await self._eval_body(
+                        current_function.body,
+                        local_env,
+                        current_function=current_function,
+                    )
+                    if not isinstance(result, TailCall):
+                        return result
+                    if not isinstance(result.target, IRFunction):
+                        raise QyRuntimeError(f"unsupported tail call target {result.target!r}")
+                    current_function = result.target
+                    current_args = result.args
+                    current_span = result.span
+            except EvaluationError as e:
+                self._attach_virtual_stack(e)
+                raise
 
     def _bind_callable_definitions(self, body: tuple[IRExpr, ...], env: Environment) -> None:
         for expression in body:
@@ -915,6 +933,12 @@ class IRVirtualMachine:
 
         signal.continuation = QyContinuation(signal.effect, previous.resumable, resume)
 
+    def _attach_virtual_stack(self, error: EvaluationError) -> None:
+        if error.frames:
+            return
+        for frame in self.stack.trace():
+            error.add_frame(frame)
+
 
 def evaluate_ir(program: ProgramIR, env: Environment | None = None) -> object:
     return run_async(evaluate_ir_async(program, env))
@@ -979,6 +1003,12 @@ def _raw_operator_expression(expression: CallExpr) -> object:
     if isinstance(expression.operator, SymbolRefExpr):
         return expression.operator.symbol
     return expression.operator
+
+
+def _function_stack_frame(function: IRFunction, span: SourceSpan | None) -> VirtualStackFrame:
+    name = None if function.name.name == "<lambda>" else function.name.name
+    kind = "lambda" if name is None else "call"
+    return VirtualStackFrame(kind, name, span or function.name.span)
 
 
 async def _await_if_needed(value: object) -> object:

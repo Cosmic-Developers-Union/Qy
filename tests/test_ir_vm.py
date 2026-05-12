@@ -5,6 +5,7 @@ from qy import Qy
 from qy import evaluate_ir_source
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
+from qy.errors import QyTypeError
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
 
@@ -58,6 +59,22 @@ def test_ir_vm_mutual_tail_recursion_uses_virtual_stack():
     )
 
     assert result is False
+
+
+def test_ir_vm_runtime_errors_include_virtual_stack_frames():
+    qy = Qy()
+
+    with pytest.raises(QyTypeError) as exc_info:
+        qy.evaluate_ir_source(
+            """
+            (let ()
+              (defun bad (x) (car x))
+              (defun outer () (+ (bad 1) 1))
+              (outer))
+            """
+        )
+
+    assert [frame.name for frame in exc_info.value.frames] == ["outer", "bad"]
 
 
 def test_ir_vm_function_is_visible_to_lowering_after_definition():

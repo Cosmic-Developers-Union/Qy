@@ -29,7 +29,6 @@ from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
 from qy.evaluator import HostObjectRef
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
@@ -62,7 +61,10 @@ from qy.ir_vm import evaluate_ir_source
 from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
+from qy.macro import MacroDefinition
 from qy.macroexpand import MacroExpansion
+from qy.macroexpand import MacroExpansionTrace
+from qy.macroexpand import MacroSourceMapEntry
 from qy.macroexpand import macroexpand
 from qy.macroexpand import macroexpand_async
 from qy.macroexpand import macroexpand_source
@@ -130,6 +132,8 @@ __all__ = [
     "LiteralExpr",
     "MacroDefinition",
     "MacroExpansion",
+    "MacroExpansionTrace",
+    "MacroSourceMapEntry",
     "MetaOperator",
     "OperatorDoc",
     "OperatorModuleDoc",

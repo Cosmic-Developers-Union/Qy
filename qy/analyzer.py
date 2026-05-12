@@ -11,13 +11,13 @@ from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
 from qy.ir_vm import IRFunction
+from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
 from qy.reader import DottedTuple

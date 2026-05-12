@@ -29,7 +29,6 @@ from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import EvaluationError
 from qy.evaluator import HostObjectRef
-from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
@@ -38,6 +37,7 @@ from qy.evaluator import UserFunction
 from qy.evaluator import ensure_symbol
 from qy.evaluator import evaluate_async
 from qy.evaluator import evaluate_body_async
+from qy.macro import MacroDefinition
 from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
