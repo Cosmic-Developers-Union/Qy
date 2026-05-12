@@ -28,3 +28,6 @@ release:
 	$(MAKE) build
 	uv run twine upload -r testpypi dist/*
 	uv run twine upload dist/*
+
+tokens:
+	python scripts/tokens.py
