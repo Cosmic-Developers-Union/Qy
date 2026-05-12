@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Literal
+from typing import cast
 
 from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
@@ -11,8 +13,10 @@ from qy.evaluator import evaluate
 from qy.evaluator import evaluate_async
 from qy.evaluator import evaluate_file_async
 from qy.evaluator import evaluate_program_async
+from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
+from qy.ir_vm import IRVirtualMachine
 from qy.ir_vm import evaluate_ir
 from qy.ir_vm import evaluate_ir_async
 from qy.ir_vm import evaluate_ir_source
@@ -24,12 +28,17 @@ from qy.reader import Form
 from qy.reader import read
 from qy.reader import read_one
 
-__all__ = ["Qy"]
+__all__ = ["EvaluationBackend", "Qy"]
+
+EvaluationBackend = Literal["ast", "ir"]
 
 
 class Qy:
-    def __init__(self, env: Environment | None = None) -> None:
+    def __init__(
+        self, env: Environment | None = None, *, backend: EvaluationBackend = "ast"
+    ) -> None:
         self.env = env or standard_environment()
+        self.backend = backend
 
     def read(self, source: str) -> list[Form]:
         return read(source)
@@ -58,23 +67,39 @@ class Qy:
         return await evaluate_ir_source_async(source, self.env, source_name=source_name)
 
     def evaluate(self, expression: object) -> object:
+        if self.backend == "ir":
+            return self.evaluate_ir(lower([cast(Form, expression)], self.env))
         return evaluate(expression, self.env)
 
     async def evaluate_async(self, expression: object) -> object:
+        if self.backend == "ir":
+            return await self.evaluate_ir_async(lower([cast(Form, expression)], self.env))
         return await evaluate_async(expression, self.env)
 
     def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
+        if self.backend == "ir":
+            return self.evaluate_ir_source(source, source_name=source_name)
         return self.evaluate(read_one(source, source_name=source_name))
 
     async def evaluate_source_async(self, source: str, *, source_name: str | None = None) -> object:
+        if self.backend == "ir":
+            return await self.evaluate_ir_source_async(source, source_name=source_name)
         return await self.evaluate_async(read_one(source, source_name=source_name))
 
     def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
+        if self.backend == "ir":
+            program = lower(read(source, source_name=source_name), self.env)
+            return cast(
+                list[object], run_async(IRVirtualMachine(self.env).evaluate_program(program))
+            )
         return [self.evaluate(form) for form in read(source, source_name=source_name)]
 
     async def evaluate_program_async(
         self, source: str, *, source_name: str | None = None
     ) -> list[object]:
+        if self.backend == "ir":
+            program = lower(read(source, source_name=source_name), self.env)
+            return await IRVirtualMachine(self.env).evaluate_program(program)
         return await evaluate_program_async(source, self.env, source_name=source_name)
 
     def evaluate_file(self, path: str | Path) -> object:

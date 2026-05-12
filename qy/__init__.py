@@ -84,6 +84,7 @@ from qy.reader import write
 from qy.reader import write_program
 from qy.reader import write_tuple
 from qy.reader import write_tuple_program
+from qy.runtime import EvaluationBackend
 from qy.runtime import Qy
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
@@ -115,6 +116,7 @@ __all__ = [
     "EffectOperator",
     "EffectSpec",
     "Environment",
+    "EvaluationBackend",
     "EvaluationError",
     "Form",
     "HostObjectRef",

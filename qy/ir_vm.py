@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 from typing import cast
@@ -12,6 +14,7 @@ from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
+from qy.errors import SourceSpan
 from qy.evaluator import EffectDefinition
 from qy.evaluator import Environment
 from qy.evaluator import MacroDefinition
@@ -26,6 +29,7 @@ from qy.ir import ComponentExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
 from qy.ir import DefunExpr
+from qy.ir import EffectHandler
 from qy.ir import FromImportExpr
 from qy.ir import HandleExpr
 from qy.ir import IRExpr
@@ -151,11 +155,12 @@ class IRVirtualMachine:
             return await self._eval_from_import(expression, env)
         if isinstance(expression, ModuleExpr):
             return await self._eval_module(expression, env)
-        if isinstance(expression, PerformExpr | HandleExpr | ResumeExpr):
-            raise QyRuntimeError(
-                "IR VM does not yet implement effect continuation forms",
-                span=expression.span,
-            )
+        if isinstance(expression, PerformExpr):
+            return await self._eval_perform(expression, env, current_function=current_function)
+        if isinstance(expression, HandleExpr):
+            return await self._eval_handle(expression, env, current_function=current_function)
+        if isinstance(expression, ResumeExpr):
+            return await self._eval_resume(expression, env, current_function=current_function)
         if isinstance(expression, AssertExpr):
             return await self._eval_assert(expression, env, current_function=current_function)
         raise QyRuntimeError(f"unsupported IR expression {expression!r}")
@@ -171,12 +176,52 @@ class IRVirtualMachine:
             raise QyArityError("body must contain at least one expression")
 
         self._bind_callable_definitions(body, env)
+        return await self._eval_body_from(body, 0, env, current_function=current_function)
+
+    async def _eval_body_from(
+        self,
+        body: tuple[IRExpr, ...],
+        index: int,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
         result: object = None
-        for expression in body:
-            result = await self._eval(expression, env, current_function=current_function)
+        for current in range(index, len(body)):
+            try:
+                result = await self._eval(
+                    body[current],
+                    env,
+                    current_function=current_function,
+                )
+            except QyEffectSignal as e:
+                self._compose_effect_continuation(
+                    e,
+                    lambda resumed, next_index=current + 1: self._continue_body_after_resume(
+                        body,
+                        next_index,
+                        resumed,
+                        env,
+                        current_function=current_function,
+                    ),
+                )
+                raise
             if isinstance(result, _TailCall):
                 return result
         return result
+
+    async def _continue_body_after_resume(
+        self,
+        body: tuple[IRExpr, ...],
+        index: int,
+        resumed: object,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if index >= len(body):
+            return resumed
+        return await self._eval_body_from(body, index, env, current_function=current_function)
 
     async def _eval_call(
         self,
@@ -185,17 +230,87 @@ class IRVirtualMachine:
         *,
         current_function: IRFunction | None,
     ) -> object:
-        operator = await self._eval(
-            expression.operator,
+        try:
+            operator = await self._eval(
+                expression.operator,
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed_operator: self._eval_call_arguments(
+                    expression,
+                    resumed_operator,
+                    0,
+                    (),
+                    env,
+                    current_function=current_function,
+                ),
+            )
+            raise
+        return await self._eval_call_arguments(
+            expression,
+            operator,
+            0,
+            (),
             env,
             current_function=current_function,
         )
-        args = tuple(
-            [
-                await self._eval(arg, env, current_function=current_function)
-                for arg in expression.args
-            ]
+
+    async def _eval_call_arguments(
+        self,
+        expression: CallExpr,
+        operator: object,
+        index: int,
+        values: tuple[object, ...],
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if index >= len(expression.args):
+            return await self._finish_call(
+                expression,
+                operator,
+                values,
+                current_function=current_function,
+            )
+        try:
+            value = await self._eval(
+                expression.args[index],
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._eval_call_arguments(
+                    expression,
+                    operator,
+                    index + 1,
+                    (*values, resumed),
+                    env,
+                    current_function=current_function,
+                ),
+            )
+            raise
+        return await self._eval_call_arguments(
+            expression,
+            operator,
+            index + 1,
+            (*values, value),
+            env,
+            current_function=current_function,
         )
+
+    async def _finish_call(
+        self,
+        expression: CallExpr,
+        operator: object,
+        args: tuple[object, ...],
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
         if (
             expression.tail_position
             and current_function is not None
@@ -212,15 +327,68 @@ class IRVirtualMachine:
         current_function: IRFunction | None,
     ) -> object:
         local_env = env.child()
-        for binding in expression.bindings:
+        return await self._eval_let_bindings(
+            expression,
+            0,
+            local_env,
+            current_function=current_function,
+        )
+
+    async def _eval_let_bindings(
+        self,
+        expression: LetExpr,
+        index: int,
+        local_env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if index >= len(expression.bindings):
+            return await self._eval_body(
+                expression.body,
+                local_env,
+                current_function=current_function,
+            )
+        binding = expression.bindings[index]
+        try:
             value = await self._eval(
                 binding.value,
                 local_env,
                 current_function=current_function,
             )
-            local_env.define(binding.symbol, value)
-        return await self._eval_body(
-            expression.body,
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._continue_let_after_binding_resume(
+                    expression,
+                    index,
+                    resumed,
+                    local_env,
+                    current_function=current_function,
+                ),
+            )
+            raise
+        local_env.define(binding.symbol, value)
+        return await self._eval_let_bindings(
+            expression,
+            index + 1,
+            local_env,
+            current_function=current_function,
+        )
+
+    async def _continue_let_after_binding_resume(
+        self,
+        expression: LetExpr,
+        index: int,
+        resumed: object,
+        local_env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        binding = expression.bindings[index]
+        local_env.define(binding.symbol, resumed)
+        return await self._eval_let_bindings(
+            expression,
+            index + 1,
             local_env,
             current_function=current_function,
         )
@@ -232,19 +400,71 @@ class IRVirtualMachine:
         *,
         current_function: IRFunction | None,
     ) -> object:
-        for clause in expression.clauses:
+        return await self._eval_cond_from(
+            expression,
+            0,
+            env,
+            current_function=current_function,
+        )
+
+    async def _eval_cond_from(
+        self,
+        expression: CondExpr,
+        index: int,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if index >= len(expression.clauses):
+            return None
+        clause = expression.clauses[index]
+        try:
             condition = await self._eval(
                 clause.condition,
                 env,
                 current_function=current_function,
             )
-            if _truthy(condition):
-                return await self._eval(
-                    clause.result,
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._finish_cond_condition(
+                    expression,
+                    index,
+                    resumed,
                     env,
                     current_function=current_function,
-                )
-        return None
+                ),
+            )
+            raise
+        return await self._finish_cond_condition(
+            expression,
+            index,
+            condition,
+            env,
+            current_function=current_function,
+        )
+
+    async def _finish_cond_condition(
+        self,
+        expression: CondExpr,
+        index: int,
+        condition: object,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if _truthy(condition):
+            return await self._eval(
+                expression.clauses[index].result,
+                env,
+                current_function=current_function,
+            )
+        return await self._eval_cond_from(
+            expression,
+            index + 1,
+            env,
+            current_function=current_function,
+        )
 
     async def _eval_assert(
         self,
@@ -253,22 +473,68 @@ class IRVirtualMachine:
         *,
         current_function: IRFunction | None,
     ) -> object:
-        condition = await self._eval(
-            expression.condition,
+        try:
+            condition = await self._eval(
+                expression.condition,
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._finish_assert(
+                    expression,
+                    resumed,
+                    env,
+                    current_function=current_function,
+                ),
+            )
+            raise
+        return await self._finish_assert(
+            expression,
+            condition,
             env,
             current_function=current_function,
         )
+
+    async def _finish_assert(
+        self,
+        expression: AssertExpr,
+        condition: object,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
         if _truthy(condition):
             return condition
 
         if expression.message is None:
             message: object = Symbol("assertion failed")
         else:
-            message = await self._eval(
-                expression.message,
-                env,
-                current_function=current_function,
-            )
+            try:
+                message = await self._eval(
+                    expression.message,
+                    env,
+                    current_function=current_function,
+                )
+            except QyEffectSignal as e:
+                self._compose_effect_continuation(
+                    e,
+                    lambda resumed: self._raise_assert_failed(
+                        expression,
+                        resumed,
+                        condition,
+                    ),
+                )
+                raise
+        return await self._raise_assert_failed(expression, message, condition)
+
+    async def _raise_assert_failed(
+        self,
+        expression: AssertExpr,
+        message: object,
+        condition: object,
+    ) -> object:
         raise QyEffectSignal(
             "assert-failed",
             message,
@@ -277,6 +543,151 @@ class IRVirtualMachine:
             span=expression.span,
             metadata={"condition": condition},
         )
+
+    async def _eval_perform(
+        self,
+        expression: PerformExpr,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        definition = self._resolve_effect_definition(
+            expression.effect.name,
+            env,
+            expression.span,
+        )
+        try:
+            argument = await self._eval(
+                expression.argument,
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._raise_effect_signal(
+                    expression.effect.name,
+                    resumed,
+                    definition.resumable,
+                    expression.span,
+                ),
+            )
+            raise
+        return await self._raise_effect_signal(
+            expression.effect.name,
+            argument,
+            definition.resumable,
+            expression.span,
+        )
+
+    async def _eval_handle(
+        self,
+        expression: HandleExpr,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        handlers = {handler.effect.name: handler for handler in expression.handlers}
+        try:
+            return await self._eval(
+                expression.expression,
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            return await self._handle_effect_signal(
+                e,
+                handlers,
+                env,
+                current_function=current_function,
+            )
+
+    async def _handle_effect_signal(
+        self,
+        signal: QyEffectSignal,
+        handlers: Mapping[str, EffectHandler],
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        try:
+            handler = handlers[signal.effect]
+        except KeyError:
+            raise signal from None
+        local_env = env.child(
+            {
+                handler.arg_name: signal.arg,
+                handler.continuation_name: signal.continuation,
+            }
+        )
+        try:
+            return await self._eval_body(
+                handler.body,
+                local_env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as nested:
+            return await self._handle_effect_signal(
+                nested,
+                handlers,
+                env,
+                current_function=current_function,
+            )
+
+    async def _eval_resume(
+        self,
+        expression: ResumeExpr,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        try:
+            continuation = await self._eval(
+                expression.continuation,
+                env,
+                current_function=current_function,
+            )
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: self._finish_resume_continuation(
+                    expression,
+                    resumed,
+                    env,
+                    current_function=current_function,
+                ),
+            )
+            raise
+        return await self._finish_resume_continuation(
+            expression,
+            continuation,
+            env,
+            current_function=current_function,
+        )
+
+    async def _finish_resume_continuation(
+        self,
+        expression: ResumeExpr,
+        continuation: object,
+        env: Environment,
+        *,
+        current_function: IRFunction | None,
+    ) -> object:
+        if not isinstance(continuation, QyContinuation):
+            raise QyTypeError(
+                f"resume expects a continuation, got {continuation!r}",
+                span=expression.span,
+                metadata={"value": continuation},
+            )
+        try:
+            value = await self._eval(expression.value, env, current_function=current_function)
+        except QyEffectSignal as e:
+            self._compose_effect_continuation(
+                e,
+                lambda resumed: continuation.resume(resumed),
+            )
+            raise
+        return await continuation.resume(value)
 
     async def _eval_from_import(self, expression: FromImportExpr, env: Environment) -> object:
         try:
@@ -402,6 +813,59 @@ class IRVirtualMachine:
                         "component",
                     ),
                 )
+
+    async def _raise_effect_signal(
+        self,
+        effect_name: str,
+        argument: object,
+        resumable: bool,
+        span: SourceSpan | None,
+    ) -> object:
+        raise QyEffectSignal(
+            effect_name,
+            argument,
+            _identity_continuation(effect_name, resumable),
+            resumable=resumable,
+            span=span,
+        )
+
+    def _resolve_effect_definition(
+        self,
+        effect_name: str,
+        env: Environment,
+        span: SourceSpan | None,
+    ) -> EffectDefinition:
+        try:
+            value = env.resolve(Symbol(effect_name))
+        except EvaluationError as e:
+            raise EvaluationError(
+                f"effect {effect_name!r} is not declared; use defeffect before perform",
+                span=span,
+                cause=e,
+                metadata={"effect": effect_name},
+            ) from e
+        if not isinstance(value, EffectDefinition):
+            raise QyTypeError(
+                f"{effect_name!r} is not an effect definition",
+                span=span,
+                metadata={"effect": effect_name, "value": value},
+            )
+        return value
+
+    def _compose_effect_continuation(
+        self,
+        signal: QyEffectSignal,
+        then: Callable[[object], object],
+    ) -> None:
+        previous = signal.continuation
+        if not isinstance(previous, QyContinuation):
+            return
+
+        async def resume(value: object) -> object:
+            previous_result = await previous.resume(value)
+            return await _await_if_needed(then(previous_result))
+
+        signal.continuation = QyContinuation(signal.effect, previous.resumable, resume)
 
 
 def evaluate_ir(program: ProgramIR, env: Environment | None = None) -> object:
