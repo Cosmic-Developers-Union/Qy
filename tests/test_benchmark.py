@@ -1,5 +1,9 @@
 from qy.benchmark import BenchmarkCase
+from qy.benchmark import BenchmarkResult
+from qy.benchmark import compare_benchmarks
+from qy.benchmark import load_benchmark_baseline
 from qy.benchmark import run_benchmarks
+from qy.benchmark import write_benchmark_baseline
 
 
 def test_benchmark_runner_smoke_test():
@@ -15,3 +19,29 @@ def test_benchmark_runner_smoke_test():
     assert all(result.iterations == 1 for result in results)
     assert all(result.best_seconds > 0 for result in results)
     assert all(result.ops_per_second > 0 for result in results)
+
+
+def test_benchmark_compare_reports_only_threshold_regressions():
+    baseline = (
+        BenchmarkResult("tiny", "ir", 10, 1, 1.0, 1.0, 1.0, 10.0, 0.1),
+        BenchmarkResult("tiny", "lower", 10, 1, 2.0, 2.0, 2.0, 5.0, 0.2),
+    )
+    current = (
+        BenchmarkResult("tiny", "ir", 10, 1, 1.2, 1.2, 1.2, 8.0, 0.12),
+        BenchmarkResult("tiny", "lower", 10, 1, 2.1, 2.1, 2.1, 4.8, 0.21),
+    )
+
+    regressions = compare_benchmarks(current, baseline, max_regression_percent=10)
+
+    assert len(regressions) == 1
+    assert regressions[0].case == "tiny"
+    assert regressions[0].phase == "ir"
+
+
+def test_benchmark_baseline_roundtrip(tmp_path):
+    path = tmp_path / "baseline.json"
+    results = (BenchmarkResult("tiny", "source", 1, 1, 0.1, 0.1, 0.1, 10.0, 0.1),)
+
+    write_benchmark_baseline(results, path)
+
+    assert load_benchmark_baseline(path) == results

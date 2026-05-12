@@ -19,6 +19,7 @@ from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
 from qy.ir_vm import IRFunction
 from qy.operator_signature import OperatorSignature
+from qy.operator_signature import format_arity_message
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -336,14 +337,7 @@ def _signature_argument_type(signature: OperatorSignature, index: int) -> TypeNa
 
 
 def _arity_message(name: str, signature: OperatorSignature, actual: int) -> str:
-    if signature.arity.max is None:
-        return f"{name} expects at least {signature.arity.min} arguments, got {actual}"
-    if signature.arity.min == signature.arity.max:
-        return f"{name} expects exactly {signature.arity.min} arguments, got {actual}"
-    return (
-        f"{name} expects between {signature.arity.min} and {signature.arity.max} "
-        f"arguments, got {actual}"
-    )
+    return format_arity_message(name, signature, actual)
 
 
 def _effect_is_declared(effect: Symbol, env: Environment, scope: _Scope) -> bool:

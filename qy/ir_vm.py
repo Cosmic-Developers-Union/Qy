@@ -51,6 +51,8 @@ from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
+from qy.operator_runtime import operator_uses_raw_args
+from qy.operator_runtime import validate_operator_arity
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import Symbol
@@ -257,7 +259,7 @@ class IRVirtualMachine:
                 ),
             )
             raise
-        if _operator_uses_raw_args(operator):
+        if operator_uses_raw_args(operator):
             return await self._finish_call(
                 expression,
                 operator,
@@ -335,6 +337,7 @@ class IRVirtualMachine:
             and isinstance(operator, IRFunction)
         ):
             return _TailCall(operator, args)
+        validate_operator_arity(operator, len(expression.raw_args), span=expression.span)
         return await self._apply_operator(operator, args, expression, env)
 
     async def _eval_let(
@@ -976,15 +979,6 @@ def _raw_operator_expression(expression: CallExpr) -> object:
     if isinstance(expression.operator, SymbolRefExpr):
         return expression.operator.symbol
     return expression.operator
-
-
-def _operator_uses_raw_args(operator: object) -> bool:
-    if isinstance(operator, PureOperator):
-        return operator.argument_evaluator is not None
-    return isinstance(
-        operator,
-        ScopeOperator | ControlOperator | EffectOperator | MetaOperator | MacroDefinition,
-    )
 
 
 async def _await_if_needed(value: object) -> object:

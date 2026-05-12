@@ -9,6 +9,7 @@ import time
 from collections.abc import Callable
 from dataclasses import asdict
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from qy.evaluator import Environment
@@ -24,8 +25,12 @@ __all__ = [
     "DEFAULT_CASES",
     "BenchmarkCase",
     "BenchmarkPhase",
+    "BenchmarkRegression",
     "BenchmarkResult",
+    "compare_benchmarks",
+    "load_benchmark_baseline",
     "run_benchmarks",
+    "write_benchmark_baseline",
 ]
 
 BenchmarkPhase = Literal["source", "lower", "ir"]
@@ -50,6 +55,15 @@ class BenchmarkResult:
     median_seconds: float
     ops_per_second: float
     seconds_per_iteration: float
+
+
+@dataclass(frozen=True, slots=True)
+class BenchmarkRegression:
+    case: str
+    phase: BenchmarkPhase
+    baseline_seconds_per_iteration: float
+    current_seconds_per_iteration: float
+    regression_percent: float
 
 
 DEFAULT_CASES: tuple[BenchmarkCase, ...] = (
@@ -126,6 +140,56 @@ def run_benchmarks(
     return tuple(results)
 
 
+def compare_benchmarks(
+    current: tuple[BenchmarkResult, ...],
+    baseline: tuple[BenchmarkResult, ...],
+    *,
+    max_regression_percent: float = 10.0,
+) -> tuple[BenchmarkRegression, ...]:
+    baseline_by_key = {
+        (result.case, result.phase): result
+        for result in baseline
+        if result.seconds_per_iteration > 0
+    }
+    regressions: list[BenchmarkRegression] = []
+    for result in current:
+        baseline_result = baseline_by_key.get((result.case, result.phase))
+        if baseline_result is None:
+            continue
+        regression_percent = (
+            (result.seconds_per_iteration / baseline_result.seconds_per_iteration) - 1.0
+        ) * 100.0
+        if regression_percent > max_regression_percent:
+            regressions.append(
+                BenchmarkRegression(
+                    case=result.case,
+                    phase=result.phase,
+                    baseline_seconds_per_iteration=baseline_result.seconds_per_iteration,
+                    current_seconds_per_iteration=result.seconds_per_iteration,
+                    regression_percent=regression_percent,
+                )
+            )
+    return tuple(regressions)
+
+
+def load_benchmark_baseline(path: str | Path) -> tuple[BenchmarkResult, ...]:
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if isinstance(raw, dict):
+        raw = raw.get("results", [])
+    if not isinstance(raw, list):
+        raise ValueError("benchmark baseline must be a JSON list or an object with results")
+    return tuple(BenchmarkResult(**item) for item in raw)
+
+
+def write_benchmark_baseline(results: tuple[BenchmarkResult, ...], path: str | Path) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(
+        json.dumps([asdict(result) for result in results], indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float:
     qy = Qy()
     if case.setup_source.strip():
@@ -191,6 +255,23 @@ def _format_results(results: tuple[BenchmarkResult, ...]) -> str:
     return "\n".join(lines)
 
 
+def _format_regressions(regressions: tuple[BenchmarkRegression, ...]) -> str:
+    lines = [
+        "benchmark regressions:",
+        "case           phase    baseline us/op  current us/op  regression",
+        "-------------  -------  --------------  -------------  ----------",
+    ]
+    for regression in regressions:
+        lines.append(
+            f"{regression.case:<13}  "
+            f"{regression.phase:<7}  "
+            f"{regression.baseline_seconds_per_iteration * 1_000_000:>14.3f}  "
+            f"{regression.current_seconds_per_iteration * 1_000_000:>13.3f}  "
+            f"{regression.regression_percent:>9.2f}%"
+        )
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run Qy performance benchmarks.")
     parser.add_argument("--case", action="append", default=[], help="case name to run")
@@ -204,6 +285,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--warmup", type=int, default=1)
     parser.add_argument("--json", action="store_true", help="emit JSON instead of a table")
+    parser.add_argument("--baseline", type=Path, help="compare against a benchmark JSON file")
+    parser.add_argument("--write-baseline", type=Path, help="write current results as JSON")
+    parser.add_argument("--max-regression-percent", type=float, default=10.0)
     args = parser.parse_args(argv)
 
     cases = _selected_cases(set(args.case))
@@ -214,10 +298,33 @@ def main(argv: list[str] | None = None) -> None:
         repeat=args.repeat,
         warmup=args.warmup,
     )
+    regressions: tuple[BenchmarkRegression, ...] = ()
+    if args.baseline is not None:
+        regressions = compare_benchmarks(
+            results,
+            load_benchmark_baseline(args.baseline),
+            max_regression_percent=args.max_regression_percent,
+        )
+    if args.write_baseline is not None:
+        write_benchmark_baseline(results, args.write_baseline)
     if args.json:
-        print(json.dumps([asdict(result) for result in results], indent=2))
+        payload: object
+        if args.baseline is None:
+            payload = [asdict(result) for result in results]
+        else:
+            payload = {
+                "results": [asdict(result) for result in results],
+                "regressions": [asdict(regression) for regression in regressions],
+            }
+        print(json.dumps(payload, indent=2))
+        if regressions:
+            raise SystemExit(1)
         return
     print(_format_results(results))
+    if regressions:
+        print()
+        print(_format_regressions(regressions))
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ __all__ = [
     "Arity",
     "EffectSpec",
     "OperatorSignature",
+    "format_arity_message",
     "lookup_operator_signature",
 ]
 
@@ -91,3 +92,14 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
 
 def lookup_operator_signature(name: str) -> OperatorSignature | None:
     return CORE_OPERATOR_SIGNATURES.get(name)
+
+
+def format_arity_message(name: str, signature: OperatorSignature, actual: int) -> str:
+    if signature.arity.max is None:
+        return f"{name} expects at least {signature.arity.min} arguments, got {actual}"
+    if signature.arity.min == signature.arity.max:
+        return f"{name} expects exactly {signature.arity.min} arguments, got {actual}"
+    return (
+        f"{name} expects between {signature.arity.min} and {signature.arity.max} "
+        f"arguments, got {actual}"
+    )
