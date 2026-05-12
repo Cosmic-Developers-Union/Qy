@@ -10,6 +10,7 @@ from collections.abc import Coroutine
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from typing import cast
 
 from qy.errors import EvaluationError
@@ -23,6 +24,8 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.literals import resolve_default_literal
+from qy.operator_signature import OperatorSignature
+from qy.operator_signature import lookup_operator_signature
 from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
@@ -83,10 +86,14 @@ class PureOperator:
     func: Callable[..., object]
     doc: str = ""
     argument_evaluator: ArgumentEvaluator | None = None
+    signature: OperatorSignature | None = None
 
     @property
     def kind(self) -> OperatorKind:
         return "pure"
+
+    def __post_init__(self) -> None:
+        _set_default_signature(self)
 
     def __call__(self, *args: object) -> object:
         return self.func(*args)
@@ -97,10 +104,14 @@ class ScopeOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
     doc: str = ""
+    signature: OperatorSignature | None = None
 
     @property
     def kind(self) -> OperatorKind:
         return "scope"
+
+    def __post_init__(self) -> None:
+        _set_default_signature(self)
 
     def __call__(self, args: tuple[object, ...], env: Environment) -> object:
         return self.func(args, env)
@@ -111,10 +122,14 @@ class ControlOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
     doc: str = ""
+    signature: OperatorSignature | None = None
 
     @property
     def kind(self) -> OperatorKind:
         return "control"
+
+    def __post_init__(self) -> None:
+        _set_default_signature(self)
 
     def __call__(self, args: tuple[object, ...], env: Environment) -> object:
         return self.func(args, env)
@@ -125,10 +140,14 @@ class EffectOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
     doc: str = ""
+    signature: OperatorSignature | None = None
 
     @property
     def kind(self) -> OperatorKind:
         return "effect"
+
+    def __post_init__(self) -> None:
+        _set_default_signature(self)
 
     def __call__(self, args: tuple[object, ...], env: Environment) -> object:
         return self.func(args, env)
@@ -139,10 +158,14 @@ class MetaOperator:
     name: str
     func: Callable[[tuple[object, ...], Environment], object]
     doc: str = ""
+    signature: OperatorSignature | None = None
 
     @property
     def kind(self) -> OperatorKind:
         return "meta"
+
+    def __post_init__(self) -> None:
+        _set_default_signature(self)
 
     def __call__(self, expression: tuple[object, ...], env: Environment) -> object:
         return self.func(expression, env)
@@ -150,6 +173,17 @@ class MetaOperator:
 
 EvaluationOperator = ControlOperator
 SyntaxOperator = MetaOperator
+
+
+def _set_default_signature(operator: object) -> None:
+    signature = getattr(operator, "signature", None)
+    if signature is None:
+        name = cast(Any, operator).name
+        object.__setattr__(
+            operator,
+            "signature",
+            lookup_operator_signature(name),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,9 +341,10 @@ class Environment:
         *,
         doc: str = "",
         argument_evaluator: ArgumentEvaluator | None = None,
+        signature: OperatorSignature | None = None,
     ) -> Callable[[Callable[..., object]], Callable[..., object]] | Callable[..., object]:
         def register(func: Callable[..., object]) -> Callable[..., object]:
-            self.define(Symbol(name), PureOperator(name, func, doc, argument_evaluator))
+            self.define(Symbol(name), PureOperator(name, func, doc, argument_evaluator, signature))
             return func
 
         if func is None:
@@ -322,6 +357,7 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
@@ -329,7 +365,7 @@ class Environment:
         def register(
             func: Callable[[tuple[object, ...], Environment], object],
         ) -> Callable[..., object]:
-            self.define(Symbol(name), ScopeOperator(name, func, doc))
+            self.define(Symbol(name), ScopeOperator(name, func, doc, signature))
             return func
 
         if func is None:
@@ -342,6 +378,7 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
@@ -349,7 +386,7 @@ class Environment:
         def register(
             func: Callable[[tuple[object, ...], Environment], object],
         ) -> Callable[..., object]:
-            self.define(Symbol(name), ControlOperator(name, func, doc))
+            self.define(Symbol(name), ControlOperator(name, func, doc, signature))
             return func
 
         if func is None:
@@ -362,6 +399,7 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
@@ -369,7 +407,7 @@ class Environment:
         def register(
             func: Callable[[tuple[object, ...], Environment], object],
         ) -> Callable[..., object]:
-            self.define(Symbol(name), EffectOperator(name, func, doc))
+            self.define(Symbol(name), EffectOperator(name, func, doc, signature))
             return func
 
         if func is None:
@@ -382,6 +420,7 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
@@ -389,7 +428,7 @@ class Environment:
         def register(
             func: Callable[[tuple[object, ...], Environment], object],
         ) -> Callable[..., object]:
-            self.define(Symbol(name), MetaOperator(name, func, doc))
+            self.define(Symbol(name), MetaOperator(name, func, doc, signature))
             return func
 
         if func is None:
@@ -402,11 +441,12 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
     ):
-        return self.register_control(name, func, doc=doc)
+        return self.register_control(name, func, doc=doc, signature=signature)
 
     def register_syntax(
         self,
@@ -414,11 +454,12 @@ class Environment:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> (
         Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
         | Callable[..., object]
     ):
-        return self.register_meta(name, func, doc=doc)
+        return self.register_meta(name, func, doc=doc, signature=signature)
 
 
 def standard_environment() -> Environment:

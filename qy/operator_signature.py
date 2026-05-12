@@ -1,0 +1,91 @@
+# coding: utf-8
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from dataclasses import field
+from typing import Literal
+
+from qy.types import TypeName
+
+__all__ = [
+    "CORE_OPERATOR_SIGNATURES",
+    "ArgumentPolicy",
+    "Arity",
+    "EffectSpec",
+    "OperatorSignature",
+    "lookup_operator_signature",
+]
+
+ArgumentPolicy = Literal["eager", "raw", "body", "binding", "effect-name"]
+
+
+@dataclass(frozen=True, slots=True)
+class Arity:
+    min: int = 0
+    max: int | None = None
+
+    def accepts(self, count: int) -> bool:
+        if count < self.min:
+            return False
+        return self.max is None or count <= self.max
+
+
+@dataclass(frozen=True, slots=True)
+class EffectSpec:
+    name: str
+    resumable: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class OperatorSignature:
+    return_type: TypeName
+    arity: Arity = field(default_factory=Arity)
+    argument_policy: tuple[ArgumentPolicy, ...] = ()
+    effects: tuple[EffectSpec, ...] = ()
+    compile_time: bool = False
+    runtime_meta: bool = False
+    tail_transparent: bool = False
+
+
+CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
+    "*": OperatorSignature("number", Arity()),
+    "+": OperatorSignature("number", Arity()),
+    "-": OperatorSignature("number", Arity(1)),
+    "/": OperatorSignature("number", Arity(1)),
+    "==": OperatorSignature("bool", Arity(2, 2)),
+    "assert": OperatorSignature(
+        "any",
+        Arity(1, 2),
+        effects=(EffectSpec("assert-failed", resumable=False),),
+    ),
+    "atom": OperatorSignature("bool", Arity(1, 1)),
+    "car": OperatorSignature("any", Arity(1, 1)),
+    "cdr": OperatorSignature("any", Arity(1, 1)),
+    "component": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
+    "cond": OperatorSignature("any", Arity(), ("raw",), tail_transparent=True),
+    "cons": OperatorSignature("chain", Arity(2, 2)),
+    "defeffect": OperatorSignature("effect", Arity(1), ("binding", "raw")),
+    "defun": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
+    "eq": OperatorSignature("bool", Arity(2, 2)),
+    "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
+    "from": OperatorSignature("none", Arity(3), ("raw",)),
+    "handle": OperatorSignature("any", Arity(2, 2), ("raw", "raw"), tail_transparent=True),
+    "is": OperatorSignature("bool", Arity(2, 2)),
+    "lambda": OperatorSignature("function", Arity(2), ("raw", "body")),
+    "let": OperatorSignature("any", Arity(2), ("raw", "body"), tail_transparent=True),
+    "macro": OperatorSignature(
+        "operator",
+        Arity(3),
+        ("binding", "raw", "body"),
+        compile_time=True,
+    ),
+    "module": OperatorSignature("any", Arity(1), ("binding", "body")),
+    "perform": OperatorSignature("any", Arity(2, 2), ("effect-name", "eager")),
+    "quote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "resume": OperatorSignature("any", Arity(2, 2)),
+}
+
+
+def lookup_operator_signature(name: str) -> OperatorSignature | None:
+    return CORE_OPERATOR_SIGNATURES.get(name)

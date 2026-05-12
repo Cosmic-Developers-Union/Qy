@@ -15,6 +15,7 @@ from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
 from qy.lowering import lower_source
+from qy.operator_signature import OperatorSignature
 from qy.reader import Form
 from qy.reader import read
 from qy.reader import read_one
@@ -78,9 +79,14 @@ class Qy:
         *,
         doc: str = "",
         argument_evaluator: ArgumentEvaluator | None = None,
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
         registered = self.env.register_pure(
-            name, func, doc=doc, argument_evaluator=argument_evaluator
+            name,
+            func,
+            doc=doc,
+            argument_evaluator=argument_evaluator,
+            signature=signature,
         )
         if func is None:
             return registered
@@ -92,8 +98,9 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        registered = self.env.register_scope(name, func, doc=doc)
+        registered = self.env.register_scope(name, func, doc=doc, signature=signature)
         if func is None:
             return registered
         return func
@@ -104,8 +111,9 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        registered = self.env.register_control(name, func, doc=doc)
+        registered = self.env.register_control(name, func, doc=doc, signature=signature)
         if func is None:
             return registered
         return func
@@ -116,8 +124,9 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        registered = self.env.register_effect(name, func, doc=doc)
+        registered = self.env.register_effect(name, func, doc=doc, signature=signature)
         if func is None:
             return registered
         return func
@@ -128,8 +137,9 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        registered = self.env.register_meta(name, func, doc=doc)
+        registered = self.env.register_meta(name, func, doc=doc, signature=signature)
         if func is None:
             return registered
         return func
@@ -140,8 +150,9 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        return self.register_control(name, func, doc=doc)
+        return self.register_control(name, func, doc=doc, signature=signature)
 
     def register_syntax(
         self,
@@ -149,5 +160,6 @@ class Qy:
         func: Callable[[tuple[object, ...], Environment], object] | None = None,
         *,
         doc: str = "",
+        signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
-        return self.register_meta(name, func, doc=doc)
+        return self.register_meta(name, func, doc=doc, signature=signature)

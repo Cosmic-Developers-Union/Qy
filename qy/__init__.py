@@ -60,6 +60,9 @@ from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
 from qy.operator_docs import collect_supported_operators
 from qy.operator_docs import format_operator_docs
+from qy.operator_signature import Arity
+from qy.operator_signature import EffectSpec
+from qy.operator_signature import OperatorSignature
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -95,6 +98,7 @@ __all__ = [
     "QY_NIL",
     "QY_T",
     "Analysis",
+    "Arity",
     "Binding",
     "CallExpr",
     "ComponentDefinition",
@@ -103,6 +107,7 @@ __all__ = [
     "DottedTuple",
     "EffectDefinition",
     "EffectOperator",
+    "EffectSpec",
     "Environment",
     "EvaluationError",
     "Form",
@@ -112,6 +117,7 @@ __all__ = [
     "MetaOperator",
     "OperatorDoc",
     "OperatorModuleDoc",
+    "OperatorSignature",
     "ProgramIR",
     "PureOperator",
     "Qy",

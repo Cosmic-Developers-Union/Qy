@@ -37,6 +37,7 @@ from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
+from qy.operator_signature import OperatorSignature
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -57,13 +58,6 @@ __all__ = [
     "lower",
     "lower_source",
 ]
-
-_DATA_CALL_TYPES: dict[str, TypeName] = {
-    "dict": "dict",
-    "list": "list",
-    "set": "set",
-    "tuple": "tuple",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,10 +196,6 @@ def _lower_form(
                 return _lower_resume(args, scope, context, form)
             case "assert":
                 return _lower_assert(args, scope, context, form)
-            case "tuple" | "list" | "dict" | "set":
-                return _lower_data_call(operator, args, scope, context, form, tail=tail)
-            case "get" | "has?":
-                return _lower_lookup_call(operator, args, scope, context, form, tail=tail)
 
     operator_expr = _lower_form(operator, scope, context)
     if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
@@ -588,56 +578,6 @@ def _lower_assert(
     return AssertExpr(condition, message, get_span(form), _type_of(condition))
 
 
-def _lower_data_call(
-    operator: Symbol,
-    args: tuple[object, ...],
-    scope: Scope,
-    context: LoweringContext,
-    form: tuple[object, ...],
-    *,
-    tail: bool,
-) -> IRExpr:
-    operator_expr = _lower_form(operator, scope, context)
-    if operator.name == "dict" and len(args) % 2 != 0:
-        context.diagnostic("dict expects key/value pairs", form)
-    return CallExpr(
-        operator_expr,
-        tuple(_lower_form(arg, scope, context, symbol_as_data=True) for arg in args),
-        get_span(form),
-        _DATA_CALL_TYPES[operator.name],
-        tail,
-    )
-
-
-def _lower_lookup_call(
-    operator: Symbol,
-    args: tuple[object, ...],
-    scope: Scope,
-    context: LoweringContext,
-    form: tuple[object, ...],
-    *,
-    tail: bool,
-) -> IRExpr:
-    operator_expr = _lower_form(operator, scope, context)
-    lowered_args: list[IRExpr] = []
-    if args:
-        lowered_args.append(_lower_form(args[0], scope, context))
-        lowered_args.extend(
-            _lower_form(arg, scope, context, symbol_as_data=True) for arg in args[1:]
-        )
-    if operator.name == "get" and len(args) not in {2, 3}:
-        context.diagnostic(f"get expects two or three arguments, got {len(args)}", form)
-    if operator.name == "has?" and len(args) != 2:
-        context.diagnostic(f"has? expects exactly two arguments, got {len(args)}", form)
-    return CallExpr(
-        operator_expr,
-        tuple(lowered_args),
-        get_span(form),
-        "bool" if operator.name == "has?" else "any",
-        tail,
-    )
-
-
 def _lower_body(
     body: tuple[object, ...],
     scope: Scope,
@@ -776,24 +716,21 @@ def _infer_call_type(
     context: LoweringContext,
     form: tuple[object, ...],
 ) -> TypeName:
+    signature = _operator_signature(operator_expr)
+    if signature is not None:
+        if not signature.arity.accepts(len(args)):
+            context.diagnostic(
+                _arity_message(
+                    operator.name if isinstance(operator, Symbol) else "call",
+                    signature,
+                    len(args),
+                ),
+                form,
+            )
+        return signature.return_type
+
     if isinstance(operator, Symbol):
         match operator.name:
-            case "parallel":
-                return "tuple"
-            case "tuple":
-                return "tuple"
-            case "list":
-                return "list"
-            case "dict":
-                return "dict"
-            case "set":
-                return "set"
-            case "tuple?" | "list?" | "dict?" | "set?" | "atom" | "eq" | "==" | "is":
-                return "bool"
-            case "len":
-                return "number"
-            case "has?":
-                return "bool"
             case "+" | "-" | "*" | "/":
                 for arg in args:
                     if _type_of(arg) not in {"number", "unknown", "any"}:
@@ -802,32 +739,29 @@ def _infer_call_type(
                             form,
                         )
                 return "number"
-            case "type":
-                return "symbol"
-            case "str?":
-                return "bool"
-            case "str-len":
-                return "number"
-            case "str-empty?" | "str-contains?" | "str-starts-with?" | "str-ends-with?":
-                return "bool"
-            case "str-split":
-                return "tuple"
-            case (
-                "str"
-                | "str-concat"
-                | "str-upper"
-                | "str-lower"
-                | "str-strip"
-                | "str-trim"
-                | "str-join"
-                | "str-replace"
-            ):
-                return "symbol"
 
     operator_type = _type_of(operator_expr)
     if operator_type not in {"operator", "function", "unknown"}:
         context.diagnostic(f"operator position is {operator_type}, not callable", form)
     return "any"
+
+
+def _operator_signature(operator: IRExpr) -> OperatorSignature | None:
+    if isinstance(operator, SymbolRefExpr):
+        value = operator.binding.value
+        return getattr(value, "signature", None)
+    return None
+
+
+def _arity_message(name: str, signature: OperatorSignature, actual: int) -> str:
+    if signature.arity.max is None:
+        return f"{name} expects at least {signature.arity.min} arguments, got {actual}"
+    if signature.arity.min == signature.arity.max:
+        return f"{name} expects exactly {signature.arity.min} arguments, got {actual}"
+    return (
+        f"{name} expects between {signature.arity.min} and {signature.arity.max} "
+        f"arguments, got {actual}"
+    )
 
 
 def _type_of(expr: IRExpr) -> TypeName:
