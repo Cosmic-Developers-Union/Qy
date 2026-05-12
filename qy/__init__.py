@@ -67,7 +67,9 @@ from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macro import MacroDefinition
+from qy.macroexpand import MacroEffectPolicy
 from qy.macroexpand import MacroExpansion
+from qy.macroexpand import MacroExpansionOptions
 from qy.macroexpand import MacroExpansionTrace
 from qy.macroexpand import MacroSourceMapEntry
 from qy.macroexpand import macroexpand
@@ -145,7 +147,9 @@ __all__ = [
     "Instruction",
     "LiteralExpr",
     "MacroDefinition",
+    "MacroEffectPolicy",
     "MacroExpansion",
+    "MacroExpansionOptions",
     "MacroExpansionTrace",
     "MacroSourceMapEntry",
     "MetaOperator",

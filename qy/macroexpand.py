@@ -4,16 +4,20 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import Literal
 from typing import cast
 
 from qy.diagnostics import Diagnostic
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
+from qy.errors import QyEffectSignal
+from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.evaluator import Environment
 from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.macro import MacroDefinition
+from qy.macro import MacroExpansionServices
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -26,7 +30,9 @@ from qy.values import QyCons
 from qy.values import qy_cons_to_tuple
 
 __all__ = [
+    "MacroEffectPolicy",
     "MacroExpansion",
+    "MacroExpansionOptions",
     "MacroExpansionTrace",
     "MacroSourceMapEntry",
     "macroexpand",
@@ -35,7 +41,14 @@ __all__ = [
     "macroexpand_source_async",
 ]
 
+MacroEffectPolicy = Literal["deny", "allow"]
 _MAX_MACRO_EXPANSION_DEPTH = 100
+
+
+@dataclass(frozen=True, slots=True)
+class MacroExpansionOptions:
+    max_depth: int = _MAX_MACRO_EXPANSION_DEPTH
+    effect_policy: MacroEffectPolicy = "deny"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +57,7 @@ class MacroSourceMapEntry:
     original_span: SourceSpan | None
     expanded_span: SourceSpan | None
     depth: int
+    generated_symbols: tuple[Symbol, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,9 +68,16 @@ class MacroExpansionTrace:
     depth: int
     input_form: object = field(compare=False, repr=False)
     output_form: object = field(compare=False, repr=False)
+    generated_symbols: tuple[Symbol, ...] = ()
 
     def source_map_entry(self) -> MacroSourceMapEntry:
-        return MacroSourceMapEntry(self.macro, self.input_span, self.output_span, self.depth)
+        return MacroSourceMapEntry(
+            self.macro,
+            self.input_span,
+            self.output_span,
+            self.depth,
+            self.generated_symbols,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,17 +95,23 @@ class MacroExpansion:
         return tuple(trace.source_map_entry() for trace in self.traces)
 
 
-def macroexpand(forms: list[Form], env: Environment | None = None) -> MacroExpansion:
-    return cast(MacroExpansion, run_async(macroexpand_async(forms, env)))
+def macroexpand(
+    forms: list[Form],
+    env: Environment | None = None,
+    *,
+    options: MacroExpansionOptions | None = None,
+) -> MacroExpansion:
+    return cast(MacroExpansion, run_async(macroexpand_async(forms, env, options=options)))
 
 
 async def macroexpand_async(
     forms: list[Form],
     env: Environment | None = None,
+    *,
+    options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
     runtime_env = env or standard_environment()
-    diagnostics: list[Diagnostic] = []
-    traces: list[MacroExpansionTrace] = []
+    context = MacroExpansionContext(runtime_env, options or MacroExpansionOptions())
     expanded_forms: list[Form] = []
     for form in forms:
         try:
@@ -93,22 +120,20 @@ async def macroexpand_async(
                     Form,
                     await _macroexpand_form(
                         form,
-                        runtime_env,
-                        diagnostics,
-                        traces,
+                        context,
                         depth=0,
                     ),
                 )
             )
         except EvaluationError as e:
-            diagnostics.append(
+            context.diagnostics.append(
                 Diagnostic(
                     e.message,
                     line=e.line,
                     column=e.column,
                 )
             )
-    return MacroExpansion(expanded_forms, tuple(diagnostics), tuple(traces))
+    return MacroExpansion(expanded_forms, tuple(context.diagnostics), tuple(context.traces))
 
 
 def macroexpand_source(
@@ -116,10 +141,11 @@ def macroexpand_source(
     env: Environment | None = None,
     *,
     source_name: str | None = None,
+    options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
     return cast(
         MacroExpansion,
-        run_async(macroexpand_source_async(source, env, source_name=source_name)),
+        run_async(macroexpand_source_async(source, env, source_name=source_name, options=options)),
     )
 
 
@@ -128,6 +154,7 @@ async def macroexpand_source_async(
     env: Environment | None = None,
     *,
     source_name: str | None = None,
+    options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
     try:
         forms = read(source, source_name=source_name)
@@ -136,20 +163,87 @@ async def macroexpand_source_async(
             [],
             (Diagnostic(str(e), "error", line=e.line, column=e.column),),
         )
-    return await macroexpand_async(forms, env)
+    return await macroexpand_async(forms, env, options=options)
+
+
+@dataclass(slots=True)
+class MacroScope:
+    parent: MacroScope | None = None
+    publish_definitions: bool = False
+    bindings: dict[Symbol, MacroDefinition] = field(default_factory=dict)
+
+    def child(self, *, publish_definitions: bool = False) -> MacroScope:
+        return MacroScope(self, publish_definitions)
+
+    def define(self, name: Symbol, value: MacroDefinition) -> None:
+        self.bindings[name] = value
+
+    def lookup(self, name: Symbol) -> MacroDefinition | None:
+        if name in self.bindings:
+            return self.bindings[name]
+        if self.parent is not None:
+            return self.parent.lookup(name)
+        return None
+
+
+@dataclass(slots=True)
+class MacroExpansionContext:
+    env: Environment
+    options: MacroExpansionOptions
+    scope: MacroScope = field(default_factory=lambda: MacroScope(publish_definitions=True))
+    diagnostics: list[Diagnostic] = field(default_factory=list)
+    traces: list[MacroExpansionTrace] = field(default_factory=list)
+    generated_symbols: list[Symbol] = field(default_factory=list)
+    gensym_counter: int = 0
+
+    def child_scope(self) -> MacroExpansionContext:
+        return MacroExpansionContext(
+            self.env,
+            self.options,
+            self.scope.child(),
+            self.diagnostics,
+            self.traces,
+            self.generated_symbols,
+            self.gensym_counter,
+        )
+
+    def sync_from(self, child: MacroExpansionContext) -> None:
+        self.gensym_counter = child.gensym_counter
+
+    def define_macro(self, name: Symbol, value: MacroDefinition) -> None:
+        self.scope.define(name, value)
+        if self.scope.publish_definitions:
+            self.env.define(name, value)
+
+    def resolve_macro(self, name: Symbol) -> MacroDefinition | None:
+        if (macro := self.scope.lookup(name)) is not None:
+            return macro
+        try:
+            value = self.env.resolve(name)
+        except EvaluationError:
+            return None
+        return value if isinstance(value, MacroDefinition) else None
+
+    def services(self) -> MacroExpansionServices:
+        return MacroExpansionServices(self.gensym)
+
+    def gensym(self, prefix: object | None = None) -> Symbol:
+        self.gensym_counter += 1
+        base = _gensym_prefix(prefix)
+        symbol = Symbol(f"__qy_gensym_{base}_{self.gensym_counter}")
+        self.generated_symbols.append(symbol)
+        return symbol
 
 
 async def _macroexpand_form(
     form: object,
-    env: Environment,
-    diagnostics: list[Diagnostic],
-    traces: list[MacroExpansionTrace],
+    context: MacroExpansionContext,
     *,
     depth: int,
 ) -> object:
-    if depth > _MAX_MACRO_EXPANSION_DEPTH:
+    if depth > context.options.max_depth:
         raise QyArityError(
-            f"macro expansion exceeded {_MAX_MACRO_EXPANSION_DEPTH} nested expansions",
+            f"macro expansion exceeded {context.options.max_depth} nested expansions",
             span=get_span(form),
         )
     if not isinstance(form, tuple) or isinstance(form, DottedTuple) or not form:
@@ -160,19 +254,21 @@ async def _macroexpand_form(
     if operator == Symbol("quote"):
         return form
     if operator == Symbol("macro"):
-        _define_macro(form, env)
+        _define_macro(form, context)
         return form
+    if operator == Symbol("let"):
+        return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
+    if operator in {Symbol("lambda"), Symbol("module")}:
+        return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
+    if operator in {Symbol("defun"), Symbol("component")}:
+        return await _macroexpand_body_form(form, context, depth=depth, body_start=3)
 
     if isinstance(operator, Symbol):
-        try:
-            value = env.resolve(operator)
-        except EvaluationError:
-            value = None
-        if isinstance(value, MacroDefinition):
-            expanded = await value.expand(args)
-            if isinstance(expanded, QyCons):
-                expanded = qy_cons_to_tuple(expanded)
-            traces.append(
+        if (value := context.resolve_macro(operator)) is not None:
+            before_symbols = len(context.generated_symbols)
+            expanded = await _expand_macro(value, args, context, form)
+            generated = tuple(context.generated_symbols[before_symbols:])
+            context.traces.append(
                 MacroExpansionTrace(
                     operator,
                     get_span(form),
@@ -180,23 +276,65 @@ async def _macroexpand_form(
                     depth + 1,
                     form,
                     expanded,
+                    generated,
                 )
             )
             return await _macroexpand_form(
                 expanded,
-                env,
-                diagnostics,
-                traces,
+                context,
                 depth=depth + 1,
             )
 
     return _tuple_like(
         form,
-        [await _macroexpand_form(item, env, diagnostics, traces, depth=depth) for item in form],
+        [await _macroexpand_form(item, context, depth=depth) for item in form],
     )
 
 
-def _define_macro(form: tuple[object, ...], env: Environment) -> None:
+async def _macroexpand_body_form(
+    form: tuple[object, ...],
+    context: MacroExpansionContext,
+    *,
+    depth: int,
+    body_start: int,
+) -> tuple[object, ...]:
+    if len(form) <= body_start:
+        return _tuple_like(
+            form,
+            [await _macroexpand_form(item, context, depth=depth) for item in form],
+        )
+    prefix = [await _macroexpand_form(item, context, depth=depth) for item in form[:body_start]]
+    body_context = context.child_scope()
+    body = []
+    for item in form[body_start:]:
+        body.append(await _macroexpand_form(item, body_context, depth=depth))
+    context.sync_from(body_context)
+    return _tuple_like(form, [*prefix, *body])
+
+
+async def _expand_macro(
+    macro: MacroDefinition,
+    args: tuple[object, ...],
+    context: MacroExpansionContext,
+    form: object,
+) -> object:
+    try:
+        expanded = await macro.expand(args, context.services())
+    except QyEffectSignal as e:
+        if context.options.effect_policy == "allow":
+            raise
+        raise QyRuntimeError(
+            f"macro {macro.name.name!r} attempted compile-time effect {e.effect!r}",
+            span=get_span(form),
+            cause=e,
+            metadata={"macro": macro.name.name, "effect": e.effect},
+        ) from e
+    if isinstance(expanded, QyCons):
+        return qy_cons_to_tuple(expanded)
+    return expanded
+
+
+def _define_macro(form: tuple[object, ...], context: MacroExpansionContext) -> None:
     if len(form) < 4:
         raise QyArityError("macro expects a name, parameter list, and body", span=get_span(form))
     _, name, params, *body = form
@@ -215,7 +353,17 @@ def _define_macro(form: tuple[object, ...], env: Environment) -> None:
                 span=get_span(param),
             )
         param_symbols.append(param)
-    env.define(name, MacroDefinition(name, tuple(param_symbols), tuple(body), env))
+    context.define_macro(
+        name, MacroDefinition(name, tuple(param_symbols), tuple(body), context.env)
+    )
+
+
+def _gensym_prefix(prefix: object | None) -> str:
+    if prefix is None:
+        return "sym"
+    if isinstance(prefix, Symbol):
+        prefix = prefix.name
+    return "".join(char if char.isalnum() or char == "_" else "_" for char in str(prefix)) or "sym"
 
 
 def _tuple_like(original: tuple[object, ...], values: list[object]) -> tuple[object, ...]:
