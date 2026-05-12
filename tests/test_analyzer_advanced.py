@@ -40,6 +40,7 @@ def test_reports_undeclared_perform_effect():
 def test_meta_operators_are_understood():
     assert type_check_source("(eval '(+ 1 2))") == []
     assert type_check_source("(macro identity-form (form) form)") == []
+    assert type_check_source("(macro fresh () (gensym 'tmp))") == []
     assert (
         type_check_source("""
     (macro identity-form (form) form)

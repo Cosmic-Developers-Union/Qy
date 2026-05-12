@@ -31,3 +31,20 @@ def test_macro_can_construct_ast_with_cons():
     evaluate_source("(macro twice (form) (cons '+ (cons form (cons form '()))))", env)
 
     assert evaluate_source("(twice (+ 1 2))", env) == 6
+
+
+def test_macro_gensym_avoids_capturing_user_variable():
+    env = standard_environment()
+    evaluate_source(
+        """
+                (macro bind-temp (value)
+                    (let ((tmp (gensym 'tmp)))
+                        (cons 'let
+                            (cons
+                                (cons (cons tmp (cons value '())) '())
+                                (cons tmp '())))))
+                """,
+        env,
+    )
+
+    assert evaluate_source("(let ((tmp 99)) (bind-temp 42))", env) == 42

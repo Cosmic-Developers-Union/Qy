@@ -603,6 +603,7 @@ def _infer_macro(
             name, "operator", operator_kind="meta", eager_arguments=False
         )
     macro_scope = _scope_with_parameters(params, macro_scope, diagnostics, "macro")
+    macro_scope = macro_scope.define(Symbol("gensym"), "operator", operator_kind="pure")
     _infer_body(tuple(body), env, macro_scope, diagnostics)
     return "operator"
 

@@ -81,6 +81,7 @@ from qy.mir import MIRFunction
 from qy.mir import MIRInstruction
 from qy.mir import MIRProgram
 from qy.mir import MIRTerminator
+from qy.mir import dump_mir
 from qy.mir_lowering import lower_mir
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
@@ -204,6 +205,7 @@ __all__ = [
     "collect_supported_operators",
     "compile_bytecode",
     "dump_form",
+    "dump_mir",
     "dump_program",
     "evaluate",
     "evaluate_async",

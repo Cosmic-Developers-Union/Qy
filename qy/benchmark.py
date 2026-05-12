@@ -12,13 +12,19 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from qy.bytecode import BytecodeProgram
+from qy.bytecode_compiler import compile_mir_bytecode
 from qy.evaluator import Environment
 from qy.evaluator import run_async
 from qy.ir import ProgramIR
 from qy.ir_vm import IRVirtualMachine
 from qy.lowering import lower
 from qy.macroexpand import macroexpand
+from qy.mir import MIRProgram
+from qy.mir_lowering import lower_mir
+from qy.reader import Form
 from qy.reader import read
+from qy.register_vm import RegisterVirtualMachine
 from qy.runtime import Qy
 
 __all__ = [
@@ -33,7 +39,16 @@ __all__ = [
     "write_benchmark_baseline",
 ]
 
-BenchmarkPhase = Literal["source", "lower", "ir"]
+BenchmarkPhase = Literal[
+    "source",
+    "macroexpand",
+    "lower",
+    "hir_lower",
+    "mir_lower",
+    "ir",
+    "bytecode_compile",
+    "bytecode_vm",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,16 +125,30 @@ DEFAULT_CASES: tuple[BenchmarkCase, ...] = (
 def run_benchmarks(
     *,
     cases: tuple[BenchmarkCase, ...] = DEFAULT_CASES,
-    phases: tuple[BenchmarkPhase, ...] = ("source", "lower", "ir"),
+    phases: tuple[BenchmarkPhase, ...] = (
+        "source",
+        "macroexpand",
+        "hir_lower",
+        "mir_lower",
+        "ir",
+        "bytecode_compile",
+        "bytecode_vm",
+    ),
     repeat: int = 3,
     warmup: int = 1,
 ) -> tuple[BenchmarkResult, ...]:
     results: list[BenchmarkResult] = []
     for case in cases:
         for phase in phases:
-            measurements = [
-                _measure_case(case, phase) for _ in range(max(0, warmup) + max(1, repeat))
-            ]
+            measurements: list[float] = []
+            for _ in range(max(0, warmup) + max(1, repeat)):
+                measurement = _measure_case(case, phase)
+                if measurement is None:
+                    measurements = []
+                    break
+                measurements.append(measurement)
+            if not measurements:
+                continue
             samples = measurements[max(0, warmup) :]
             best = min(samples)
             mean = statistics.fmean(samples)
@@ -190,17 +219,35 @@ def write_benchmark_baseline(results: tuple[BenchmarkResult, ...], path: str | P
     )
 
 
-def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float:
+def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float | None:
     qy = Qy()
     if case.setup_source.strip():
         qy.evaluate_program(case.setup_source)
 
+    forms = read(case.source)
     if phase == "source":
         return _elapsed(lambda: _run_source_iterations(qy, case))
-    if phase == "lower":
-        return _elapsed(lambda: _run_lower_iterations(qy.env, case))
-    program = _compile_case(qy.env, case)
-    return _elapsed(lambda: _run_ir_iterations(qy.env, program, case.iterations))
+    if phase == "macroexpand":
+        return _elapsed(lambda: _run_macroexpand_iterations(qy.env, forms, case.iterations))
+
+    expansion = macroexpand(forms, qy.env)
+    if phase in {"lower", "hir_lower"}:
+        return _elapsed(lambda: _run_hir_lower_iterations(qy.env, expansion.forms, case.iterations))
+
+    program = lower(expansion.forms, qy.env)
+    if phase == "mir_lower":
+        return _elapsed(lambda: _run_mir_lower_iterations(program, case.iterations))
+    if phase == "ir":
+        return _elapsed(lambda: _run_ir_iterations(qy.env, program, case.iterations))
+
+    mir = lower_mir(program)
+    if phase == "bytecode_compile":
+        return _elapsed(lambda: _run_bytecode_compile_iterations(mir, case.iterations))
+
+    bytecode = compile_mir_bytecode(mir)
+    if not bytecode.ok:
+        return None
+    return _elapsed(lambda: _run_bytecode_iterations(qy.env, bytecode, case.iterations))
 
 
 def _run_source_iterations(qy: Qy, case: BenchmarkCase) -> None:
@@ -208,11 +255,19 @@ def _run_source_iterations(qy: Qy, case: BenchmarkCase) -> None:
         qy.evaluate_source(case.source)
 
 
-def _run_lower_iterations(env: Environment, case: BenchmarkCase) -> None:
-    forms = read(case.source)
-    for _ in range(case.iterations):
-        expansion = macroexpand(forms, env)
-        lower(expansion.forms, env)
+def _run_macroexpand_iterations(env: Environment, forms: list[Form], iterations: int) -> None:
+    for _ in range(iterations):
+        macroexpand(forms, env)
+
+
+def _run_hir_lower_iterations(env: Environment, forms: list[Form], iterations: int) -> None:
+    for _ in range(iterations):
+        lower(forms, env)
+
+
+def _run_mir_lower_iterations(program: ProgramIR, iterations: int) -> None:
+    for _ in range(iterations):
+        lower_mir(program)
 
 
 def _run_ir_iterations(env: Environment, program: ProgramIR, iterations: int) -> None:
@@ -220,9 +275,14 @@ def _run_ir_iterations(env: Environment, program: ProgramIR, iterations: int) ->
         run_async(IRVirtualMachine(env).evaluate_program(program))
 
 
-def _compile_case(env: Environment, case: BenchmarkCase) -> ProgramIR:
-    expansion = macroexpand(read(case.source), env)
-    return lower(expansion.forms, env)
+def _run_bytecode_compile_iterations(program: MIRProgram, iterations: int) -> None:
+    for _ in range(iterations):
+        compile_mir_bytecode(program)
+
+
+def _run_bytecode_iterations(env: Environment, program: BytecodeProgram, iterations: int) -> None:
+    for _ in range(iterations):
+        run_async(RegisterVirtualMachine(program, env).evaluate_program())
 
 
 def _elapsed(func: Callable[[], None]) -> float:
@@ -239,13 +299,13 @@ def _selected_cases(names: set[str]) -> tuple[BenchmarkCase, ...]:
 
 def _format_results(results: tuple[BenchmarkResult, ...]) -> str:
     lines = [
-        "case           phase    iter    best ms    mean ms    us/op      ops/s",
-        "-------------  -------  ------  ---------  ---------  ---------  ---------",
+        "case           phase             iter    best ms    mean ms    us/op      ops/s",
+        "-------------  ----------------  ------  ---------  ---------  ---------  ---------",
     ]
     for result in results:
         lines.append(
             f"{result.case:<13}  "
-            f"{result.phase:<7}  "
+            f"{result.phase:<16}  "
             f"{result.iterations:>6}  "
             f"{result.best_seconds * 1000:>9.3f}  "
             f"{result.mean_seconds * 1000:>9.3f}  "
@@ -258,13 +318,13 @@ def _format_results(results: tuple[BenchmarkResult, ...]) -> str:
 def _format_regressions(regressions: tuple[BenchmarkRegression, ...]) -> str:
     lines = [
         "benchmark regressions:",
-        "case           phase    baseline us/op  current us/op  regression",
-        "-------------  -------  --------------  -------------  ----------",
+        "case           phase             baseline us/op  current us/op  regression",
+        "-------------  ----------------  --------------  -------------  ----------",
     ]
     for regression in regressions:
         lines.append(
             f"{regression.case:<13}  "
-            f"{regression.phase:<7}  "
+            f"{regression.phase:<16}  "
             f"{regression.baseline_seconds_per_iteration * 1_000_000:>14.3f}  "
             f"{regression.current_seconds_per_iteration * 1_000_000:>13.3f}  "
             f"{regression.regression_percent:>9.2f}%"
@@ -278,7 +338,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--phase",
         action="append",
-        choices=("source", "lower", "ir"),
+        choices=(
+            "source",
+            "macroexpand",
+            "lower",
+            "hir_lower",
+            "mir_lower",
+            "ir",
+            "bytecode_compile",
+            "bytecode_vm",
+        ),
         default=[],
         help="benchmark phase to run",
     )
@@ -291,7 +360,19 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
 
     cases = _selected_cases(set(args.case))
-    phases = tuple(args.phase) if args.phase else ("source", "lower", "ir")
+    phases = (
+        tuple(args.phase)
+        if args.phase
+        else (
+            "source",
+            "macroexpand",
+            "hir_lower",
+            "mir_lower",
+            "ir",
+            "bytecode_compile",
+            "bytecode_vm",
+        )
+    )
     results = run_benchmarks(
         cases=cases,
         phases=phases,

@@ -22,8 +22,14 @@ from qy.ir_vm import evaluate_ir_source
 from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
+from qy.macroexpand import MacroExpansion
+from qy.macroexpand import MacroExpansionOptions
 from qy.macroexpand import macroexpand
 from qy.macroexpand import macroexpand_async
+from qy.macroexpand import macroexpand_source
+from qy.macroexpand import macroexpand_source_async
+from qy.mir import MIRProgram
+from qy.mir_lowering import lower_mir
 from qy.operator_signature import OperatorSignature
 from qy.reader import Form
 from qy.reader import read
@@ -57,6 +63,48 @@ class Qy:
 
     def lower_source(self, source: str, *, source_name: str | None = None) -> ProgramIR:
         return lower_source(source, self.env, source_name=source_name)
+
+    def macroexpand(
+        self,
+        forms: list[Form],
+        *,
+        options: MacroExpansionOptions | None = None,
+    ) -> MacroExpansion:
+        return macroexpand(forms, self.env, options=options)
+
+    async def macroexpand_async(
+        self,
+        forms: list[Form],
+        *,
+        options: MacroExpansionOptions | None = None,
+    ) -> MacroExpansion:
+        return await macroexpand_async(forms, self.env, options=options)
+
+    def macroexpand_source(
+        self,
+        source: str,
+        *,
+        source_name: str | None = None,
+        options: MacroExpansionOptions | None = None,
+    ) -> MacroExpansion:
+        return macroexpand_source(source, self.env, source_name=source_name, options=options)
+
+    async def macroexpand_source_async(
+        self,
+        source: str,
+        *,
+        source_name: str | None = None,
+        options: MacroExpansionOptions | None = None,
+    ) -> MacroExpansion:
+        return await macroexpand_source_async(
+            source,
+            self.env,
+            source_name=source_name,
+            options=options,
+        )
+
+    def lower_mir(self, program: ProgramIR) -> MIRProgram:
+        return lower_mir(program)
 
     def evaluate_ir(self, program: ProgramIR) -> object:
         return evaluate_ir(program, self.env)

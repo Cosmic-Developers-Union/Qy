@@ -9,16 +9,50 @@ from qy.benchmark import write_benchmark_baseline
 def test_benchmark_runner_smoke_test():
     results = run_benchmarks(
         cases=(BenchmarkCase("tiny", "(+ 1 2)", iterations=1),),
-        phases=("source", "lower", "ir"),
+        phases=(
+            "source",
+            "macroexpand",
+            "hir_lower",
+            "mir_lower",
+            "ir",
+            "bytecode_compile",
+            "bytecode_vm",
+        ),
         repeat=1,
         warmup=0,
     )
 
-    assert {result.phase for result in results} == {"source", "lower", "ir"}
+    assert {result.phase for result in results} == {
+        "source",
+        "macroexpand",
+        "hir_lower",
+        "mir_lower",
+        "ir",
+        "bytecode_compile",
+        "bytecode_vm",
+    }
     assert all(result.case == "tiny" for result in results)
     assert all(result.iterations == 1 for result in results)
     assert all(result.best_seconds > 0 for result in results)
     assert all(result.ops_per_second > 0 for result in results)
+
+
+def test_benchmark_runner_skips_unsupported_bytecode_phase():
+    results = run_benchmarks(
+        cases=(
+            BenchmarkCase(
+                "effect",
+                "(handle (+ 1 (perform ask 41)) ((ask (arg k) (resume k arg))))",
+                setup_source="(defeffect ask)",
+                iterations=1,
+            ),
+        ),
+        phases=("bytecode_vm",),
+        repeat=1,
+        warmup=0,
+    )
+
+    assert results == ()
 
 
 def test_benchmark_compare_reports_only_threshold_regressions():

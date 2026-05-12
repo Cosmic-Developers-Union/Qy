@@ -50,3 +50,27 @@ def test_legacy_operator_registration_names():
     assert isinstance(qy.env.resolve(S("first-symbol")), MetaOperator)
     assert qy.evaluate_source("(unless false 7)") == 7
     assert qy.evaluate_source("(first-symbol unknown)") == S("first-symbol")
+
+
+def test_qy_instance_exposes_pipeline_helpers():
+    qy = Qy()
+
+    expansion = qy.macroexpand_source(
+        """
+        (macro twice (form) (cons '+ (cons form (cons form '()))))
+        (twice 21)
+        """
+    )
+
+    assert expansion.ok
+    expanded = expansion.forms[1]
+    assert isinstance(expanded, tuple)
+    assert expanded[0] == S("+")
+
+    program = qy.lower(expansion.forms)
+    mir = qy.lower_mir(program)
+    bytecode = qy.compile_bytecode(program)
+
+    assert mir.ok
+    assert bytecode.ok
+    assert qy.evaluate_bytecode(bytecode) == 42

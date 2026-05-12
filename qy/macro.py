@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 
 from qy.errors import QyArityError
+from qy.reader import Form
 from qy.reader import Symbol
 
 if TYPE_CHECKING:
@@ -42,14 +44,13 @@ class MacroDefinition:
                     "macro": self.name.name,
                 },
             )
-        from qy.evaluator import evaluate_body_async
-
         local_env = self.closure.child(dict(zip(self.params, args, strict=True)))
         if services is not None:
-            from qy.evaluator import PureOperator
+            local_env.register_pure("gensym", services.gensym, doc="生成 hygienic macro symbol。")
 
-            local_env.define(
-                Symbol("gensym"),
-                PureOperator("gensym", services.gensym, "生成 hygienic macro symbol。"),
-            )
-        return await evaluate_body_async(self.body, local_env)
+        from qy.ir_vm import evaluate_ir_async
+        from qy.lowering import lower
+
+        return await evaluate_ir_async(
+            lower(list(cast(tuple[Form, ...], self.body)), local_env), local_env
+        )

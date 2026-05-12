@@ -2,6 +2,25 @@
 
 Qy 是一个由 Python 实现的符号化 Lisp 方言。
 
+## 编译管线
+
+当前公开管线如下：
+
+```text
+read
+  -> macroexpand
+  -> lower (HIR / ProgramIR)
+  -> lower_mir
+  -> compile_bytecode
+  -> RegisterVirtualMachine
+```
+
+对应的 Python API 入口是 `Qy.read(...)`、`Qy.macroexpand_source(...)`、`Qy.lower(...)`、`Qy.lower_mir(...)`、`Qy.compile_bytecode(...)` 和 `RegisterVirtualMachine(...)`。
+
+`Qy.evaluate_source(...)` 默认仍使用 IR backend，因为它目前语义最完整。`Qy(backend="bytecode")` 已可用，但 bytecode backend 仍是实验性后端，暂未覆盖完整语言表面，尤其是 module、effect 和部分高级算子。
+
+Macro expansion 默认通过 `MacroExpansionOptions(effect_policy="deny")` 拒绝 compile-time effect，避免在未显式授权的情况下执行不透明的编译期副作用。
+
 当前核心保持很小：
 
 - reader：qy 源码 -> 符号表达式
@@ -60,6 +79,21 @@ from qy import evaluate
 
 evaluate((Symbol("+"), 1, 2))  # 3
 evaluate(("+", 1, 2))          # error: "+" 是 Python 字符串字面量
+```
+
+显式运行整条管线：
+
+```python
+from qy import Qy
+
+qy = Qy()
+expansion = qy.macroexpand_source("(+ 1 2)")
+program = qy.lower(expansion.forms)
+mir = qy.lower_mir(program)
+bytecode = qy.compile_bytecode(program)
+
+assert mir.ok
+assert qy.evaluate_bytecode(bytecode) == 3
 ```
 
 嵌入式使用并注册应用算子：

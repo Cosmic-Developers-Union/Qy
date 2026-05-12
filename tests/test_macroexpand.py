@@ -63,6 +63,26 @@ def test_macroexpand_gensym_records_generated_symbols():
     assert expansion.source_map[0].generated_symbols == (expansion.forms[0],)
 
 
+def test_macroexpand_records_nested_trace_and_source_map_order():
+    env = standard_environment()
+    macroexpand_source(
+        """
+        (macro inner (form) (cons '+ (cons form (cons 1 '()))))
+        (macro outer (form) (cons 'inner (cons form '())))
+        """,
+        env,
+    )
+
+    expansion = macroexpand_source("(outer 41)", env)
+
+    assert expansion.ok
+    assert expansion.forms == [(Symbol("+"), Symbol("41"), 1)]
+    assert [trace.macro for trace in expansion.traces] == [Symbol("outer"), Symbol("inner")]
+    assert [trace.depth for trace in expansion.traces] == [1, 2]
+    assert [entry.macro for entry in expansion.source_map] == [Symbol("outer"), Symbol("inner")]
+    assert [entry.depth for entry in expansion.source_map] == [1, 2]
+
+
 def test_macroexpand_denies_compile_time_effects_by_default():
     env = standard_environment()
     macroexpand_source('(macro bad () (assert false "bad"))', env)

@@ -2,6 +2,25 @@
 
 Qy is a symbolic Lisp-like language implemented in Python.
 
+## Compilation Pipeline
+
+The public pipeline is intentionally explicit:
+
+```text
+read
+  -> macroexpand
+  -> lower (HIR / ProgramIR)
+  -> lower_mir
+  -> compile_bytecode
+  -> RegisterVirtualMachine
+```
+
+For the Python API, the corresponding entry points are `Qy.read(...)`, `Qy.macroexpand_source(...)`, `Qy.lower(...)`, `Qy.lower_mir(...)`, `Qy.compile_bytecode(...)`, and `RegisterVirtualMachine(...)`.
+
+`Qy.evaluate_source(...)` still defaults to the IR backend because it is the most complete runtime. `Qy(backend="bytecode")` is available, but the bytecode backend is still experimental and does not yet cover the full language surface, especially modules, effects, and several advanced operators.
+
+Macro expansion denies compile-time effects by default through `MacroExpansionOptions(effect_policy="deny")`. This keeps expansion deterministic unless a caller explicitly opts into a looser policy.
+
 The current core is intentionally small:
 
 - reader: qy source -> symbolic forms
@@ -99,6 +118,21 @@ from qy import evaluate
 
 evaluate((Symbol("+"), 1, 2))  # 3
 evaluate(("+", 1, 2))          # error: "+" is a Python string literal
+```
+
+Run the pipeline explicitly:
+
+```python
+from qy import Qy
+
+qy = Qy()
+expansion = qy.macroexpand_source("(+ 1 2)")
+program = qy.lower(expansion.forms)
+mir = qy.lower_mir(program)
+bytecode = qy.compile_bytecode(program)
+
+assert mir.ok
+assert qy.evaluate_bytecode(bytecode) == 3
 ```
 
 Embed a qy instance and register application operators:

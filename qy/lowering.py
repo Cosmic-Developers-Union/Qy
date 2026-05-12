@@ -279,6 +279,11 @@ def _lower_macro(
     name = _ensure_symbol(name, "macro name", context)
     param_symbols = _parameter_symbols(params, "macro", context)
     macro_scope = _define_parameters(scope.child(), param_symbols, context)
+    macro_scope = _define_local(
+        macro_scope,
+        Binding(Symbol("gensym"), "local", "operator", "pure"),
+        context,
+    )
     lowered_body = _lower_body(tuple(body), macro_scope, context)
     return MacroExpr(name, param_symbols, lowered_body, tuple(body), get_span(form))
 

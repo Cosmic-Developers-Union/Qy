@@ -329,9 +329,7 @@ async def _expand_macro(
             cause=e,
             metadata={"macro": macro.name.name, "effect": e.effect},
         ) from e
-    if isinstance(expanded, QyCons):
-        return qy_cons_to_tuple(expanded)
-    return expanded
+    return _normalize_macro_result(expanded)
 
 
 def _define_macro(form: tuple[object, ...], context: MacroExpansionContext) -> None:
@@ -370,3 +368,11 @@ def _tuple_like(original: tuple[object, ...], values: list[object]) -> tuple[obj
     if isinstance(original, SpannedTuple):
         return SpannedTuple(values, original.span)
     return tuple(values)
+
+
+def _normalize_macro_result(value: object) -> object:
+    if isinstance(value, QyCons):
+        return tuple(_normalize_macro_result(item) for item in qy_cons_to_tuple(value))
+    if isinstance(value, tuple):
+        return _tuple_like(value, [_normalize_macro_result(item) for item in value])
+    return value
