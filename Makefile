@@ -1,7 +1,10 @@
-.PHONY: clean build check release lint test
+.PHONY: bench clean build check release lint test
 
 test:
 	uv run python -m pytest tests/ -v --cov=qy --cov-report=term-missing
+
+bench:
+	uv run python -m qy.benchmark
 
 clean:
 	rm -rf dist/ build/ *.egg-info
