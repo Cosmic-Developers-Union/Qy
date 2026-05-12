@@ -212,6 +212,7 @@ def _lower_form(
         get_span(form),
         _infer_call_type(operator, tuple(lowered_args), operator_expr, context, form),
         tail,
+        args,
     )
 
 

@@ -1019,6 +1019,8 @@ def _python_to_qy(value: object) -> object:
 
 
 def _is_qy_callable(value: object) -> bool:
+    from qy.ir_vm import IRFunction
+
     return isinstance(
         value,
         PureOperator
@@ -1028,7 +1030,8 @@ def _is_qy_callable(value: object) -> bool:
         | MetaOperator
         | MacroDefinition
         | UserFunction
-        | ComponentDefinition,
+        | ComponentDefinition
+        | IRFunction,
     )
 
 
@@ -1046,19 +1049,23 @@ def _wrap_qy_callable(value: object, env: Environment) -> Callable[..., object]:
 
 
 def _qy_callable_name(value: object) -> str | None:
+    from qy.ir_vm import IRFunction
+
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return value.name
-    if isinstance(value, MacroDefinition | UserFunction | ComponentDefinition):
+    if isinstance(value, MacroDefinition | UserFunction | ComponentDefinition | IRFunction):
         return value.name.name
     return None
 
 
 async def _call_qy_callable(value: object, args: tuple[object, ...], env: Environment) -> object:
+    from qy.ir_vm import IRFunction
+
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))
-    if isinstance(value, UserFunction | ComponentDefinition):
+    if isinstance(value, UserFunction | ComponentDefinition | IRFunction):
         return await _await_cached_value(value(*args))
     if isinstance(value, ScopeOperator | ControlOperator | EffectOperator):
         return await _await_cached_value(value(args, env))

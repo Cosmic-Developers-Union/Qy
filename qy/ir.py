@@ -122,6 +122,7 @@ class CallExpr:
     span: SourceSpan | None = None
     type_name: TypeName = "any"
     tail_position: bool = False
+    raw_args: tuple[object, ...] = field(default=(), compare=False, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

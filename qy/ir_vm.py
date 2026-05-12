@@ -15,12 +15,17 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
+from qy.evaluator import ComponentDefinition
+from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
+from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
 from qy.evaluator import MacroDefinition
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
+from qy.evaluator import ScopeOperator
+from qy.evaluator import UserFunction
 from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import AssertExpr
@@ -77,6 +82,9 @@ class IRFunction:
     body: tuple[IRExpr, ...]
     closure: Environment
     kind: IRCallableKind = "function"
+
+    async def __call__(self, *args: object) -> object:
+        return await IRVirtualMachine(self.closure)._apply_ir_function(self, args)
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +257,14 @@ class IRVirtualMachine:
                 ),
             )
             raise
+        if _operator_uses_raw_args(operator):
+            return await self._finish_call(
+                expression,
+                operator,
+                (),
+                env,
+                current_function=current_function,
+            )
         return await self._eval_call_arguments(
             expression,
             operator,
@@ -273,6 +289,7 @@ class IRVirtualMachine:
                 expression,
                 operator,
                 values,
+                env,
                 current_function=current_function,
             )
         try:
@@ -308,6 +325,7 @@ class IRVirtualMachine:
         expression: CallExpr,
         operator: object,
         args: tuple[object, ...],
+        env: Environment,
         *,
         current_function: IRFunction | None,
     ) -> object:
@@ -317,7 +335,7 @@ class IRVirtualMachine:
             and isinstance(operator, IRFunction)
         ):
             return _TailCall(operator, args)
-        return await self._apply_operator(operator, args, expression)
+        return await self._apply_operator(operator, args, expression, env)
 
     async def _eval_let(
         self,
@@ -744,23 +762,50 @@ class IRVirtualMachine:
         operator: object,
         args: tuple[object, ...],
         expression: CallExpr,
+        env: Environment,
     ) -> object:
-        if isinstance(operator, IRFunction):
-            return await self._apply_ir_function(operator, args)
-        if isinstance(operator, PureOperator):
-            if operator.argument_evaluator is not None:
-                raise QyRuntimeError(
-                    f"IR VM does not yet support operator {operator.name!r} "
-                    "with a custom argument evaluator",
-                    span=expression.span,
-                    metadata={"operator": operator.name},
+        try:
+            if isinstance(operator, IRFunction):
+                return await self._apply_ir_function(operator, args)
+            if isinstance(operator, MetaOperator):
+                return await _await_if_needed(
+                    operator((_raw_operator_expression(expression), *expression.raw_args), env)
                 )
-            return await _await_if_needed(operator(*args))
-        raise QyTypeError(
-            f"IR call resolved to non-callable {operator!r}",
-            span=expression.span,
-            metadata={"operator": operator},
-        )
+            if isinstance(operator, ScopeOperator | ControlOperator | EffectOperator):
+                return await _await_if_needed(operator(expression.raw_args, env))
+            if isinstance(operator, MacroDefinition):
+                expanded = await operator.expand(expression.raw_args)
+                return await self._evaluate_runtime_form(expanded, env)
+            if isinstance(operator, PureOperator):
+                if operator.argument_evaluator is not None:
+                    evaluated_args = await _await_if_needed(
+                        operator.argument_evaluator(expression.raw_args, env)
+                    )
+                    if not isinstance(evaluated_args, tuple):
+                        raise QyTypeError(
+                            f"{operator.name} argument evaluator must return a tuple, "
+                            f"got {evaluated_args!r}",
+                            span=expression.span,
+                            metadata={"operator": operator.name, "value": evaluated_args},
+                        )
+                    return await _await_if_needed(operator(*evaluated_args))
+                return await _await_if_needed(operator(*args))
+            if isinstance(operator, UserFunction | ComponentDefinition):
+                return await _await_if_needed(operator(*args))
+            raise QyTypeError(
+                f"IR call resolved to non-callable {operator!r}",
+                span=expression.span,
+                metadata={"operator": operator},
+            )
+        except (EvaluationError, QyEffectSignal):
+            raise
+        except Exception as e:
+            raise QyRuntimeError(
+                str(e),
+                span=expression.span,
+                cause=e,
+                metadata={"python_exception": type(e).__name__},
+            ) from e
 
     async def _apply_ir_function(
         self,
@@ -892,11 +937,17 @@ async def evaluate_ir_source_async(
     *,
     source_name: str | None = None,
 ) -> object:
-    from qy.lowering import lower_source
+    from qy.lowering import lower
+    from qy.macroexpand import macroexpand_source_async
 
     runtime_env = env or standard_environment()
+    expansion = await macroexpand_source_async(source, runtime_env, source_name=source_name)
+    errors = tuple(item for item in expansion.diagnostics if item.severity == "error")
+    if errors:
+        messages = "; ".join(item.message for item in errors)
+        raise QyRuntimeError(f"cannot execute macroexpanded source: {messages}")
     return await evaluate_ir_async(
-        lower_source(source, runtime_env, source_name=source_name),
+        lower(expansion.forms, runtime_env),
         runtime_env,
     )
 
@@ -921,8 +972,23 @@ def _truthy(value: object) -> bool:
     return value is not False and value is not None and value is not QY_NIL and value != ()
 
 
+def _raw_operator_expression(expression: CallExpr) -> object:
+    if isinstance(expression.operator, SymbolRefExpr):
+        return expression.operator.symbol
+    return expression.operator
+
+
+def _operator_uses_raw_args(operator: object) -> bool:
+    if isinstance(operator, PureOperator):
+        return operator.argument_evaluator is not None
+    return isinstance(
+        operator,
+        ScopeOperator | ControlOperator | EffectOperator | MetaOperator | MacroDefinition,
+    )
+
+
 async def _await_if_needed(value: object) -> object:
-    if inspect.isawaitable(value):
+    if inspect.iscoroutine(value):
         return await value
     return value
 

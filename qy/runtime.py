@@ -9,10 +9,7 @@ from typing import cast
 
 from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_async
 from qy.evaluator import evaluate_file_async
-from qy.evaluator import evaluate_program_async
 from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
@@ -23,6 +20,8 @@ from qy.ir_vm import evaluate_ir_source
 from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
+from qy.macroexpand import macroexpand
+from qy.macroexpand import macroexpand_async
 from qy.operator_signature import OperatorSignature
 from qy.reader import Form
 from qy.reader import read
@@ -30,12 +29,12 @@ from qy.reader import read_one
 
 __all__ = ["EvaluationBackend", "Qy"]
 
-EvaluationBackend = Literal["ast", "ir"]
+EvaluationBackend = Literal["ir"]
 
 
 class Qy:
     def __init__(
-        self, env: Environment | None = None, *, backend: EvaluationBackend = "ast"
+        self, env: Environment | None = None, *, backend: EvaluationBackend = "ir"
     ) -> None:
         self.env = env or standard_environment()
         self.backend = backend
@@ -67,40 +66,30 @@ class Qy:
         return await evaluate_ir_source_async(source, self.env, source_name=source_name)
 
     def evaluate(self, expression: object) -> object:
-        if self.backend == "ir":
-            return self.evaluate_ir(lower([cast(Form, expression)], self.env))
-        return evaluate(expression, self.env)
+        expansion = macroexpand([cast(Form, expression)], self.env)
+        return self.evaluate_ir(lower(expansion.forms, self.env))
 
     async def evaluate_async(self, expression: object) -> object:
-        if self.backend == "ir":
-            return await self.evaluate_ir_async(lower([cast(Form, expression)], self.env))
-        return await evaluate_async(expression, self.env)
+        expansion = await macroexpand_async([cast(Form, expression)], self.env)
+        return await self.evaluate_ir_async(lower(expansion.forms, self.env))
 
     def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
-        if self.backend == "ir":
-            return self.evaluate_ir_source(source, source_name=source_name)
-        return self.evaluate(read_one(source, source_name=source_name))
+        return self.evaluate_ir_source(source, source_name=source_name)
 
     async def evaluate_source_async(self, source: str, *, source_name: str | None = None) -> object:
-        if self.backend == "ir":
-            return await self.evaluate_ir_source_async(source, source_name=source_name)
-        return await self.evaluate_async(read_one(source, source_name=source_name))
+        return await self.evaluate_ir_source_async(source, source_name=source_name)
 
     def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
-        if self.backend == "ir":
-            program = lower(read(source, source_name=source_name), self.env)
-            return cast(
-                list[object], run_async(IRVirtualMachine(self.env).evaluate_program(program))
-            )
-        return [self.evaluate(form) for form in read(source, source_name=source_name)]
+        expansion = macroexpand(read(source, source_name=source_name), self.env)
+        program = lower(expansion.forms, self.env)
+        return cast(list[object], run_async(IRVirtualMachine(self.env).evaluate_program(program)))
 
     async def evaluate_program_async(
         self, source: str, *, source_name: str | None = None
     ) -> list[object]:
-        if self.backend == "ir":
-            program = lower(read(source, source_name=source_name), self.env)
-            return await IRVirtualMachine(self.env).evaluate_program(program)
-        return await evaluate_program_async(source, self.env, source_name=source_name)
+        expansion = await macroexpand_async(read(source, source_name=source_name), self.env)
+        program = lower(expansion.forms, self.env)
+        return await IRVirtualMachine(self.env).evaluate_program(program)
 
     def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)

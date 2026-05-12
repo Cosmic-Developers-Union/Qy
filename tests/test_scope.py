@@ -1,11 +1,10 @@
 import pytest
 
-from qy.evaluator import ComponentDefinition
 from qy.evaluator import EvaluationError
-from qy.evaluator import UserFunction
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
+from qy.ir_vm import IRFunction
 from qy.reader import Symbol
 
 S = Symbol
@@ -33,7 +32,7 @@ def test_defun_scope_operator():
     env = standard_environment()
     function = evaluate_source("(defun square (x) (* x x))", env)
 
-    assert isinstance(function, UserFunction)
+    assert isinstance(function, IRFunction)
     assert evaluate_source("(square 12)", env) == 144
 
 
@@ -64,5 +63,6 @@ def test_component_defines_callable_component():
     env = standard_environment()
     component = evaluate_source("(component scale (x factor) (* x factor))", env)
 
-    assert isinstance(component, ComponentDefinition)
+    assert isinstance(component, IRFunction)
+    assert component.kind == "component"
     assert evaluate_source("(scale 7 6)", env) == 42

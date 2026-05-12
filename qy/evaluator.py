@@ -15,10 +15,10 @@ from typing import cast
 
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
-from qy.errors import QyCancelledError
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyError
+from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
@@ -26,11 +26,10 @@ from qy.errors import TraceFrame
 from qy.literals import resolve_default_literal
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import lookup_operator_signature
-from qy.reader import DottedTuple
+from qy.reader import Form
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
-from qy.reader import read_one
 from qy.types import OperatorKind
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
@@ -38,7 +37,6 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import QyCons
-from qy.values import qy_cons_to_tuple
 
 __all__ = [
     "QY_EMPTY_CHAIN",
@@ -473,89 +471,11 @@ def evaluate(expression: object, env: Environment | None = None) -> object:
 
 
 async def evaluate_async(expression: object, env: Environment | None = None) -> object:
-    env = env or standard_environment()
-
+    runtime_env = env or standard_environment()
     if isinstance(expression, Symbol):
-        return env.resolve(expression)
-    if expression is QY_NIL:
-        return expression
-    if isinstance(expression, QyCons):
-        try:
-            expression = qy_cons_to_tuple(expression)
-        except TypeError as e:
-            raise QyRuntimeError(
-                "cannot evaluate an improper Qy chain as a call",
-                span=get_span(expression),
-                cause=e,
-            ) from e
-    if not isinstance(expression, tuple):
-        return expression
-    span = get_span(expression)
-    if isinstance(expression, DottedTuple):
-        raise QyRuntimeError("cannot evaluate dotted form as a call", span=span)
-    if not expression:
-        return QY_NIL
-
-    operator_expression, *argument_expressions = expression
-    if isinstance(operator_expression, Symbol):
-        if operator_expression.name == "perform":
-            return await _evaluate_perform_form(tuple(argument_expressions), env, span)
-        if operator_expression.name == "handle":
-            return await _evaluate_handle_form(tuple(argument_expressions), env, span)
-        if operator_expression.name == "resume":
-            return await _evaluate_resume_form(tuple(argument_expressions), env, span)
-        if operator_expression.name == "assert":
-            return await _evaluate_assert_form(tuple(argument_expressions), env, span)
-
-    operator_value: object | None = None
-    try:
-        try:
-            operator_value = await evaluate_async(operator_expression, env)
-        except QyEffectSignal as e:
-            _compose_effect_continuation(
-                e,
-                lambda resumed_operator: _apply_operator(
-                    operator_expression,
-                    resumed_operator,
-                    tuple(argument_expressions),
-                    env,
-                    span,
-                ),
-            )
-            raise
-
-        return await _apply_operator(
-            operator_expression,
-            operator_value,
-            tuple(argument_expressions),
-            env,
-            span,
-        )
-    except QyEffectSignal as e:
-        e.set_span_if_missing(span)
-        e.add_frame(_trace_frame(operator_expression, operator_value, span))
-        raise
-    except QyError as e:
-        e.set_span_if_missing(span)
-        e.add_frame(_trace_frame(operator_expression, operator_value, span))
-        raise
-    except asyncio.CancelledError as e:
-        qy_error = QyCancelledError(
-            "evaluation cancelled",
-            span=span,
-            cause=e,
-        )
-        qy_error.add_frame(_trace_frame(operator_expression, operator_value, span))
-        raise qy_error from e
-    except Exception as e:
-        qy_error = QyRuntimeError(
-            str(e),
-            span=span,
-            cause=e,
-            metadata={"python_exception": type(e).__name__},
-        )
-        qy_error.add_frame(_trace_frame(operator_expression, operator_value, span))
-        raise qy_error from e
+        return runtime_env.resolve(expression)
+    results = await _evaluate_ir_forms_async([cast(Form, expression)], runtime_env)
+    return None if not results else results[-1]
 
 
 def evaluate_source(
@@ -567,7 +487,8 @@ def evaluate_source(
 async def evaluate_source_async(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> object:
-    return await evaluate_async(read_one(source, source_name=source_name), env)
+    results = await _evaluate_ir_forms_async(read(source, source_name=source_name), env)
+    return None if not results else results[-1]
 
 
 def evaluate_program(
@@ -582,8 +503,7 @@ def evaluate_program(
 async def evaluate_program_async(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> list[object]:
-    env = env or standard_environment()
-    return [await evaluate_async(form, env) for form in read(source, source_name=source_name)]
+    return await _evaluate_ir_forms_async(read(source, source_name=source_name), env)
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
@@ -597,6 +517,39 @@ async def evaluate_file_async(path: str | Path, env: Environment | None = None) 
     if not results:
         return None
     return results[-1]
+
+
+async def _evaluate_ir_forms_async(
+    forms: list[Form],
+    env: Environment | None = None,
+) -> list[object]:
+    runtime_env = env or standard_environment()
+
+    from qy.ir_vm import IRVirtualMachine
+    from qy.lowering import lower
+    from qy.macroexpand import macroexpand_async
+
+    expansion = await macroexpand_async(forms, runtime_env)
+    program = lower(expansion.forms, runtime_env)
+    diagnostics = (*expansion.diagnostics, *program.diagnostics)
+    errors = tuple(item for item in diagnostics if item.severity == "error")
+    if errors:
+        if len(errors) == 1 and errors[0].message.startswith("unresolved symbol "):
+            symbol = errors[0].message.removeprefix("unresolved symbol ").strip("'")
+            span = SourceSpan(start_line=errors[0].line, start_column=errors[0].column)
+            raise QyResolveError(
+                errors[0].message,
+                span=span,
+                frames=(TraceFrame("call", None, span),),
+                metadata={"symbol": symbol},
+            )
+        messages = "; ".join(item.message for item in errors)
+        first = errors[0]
+        raise QyRuntimeError(
+            f"cannot evaluate program with diagnostics: {messages}",
+            span=SourceSpan(start_line=first.line, start_column=first.column),
+        )
+    return await IRVirtualMachine(runtime_env).evaluate_program(program)
 
 
 def _resolve_builtin_literal(symbol: Symbol) -> object:

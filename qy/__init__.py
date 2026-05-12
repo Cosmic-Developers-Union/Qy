@@ -62,6 +62,11 @@ from qy.ir_vm import evaluate_ir_source
 from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
+from qy.macroexpand import MacroExpansion
+from qy.macroexpand import macroexpand
+from qy.macroexpand import macroexpand_async
+from qy.macroexpand import macroexpand_source
+from qy.macroexpand import macroexpand_source_async
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
 from qy.operator_docs import collect_supported_operators
@@ -124,6 +129,7 @@ __all__ = [
     "IRVirtualMachine",
     "LiteralExpr",
     "MacroDefinition",
+    "MacroExpansion",
     "MetaOperator",
     "OperatorDoc",
     "OperatorModuleDoc",
@@ -185,6 +191,10 @@ __all__ = [
     "format_value",
     "lower",
     "lower_source",
+    "macroexpand",
+    "macroexpand_async",
+    "macroexpand_source",
+    "macroexpand_source_async",
     "read",
     "read_one",
     "read_one_tuple",
