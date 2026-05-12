@@ -13,6 +13,10 @@ from qy.evaluator import evaluate_file_async
 from qy.evaluator import evaluate_program_async
 from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
+from qy.ir_vm import evaluate_ir
+from qy.ir_vm import evaluate_ir_async
+from qy.ir_vm import evaluate_ir_source
+from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.operator_signature import OperatorSignature
@@ -38,6 +42,20 @@ class Qy:
 
     def lower_source(self, source: str, *, source_name: str | None = None) -> ProgramIR:
         return lower_source(source, self.env, source_name=source_name)
+
+    def evaluate_ir(self, program: ProgramIR) -> object:
+        return evaluate_ir(program, self.env)
+
+    async def evaluate_ir_async(self, program: ProgramIR) -> object:
+        return await evaluate_ir_async(program, self.env)
+
+    def evaluate_ir_source(self, source: str, *, source_name: str | None = None) -> object:
+        return evaluate_ir_source(source, self.env, source_name=source_name)
+
+    async def evaluate_ir_source_async(
+        self, source: str, *, source_name: str | None = None
+    ) -> object:
+        return await evaluate_ir_source_async(source, self.env, source_name=source_name)
 
     def evaluate(self, expression: object) -> object:
         return evaluate(expression, self.env)

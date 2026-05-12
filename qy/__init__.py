@@ -54,6 +54,12 @@ from qy.ir import LiteralExpr
 from qy.ir import ProgramIR
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
+from qy.ir_vm import IRFunction
+from qy.ir_vm import IRVirtualMachine
+from qy.ir_vm import evaluate_ir
+from qy.ir_vm import evaluate_ir_async
+from qy.ir_vm import evaluate_ir_source
+from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.operator_docs import OperatorDoc
@@ -112,6 +118,8 @@ __all__ = [
     "EvaluationError",
     "Form",
     "HostObjectRef",
+    "IRFunction",
+    "IRVirtualMachine",
     "LiteralExpr",
     "MacroDefinition",
     "MetaOperator",
@@ -158,6 +166,10 @@ __all__ = [
     "evaluate_async",
     "evaluate_file",
     "evaluate_file_async",
+    "evaluate_ir",
+    "evaluate_ir_async",
+    "evaluate_ir_source",
+    "evaluate_ir_source_async",
     "evaluate_program",
     "evaluate_program_async",
     "evaluate_source",

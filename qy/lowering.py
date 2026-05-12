@@ -120,6 +120,7 @@ def lower_source(
 def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     context = LoweringContext.create(env)
     scope = _scope_from_environment(context.env).child()
+    scope = _predeclare_callable_definitions(tuple(forms), scope, context)
     body: list[IRExpr] = []
     for index, form in enumerate(forms):
         expr = _lower_form(form, scope, context, tail=index == len(forms) - 1)
@@ -441,7 +442,7 @@ def _lower_module(
         return ModuleExpr(Symbol("<invalid>"), (), get_span(form))
     _, name, *body = form
     name = _ensure_symbol(name, "module name", context)
-    module_scope = scope.child()
+    module_scope = _predeclare_callable_definitions(tuple(body), scope.child(), context)
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
@@ -589,7 +590,7 @@ def _lower_body(
         context.diagnostic("body must contain at least one expression")
         return ()
     lowered: list[IRExpr] = []
-    body_scope = scope
+    body_scope = _predeclare_callable_definitions(body, scope, context)
     for index, expression in enumerate(body):
         item = _lower_form(
             expression,
@@ -616,6 +617,8 @@ def _scope_after_form(
         and form[0] in {Symbol("defun"), Symbol("component")}
         and isinstance(form[1], Symbol)
     ):
+        if scope.has_local(form[1]):
+            return scope
         return _define_local(scope, Binding(form[1], "local", "function"), context)
     if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
         return _define_local(scope, Binding(form[1], "local", "effect"), context)
@@ -654,6 +657,23 @@ def _scope_after_form(
             ),
             context,
         )
+    return next_scope
+
+
+def _predeclare_callable_definitions(
+    body: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+) -> Scope:
+    next_scope = scope
+    for expression in body:
+        if not isinstance(expression, tuple) or len(expression) < 2:
+            continue
+        if expression[0] not in {Symbol("defun"), Symbol("component")}:
+            continue
+        name = expression[1]
+        if isinstance(name, Symbol):
+            next_scope = _define_local(next_scope, Binding(name, "local", "function"), context)
     return next_scope
 
 

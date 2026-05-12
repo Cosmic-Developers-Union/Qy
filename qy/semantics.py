@@ -11,6 +11,7 @@ from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
+from qy.ir_vm import IRFunction
 from qy.reader import Symbol
 from qy.types import OperatorKind
 from qy.types import TypeName
@@ -57,7 +58,7 @@ def value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | ComponentDefinition):
+    if isinstance(value, UserFunction | ComponentDefinition | IRFunction):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

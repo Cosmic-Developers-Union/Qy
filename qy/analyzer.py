@@ -17,6 +17,7 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
+from qy.ir_vm import IRFunction
 from qy.operator_signature import OperatorSignature
 from qy.reader import DottedTuple
 from qy.reader import Form
@@ -95,7 +96,7 @@ def analyze_source(source: str, env: Environment | None = None) -> Analysis:
 def analyze(forms: list[Form], env: Environment | None = None) -> Analysis:
     env = env or standard_environment()
     diagnostics: list[Diagnostic] = []
-    scope = _Scope()
+    scope = _predeclare_callable_definitions(tuple(forms), _Scope())
     for form in forms:
         _infer(form, env, scope, diagnostics)
         scope = _scope_after_form(form, env, scope)
@@ -228,7 +229,7 @@ def _value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | ComponentDefinition):
+    if isinstance(value, UserFunction | ComponentDefinition | IRFunction):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"
@@ -681,7 +682,7 @@ def _infer_module(
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"module name must be a symbol, got {name!r}"))
 
-    module_scope = scope
+    module_scope = _predeclare_callable_definitions(tuple(body), scope)
     for expression in body:
         if _is_special_form(expression, "exports"):
             continue
@@ -706,7 +707,7 @@ def _infer_body(
         diagnostics.append(Diagnostic("body must contain at least one expression"))
         return "unknown"
     result_type: TypeName = "none"
-    body_scope = scope
+    body_scope = _predeclare_callable_definitions(body, scope)
     for expression in body:
         result_type = _infer(expression, env, body_scope, diagnostics)
         body_scope = _scope_after_form(expression, env, body_scope)
@@ -750,6 +751,19 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
             eager_arguments=_value_uses_eager_arguments(value),
             signature=_value_signature(value),
         )
+    return next_scope
+
+
+def _predeclare_callable_definitions(body: tuple[object, ...], scope: _Scope) -> _Scope:
+    next_scope = scope
+    for expression in body:
+        if not isinstance(expression, tuple) or len(expression) < 2:
+            continue
+        if expression[0] not in {Symbol("defun"), Symbol("component")}:
+            continue
+        name = expression[1]
+        if isinstance(name, Symbol):
+            next_scope = next_scope.define(name, "function")
     return next_scope
 
 
