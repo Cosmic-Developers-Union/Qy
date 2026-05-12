@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from qy.bytecode import BytecodeFunctionValue
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
@@ -58,7 +59,7 @@ def value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | ComponentDefinition | IRFunction):
+    if isinstance(value, UserFunction | ComponentDefinition | IRFunction | BytecodeFunctionValue):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

@@ -5,6 +5,11 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze
 from qy.analyzer import analyze_source
 from qy.analyzer import type_check_source
+from qy.bytecode import BytecodeFunction
+from qy.bytecode import BytecodeFunctionValue
+from qy.bytecode import BytecodeProgram
+from qy.bytecode import Instruction
+from qy.bytecode_compiler import compile_bytecode
 from qy.display import format_value
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
@@ -91,6 +96,11 @@ from qy.reader import write
 from qy.reader import write_program
 from qy.reader import write_tuple
 from qy.reader import write_tuple_program
+from qy.register_vm import RegisterVirtualMachine
+from qy.register_vm import evaluate_bytecode
+from qy.register_vm import evaluate_bytecode_async
+from qy.register_vm import evaluate_bytecode_source
+from qy.register_vm import evaluate_bytecode_source_async
 from qy.runtime import EvaluationBackend
 from qy.runtime import Qy
 from qy.values import QY_EMPTY_CHAIN
@@ -114,6 +124,9 @@ __all__ = [
     "Analysis",
     "Arity",
     "Binding",
+    "BytecodeFunction",
+    "BytecodeFunctionValue",
+    "BytecodeProgram",
     "CallExpr",
     "ComponentDefinition",
     "ControlOperator",
@@ -129,6 +142,7 @@ __all__ = [
     "HostObjectRef",
     "IRFunction",
     "IRVirtualMachine",
+    "Instruction",
     "LiteralExpr",
     "MacroDefinition",
     "MacroExpansion",
@@ -162,6 +176,7 @@ __all__ = [
     "QyTimeoutError",
     "QyTypeError",
     "ReaderSyntaxError",
+    "RegisterVirtualMachine",
     "ScopeOperator",
     "SourceSpan",
     "Symbol",
@@ -172,10 +187,15 @@ __all__ = [
     "analyze",
     "analyze_source",
     "collect_supported_operators",
+    "compile_bytecode",
     "dump_form",
     "dump_program",
     "evaluate",
     "evaluate_async",
+    "evaluate_bytecode",
+    "evaluate_bytecode_async",
+    "evaluate_bytecode_source",
+    "evaluate_bytecode_source_async",
     "evaluate_file",
     "evaluate_file_async",
     "evaluate_ir",
