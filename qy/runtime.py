@@ -12,6 +12,9 @@ from qy.evaluator import evaluate_async
 from qy.evaluator import evaluate_file_async
 from qy.evaluator import evaluate_program_async
 from qy.evaluator import standard_environment
+from qy.ir import ProgramIR
+from qy.lowering import lower
+from qy.lowering import lower_source
 from qy.reader import Form
 from qy.reader import read
 from qy.reader import read_one
@@ -28,6 +31,12 @@ class Qy:
 
     def read_one(self, source: str) -> Form:
         return read_one(source)
+
+    def lower(self, forms: list[Form]) -> ProgramIR:
+        return lower(forms, self.env)
+
+    def lower_source(self, source: str, *, source_name: str | None = None) -> ProgramIR:
+        return lower_source(source, self.env, source_name=source_name)
 
     def evaluate(self, expression: object) -> object:
         return evaluate(expression, self.env)

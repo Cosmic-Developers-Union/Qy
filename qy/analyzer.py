@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
 
+from qy.diagnostics import Diagnostic
 from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
@@ -24,6 +24,8 @@ from qy.reader import Symbol
 from qy.reader import read
 from qy.stdlib import load_module
 from qy.stdlib.imports import parse_from_import
+from qy.types import OperatorKind
+from qy.types import TypeName
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons
@@ -35,35 +37,6 @@ __all__ = [
     "analyze_source",
     "type_check_source",
 ]
-
-Severity = Literal["error", "warning", "hint"]
-TypeName = Literal[
-    "any",
-    "bool",
-    "chain",
-    "dict",
-    "effect",
-    "function",
-    "list",
-    "nil",
-    "none",
-    "number",
-    "operator",
-    "set",
-    "symbol",
-    "tuple",
-    "T",
-    "unknown",
-]
-OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
-
-
-@dataclass(frozen=True, slots=True)
-class Diagnostic:
-    message: str
-    severity: Severity = "error"
-    line: int | None = None
-    column: int | None = None
 
 
 @dataclass(frozen=True, slots=True)

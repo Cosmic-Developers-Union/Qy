@@ -44,6 +44,22 @@ def test_defun_supports_multiple_body_forms():
     assert evaluate_source("(second 1 2)", env) == 2
 
 
+def test_self_tail_recursive_function_uses_trampoline():
+    assert (
+        evaluate_source(
+            """
+            (let ()
+              (defun sum-to (n acc)
+                (cond
+                  ((eq n 0) acc)
+                  (true (sum-to (- n 1) (+ acc n)))))
+              (sum-to 300 0))
+            """
+        )
+        == 45150
+    )
+
+
 def test_component_defines_callable_component():
     env = standard_environment()
     component = evaluate_source("(component scale (x factor) (* x factor))", env)

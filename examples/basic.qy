@@ -77,14 +77,17 @@
   (fact 10))  ; => 3628800
 
 (defun
+  sum-to-loop
+  (n acc)
+  (cond
+    ((eq n 0) acc)
+    (true
+      (sum-to-loop
+        (- n 1)
+        (+ acc n)))))
+(defun
   sum-to
   (n)
-  (cond
-    ((eq n 0) 0)
-    (true
-      (+
-        n
-        (sum-to
-          (- n 1))))))
+  (sum-to-loop n 0))
 (print
   (sum-to 100))  ; => 5050

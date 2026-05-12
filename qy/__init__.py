@@ -48,6 +48,14 @@ from qy.formatter import dump_program
 from qy.formatter import format_form
 from qy.formatter import format_program
 from qy.formatter import format_source
+from qy.ir import Binding
+from qy.ir import CallExpr
+from qy.ir import LiteralExpr
+from qy.ir import ProgramIR
+from qy.ir import SymbolRefExpr
+from qy.ir import UnresolvedSymbolExpr
+from qy.lowering import lower
+from qy.lowering import lower_source
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
 from qy.operator_docs import collect_supported_operators
@@ -87,6 +95,8 @@ __all__ = [
     "QY_NIL",
     "QY_T",
     "Analysis",
+    "Binding",
+    "CallExpr",
     "ComponentDefinition",
     "ControlOperator",
     "Diagnostic",
@@ -97,10 +107,12 @@ __all__ = [
     "EvaluationError",
     "Form",
     "HostObjectRef",
+    "LiteralExpr",
     "MacroDefinition",
     "MetaOperator",
     "OperatorDoc",
     "OperatorModuleDoc",
+    "ProgramIR",
     "PureOperator",
     "Qy",
     "QyAggregateError",
@@ -127,8 +139,10 @@ __all__ = [
     "ScopeOperator",
     "SourceSpan",
     "Symbol",
+    "SymbolRefExpr",
     "TraceFrame",
     "TupleForm",
+    "UnresolvedSymbolExpr",
     "analyze",
     "analyze_source",
     "collect_supported_operators",
@@ -149,6 +163,8 @@ __all__ = [
     "format_qy_error",
     "format_source",
     "format_value",
+    "lower",
+    "lower_source",
     "read",
     "read_one",
     "read_one_tuple",

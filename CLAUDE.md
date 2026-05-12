@@ -2,89 +2,75 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## 项目概述
 
-Qy is a symbolic Lisp-like language implemented in Python. It provides a minimal core with explicit symbol representation, a five-tier operator system with algebraic effects, and tooling support (REPL, formatter, type checker, LSP, VSCode extension).
+QyLang 是一个用 Python 实现的符号化 Lisp 语言，核心特性包括：代数效应（algebraic effects）系统、async-first 运行时、Python 互操作。使用中文进行沟通。
 
-## Commands
+## 常用命令
 
 ```bash
-# Setup
-uv sync --group dev                  # Install dev dependencies
-uv sync --group cli --group lsp      # Also add CLI/LSP optional deps
+# 运行测试（全部）
+uv run python -m pytest tests/ -v --cov=qy --cov-report=term-missing
 
-# Testing
-python -m unittest discover tests
-python -m unittest tests.test_qy_evaluator                    # single file
-python -m unittest tests.test_qy_evaluator.TestQyEvaluator.test_arithmetic_from_qy_source  # single test
+# 运行单个测试文件
+uv run python -m pytest tests/test_evaluator.py -v
 
-# Linting & formatting
-make lint          # ruff check, ruff format, ty check
-make lint-fix      # auto-fix lint issues (includes --unsafe-fixes)
+# 运行单个测试用例
+uv run python -m pytest tests/test_evaluator.py::test_arithmetic -v
 
-# Build
-make build         # clean + uv build + twine check
+# Lint
+uv run ruff check .
+uv run ruff format .
+uv run ty check .
 
-# Run
-qy run examples/basic.qy             # run a file
-qy repl                              # interactive REPL
-qy fmt <file>                        # format
-qy ast <file>                        # show AST
-qy check <file>                      # type check
+# Lint 自动修复
+uv run ruff check . --fix --unsafe-fixes && uv run ruff format .
+
+# 运行 CLI
+uv run qy run examples/hello.qy
+uv run qy repl
+uv run qy check examples/hello.qy
+uv run qy ast examples/hello.qy
+
+# 构建
+uv build
 ```
 
-## Architecture
+## 架构
 
-The core pipeline: **Source → Reader → Forms → Evaluator → Results**
+数据流管线：`Source → Reader → Forms → Lowering → IR → Evaluator → Values`
 
-### Core modules (`qy/`)
+### 核心组件
 
-- **`reader.py`** — Lark-based parser (LALR grammar). Converts Qy source to symbolic forms. Key types: `Symbol` (atomic identifier), `TupleForm` (nested s-expression), `Form` (union of both). Bidirectional: `read`/`read_one` parse source; `write`/`write_tuple` emit source.
+- **Reader** (`reader.py`) — 基于 Lark 的 S-expression 解析器，源码 → `Symbol`/tuple Form 对象，带源码位置追踪
+- **Lowering** (`lowering.py`) — Form → 类型化 IR 表达式，解析符号绑定，构建作用域层次
+- **IR** (`ir.py`) — 中间表示数据结构（`CallExpr`、`LiteralExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）
+- **Evaluator** (`evaluator.py`) — 异步效应式求值引擎，核心求值逻辑
+- **Analyzer** (`analyzer.py`) — 静态分析，类型推断、作用域追踪、参数数量检查
+- **Runtime** (`runtime.py`) — `Qy` 主类 API，串联读取/降低/求值流程
+- **Stdlib** (`stdlib/`) — 内置操作符：`core.py`（算术、控制流、defun/lambda/let/component/module/macro）、`strings.py`、`io.py`、`imports.py`、`module.py`
 
-- **`evaluator.py`** — Async-capable interpreter with **five operator kinds** controlling evaluation strategy:
-  - `PureOperator` — evaluates all args first, then applies (e.g., `+`, `car`)
-  - `ScopeOperator` — receives evaluated args plus the environment (e.g., `let`)
-  - `ControlOperator` — receives unevaluated args and controls evaluation order (e.g., `quote`, `cond`). Aliased as `EvaluationOperator`.
-  - `EffectOperator` — handles effect operations (e.g., `perform`, `handle`)
-  - `MetaOperator` — receives raw unevaluated syntax (e.g., `defun`, `defmacro`, `from`). Aliased as `SyntaxOperator`.
-  - `Environment` provides lexical scoping with shared cache. `UserFunction` and `ComponentDefinition` implement closures. All `evaluate_*` functions have `_async` variants.
+### 操作符分类（evaluator.py 中定义）
 
-- **`errors.py`** — Hierarchical error types rooted at `QyError`. Key subtypes: `QySyntaxError`, `EvaluationError` (with `QyResolveError`, `QyTypeError`, `QyArityError`, `QyCapabilityError`, `QyEffectError`, `QyRuntimeError`, `QyPythonError`, `QyCancelledError`, `QyTimeoutError`, `QyAggregateError`). `QyEffectSignal` carries effect/continuation for unhandled effects. All errors carry `SourceSpan` and `TraceFrame` for reporting.
+| 类型 | 说明 | 示例 |
+| --- | --- | --- |
+| `PureOperator` | 急切求值参数 | `+`, `*`, `list` |
+| `ScopeOperator` | 接收环境 | `defun`, `lambda`, `let`, `component`, `module` |
+| `ControlOperator` | 控制求值流程 | `cond`, `handle` |
+| `EffectOperator` | 效应处理 | `perform`, `resume`, `assert`, `await`, `py` |
+| `MetaOperator` | 接收原始语法树 | `quote`, `eval`, `macro` |
 
-- **`values.py`** — Core value types: `QyNil`, `QyT` (boolean), `QyCons`/`QyChain` (cons-based lists), `QyEmptyChain`/`QyEmptyList` sentinels.
+### 效应系统
 
-- **`analyzer.py`** — Lightweight type checker. Infers types, validates arity, reports `Diagnostic` issues.
+代数效应通过 `perform`/`handle`/`resume` 实现。`QyContinuation` 是可恢复的效应续延。内置效应包括 `assert-failed`、`python-error`。效应用 `defeffect` 声明。
 
-- **`formatter.py`** — Canonical pretty-printer. Formats forms with configurable line length and indentation.
+### 值类型（values.py）
 
-- **`runtime.py`** — `Qy` class for Python embedding. Decorator-based operator registration (`@qy.register_pure()`, etc.).
+`QyNil`、`QyT`（单例）、`QyChain`/`QyCons`（链表），Python 原生类型直接互操作。
 
-- **`cli.py`** — Typer-based CLI with `run`, `repl`, `fmt`, `ast`, `check`, `lsp`, `operators` commands.
+## 技术栈
 
-- **`lsp.py`** — pygls-based Language Server (diagnostics, completions, hover, formatting via stdio).
-
-### Standard library (`qy/stdlib/`)
-
-- **`core.py`** — Built-in operators (~1100 lines): arithmetic, list ops, control flow, effect definitions (`defeffect`, `perform`, `handle`, `resume`), predicates, type conversions.
-- **`io.py`** — I/O operators (`print`, `echo`).
-- **`strings.py`** — String operators (`str-upper`, `str-concat`, `str-split`, `str-join`, etc.).
-- **`__init__.py`** — Module loading system. Three prelude modules auto-loaded: `qy.core`, `qy.io`, `qy.str`. Supports file-based modules (`.py` and `.qy`), `register_module()`, and `register_module_loader()`.
-
-### Extension (`extensions/qylang-support-vscode/`)
-
-VSCode extension providing syntax highlighting (TextMate grammar), LSP client integration, formatting, and language configuration. Built with TypeScript, bundled via esbuild.
-
-### Design decisions
-
-- `Symbol()` is a frozen dataclass wrapper with optional source span — prevents Python/Qy value confusion.
-- All forms are immutable (frozen dataclasses, tuples).
-- Async-first evaluation: all core evaluate functions have async variants; `run_async()` bridges sync callers.
-- Effect system uses `QyEffectSignal` for unwinding and `QyContinuation` for resumable effects.
-- No relative imports allowed (enforced by ruff TID252).
-
-## Code style
-
-- Ruff with 100-char line length, Google docstring convention
-- `isort` with `force-single-line = true`
-- Conventional commits (enforced by commitlint + husky)
-- Prettier for config files (JSON, TOML, Markdown)
+- Python >=3.12，使用 `uv` 管理依赖
+- 依赖：lark（解析）、typer（CLI）、pygls（LSP）
+- 工具：ruff（lint+format）、ty（类型检查）、pytest（测试）、commitlint（提交信息）
+- VSCode 扩展：`extensions/qylang-support-vscode/`

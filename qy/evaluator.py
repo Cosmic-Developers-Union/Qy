@@ -10,7 +10,6 @@ from collections.abc import Coroutine
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 from typing import cast
 
 from qy.errors import EvaluationError
@@ -19,16 +18,17 @@ from qy.errors import QyCancelledError
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyError
-from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
+from qy.literals import resolve_default_literal
 from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
+from qy.types import OperatorKind
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
@@ -74,7 +74,6 @@ __all__ = [
     "standard_environment",
 ]
 
-OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
 ArgumentEvaluator = Callable[[tuple[object, ...], "Environment"], object]
 
 
@@ -160,6 +159,12 @@ class EffectDefinition:
     doc: str = ""
 
 
+@dataclass(frozen=True, slots=True)
+class _TailCall:
+    function: object
+    args: tuple[object, ...]
+
+
 @dataclass(slots=True)
 class QyContinuation:
     effect: str
@@ -193,8 +198,13 @@ class UserFunction:
                     "function": self.name.name,
                 },
             )
-        local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
-        return await evaluate_body_async(self.body, local_env)
+        current_args = args
+        while True:
+            local_env = Environment(dict(zip(self.params, current_args, strict=True)), self.closure)
+            result = await _evaluate_tail_body_async(self.body, local_env, self)
+            if not isinstance(result, _TailCall) or result.function is not self:
+                return result
+            current_args = result.args
 
 
 @dataclass(frozen=True, slots=True)
@@ -549,29 +559,7 @@ async def evaluate_file_async(path: str | Path, env: Environment | None = None) 
 
 
 def _resolve_builtin_literal(symbol: Symbol) -> object:
-    if symbol.name == "T":
-        return QY_T
-    if symbol.name == "nil":
-        return QY_NIL
-    if symbol.name == "true":
-        return True
-    if symbol.name == "false":
-        return False
-    if symbol.name == "none":
-        return None
-    try:
-        return int(symbol.name)
-    except ValueError:
-        pass
-    try:
-        return float(symbol.name)
-    except ValueError:
-        pass
-    raise QyResolveError(
-        f"unresolved symbol {symbol.name!r}",
-        span=symbol.span,
-        metadata={"symbol": symbol.name},
-    )
+    return resolve_default_literal(symbol)
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
@@ -735,6 +723,101 @@ async def _evaluate_values_from(
         )
         raise
     return await _evaluate_values_from(expressions, index + 1, (*values, value), env, then)
+
+
+async def _evaluate_tail_body_async(
+    body: tuple[object, ...],
+    env: Environment,
+    function: UserFunction,
+) -> object:
+    if not body:
+        raise QyArityError("body must contain at least one expression")
+    for expression in body[:-1]:
+        await evaluate_async(expression, env)
+    return await _evaluate_tail_expression_async(body[-1], env, function)
+
+
+async def _evaluate_tail_expression_async(
+    expression: object,
+    env: Environment,
+    function: UserFunction,
+) -> object:
+    if _is_self_tail_call(expression, function, env):
+        assert isinstance(expression, tuple)
+        return await _evaluate_values(
+            tuple(expression[1:]),
+            env,
+            lambda arguments: _TailCall(function, arguments),
+        )
+    if isinstance(expression, tuple) and expression:
+        operator = expression[0]
+        args = tuple(expression[1:])
+        if operator == Symbol("cond"):
+            return await _evaluate_tail_cond_async(args, env, function)
+        if operator == Symbol("let"):
+            return await _evaluate_tail_let_async(args, env, function)
+    return await evaluate_async(expression, env)
+
+
+def _is_self_tail_call(expression: object, function: UserFunction, env: Environment) -> bool:
+    if not isinstance(expression, tuple) or not expression:
+        return False
+    operator = expression[0]
+    if not isinstance(operator, Symbol) or operator != function.name:
+        return False
+    try:
+        return env.resolve(operator) is function
+    except QyError:
+        return False
+
+
+async def _evaluate_tail_cond_async(
+    args: tuple[object, ...],
+    env: Environment,
+    function: UserFunction,
+) -> object:
+    for clause in args:
+        if not isinstance(clause, tuple) or len(clause) != 2:
+            raise QyTypeError(
+                f"cond clause must be a pair, got {clause!r}",
+                span=get_span(clause),
+                metadata={"clause": clause},
+            )
+        condition, result = clause
+        if _truthy(await evaluate_async(condition, env)):
+            return await _evaluate_tail_expression_async(result, env, function)
+    return None
+
+
+async def _evaluate_tail_let_async(
+    args: tuple[object, ...],
+    env: Environment,
+    function: UserFunction,
+) -> object:
+    if len(args) < 2:
+        raise QyArityError("let expects bindings and at least one body expression")
+
+    bindings, *body = args
+    if not isinstance(bindings, tuple):
+        raise QyTypeError(
+            f"let bindings must be a list, got {bindings!r}",
+            span=get_span(bindings),
+        )
+
+    local_env = env.child()
+    for binding in bindings:
+        if not isinstance(binding, tuple) or len(binding) != 2:
+            raise QyTypeError(
+                f"let binding must be a pair, got {binding!r}",
+                span=get_span(binding),
+            )
+        name, value_expression = binding
+        local_env.define(
+            ensure_symbol(name, "let binding name"),
+            await evaluate_async(value_expression, local_env),
+        )
+
+    return await _evaluate_tail_body_async(tuple(body), local_env, function)
 
 
 async def _evaluate_perform_form(
