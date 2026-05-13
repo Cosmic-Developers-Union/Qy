@@ -69,7 +69,7 @@ def test_qy_instance_exposes_pipeline_helpers():
 
     program = qy.lower(expansion.forms)
     mir = qy.lower_mir(program)
-    bytecode = qy.compile_bytecode(program)
+    bytecode = qy.compile_mir_bytecode(mir)
 
     assert mir.ok
     assert bytecode.ok

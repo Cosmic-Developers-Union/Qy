@@ -14,6 +14,7 @@ from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import cast
 
+from qy.compile_time import compile_time_environment
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
@@ -263,7 +264,7 @@ def _macro(expression: tuple[object, ...], env: Environment) -> object:
     _, name, params, *body = expression
     name = ensure_symbol(name, "macro name")
     param_symbols = _ensure_parameter_list(params, "macro")
-    macro = MacroDefinition(name, param_symbols, tuple(body), env)
+    macro = MacroDefinition(name, param_symbols, tuple(body), compile_time_environment(env))
     return env.define(name, macro)
 
 
@@ -695,6 +696,8 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     if not args:
         raise QyArityError("module expects a name and body")
 
+    from qy.macro import MacroDefinition
+
     name, *body = args
     name = ensure_symbol(name, "module name")
     module_env = env.child()
@@ -712,12 +715,21 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
             continue
         await evaluate_async(form, module_env)
 
-    if export_names:
-        exports = {export_name: module_env.resolve(export_name) for export_name in export_names}
-    else:
-        exports = module_env.local_bindings()
+    selected = (
+        {export_name: module_env.resolve(export_name) for export_name in export_names}
+        if export_names
+        else module_env.local_bindings()
+    )
+    exports = {
+        symbol: value
+        for symbol, value in selected.items()
+        if not isinstance(value, MacroDefinition)
+    }
+    macro_exports = {
+        symbol: value for symbol, value in selected.items() if isinstance(value, MacroDefinition)
+    }
 
-    module = StandardModule(name.name, exports)
+    module = StandardModule(name.name, exports, macro_exports)
 
     from qy.stdlib import register_module
 
@@ -732,7 +744,12 @@ async def _from_import(args: tuple[object, ...], env: Environment) -> object:
 
         source_module = await load_module_async(module_name.name)
         for spec in specs:
-            env.define(spec.alias, source_module.resolve(spec.name))
+            if spec.name in source_module.exports:
+                env.define(spec.alias, source_module.resolve(spec.name))
+            elif spec.name in source_module.macro_exports:
+                continue
+            else:
+                raise KeyError(f"module {module_name.name!r} has no export {spec.name.name!r}")
     except (KeyError, ValueError) as e:
         raise EvaluationError(str(e)) from e
 

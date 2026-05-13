@@ -2,14 +2,20 @@ import pytest
 
 from qy.errors import EvaluationError
 from qy.evaluator import standard_environment
+from qy.macro import MacroDefinition
 from qy.macroexpand import MacroExpansionOptions
 from qy.macroexpand import macroexpand_source
 from qy.reader import Symbol
+from qy.stdlib import StandardModule
+from qy.stdlib import register_module
 
 
 def test_macroexpand_expands_bound_macro_call():
     env = standard_environment()
     macroexpand_source("(macro const-answer (ignored) '(+ 20 22))", env)
+
+    with pytest.raises(EvaluationError):
+        env.resolve(Symbol("const-answer"))
 
     expansion = macroexpand_source("(const-answer missing)", env)
 
@@ -101,3 +107,121 @@ def test_macroexpand_reports_depth_limit_from_options():
 
     assert not expansion.ok
     assert "exceeded 2 nested expansions" in expansion.diagnostics[0].message
+
+
+def test_macroexpand_reports_stable_compile_time_evaluation_errors():
+    env = standard_environment()
+    macroexpand_source("(macro bad () (missing 1))", env)
+
+    expansion = macroexpand_source("(bad)", env)
+
+    assert not expansion.ok
+    assert "failed during compile-time evaluation" in expansion.diagnostics[0].message
+    assert "macro 'bad'" in expansion.diagnostics[0].message
+
+
+def test_macroexpand_reports_nested_expansion_chain_on_error():
+    env = standard_environment()
+    macroexpand_source(
+        """
+        (macro inner () (missing 1))
+        (macro outer () '(inner))
+        """,
+        env,
+    )
+
+    expansion = macroexpand_source("(outer)", env)
+
+    assert not expansion.ok
+    assert "expansion chain: outer -> inner" in expansion.diagnostics[0].message
+
+
+def test_macroexpand_macro_namespace_does_not_overwrite_runtime_binding():
+    env = standard_environment()
+    env.define(Symbol("const-answer"), 7)
+
+    macroexpand_source("(macro const-answer () 42)", env)
+
+    assert env.resolve(Symbol("const-answer")) == 7
+    expansion = macroexpand_source("(const-answer)", env)
+    assert expansion.ok
+    assert expansion.forms == [42]
+
+
+def test_macroexpand_keeps_module_macro_scope_inside_module_body():
+    expansion = macroexpand_source(
+        """
+        (module tools
+          (macro const-answer () 42)
+          (const-answer))
+        """
+    )
+
+    assert expansion.ok
+    module_form = expansion.forms[0]
+    assert isinstance(module_form, tuple)
+    assert module_form[3] == 42
+
+
+def test_macroexpand_imports_exported_module_macros_without_runtime_binding_pollution():
+    env = standard_environment()
+    register_module(
+        StandardModule(
+            "test.macros",
+            {Symbol("runtime-answer"): 7},
+            {
+                Symbol("const-answer"): MacroDefinition(
+                    Symbol("const-answer"),
+                    (),
+                    (42,),
+                    env,
+                )
+            },
+        )
+    )
+
+    expansion = macroexpand_source(
+        """
+        (from test.macros import const-answer)
+        (const-answer)
+        """,
+        env,
+    )
+
+    assert expansion.ok
+    assert expansion.forms[1] == 42
+    with pytest.raises(EvaluationError):
+        env.resolve(Symbol("const-answer"))
+
+
+def test_macroexpand_imports_module_macros_inside_module_imports_block():
+    env = standard_environment()
+    register_module(
+        StandardModule(
+            "test.macros.inner",
+            {},
+            {
+                Symbol("const-answer"): MacroDefinition(
+                    Symbol("const-answer"),
+                    (),
+                    (42,),
+                    env,
+                )
+            },
+        )
+    )
+
+    expansion = macroexpand_source(
+        """
+        (module consumer
+          (imports
+            (from test.macros.inner import const-answer))
+          (const-answer))
+        """,
+        env,
+    )
+
+    assert expansion.ok
+    module_form = expansion.forms[0]
+    assert isinstance(module_form, tuple)
+    assert module_form[3] == 42

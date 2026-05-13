@@ -481,7 +481,7 @@ def _lower_from(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
         return FromImportExpr(module_name, specs, get_span(form))
 
     for spec in specs:
-        if spec.name not in source_module.exports:
+        if spec.name not in source_module.exports and spec.name not in source_module.macro_exports:
             context.diagnostic(
                 f"module {module_name.name!r} has no export {spec.name.name!r}",
                 spec.name,
@@ -648,9 +648,11 @@ def _scope_after_form(
 
     next_scope = scope
     for spec in specs:
-        try:
+        if spec.name in source_module.exports:
             value = source_module.resolve(spec.name)
-        except KeyError:
+        elif spec.name in source_module.macro_exports:
+            value = source_module.resolve_macro(spec.name)
+        else:
             continue
         next_scope = _define_local(
             next_scope,

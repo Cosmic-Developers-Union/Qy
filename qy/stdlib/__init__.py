@@ -151,6 +151,7 @@ def _load_python_file_module(path: Path) -> StandardModule:
 
 
 async def _load_qy_file_module_async(path: Path) -> StandardModule:
+    from qy.evaluator import MacroDefinition
     from qy.evaluator import evaluate_async
     from qy.evaluator import standard_environment
     from qy.reader import read
@@ -165,10 +166,16 @@ async def _load_qy_file_module_async(path: Path) -> StandardModule:
     if isinstance(last_result, StandardModule):
         return last_result
 
-    exports = {
-        symbol: value for symbol, value in env.bindings().items() if symbol not in baseline_symbols
-    }
-    return StandardModule(_file_module_name(path), exports)
+    runtime_exports: dict[Symbol, object] = {}
+    macro_exports: dict[Symbol, object] = {}
+    for symbol, value in env.bindings().items():
+        if symbol in baseline_symbols:
+            continue
+        if isinstance(value, MacroDefinition):
+            macro_exports[symbol] = value
+        else:
+            runtime_exports[symbol] = value
+    return StandardModule(_file_module_name(path), runtime_exports, macro_exports)
 
 
 def _coerce_standard_module(value: object, path: Path) -> StandardModule:

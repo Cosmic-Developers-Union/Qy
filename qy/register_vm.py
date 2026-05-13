@@ -13,6 +13,7 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
 from qy.bytecode import Register
 from qy.bytecode_compiler import compile_bytecode
+from qy.compile_time import compile_time_environment
 from qy.errors import EvaluationError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
@@ -129,7 +130,7 @@ class RegisterVirtualMachine:
                     _symbol(name),
                     _symbols(params),
                     _tuple(raw_body),
-                    frame.env,
+                    compile_time_environment(frame.env),
                 )
             case "ENTER_SCOPE":
                 frame.parents.append(frame.env)

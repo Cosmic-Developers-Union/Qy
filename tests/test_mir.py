@@ -1,10 +1,23 @@
+from typing import cast
+
+import pytest
+
+from qy import MIRBlock
+from qy import MIRFunction
+from qy import MIRInstruction
 from qy import MIRProgram
+from qy import MIRTerminator
+from qy import compile_mir_bytecode
 from qy import dump_mir
 from qy import lower_mir
+from qy import verify_mir
+from qy.evaluator import standard_environment
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefunExpr
 from qy.lowering import lower_source
+from qy.mir import MIROpcode
+from qy.reader import Symbol
 
 
 def test_mir_lowering_emits_cfg_blocks_for_cond():
@@ -104,3 +117,117 @@ def test_mir_dump_shows_tail_call_terminator():
     rendered = dump_mir(mir)
 
     assert "TAIL_CALL r" in rendered
+
+
+def test_verify_mir_accepts_lowered_program():
+    mir = lower_mir(lower_source("(+ 1 2)"))
+
+    assert verify_mir(mir) == ()
+
+
+def test_verify_mir_reports_missing_jump_target():
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("broken"),
+                (),
+                1,
+                (MIRBlock(0, (), MIRTerminator("JUMP", (99,))),),
+                0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    assert any("jumps to missing block bb99" in item.message for item in diagnostics)
+
+
+def test_verify_mir_reports_out_of_range_registers_and_invalid_tail_call_instruction():
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("broken"),
+                (),
+                1,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            MIRInstruction(cast(MIROpcode, "TAIL_CALL"), (0, ()), None),
+                            MIRInstruction("LOAD_CONST", (1, 42), None),
+                        ),
+                        MIRTerminator("RETURN", (1,)),
+                    ),
+                ),
+                0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    assert any("TAIL_CALL as a non-terminator instruction" in item.message for item in diagnostics)
+    assert any("out-of-range register r1" in item.message for item in diagnostics)
+
+
+def test_compile_mir_bytecode_stops_on_verifier_errors():
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("broken"),
+                (),
+                1,
+                (MIRBlock(0, (), MIRTerminator("JUMP", (99,))),),
+                0,
+            ),
+        )
+    )
+
+    bytecode = compile_mir_bytecode(mir)
+
+    assert not bytecode.ok
+    assert bytecode.functions == ()
+    assert any("jumps to missing block bb99" in item.message for item in bytecode.diagnostics)
+
+
+@pytest.mark.parametrize(
+    ("source", "expected_expr"),
+    (
+        ('(assert false "bad")', "AssertExpr"),
+        ("(eval '(+ 1 2))", "RuntimeEvalExpr"),
+        ("(component widget (x) x)", "ComponentExpr"),
+        ("(defeffect ask)", "DefeffectExpr"),
+        ("(module demo (defun triple (x) (* x 3)))", "ModuleExpr"),
+        ("(from qy.str import str-upper as upper)", "FromImportExpr"),
+        ("(let () (defeffect ask) (perform ask 1))", "PerformExpr"),
+        (
+            "(let () (defeffect ask) (handle (perform ask 1) ((ask (arg k) arg))))",
+            "HandleExpr",
+        ),
+        ("(resume k 1)", "ResumeExpr"),
+    ),
+)
+def test_mir_lowering_reports_explicit_diagnostics_for_unsupported_hir_nodes(source, expected_expr):
+    mir = lower_mir(lower_source(source))
+
+    assert any(expected_expr in item.message for item in mir.diagnostics)
+    main = mir.functions[mir.main]
+    assert not any(
+        instruction.opcode == "APPEND_RESULT"
+        for block in main.blocks
+        for instruction in block.instructions
+    )
+
+
+def test_mir_lowering_reports_runtime_meta_calls_explicitly():
+    env = standard_environment()
+
+    @env.register_meta("first-symbol")
+    def first_symbol(expression, current_env):
+        del current_env
+        return expression[0]
+
+    mir = lower_mir(lower_source("(first-symbol unknown)", env))
+
+    assert any("RuntimeMetaCallExpr" in item.message for item in mir.diagnostics)

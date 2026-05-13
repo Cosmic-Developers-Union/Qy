@@ -1,9 +1,13 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+import pytest
+
+from qy.errors import EvaluationError
 from qy.evaluator import PureOperator
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
+from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.stdlib import StandardModule
 from qy.stdlib import register_module
@@ -66,6 +70,28 @@ def test_from_import_supports_registered_modules():
     evaluate_source("(from test.math import triple as t)", env)
 
     assert evaluate_source("(t 14)", env) == 42
+
+
+def test_from_import_supports_compile_time_macro_exports():
+    env = standard_environment()
+    register_module(
+        StandardModule(
+            "test.macros",
+            {},
+            {
+                S("const-answer"): MacroDefinition(
+                    S("const-answer"),
+                    (),
+                    (42,),
+                    env,
+                )
+            },
+        )
+    )
+
+    assert evaluate_source("(from test.macros import const-answer)\n(const-answer)", env) == 42
+    with pytest.raises(EvaluationError):
+        env.resolve(S("const-answer"))
 
 
 def test_from_import_supports_qy_files():

@@ -142,9 +142,7 @@ class _FunctionLowerer:
             return self.lower_call(expression, tail=tail)
 
         self.owner.diagnostic(f"MIR lowering does not support {type(expression).__name__}")
-        register = self.register()
-        self.emit("LOAD_CONST", register, None, span=_span_of(expression))
-        return _LoweredExpression(register)
+        return _LoweredExpression(None)
 
     def lower_let(self, expression: LetExpr, *, tail: bool) -> _LoweredExpression:
         self.emit("ENTER_SCOPE", span=expression.span)
@@ -155,7 +153,7 @@ class _FunctionLowerer:
                     "STORE_LOCAL", binding.symbol, value.register, span=_span_of(binding.value)
                 )
         result = self.lower_body(expression.body, tail=tail)
-        if result is not None and not self.current.terminated:
+        if not self.current.terminated:
             self.emit("EXIT_SCOPE", span=expression.span)
         return _LoweredExpression(result)
 

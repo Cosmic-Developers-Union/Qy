@@ -20,6 +20,7 @@ __all__ = [
     "Instruction",
     "Opcode",
     "Register",
+    "dump_bytecode",
 ]
 
 Register = int
@@ -72,3 +73,48 @@ class BytecodeProgram:
 class BytecodeFunctionValue:
     function: BytecodeFunction
     closure: Environment
+
+
+def dump_bytecode(program: BytecodeProgram) -> str:
+    lines: list[str] = []
+    for index, function in enumerate(program.functions):
+        params = ", ".join(param.name for param in function.params)
+        suffix = " [main]" if index == program.main else ""
+        lines.append(
+            f"fn#{index} {function.name.name}({params}) regs={function.register_count}{suffix}"
+        )
+        if not function.instructions:
+            lines.append("  ; no instructions")
+            continue
+        for instruction_index, instruction in enumerate(function.instructions):
+            lines.append(
+                f"  {instruction_index:04d}: {_format_instruction(instruction)}{_format_span(instruction.span)}"
+            )
+    if program.diagnostics:
+        lines.append("diagnostics:")
+        lines.extend(
+            f"  - {diagnostic.severity}: {diagnostic.message}" for diagnostic in program.diagnostics
+        )
+    return "\n".join(lines)
+
+
+def _format_instruction(instruction: Instruction) -> str:
+    if not instruction.operands:
+        return instruction.opcode
+    return (
+        f"{instruction.opcode} {', '.join(_format_operand(item) for item in instruction.operands)}"
+    )
+
+
+def _format_operand(value: object) -> str:
+    if isinstance(value, Symbol):
+        return value.name
+    if isinstance(value, tuple):
+        return f"({', '.join(_format_operand(item) for item in value)})"
+    return repr(value)
+
+
+def _format_span(span: SourceSpan | None) -> str:
+    if span is None:
+        return ""
+    return f" @ {span.format()}"

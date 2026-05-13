@@ -461,7 +461,7 @@ def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> Type
         return "none"
 
     for spec in specs:
-        if spec.name not in source_module.exports:
+        if spec.name not in source_module.exports and spec.name not in source_module.macro_exports:
             diagnostics.append(
                 Diagnostic(f"module {module_name.name!r} has no export {spec.name.name!r}")
             )

@@ -1,3 +1,12 @@
+"""Public Qy API.
+
+Stable pipeline APIs are centered around `Qy`, `macroexpand`, `lower`, `lower_mir`,
+`compile_mir_bytecode`, `compile_bytecode`, and `RegisterVirtualMachine`.
+
+Legacy compatibility exports from `qy.evaluator` remain available, but they are
+not the recommended extension surface for new work.
+"""
+
 # coding: utf-8
 
 from qy.analyzer import Analysis
@@ -9,7 +18,9 @@ from qy.bytecode import BytecodeFunction
 from qy.bytecode import BytecodeFunctionValue
 from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
+from qy.bytecode import dump_bytecode
 from qy.bytecode_compiler import compile_bytecode
+from qy.bytecode_compiler import compile_mir_bytecode
 from qy.display import format_value
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
@@ -58,6 +69,7 @@ from qy.ir import LiteralExpr
 from qy.ir import ProgramIR
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
+from qy.ir import dump_ir
 from qy.ir_vm import IRFunction
 from qy.ir_vm import IRVirtualMachine
 from qy.ir_vm import evaluate_ir
@@ -82,6 +94,7 @@ from qy.mir import MIRInstruction
 from qy.mir import MIRProgram
 from qy.mir import MIRTerminator
 from qy.mir import dump_mir
+from qy.mir import verify_mir
 from qy.mir_lowering import lower_mir
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
@@ -204,7 +217,10 @@ __all__ = [
     "analyze_source",
     "collect_supported_operators",
     "compile_bytecode",
+    "compile_mir_bytecode",
+    "dump_bytecode",
     "dump_form",
+    "dump_ir",
     "dump_mir",
     "dump_program",
     "evaluate",
@@ -244,6 +260,7 @@ __all__ = [
     "standard_environment",
     "tuple_to_form",
     "type_check_source",
+    "verify_mir",
     "write",
     "write_program",
     "write_tuple",

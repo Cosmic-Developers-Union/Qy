@@ -28,6 +28,7 @@ __all__ = [
     "MIRTerminator",
     "MIRTerminatorOpcode",
     "dump_mir",
+    "verify_mir",
 ]
 
 MIRRegister = int
@@ -90,6 +91,19 @@ class MIRProgram:
         return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
 
 
+def verify_mir(program: MIRProgram) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    if not 0 <= program.main < len(program.functions):
+        diagnostics.append(
+            Diagnostic(
+                f"main function index {program.main} is out of range for {len(program.functions)} MIR functions"
+            )
+        )
+    for function in program.functions:
+        _verify_function(function, diagnostics)
+    return tuple(diagnostics)
+
+
 def dump_mir(program: MIRProgram) -> str:
     sections = [
         _dump_mir_function(index, function, is_main=index == program.main)
@@ -102,6 +116,136 @@ def dump_mir(program: MIRProgram) -> str:
         )
         sections.append("\n".join(diagnostics))
     return "\n\n".join(sections)
+
+
+def _verify_function(function: MIRFunction, diagnostics: list[Diagnostic]) -> None:
+    if function.register_count < 0:
+        diagnostics.append(
+            Diagnostic(f"function {function.name.name!r} has negative register_count")
+        )
+        return
+
+    block_ids: set[MIRBlockId] = set()
+    for block in function.blocks:
+        if block.id in block_ids:
+            diagnostics.append(
+                Diagnostic(f"function {function.name.name!r} defines duplicate block bb{block.id}")
+            )
+            continue
+        block_ids.add(block.id)
+
+    if function.entry not in block_ids:
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} entry block bb{function.entry} does not exist"
+            )
+        )
+
+    for block in function.blocks:
+        if block.terminator is None:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block.id} is missing a terminator"
+                )
+            )
+            continue
+
+        for instruction in block.instructions:
+            if instruction.opcode == "TAIL_CALL":
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block.id} uses TAIL_CALL as a non-terminator instruction"
+                    )
+                )
+            for register in _instruction_registers(instruction):
+                _check_register(function, block.id, register, diagnostics)
+
+        for target in _terminator_targets(block.terminator):
+            if not isinstance(target, int):
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block.id} jumps to non-block target {target!r}"
+                    )
+                )
+                continue
+            if target not in block_ids:
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block.id} jumps to missing block bb{target}"
+                    )
+                )
+
+        for register in _terminator_registers(block.terminator):
+            _check_register(function, block.id, register, diagnostics)
+
+
+def _instruction_registers(instruction: MIRInstruction) -> tuple[object, ...]:
+    operands = instruction.operands
+    match instruction.opcode:
+        case "APPEND_RESULT":
+            return (operands[0],)
+        case "CALL":
+            return (operands[0], operands[1], *_operand_tuple(operands[2]))
+        case "LOAD_CONST" | "LOAD_ENV" | "MAKE_FUNCTION" | "MAKE_MACRO":
+            return (operands[0],)
+        case "MOVE":
+            return (operands[0], operands[1])
+        case "STORE_LOCAL":
+            return (operands[1],)
+        case "ENTER_SCOPE" | "EXIT_SCOPE":
+            return ()
+    return ()
+
+
+def _terminator_targets(terminator: MIRTerminator) -> tuple[object, ...]:
+    operands = terminator.operands
+    match terminator.opcode:
+        case "JUMP":
+            return (operands[0],)
+        case "BRANCH":
+            return (operands[1], operands[2])
+        case "RETURN" | "TAIL_CALL":
+            return ()
+    return ()
+
+
+def _terminator_registers(terminator: MIRTerminator) -> tuple[object, ...]:
+    operands = terminator.operands
+    match terminator.opcode:
+        case "BRANCH":
+            return (operands[0],)
+        case "RETURN":
+            return () if operands[0] is None else (operands[0],)
+        case "TAIL_CALL":
+            return (operands[0], *_operand_tuple(operands[1]))
+        case "JUMP":
+            return ()
+    return ()
+
+
+def _operand_tuple(value: object) -> tuple[object, ...]:
+    return value if isinstance(value, tuple) else ()
+
+
+def _check_register(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> None:
+    if not isinstance(value, int):
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} references non-register operand {value!r} where a register is required"
+            )
+        )
+        return
+    if not 0 <= value < function.register_count:
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} references out-of-range register r{value} with register_count={function.register_count}"
+            )
+        )
 
 
 def _dump_mir_function(index: int, function: MIRFunction, *, is_main: bool) -> str:
@@ -126,44 +270,52 @@ def _format_instruction(instruction: MIRInstruction) -> str:
     operands = instruction.operands
     match instruction.opcode:
         case "APPEND_RESULT":
-            return f"APPEND_RESULT {_format_register(operands[0])}"
+            rendered = f"APPEND_RESULT {_format_register(operands[0])}"
         case "CALL":
-            return (
+            rendered = (
                 f"{_format_register(operands[0])} = CALL {_format_register(operands[1])} "
                 f"{_format_operand(operands[2])}"
             )
         case "ENTER_SCOPE" | "EXIT_SCOPE":
-            return instruction.opcode
+            rendered = instruction.opcode
         case "LOAD_CONST":
-            return f"{_format_register(operands[0])} = LOAD_CONST {_format_operand(operands[1])}"
+            rendered = (
+                f"{_format_register(operands[0])} = LOAD_CONST {_format_operand(operands[1])}"
+            )
         case "LOAD_ENV":
-            return f"{_format_register(operands[0])} = LOAD_ENV {_format_operand(operands[1])}"
+            rendered = f"{_format_register(operands[0])} = LOAD_ENV {_format_operand(operands[1])}"
         case "MAKE_FUNCTION":
-            return f"{_format_register(operands[0])} = MAKE_FUNCTION fn#{operands[1]}"
+            rendered = f"{_format_register(operands[0])} = MAKE_FUNCTION fn#{operands[1]}"
         case "MAKE_MACRO":
-            return (
+            rendered = (
                 f"{_format_register(operands[0])} = MAKE_MACRO {_format_operand(operands[1])} "
                 f"{_format_operand(operands[2])} {_format_operand(operands[3])}"
             )
         case "MOVE":
-            return f"{_format_register(operands[0])} = MOVE {_format_register(operands[1])}"
+            rendered = f"{_format_register(operands[0])} = MOVE {_format_register(operands[1])}"
         case "STORE_LOCAL":
-            return f"STORE_LOCAL {_format_operand(operands[0])}, {_format_register(operands[1])}"
-    return _format_generic(instruction.opcode, operands)
+            rendered = (
+                f"STORE_LOCAL {_format_operand(operands[0])}, {_format_register(operands[1])}"
+            )
+        case _:
+            rendered = _format_generic(instruction.opcode, operands)
+    return rendered + _format_span(instruction.span)
 
 
 def _format_terminator(terminator: MIRTerminator) -> str:
     operands = terminator.operands
     match terminator.opcode:
         case "BRANCH":
-            return f"BRANCH {_format_register(operands[0])} ? bb{operands[1]} : bb{operands[2]}"
+            rendered = f"BRANCH {_format_register(operands[0])} ? bb{operands[1]} : bb{operands[2]}"
         case "JUMP":
-            return f"JUMP bb{operands[0]}"
+            rendered = f"JUMP bb{operands[0]}"
         case "RETURN":
-            return f"RETURN {_format_operand(operands[0])}"
+            rendered = f"RETURN {_format_operand(operands[0])}"
         case "TAIL_CALL":
-            return f"TAIL_CALL {_format_register(operands[0])} {_format_operand(operands[1])}"
-    return _format_generic(terminator.opcode, operands)
+            rendered = f"TAIL_CALL {_format_register(operands[0])} {_format_operand(operands[1])}"
+        case _:
+            rendered = _format_generic(terminator.opcode, operands)
+    return rendered + _format_span(terminator.span)
 
 
 def _format_register(value: object) -> str:
@@ -182,3 +334,9 @@ def _format_generic(opcode: str, operands: tuple[object, ...]) -> str:
     if not operands:
         return opcode
     return f"{opcode} {', '.join(_format_operand(operand) for operand in operands)}"
+
+
+def _format_span(span: SourceSpan | None) -> str:
+    if span is None:
+        return ""
+    return f" @ {span.format()}"

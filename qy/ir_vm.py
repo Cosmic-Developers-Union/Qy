@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import Literal
 from typing import cast
 
+from qy.compile_time import compile_time_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
@@ -159,7 +160,7 @@ class IRVirtualMachine:
                 expression.name,
                 expression.params,
                 expression.raw_body,
-                env,
+                compile_time_environment(env),
             )
             return env.define(expression.name, macro)
         if isinstance(expression, DefeffectExpr):
@@ -720,21 +721,34 @@ class IRVirtualMachine:
         try:
             module = await load_module_async(expression.module.name)
             for spec in expression.specs:
-                env.define(spec.alias, module.resolve(spec.name))
+                if spec.name in module.exports:
+                    env.define(spec.alias, module.resolve(spec.name))
+                elif spec.name in module.macro_exports:
+                    continue
+                else:
+                    raise KeyError(
+                        f"module {expression.module.name!r} has no export {spec.name.name!r}"
+                    )
         except (KeyError, ValueError) as e:
             raise EvaluationError(str(e), span=expression.span) from e
         return None
 
     async def _eval_module(self, expression: ModuleExpr, env: Environment) -> object:
+        from qy.macro import MacroDefinition
+
         module_env = env.child()
         baseline = set(module_env.local_bindings())
         await self._eval_body(expression.body, module_env, current_function=None)
-        exports = {
-            symbol: value
-            for symbol, value in module_env.local_bindings().items()
-            if symbol not in baseline
-        }
-        module = StandardModule(expression.name.name, exports)
+        runtime_exports: dict[Symbol, object] = {}
+        macro_exports: dict[Symbol, object] = {}
+        for symbol, value in module_env.local_bindings().items():
+            if symbol in baseline:
+                continue
+            if isinstance(value, MacroDefinition):
+                macro_exports[symbol] = value
+            else:
+                runtime_exports[symbol] = value
+        module = StandardModule(expression.name.name, runtime_exports, macro_exports)
         register_module(module)
         return env.define(expression.name, module)
 

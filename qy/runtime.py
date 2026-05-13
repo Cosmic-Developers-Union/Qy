@@ -9,6 +9,7 @@ from typing import cast
 
 from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_bytecode
+from qy.bytecode_compiler import compile_mir_bytecode
 from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
 from qy.evaluator import evaluate_file_async
@@ -114,6 +115,9 @@ class Qy:
 
     def compile_bytecode(self, program: ProgramIR) -> BytecodeProgram:
         return compile_bytecode(program)
+
+    def compile_mir_bytecode(self, program: MIRProgram) -> BytecodeProgram:
+        return compile_mir_bytecode(program)
 
     def evaluate_bytecode(self, program: BytecodeProgram) -> object:
         return evaluate_bytecode(program, self.env)

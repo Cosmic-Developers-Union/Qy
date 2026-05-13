@@ -4,15 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 from typing import cast
 
+from qy.compile_time import CompileTimeEnvironment
 from qy.errors import QyArityError
 from qy.reader import Form
 from qy.reader import Symbol
-
-if TYPE_CHECKING:
-    from qy.evaluator import Environment
 
 __all__ = ["MacroDefinition", "MacroExpansionServices"]
 
@@ -27,7 +24,7 @@ class MacroDefinition:
     name: Symbol
     params: tuple[Symbol, ...]
     body: tuple[object, ...]
-    closure: Environment
+    closure: CompileTimeEnvironment
 
     async def expand(
         self,

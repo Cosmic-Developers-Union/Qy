@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pprint
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
@@ -42,6 +43,7 @@ __all__ = [
     "RuntimeMetaCallExpr",
     "SymbolRefExpr",
     "UnresolvedSymbolExpr",
+    "dump_ir",
 ]
 
 BindingSource = Literal["local", "global", "default-literal", "unresolved"]
@@ -65,6 +67,10 @@ class ProgramIR:
     @property
     def ok(self) -> bool:
         return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
+
+
+def dump_ir(program: ProgramIR) -> str:
+    return pprint.pformat(program, width=100, sort_dicts=False, compact=False)
 
 
 @dataclass(frozen=True, slots=True)

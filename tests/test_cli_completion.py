@@ -22,6 +22,7 @@ def test_completion_command_outputs_bash_script(runner, app):
 
     assert result.exit_code == 0, result.output
     assert "complete -o default" in result.output
+    assert "mir" in result.output
     assert "operators" in result.output
 
 

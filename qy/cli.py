@@ -8,11 +8,14 @@ from typing import Any
 
 from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
+from qy.bytecode import dump_bytecode
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
+from qy.ir import dump_ir
+from qy.mir import dump_mir
 from qy.operator_docs import format_operator_docs
 from qy.reader import ReaderSyntaxError
 from qy.reader import read
@@ -27,6 +30,10 @@ INSTALL_LSP_MESSAGE = (
 CLI_COMMANDS = (
     "run",
     "repl",
+    "expand",
+    "hir",
+    "mir",
+    "bytecode",
     "fmt",
     "ast",
     "check",
@@ -95,6 +102,81 @@ def create_app() -> Any:
     @app.command("repl")
     def repl_command() -> None:
         raise typer.Exit(repl(Qy()))
+
+    @app.command("expand")
+    def expand_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to expand, or - to read from stdin."),
+        ],
+    ) -> None:
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        if expansion.forms:
+            typer.echo(dump_program(expansion.forms), nl=False)
+        if _print_debug_diagnostics(source_name, expansion.diagnostics):
+            raise typer.Exit(1)
+
+    @app.command("hir")
+    def hir_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to lower, or - to read from stdin."),
+        ],
+    ) -> None:
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            typer.echo(dump_ir(program), nl=False)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
+
+    @app.command("mir")
+    def mir_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to lower into MIR, or - to read from stdin."),
+        ],
+    ) -> None:
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            mir = qy.lower_mir(program)
+            typer.echo(dump_mir(mir), nl=False)
+            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
+
+    @app.command("bytecode")
+    def bytecode_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to compile, or - to read from stdin."),
+        ],
+    ) -> None:
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            mir = qy.lower_mir(program)
+            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+            bytecode = qy.compile_mir_bytecode(mir)
+            typer.echo(dump_bytecode(bytecode), nl=False)
+            has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
 
     @app.command("fmt")
     def format_command(
@@ -306,7 +388,34 @@ def _check_path(path: Path) -> None:
     typer.secho(f"{path}: ok", fg=typer.colors.GREEN)
 
 
-def _format_diagnostic(path: Path, diagnostic: Diagnostic) -> str:
+def _read_debug_source(target: str) -> tuple[str, str]:
+    import typer
+
+    try:
+        if target == "-":
+            return sys.stdin.read(), "<stdin>"
+        path = Path(target)
+        return path.read_text(encoding="utf-8"), str(path)
+    except OSError as e:
+        typer.secho(str(e), fg=typer.colors.RED, err=True)
+        raise typer.Exit(1) from e
+
+
+def _print_debug_diagnostics(source_name: str, diagnostics: tuple[Diagnostic, ...]) -> bool:
+    import typer
+
+    has_errors = False
+    for diagnostic in diagnostics:
+        typer.secho(
+            _format_diagnostic(source_name, diagnostic),
+            fg=_diagnostic_color(diagnostic),
+            err=True,
+        )
+        has_errors = has_errors or diagnostic.severity == "error"
+    return has_errors
+
+
+def _format_diagnostic(path: str | Path, diagnostic: Diagnostic) -> str:
     location = str(path)
     if diagnostic.line is not None and diagnostic.column is not None:
         location = f"{location}:{diagnostic.line}:{diagnostic.column}"

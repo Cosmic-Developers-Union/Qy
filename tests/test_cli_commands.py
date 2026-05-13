@@ -46,6 +46,29 @@ def test_ast_command(runner, app):
     assert "Symbol('+')" in result.output
 
 
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("expand", "Symbol('+')"),
+        ("hir", "ProgramIR("),
+        ("mir", "fn#0 <main>() entry=bb0"),
+        ("bytecode", "fn#0 <main>() regs="),
+    ),
+)
+def test_pipeline_debug_commands_support_stdin(runner, app, command, expected):
+    result = runner.invoke(app, [command, "-"], input="(+ 1 2)\n")
+
+    assert result.exit_code == 0, result.output
+    assert expected in result.output
+
+
+def test_pipeline_debug_commands_return_nonzero_on_diagnostics(runner, app):
+    result = runner.invoke(app, ["hir", "-"], input="(+ 1\n")
+
+    assert result.exit_code == 1
+    assert "error:" in result.output
+
+
 def test_operators_command(runner, app):
     result = runner.invoke(app, ["operators"])
 

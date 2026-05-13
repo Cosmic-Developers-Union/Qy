@@ -13,6 +13,7 @@ from qy.mir import MIRFunction
 from qy.mir import MIRInstruction
 from qy.mir import MIRProgram
 from qy.mir import MIRTerminator
+from qy.mir import verify_mir
 from qy.mir_lowering import lower_mir
 
 __all__ = ["compile_bytecode", "compile_mir_bytecode"]
@@ -23,8 +24,15 @@ def compile_bytecode(program: ProgramIR) -> BytecodeProgram:
 
 
 def compile_mir_bytecode(program: MIRProgram) -> BytecodeProgram:
+    verifier_diagnostics = verify_mir(program)
+    diagnostics = (*program.diagnostics, *verifier_diagnostics)
+    if any(diagnostic.severity == "error" for diagnostic in diagnostics):
+        return BytecodeProgram((), 0, diagnostics)
     compiler = _BytecodeCompiler(program)
-    return compiler.compile()
+    compiled = compiler.compile()
+    if verifier_diagnostics:
+        return BytecodeProgram(compiled.functions, compiled.main, diagnostics)
+    return compiled
 
 
 @dataclass(slots=True)
