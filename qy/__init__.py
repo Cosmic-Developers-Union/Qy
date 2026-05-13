@@ -20,6 +20,7 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
 from qy.bytecode import dump_bytecode
 from qy.bytecode_compiler import compile_bytecode
+from qy.bytecode_compiler import compile_lir_bytecode
 from qy.bytecode_compiler import compile_mir_bytecode
 from qy.display import format_value
 from qy.errors import QyAggregateError
@@ -75,6 +76,11 @@ from qy.ir_vm import evaluate_ir
 from qy.ir_vm import evaluate_ir_async
 from qy.ir_vm import evaluate_ir_source
 from qy.ir_vm import evaluate_ir_source_async
+from qy.lir import LIRFunction
+from qy.lir import LIRInstruction
+from qy.lir import LIRProgram
+from qy.lir import dump_lir
+from qy.lir_lowering import lower_lir
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macro import MacroDefinition
@@ -102,6 +108,8 @@ from qy.operator_docs import format_operator_docs
 from qy.operator_signature import Arity
 from qy.operator_signature import EffectSpec
 from qy.operator_signature import OperatorSignature
+from qy.python_codegen import CodegenError
+from qy.python_codegen import codegen_python
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -149,6 +157,7 @@ __all__ = [
     "BytecodeFunctionValue",
     "BytecodeProgram",
     "CallExpr",
+    "CodegenError",
     "ControlOperator",
     "Diagnostic",
     "DottedTuple",
@@ -163,6 +172,9 @@ __all__ = [
     "IRFunction",
     "IRVirtualMachine",
     "Instruction",
+    "LIRFunction",
+    "LIRInstruction",
+    "LIRProgram",
     "LiteralExpr",
     "MIRBlock",
     "MIRFunction",
@@ -213,12 +225,15 @@ __all__ = [
     "UnresolvedSymbolExpr",
     "analyze",
     "analyze_source",
+    "codegen_python",
     "collect_supported_operators",
     "compile_bytecode",
+    "compile_lir_bytecode",
     "compile_mir_bytecode",
     "dump_bytecode",
     "dump_form",
     "dump_ir",
+    "dump_lir",
     "dump_mir",
     "dump_program",
     "evaluate",
@@ -245,6 +260,7 @@ __all__ = [
     "format_source",
     "format_value",
     "lower",
+    "lower_lir",
     "lower_mir",
     "lower_source",
     "macroexpand",

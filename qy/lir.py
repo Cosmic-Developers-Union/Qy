@@ -1,74 +1,44 @@
 # coding: utf-8
+"""LIR (Low-level IR): linearized instruction sequence ready for register VM.
+
+LIR is MIR with the CFG flattened into a single instruction sequence per
+function: basic block boundaries are removed and jump targets are resolved to
+instruction offsets.  LIR shares the bytecode opcode set; the bytecode compiler
+performs a structural-only conversion from LIR to BytecodeProgram.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
-from typing import Literal
 
+from qy.bytecode import Opcode
 from qy.diagnostics import Diagnostic
 from qy.errors import SourceSpan
 from qy.reader import Symbol
 
-if TYPE_CHECKING:
-    from qy.evaluator import Environment
+__all__ = ["LIRFunction", "LIRInstruction", "LIRProgram", "dump_lir"]
 
-__all__ = [
-    "BytecodeFunction",
-    "BytecodeFunctionValue",
-    "BytecodeProgram",
-    "Instruction",
-    "Opcode",
-    "Register",
-    "dump_bytecode",
-]
-
-Register = int
-
-Opcode = Literal[
-    "APPEND_RESULT",
-    "CALL",
-    "DEFEFFECT",
-    "DEFINE_MODULE",
-    "ENTER_SCOPE",
-    "EXIT_SCOPE",
-    "FROM_IMPORT",
-    "HANDLE",
-    "JUMP",
-    "JUMP_IF_FALSE",
-    "LOAD_HOST",
-    "LOAD_ENV",
-    "MAKE_MACRO",
-    "MAKE_FUNCTION",
-    "MOVE",
-    "PERFORM",
-    "RAISE_EFFECT",
-    "RESUME",
-    "RETURN",
-    "RUNTIME_EVAL",
-    "STORE_LOCAL",
-    "TAIL_CALL",
-]
+LIROpcode = Opcode
 
 
 @dataclass(frozen=True, slots=True)
-class Instruction:
-    opcode: Opcode
+class LIRInstruction:
+    opcode: LIROpcode
     operands: tuple[object, ...] = ()
     span: SourceSpan | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class BytecodeFunction:
+class LIRFunction:
     name: Symbol
     params: tuple[Symbol, ...]
     register_count: int
-    instructions: tuple[Instruction, ...]
+    instructions: tuple[LIRInstruction, ...]
 
 
 @dataclass(frozen=True, slots=True)
-class BytecodeProgram:
-    functions: tuple[BytecodeFunction, ...]
+class LIRProgram:
+    functions: tuple[LIRFunction, ...]
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
 
@@ -77,13 +47,7 @@ class BytecodeProgram:
         return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
 
 
-@dataclass(frozen=True, slots=True)
-class BytecodeFunctionValue:
-    function: BytecodeFunction
-    closure: Environment
-
-
-def dump_bytecode(program: BytecodeProgram) -> str:
+def dump_lir(program: LIRProgram) -> str:
     lines: list[str] = []
     for index, function in enumerate(program.functions):
         params = ", ".join(param.name for param in function.params)
@@ -106,7 +70,7 @@ def dump_bytecode(program: BytecodeProgram) -> str:
     return "\n".join(lines)
 
 
-def _format_instruction(instruction: Instruction) -> str:
+def _format_instruction(instruction: LIRInstruction) -> str:
     if not instruction.operands:
         return instruction.opcode
     return (

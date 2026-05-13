@@ -15,6 +15,8 @@ from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
 from qy.ir import dump_ir
+from qy.lir import dump_lir
+from qy.lir_lowering import lower_lir
 from qy.mir import dump_mir
 from qy.operator_docs import format_operator_docs
 from qy.reader import ReaderSyntaxError
@@ -33,7 +35,9 @@ CLI_COMMANDS = (
     "expand",
     "hir",
     "mir",
+    "lir",
     "bytecode",
+    "py",
     "fmt",
     "ast",
     "check",
@@ -156,6 +160,28 @@ def create_app() -> Any:
         if has_errors:
             raise typer.Exit(1)
 
+    @app.command("lir")
+    def lir_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to lower into LIR, or - to read from stdin."),
+        ],
+    ) -> None:
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            mir = qy.lower_mir(program)
+            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+            lir = lower_lir(mir)
+            typer.echo(dump_lir(lir), nl=False)
+            has_errors = _print_debug_diagnostics(source_name, lir.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
+
     @app.command("bytecode")
     def bytecode_command(
         target: Annotated[
@@ -175,6 +201,26 @@ def create_app() -> Any:
             bytecode = qy.compile_mir_bytecode(mir)
             typer.echo(dump_bytecode(bytecode), nl=False)
             has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
+
+    @app.command("py")
+    def py_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to transpile to Python, or - for stdin."),
+        ],
+    ) -> None:
+        from qy.python_codegen import codegen_python
+
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            typer.echo(codegen_python(program), nl=False)
         if has_errors:
             raise typer.Exit(1)
 

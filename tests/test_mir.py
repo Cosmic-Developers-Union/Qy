@@ -1,7 +1,5 @@
 from typing import cast
 
-import pytest
-
 from qy import MIRBlock
 from qy import MIRFunction
 from qy import MIRInstruction
@@ -172,7 +170,7 @@ def test_verify_mir_reports_out_of_range_registers_and_invalid_tail_call_instruc
                         0,
                         (
                             MIRInstruction(cast(MIROpcode, "TAIL_CALL"), (0, ()), None),
-                            MIRInstruction("LOAD_CONST", (1, 42), None),
+                            MIRInstruction("LOAD_HOST", (1, 42), None),
                         ),
                         MIRTerminator("RETURN", (1,)),
                     ),
@@ -397,8 +395,7 @@ def test_mir_lowering_defeffect_emits_defeffect_instruction():
 def test_mir_dump_shows_defeffect_perform_handle_resume():
     mir = lower_mir(
         lower_source(
-            "(defeffect ask)\n"
-            "(handle (perform ask 1) ((ask (arg k) (resume k (* arg 2)))))"
+            "(defeffect ask)\n(handle (perform ask 1) ((ask (arg k) (resume k (* arg 2)))))"
         )
     )
     rendered = dump_mir(mir)
@@ -411,9 +408,9 @@ def test_mir_dump_shows_defeffect_perform_handle_resume():
 
 def test_bytecode_vm_defeffect_defines_effect_in_env():
     from qy.evaluator import EffectDefinition
+    from qy.evaluator import run_async
     from qy.evaluator import standard_environment
     from qy.register_vm import evaluate_bytecode_source_async
-    from qy.evaluator import run_async
 
     env = standard_environment()
     run_async(evaluate_bytecode_source_async("(defeffect my-signal)", env))
@@ -424,10 +421,7 @@ def test_bytecode_vm_defeffect_defines_effect_in_env():
 def test_bytecode_vm_handle_returns_body_result_when_no_effect():
     from qy.register_vm import evaluate_bytecode_source
 
-    result = evaluate_bytecode_source(
-        "(defeffect ask)\n"
-        "(handle 42 ((ask (arg k) 0)))"
-    )
+    result = evaluate_bytecode_source("(defeffect ask)\n(handle 42 ((ask (arg k) 0)))")
 
     assert result == 42
 
@@ -436,8 +430,7 @@ def test_bytecode_vm_handle_routes_to_handler_on_perform():
     from qy.register_vm import evaluate_bytecode_source
 
     result = evaluate_bytecode_source(
-        "(defeffect ask)\n"
-        "(handle (perform ask 99) ((ask (arg k) arg)))"
+        "(defeffect ask)\n(handle (perform ask 99) ((ask (arg k) arg)))"
     )
 
     assert result == 99
@@ -447,8 +440,7 @@ def test_bytecode_vm_resume_continues_computation():
     from qy.register_vm import evaluate_bytecode_source
 
     result = evaluate_bytecode_source(
-        "(defeffect ask)\n"
-        "(handle (+ (perform ask 3) 10) ((ask (arg k) (resume k (* arg 2)))))"
+        "(defeffect ask)\n(handle (+ (perform ask 3) 10) ((ask (arg k) (resume k (* arg 2)))))"
     )
 
     assert result == 16

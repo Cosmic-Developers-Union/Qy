@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -24,7 +23,6 @@ from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
-from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import AssertExpr
 from qy.ir import CallExpr
@@ -48,32 +46,27 @@ from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
+from qy.ir_vm._helpers import _await_if_needed
+from qy.ir_vm._helpers import _function_stack_frame
+from qy.ir_vm._helpers import _identity_continuation
+from qy.ir_vm._helpers import _quote_data
+from qy.ir_vm._helpers import _raise_for_diagnostics
+from qy.ir_vm._helpers import _raw_operator_expression
+from qy.ir_vm._helpers import _truthy
 from qy.macro import MacroDefinition
 from qy.operator_runtime import operator_uses_raw_args
 from qy.operator_runtime import validate_operator_arity
-from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import Symbol
 from qy.stdlib import load_module_async
 from qy.stdlib import register_module
 from qy.stdlib.module import StandardModule
-from qy.values import QY_NIL
 from qy.values import QyCons
-from qy.values import list_to_qy_cons
 from qy.values import qy_cons_to_tuple
 from qy.virtual_stack import TailCall
 from qy.virtual_stack import VirtualStack
-from qy.virtual_stack import VirtualStackFrame
 
-__all__ = [
-    "IRCallableKind",
-    "IRFunction",
-    "IRVirtualMachine",
-    "evaluate_ir",
-    "evaluate_ir_async",
-    "evaluate_ir_source",
-    "evaluate_ir_source_async",
-]
+__all__ = ["IRCallableKind", "IRFunction", "IRVirtualMachine"]
 
 IRCallableKind = Literal["function", "lambda"]
 
@@ -929,87 +922,3 @@ class IRVirtualMachine:
             return
         for frame in self.stack.trace():
             error.add_frame(frame)
-
-
-def evaluate_ir(program: ProgramIR, env: Environment | None = None) -> object:
-    return run_async(evaluate_ir_async(program, env))
-
-
-async def evaluate_ir_async(program: ProgramIR, env: Environment | None = None) -> object:
-    results = await IRVirtualMachine(env).evaluate_program(program)
-    return None if not results else results[-1]
-
-
-def evaluate_ir_source(
-    source: str,
-    env: Environment | None = None,
-    *,
-    source_name: str | None = None,
-) -> object:
-    return run_async(evaluate_ir_source_async(source, env, source_name=source_name))
-
-
-async def evaluate_ir_source_async(
-    source: str,
-    env: Environment | None = None,
-    *,
-    source_name: str | None = None,
-) -> object:
-    from qy.lowering import lower
-    from qy.macroexpand import macroexpand_source_async
-
-    runtime_env = env or standard_environment()
-    expansion = await macroexpand_source_async(source, runtime_env, source_name=source_name)
-    errors = tuple(item for item in expansion.diagnostics if item.severity == "error")
-    if errors:
-        messages = "; ".join(item.message for item in errors)
-        raise QyRuntimeError(f"cannot execute macroexpanded source: {messages}")
-    return await evaluate_ir_async(
-        lower(expansion.forms, runtime_env),
-        runtime_env,
-    )
-
-
-def _raise_for_diagnostics(program: ProgramIR) -> None:
-    diagnostics = tuple(item for item in program.diagnostics if item.severity == "error")
-    if not diagnostics:
-        return
-    messages = "; ".join(item.message for item in diagnostics)
-    raise QyRuntimeError(f"cannot execute IR with diagnostics: {messages}")
-
-
-def _quote_data(value: object) -> object:
-    if isinstance(value, DottedTuple):
-        return list_to_qy_cons((_quote_data(item) for item in value), _quote_data(value.tail))
-    if isinstance(value, tuple):
-        return list_to_qy_cons(_quote_data(item) for item in value)
-    return value
-
-
-def _truthy(value: object) -> bool:
-    return value is not False and value is not None and value is not QY_NIL and value != ()
-
-
-def _raw_operator_expression(expression: CallExpr) -> object:
-    if isinstance(expression.operator, SymbolRefExpr):
-        return expression.operator.symbol
-    return expression.operator
-
-
-def _function_stack_frame(function: IRFunction, span: SourceSpan | None) -> VirtualStackFrame:
-    name = None if function.name.name == "<lambda>" else function.name.name
-    kind = "lambda" if name is None else "call"
-    return VirtualStackFrame(kind, name, span or function.name.span)
-
-
-async def _await_if_needed(value: object) -> object:
-    if inspect.iscoroutine(value):
-        return await value
-    return value
-
-
-def _identity_continuation(effect_name: str, resumable: bool) -> QyContinuation:
-    async def resume(value: object) -> object:
-        return value
-
-    return QyContinuation(effect_name, resumable, resume)

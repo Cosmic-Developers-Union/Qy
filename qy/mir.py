@@ -43,7 +43,7 @@ MIROpcode = Literal[
     "EXIT_SCOPE",
     "FROM_IMPORT",
     "HANDLE",
-    "LOAD_CONST",
+    "LOAD_HOST",
     "LOAD_ENV",
     "MAKE_FUNCTION",
     "MAKE_MACRO",
@@ -234,7 +234,12 @@ def _verify_instruction(
             _check_register(function, block_id, operands[0], diagnostics)
             _check_int_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
             _check_tuple_operand(
-                function, block_id, instruction.opcode, "handler specs tuple", operands[2], diagnostics
+                function,
+                block_id,
+                instruction.opcode,
+                "handler specs tuple",
+                operands[2],
+                diagnostics,
             )
         case "RESUME":
             if not _check_operand_arity(
@@ -258,7 +263,7 @@ def _verify_instruction(
                 operands[1],
                 diagnostics,
             )
-        case "LOAD_CONST":
+        case "LOAD_HOST":
             if _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
             ):
@@ -563,10 +568,8 @@ def _format_instruction(instruction: MIRInstruction) -> str:
                 for s in (specs if isinstance(specs, tuple) else ())
             )
             rendered = f"FROM_IMPORT {_format_operand(operands[0])} [{specs_str}]"
-        case "LOAD_CONST":
-            rendered = (
-                f"{_format_register(operands[0])} = LOAD_CONST {_format_operand(operands[1])}"
-            )
+        case "LOAD_HOST":
+            rendered = f"{_format_register(operands[0])} = LOAD_HOST {_format_operand(operands[1])}"
         case "LOAD_ENV":
             rendered = f"{_format_register(operands[0])} = LOAD_ENV {_format_operand(operands[1])}"
         case "MAKE_FUNCTION":

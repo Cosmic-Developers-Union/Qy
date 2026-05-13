@@ -86,7 +86,7 @@ class _FunctionLowerer:
     ) -> MIRRegister | None:
         if not body:
             result = self.register()
-            self.emit("LOAD_CONST", result, None)
+            self.emit("LOAD_HOST", result, None)
             return result
         last_register: MIRRegister | None = None
         for index, expression in enumerate(body):
@@ -101,11 +101,11 @@ class _FunctionLowerer:
     def lower_expr(self, expression: IRExpr, *, tail: bool = False) -> _LoweredExpression:
         if isinstance(expression, LiteralExpr):
             register = self.register()
-            self.emit("LOAD_CONST", register, expression.value, span=expression.span)
+            self.emit("LOAD_HOST", register, expression.value, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, QuoteExpr):
             register = self.register()
-            self.emit("LOAD_CONST", register, _quote_data(expression.form), span=expression.span)
+            self.emit("LOAD_HOST", register, _quote_data(expression.form), span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, SymbolRefExpr | UnresolvedSymbolExpr):
             register = self.register()
@@ -213,14 +213,14 @@ class _FunctionLowerer:
 
         if tail:
             default = self.register()
-            self.emit("LOAD_CONST", default, None, span=expression.span)
+            self.emit("LOAD_HOST", default, None, span=expression.span)
             self.terminate("RETURN", default, span=expression.span)
             return _LoweredExpression(None)
 
         assert result_register is not None
         assert end_block is not None
         default = self.register()
-        self.emit("LOAD_CONST", default, None, span=expression.span)
+        self.emit("LOAD_HOST", default, None, span=expression.span)
         self.emit("MOVE", result_register, default, span=expression.span)
         self.terminate("JUMP", end_block.id, span=expression.span)
         self.switch_to(end_block)
@@ -270,7 +270,7 @@ class _FunctionLowerer:
             msg_reg = None
         if msg_reg is None:
             msg_reg = self.register()
-            self.emit("LOAD_CONST", msg_reg, Symbol("assertion failed"), span=expression.span)
+            self.emit("LOAD_HOST", msg_reg, Symbol("assertion failed"), span=expression.span)
         if not self.current.terminated:
             self.terminate(
                 "RAISE_EFFECT",
@@ -413,7 +413,7 @@ class _MIRLowerer:
         result = main.lower_body(program.body, collect_results=True)
         if result is None and not main.current.terminated:
             result = main.register()
-            main.emit("LOAD_CONST", result, None)
+            main.emit("LOAD_HOST", result, None)
         if result is not None and not main.current.terminated:
             main.terminate("RETURN", result)
         self.functions[main_index] = main.finish()

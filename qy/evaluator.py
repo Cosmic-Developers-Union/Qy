@@ -8,11 +8,13 @@ import threading
 from collections.abc import Callable
 from collections.abc import Coroutine
 from collections.abc import Mapping
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 from typing import cast
 
+from qy.continuation import QyContinuation
+from qy.continuation import _await_if_needed
+from qy.environment import Environment
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectError
@@ -23,15 +25,25 @@ from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
-from qy.literals import resolve_default_literal
 from qy.macro import MacroDefinition
-from qy.operator_signature import OperatorSignature
-from qy.operator_signature import lookup_operator_signature
+
+# Re-export sub-module symbols for backward compatibility.
+from qy.operators import ArgumentEvaluator  # noqa: F401
+from qy.operators import ControlOperator
+from qy.operators import EffectOperator
+from qy.operators import EvaluationOperator
+from qy.operators import MetaOperator
+from qy.operators import PureOperator
+from qy.operators import ScopeOperator
+from qy.operators import SyntaxOperator
 from qy.reader import Form
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
-from qy.types import OperatorKind
+from qy.runtime_values import EffectDefinition
+from qy.runtime_values import HostObjectRef
+from qy.runtime_values import UserFunction
+from qy.runtime_values import _TailCall
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
@@ -74,366 +86,6 @@ __all__ = [
     "run_async",
     "standard_environment",
 ]
-
-ArgumentEvaluator = Callable[[tuple[object, ...], "Environment"], object]
-
-
-@dataclass(frozen=True, slots=True)
-class PureOperator:
-    name: str
-    func: Callable[..., object]
-    doc: str = ""
-    argument_evaluator: ArgumentEvaluator | None = None
-    signature: OperatorSignature | None = None
-
-    @property
-    def kind(self) -> OperatorKind:
-        return "pure"
-
-    def __post_init__(self) -> None:
-        _set_default_signature(self)
-
-    def __call__(self, *args: object) -> object:
-        return self.func(*args)
-
-
-@dataclass(frozen=True, slots=True)
-class ScopeOperator:
-    name: str
-    func: Callable[[tuple[object, ...], Environment], object]
-    doc: str = ""
-    signature: OperatorSignature | None = None
-
-    @property
-    def kind(self) -> OperatorKind:
-        return "scope"
-
-    def __post_init__(self) -> None:
-        _set_default_signature(self)
-
-    def __call__(self, args: tuple[object, ...], env: Environment) -> object:
-        return self.func(args, env)
-
-
-@dataclass(frozen=True, slots=True)
-class ControlOperator:
-    name: str
-    func: Callable[[tuple[object, ...], Environment], object]
-    doc: str = ""
-    signature: OperatorSignature | None = None
-
-    @property
-    def kind(self) -> OperatorKind:
-        return "control"
-
-    def __post_init__(self) -> None:
-        _set_default_signature(self)
-
-    def __call__(self, args: tuple[object, ...], env: Environment) -> object:
-        return self.func(args, env)
-
-
-@dataclass(frozen=True, slots=True)
-class EffectOperator:
-    name: str
-    func: Callable[[tuple[object, ...], Environment], object]
-    doc: str = ""
-    signature: OperatorSignature | None = None
-
-    @property
-    def kind(self) -> OperatorKind:
-        return "effect"
-
-    def __post_init__(self) -> None:
-        _set_default_signature(self)
-
-    def __call__(self, args: tuple[object, ...], env: Environment) -> object:
-        return self.func(args, env)
-
-
-@dataclass(frozen=True, slots=True)
-class MetaOperator:
-    name: str
-    func: Callable[[tuple[object, ...], Environment], object]
-    doc: str = ""
-    signature: OperatorSignature | None = None
-
-    @property
-    def kind(self) -> OperatorKind:
-        return "meta"
-
-    def __post_init__(self) -> None:
-        _set_default_signature(self)
-
-    def __call__(self, expression: tuple[object, ...], env: Environment) -> object:
-        return self.func(expression, env)
-
-
-EvaluationOperator = ControlOperator
-SyntaxOperator = MetaOperator
-
-
-def _set_default_signature(operator: object) -> None:
-    signature = getattr(operator, "signature", None)
-    if signature is None:
-        name = cast(Any, operator).name
-        object.__setattr__(
-            operator,
-            "signature",
-            lookup_operator_signature(name),
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class EffectDefinition:
-    name: Symbol
-    resumable: bool = True
-    doc: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class _TailCall:
-    function: object
-    args: tuple[object, ...]
-
-
-@dataclass(slots=True)
-class QyContinuation:
-    effect: str
-    resumable: bool
-    _resume: Callable[[object], object]
-
-    async def resume(self, value: object) -> object:
-        if not self.resumable:
-            raise QyEffectError(
-                f"effect {self.effect!r} is not resumable",
-                metadata={"effect": self.effect, "value": value},
-            )
-        return await _await_if_needed(self._resume(value))
-
-
-@dataclass(frozen=True, slots=True)
-class UserFunction:
-    name: Symbol
-    params: tuple[Symbol, ...]
-    body: tuple[object, ...]
-    closure: Environment
-
-    async def __call__(self, *args: object) -> object:
-        if len(args) != len(self.params):
-            raise QyArityError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
-                span=self.name.span,
-                metadata={
-                    "expected": len(self.params),
-                    "actual": len(args),
-                    "function": self.name.name,
-                },
-            )
-        current_args = args
-        while True:
-            local_env = Environment(dict(zip(self.params, current_args, strict=True)), self.closure)
-            result = await _evaluate_tail_body_async(self.body, local_env, self)
-            if not isinstance(result, _TailCall) or result.function is not self:
-                return result
-            current_args = result.args
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class HostObjectRef:
-    value: object
-
-
-class Environment:
-    def __init__(
-        self,
-        bindings: Mapping[Symbol, object] | None = None,
-        parent: Environment | None = None,
-    ) -> None:
-        self._bindings = dict(bindings or {})
-        self._parent = parent
-        self._cache: dict[object, object] = parent._cache if parent is not None else {}
-        self._hidden: dict[Symbol, object] = {}
-
-    def resolve(self, symbol: Symbol) -> object:
-        if symbol in self._bindings:
-            return self._bindings[symbol]
-        if symbol in self._hidden:
-            return self._hidden[symbol]
-        if self._parent is not None:
-            return self._parent.resolve(symbol)
-        return _resolve_builtin_literal(symbol)
-
-    def define(self, symbol: Symbol, value: object) -> object:
-        self._bindings[symbol] = value
-        return value
-
-    def define_hidden(self, symbol: Symbol, value: object) -> object:
-        self._hidden[symbol] = value
-        return value
-
-    def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
-        return Environment(bindings, self)
-
-    def bindings(self) -> dict[Symbol, object]:
-        if self._parent is None:
-            return dict(self._bindings)
-        result = self._parent.bindings()
-        result.update(self._bindings)
-        return result
-
-    def local_bindings(self) -> dict[Symbol, object]:
-        return dict(self._bindings)
-
-    def hidden_bindings(self) -> dict[Symbol, object]:
-        if self._parent is None:
-            return dict(self._hidden)
-        result = self._parent.hidden_bindings()
-        result.update(self._hidden)
-        return result
-
-    def cache_lookup(self, key: object) -> object:
-        return self._cache[key]
-
-    def cache_define(self, key: object, value: object) -> object:
-        self._cache[key] = value
-        return value
-
-    def cache_discard(self, key: object) -> None:
-        self._cache.pop(key, None)
-
-    def register_pure(
-        self,
-        name: str,
-        func: Callable[..., object] | None = None,
-        *,
-        doc: str = "",
-        argument_evaluator: ArgumentEvaluator | None = None,
-        signature: OperatorSignature | None = None,
-    ) -> Callable[[Callable[..., object]], Callable[..., object]] | Callable[..., object]:
-        def register(func: Callable[..., object]) -> Callable[..., object]:
-            self.define(Symbol(name), PureOperator(name, func, doc, argument_evaluator, signature))
-            return func
-
-        if func is None:
-            return register
-        return register(func)
-
-    def register_scope(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        def register(
-            func: Callable[[tuple[object, ...], Environment], object],
-        ) -> Callable[..., object]:
-            self.define(Symbol(name), ScopeOperator(name, func, doc, signature))
-            return func
-
-        if func is None:
-            return register
-        return register(func)
-
-    def register_control(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        def register(
-            func: Callable[[tuple[object, ...], Environment], object],
-        ) -> Callable[..., object]:
-            self.define(Symbol(name), ControlOperator(name, func, doc, signature))
-            return func
-
-        if func is None:
-            return register
-        return register(func)
-
-    def register_effect(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        def register(
-            func: Callable[[tuple[object, ...], Environment], object],
-        ) -> Callable[..., object]:
-            self.define(Symbol(name), EffectOperator(name, func, doc, signature))
-            return func
-
-        if func is None:
-            return register
-        return register(func)
-
-    def register_meta(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        def register(
-            func: Callable[[tuple[object, ...], Environment], object],
-        ) -> Callable[..., object]:
-            self.define(Symbol(name), MetaOperator(name, func, doc, signature))
-            return func
-
-        if func is None:
-            return register
-        return register(func)
-
-    def register_evaluation(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        return self.register_control(name, func, doc=doc, signature=signature)
-
-    def register_syntax(
-        self,
-        name: str,
-        func: Callable[[tuple[object, ...], Environment], object] | None = None,
-        *,
-        doc: str = "",
-        signature: OperatorSignature | None = None,
-    ) -> (
-        Callable[[Callable[[tuple[object, ...], Environment], object]], Callable[..., object]]
-        | Callable[..., object]
-    ):
-        return self.register_meta(name, func, doc=doc, signature=signature)
-
-
-def standard_environment() -> Environment:
-    from qy.stdlib import standard_bindings
-
-    return Environment(standard_bindings())
 
 
 def evaluate(expression: object, env: Environment | None = None) -> object:
@@ -522,10 +174,6 @@ async def _evaluate_ir_forms_async(
     return await IRVirtualMachine(runtime_env).evaluate_program(program)
 
 
-def _resolve_builtin_literal(symbol: Symbol) -> object:
-    return resolve_default_literal(symbol)
-
-
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
     return run_async(evaluate_body_async(body, env))
 
@@ -594,12 +242,6 @@ async def _evaluate_pure_arguments_async(
             )
         return arguments
     return tuple([await evaluate_async(argument, env) for argument in argument_expressions])
-
-
-async def _await_if_needed(value: object) -> object:
-    if inspect.iscoroutine(value):
-        return await value
-    return value
 
 
 async def _apply_operator(

@@ -108,7 +108,7 @@ class RegisterVirtualMachine:
     ) -> _FrameResult | _Frame | None:
         operands = instruction.operands
         match instruction.opcode:
-            case "LOAD_CONST":
+            case "LOAD_HOST":
                 dest, value = operands
                 frame.registers[_register(dest)] = value
             case "LOAD_ENV":
@@ -435,12 +435,8 @@ class RegisterVirtualMachine:
                 if not isinstance(effect_sym, Symbol) or not isinstance(handler_fn_idx, int):
                     continue
                 if effect_sym.name == e.effect:
-                    handler_fn = BytecodeFunctionValue(
-                        self.program.functions[handler_fn_idx], env
-                    )
-                    handler_result = await self._run_function(
-                        handler_fn, (e.arg, e.continuation)
-                    )
+                    handler_fn = BytecodeFunctionValue(self.program.functions[handler_fn_idx], env)
+                    handler_result = await self._run_function(handler_fn, (e.arg, e.continuation))
                     return handler_result.value
             raise
 
