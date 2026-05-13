@@ -1,0 +1,35 @@
+; Design target, not a current validation case.
+;
+; No spawn/await. parallel creates an order-insensitive group.
+; perform is the suspension point. resume continues the captured continuation.
+; The handler implements scheduling policy in user code.
+
+(let (((get inc dec) (counter 0))
+      (queue '()))
+  (handle
+    (all
+      (parallel
+        (fetch-image 'a)
+        (fetch-image 'b)
+        (fetch-image 'c)
+        (fetch-image 'd)))
+    (:http/get (url k)
+      (cond
+        ((< (get) 3)
+          (pipeline
+            (inc)
+            (raw-http/get url
+              (lambda (img)
+                (pipeline
+                  (dec)
+                  (resume k img)
+                  (cond
+                    ((not (empty? queue)) ((pop! queue)))))))))
+        (true
+          (push! queue
+            (lambda ()
+              (start-http url k))))))
+    (:save (img k)
+      (pipeline
+        (raw-save img)
+        (resume k nil)))))

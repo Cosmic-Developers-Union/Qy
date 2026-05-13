@@ -1,0 +1,3 @@
+; let creates a new symbol-space and can bind names from outer spaces.
+(let ((+ (lambda (left right) left)))
+  (+ 42 0))

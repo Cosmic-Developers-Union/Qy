@@ -1,0 +1,2 @@
+; quote returns syntax datum. cons/car/cdr operate on chain.
+(cons (car '(alpha beta)) (cdr '(alpha beta gamma)))

@@ -1,0 +1,7 @@
+; Function bodies are implicit pipeline/begin today; the tail call path must stay stack-safe.
+(let ()
+  (defun sum-to (n acc)
+    (cond
+      ((eq n 0) acc)
+      (true (sum-to (- n 1) (+ acc n)))))
+  (sum-to 300 0))

@@ -1,0 +1,6 @@
+; py exposes host objects as first-class runtime values at the host boundary.
+(py
+  """
+return py_value + 1
+"""
+  :py-value 41)

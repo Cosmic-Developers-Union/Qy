@@ -1,0 +1,11 @@
+; Design target, not a current validation case.
+;
+; define creates one binding in the current symbol-space.
+; let creates a child symbol-space and can bind any symbol.
+
+(define answer 42)
+
+(let ((answer 'local)
+      (quote 'shadowed)
+      (+ 'shadowed-host-operator))
+  answer)

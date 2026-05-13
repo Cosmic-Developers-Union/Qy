@@ -1,0 +1,22 @@
+; Macro output is syntax datum. Hygiene preserves call-site symbols unless capture is explicit.
+(macro with-temp (expr)
+  (cons 'let
+    (cons
+      (cons (cons 'tmp (cons 1 '())) '())
+      (cons expr '()))))
+
+(macro add-one (value)
+  (cons '+ (cons value (cons 1 '()))))
+
+(macro call-site-plus (value)
+  (cons (capture '+) (cons value (cons 1 '()))))
+
+(let ((tmp 99))
+  (cons (with-temp tmp)
+    (cons
+      (let ((+ (lambda (left right) 0)))
+        (add-one 41))
+      (cons
+        (let ((+ (lambda (left right) 0)))
+          (call-site-plus 41))
+        '()))))

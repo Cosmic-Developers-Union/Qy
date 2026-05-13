@@ -1,0 +1,8 @@
+; parallel is order-insensitive and may run concurrently. Effects are still handled.
+(let ()
+  (defeffect ask)
+  (parallel
+    (handle
+      (perform ask 1)
+      ((ask (arg k) (resume k (+ arg 1)))))
+    (+ 20 20)))

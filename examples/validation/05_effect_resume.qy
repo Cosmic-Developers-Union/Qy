@@ -1,0 +1,6 @@
+; perform captures the current continuation. resume continues from the perform point.
+(let ()
+  (defeffect ask)
+  (handle
+    (+ 1 (perform ask 41))
+    ((ask (arg k) (resume k arg)))))

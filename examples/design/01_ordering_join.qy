@@ -1,0 +1,18 @@
+; Design target, not a current validation case.
+;
+; pipeline fixes evaluation order.
+; parallel marks order-insensitive evaluation and allows, but does not require, parallel execution.
+; all is a barrier continuation.
+; race is first-resume-wins.
+
+(pipeline
+  (prepare)
+  (all
+    (parallel
+      (fetch 'a)
+      (fetch 'b)
+      (fetch 'c)))
+  (race
+    (parallel
+      (cache-read 'key)
+      (remote-read 'key))))

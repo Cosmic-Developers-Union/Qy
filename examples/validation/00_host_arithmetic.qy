@@ -1,0 +1,2 @@
+; Host pre-space arithmetic is runtime value/operator lookup, not syntax core.
+(+ (* 6 7) 0)

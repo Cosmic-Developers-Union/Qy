@@ -1,0 +1,7 @@
+; Bytecode/register VM subset: arithmetic, let, defun, cond, tail call.
+(let ()
+  (defun sum-to (n acc)
+    (cond
+      ((eq n 0) acc)
+      (true (sum-to (- n 1) (+ acc n)))))
+  (sum-to 2000 0))

@@ -1,0 +1,8 @@
+; module creates a symbol-space. exports controls what from/import brings into caller space.
+(module examples.validation.math
+  (defun triple (value) (* value 3))
+  (exports triple))
+
+(from examples.validation.math import triple)
+
+(triple 14)
