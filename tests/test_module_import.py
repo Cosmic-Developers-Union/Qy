@@ -149,6 +149,24 @@ def test_from_import_supports_qy_files():
         assert evaluate_source("(scale 7 6)", env) == 42
 
 
+def test_module_macro_can_reference_module_local_helper():
+    """F1: exported macro can reference unexported module-local helper."""
+    env = standard_environment()
+    result = evaluate_source(
+        """
+        (module review.localmacro
+          (defun helper (x) (+ x 1))
+          (macro call-helper (value)
+            (cons 'helper (cons value '())))
+          (exports call-helper))
+        (from review.localmacro import call-helper)
+        (call-helper 41)
+        """,
+        env,
+    )
+    assert result == 42
+
+
 def test_from_import_supports_python_files():
     with TemporaryDirectory() as temp_dir:
         path = Path(temp_dir) / "math_ops.py"

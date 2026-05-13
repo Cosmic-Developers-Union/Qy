@@ -20,7 +20,6 @@ __all__ = [
     "Binding",
     "BindingSource",
     "CallExpr",
-    "ComponentExpr",
     "CondClause",
     "CondExpr",
     "DefeffectExpr",
@@ -163,15 +162,6 @@ class DefunExpr:
 
 
 @dataclass(frozen=True, slots=True)
-class ComponentExpr:
-    name: Symbol
-    params: tuple[Symbol, ...]
-    body: tuple[IRExpr, ...]
-    span: SourceSpan | None = None
-    type_name: TypeName = "function"
-
-
-@dataclass(frozen=True, slots=True)
 class MacroExpr:
     name: Symbol
     params: tuple[Symbol, ...]
@@ -261,7 +251,6 @@ class AssertExpr:
 type IRExpr = (
     AssertExpr
     | CallExpr
-    | ComponentExpr
     | CondExpr
     | DefeffectExpr
     | DefunExpr

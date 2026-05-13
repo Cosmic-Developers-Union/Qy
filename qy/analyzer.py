@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qy.diagnostics import Diagnostic
-from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
@@ -231,7 +230,7 @@ def _value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | ComponentDefinition | IRFunction):
+    if isinstance(value, UserFunction | IRFunction):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

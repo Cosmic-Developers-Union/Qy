@@ -18,29 +18,29 @@ def app():
 
 
 def test_evaluates_target_file(runner, app):
-    result = runner.invoke(app, ["examples/codes/code001.qy"])
+    result = runner.invoke(app, ["examples/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
-    assert "51926.26973684211" in result.output
+    assert "42" in result.output
 
 
 def test_check_command(runner, app):
-    result = runner.invoke(app, ["check", "examples/codes/code001.qy"])
+    result = runner.invoke(app, ["check", "examples/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "ok" in result.output
 
 
 def test_fmt_command(runner, app):
-    result = runner.invoke(app, ["fmt", "examples/codes/code001.qy"])
+    result = runner.invoke(app, ["fmt", "examples/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "(+" in result.output
-    assert "(* 123 456)" in result.output
+    assert "(* 6 7)" in result.output
 
 
 def test_ast_command(runner, app):
-    result = runner.invoke(app, ["ast", "examples/codes/code001.qy"])
+    result = runner.invoke(app, ["ast", "examples/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "Symbol('+')" in result.output

@@ -44,7 +44,6 @@ __all__ = [
     "QY_EMPTY_LIST",
     "QY_NIL",
     "QY_T",
-    "ComponentDefinition",
     "ControlOperator",
     "EffectDefinition",
     "EffectOperator",
@@ -240,28 +239,6 @@ class UserFunction:
             current_args = result.args
 
 
-@dataclass(frozen=True, slots=True)
-class ComponentDefinition:
-    name: Symbol
-    params: tuple[Symbol, ...]
-    body: tuple[object, ...]
-    closure: Environment
-
-    async def __call__(self, *args: object) -> object:
-        if len(args) != len(self.params):
-            raise QyArityError(
-                f"{self.name.name} expects {len(self.params)} arguments, got {len(args)}",
-                span=self.name.span,
-                metadata={
-                    "expected": len(self.params),
-                    "actual": len(args),
-                    "component": self.name.name,
-                },
-            )
-        local_env = Environment(dict(zip(self.params, args, strict=True)), self.closure)
-        return await evaluate_body_async(self.body, local_env)
-
-
 @dataclass(frozen=True, slots=True, eq=False)
 class HostObjectRef:
     value: object
@@ -276,16 +253,23 @@ class Environment:
         self._bindings = dict(bindings or {})
         self._parent = parent
         self._cache: dict[object, object] = parent._cache if parent is not None else {}
+        self._hidden: dict[Symbol, object] = {}
 
     def resolve(self, symbol: Symbol) -> object:
         if symbol in self._bindings:
             return self._bindings[symbol]
+        if symbol in self._hidden:
+            return self._hidden[symbol]
         if self._parent is not None:
             return self._parent.resolve(symbol)
         return _resolve_builtin_literal(symbol)
 
     def define(self, symbol: Symbol, value: object) -> object:
         self._bindings[symbol] = value
+        return value
+
+    def define_hidden(self, symbol: Symbol, value: object) -> object:
+        self._hidden[symbol] = value
         return value
 
     def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
@@ -300,6 +284,13 @@ class Environment:
 
     def local_bindings(self) -> dict[Symbol, object]:
         return dict(self._bindings)
+
+    def hidden_bindings(self) -> dict[Symbol, object]:
+        if self._parent is None:
+            return dict(self._hidden)
+        result = self._parent.hidden_bindings()
+        result.update(self._hidden)
+        return result
 
     def cache_lookup(self, key: object) -> object:
         return self._cache[key]
@@ -651,7 +642,7 @@ async def _apply_operator(
             env,
             lambda arguments: _await_if_needed(operator_value(*arguments)),
         )
-    if isinstance(operator_value, UserFunction | ComponentDefinition):
+    if isinstance(operator_value, UserFunction):
         return await _evaluate_values(
             argument_expressions,
             env,
@@ -1051,8 +1042,6 @@ def _trace_frame(
     operator_value: object | None,
     span: SourceSpan | None,
 ) -> TraceFrame:
-    if isinstance(operator_value, ComponentDefinition):
-        return TraceFrame("component", operator_value.name.name, get_span(operator_expression))
     if isinstance(operator_value, UserFunction):
         name = None if operator_value.name.name == "<lambda>" else operator_value.name.name
         kind = "lambda" if name is None else "call"

@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import cast
 
 from qy.compile_time import compile_time_environment
-from qy.evaluator import ComponentDefinition
 from qy.evaluator import EffectDefinition
 from qy.evaluator import Environment
 from qy.evaluator import UserFunction
@@ -78,7 +77,7 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
             locals_map[item[1]] = UserFunction(item[1], _parameter_symbols(item[2]), (None,), env)
             continue
         if operator == Symbol("component") and len(item) >= 3 and isinstance(item[1], Symbol):
-            locals_map[item[1]] = ComponentDefinition(
+            locals_map[item[1]] = UserFunction(
                 item[1],
                 _parameter_symbols(item[2]),
                 (None,),

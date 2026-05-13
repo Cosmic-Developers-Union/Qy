@@ -89,6 +89,10 @@ class _FunctionCompiler:
                 )
                 self.patches.append(_Patch(len(self.instructions), _block_id(true_block)))
                 self.instructions.append(Instruction("JUMP", (None,), terminator.span))
+            case "RAISE_EFFECT":
+                self.instructions.append(
+                    Instruction("RAISE_EFFECT", terminator.operands, terminator.span)
+                )
 
     def patch_jumps(self) -> None:
         for patch in self.patches:

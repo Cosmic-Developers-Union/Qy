@@ -15,7 +15,6 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
-from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
@@ -29,7 +28,6 @@ from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import AssertExpr
 from qy.ir import CallExpr
-from qy.ir import ComponentExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
 from qy.ir import DefunExpr
@@ -77,7 +75,7 @@ __all__ = [
     "evaluate_ir_source_async",
 ]
 
-IRCallableKind = Literal["function", "component", "lambda"]
+IRCallableKind = Literal["function", "lambda"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,15 +143,6 @@ class IRVirtualMachine:
         if isinstance(expression, DefunExpr):
             function = IRFunction(expression.name, expression.params, expression.body, env)
             return env.define(expression.name, function)
-        if isinstance(expression, ComponentExpr):
-            component = IRFunction(
-                expression.name,
-                expression.params,
-                expression.body,
-                env,
-                "component",
-            )
-            return env.define(expression.name, component)
         if isinstance(expression, MacroExpr):
             return None
         if isinstance(expression, DefeffectExpr):
@@ -812,7 +801,7 @@ class IRVirtualMachine:
                         )
                     return await _await_if_needed(operator(*evaluated_args))
                 return await _await_if_needed(operator(*args))
-            if isinstance(operator, UserFunction | ComponentDefinition):
+            if isinstance(operator, UserFunction):
                 return await _await_if_needed(operator(*args))
             raise QyTypeError(
                 f"IR call resolved to non-callable {operator!r}",
@@ -880,17 +869,6 @@ class IRVirtualMachine:
                 env.define(
                     expression.name,
                     IRFunction(expression.name, expression.params, expression.body, env),
-                )
-            elif isinstance(expression, ComponentExpr):
-                env.define(
-                    expression.name,
-                    IRFunction(
-                        expression.name,
-                        expression.params,
-                        expression.body,
-                        env,
-                        "component",
-                    ),
                 )
 
     async def _raise_effect_signal(

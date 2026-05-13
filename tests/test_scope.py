@@ -64,5 +64,5 @@ def test_component_defines_callable_component():
     component = evaluate_source("(component scale (x factor) (* x factor))", env)
 
     assert isinstance(component, IRFunction)
-    assert component.kind == "component"
+    assert component.kind == "function"
     assert evaluate_source("(scale 7 6)", env) == 42

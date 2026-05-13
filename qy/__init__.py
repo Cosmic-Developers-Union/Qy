@@ -38,7 +38,6 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.errors import format_qy_error
-from qy.evaluator import ComponentDefinition
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectDefinition
 from qy.evaluator import EffectOperator
@@ -150,7 +149,6 @@ __all__ = [
     "BytecodeFunctionValue",
     "BytecodeProgram",
     "CallExpr",
-    "ComponentDefinition",
     "ControlOperator",
     "Diagnostic",
     "DottedTuple",

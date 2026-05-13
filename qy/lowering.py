@@ -12,7 +12,6 @@ from qy.evaluator import standard_environment
 from qy.ir import AssertExpr
 from qy.ir import Binding
 from qy.ir import CallExpr
-from qy.ir import ComponentExpr
 from qy.ir import CondClause
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
@@ -133,7 +132,8 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
 
 def _scope_from_environment(env: Environment) -> Scope:
     scope = Scope()
-    for symbol, value in env.bindings().items():
+    all_visible = {**env.bindings(), **env.hidden_bindings()}
+    for symbol, value in all_visible.items():
         scope = scope.define(
             Binding(
                 symbol,
@@ -404,7 +404,7 @@ def _lower_component(
 ) -> IRExpr:
     if len(form) < 4:
         context.diagnostic("component expects a name, parameter list, and body", form)
-        return ComponentExpr(Symbol("<invalid>"), (), (), get_span(form))
+        return DefunExpr(Symbol("<invalid>"), (), (), get_span(form))
     _, name, params, *body = form
     name = _ensure_symbol(name, "component name", context)
     param_symbols = _parameter_symbols(params, "component", context)
@@ -414,7 +414,7 @@ def _lower_component(
         context,
     )
     component_scope = _define_parameters(component_scope, param_symbols, context)
-    return ComponentExpr(
+    return DefunExpr(
         name,
         param_symbols,
         _lower_body(tuple(body), component_scope, context, tail=True),

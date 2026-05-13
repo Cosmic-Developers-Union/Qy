@@ -7,12 +7,14 @@ Qy is a symbolic Lisp-like language implemented in Python.
 The public pipeline is intentionally explicit:
 
 ```text
-read
-  -> macroexpand
-  -> lower (HIR / ProgramIR)
-  -> lower_mir
-  -> compile_bytecode
-  -> RegisterVirtualMachine
+source
+  -> ast
+  -> expand
+  -> HIR
+  -> MIR
+  -> LIR
+  -> bytecode
+  -> register VM
 ```
 
 For the Python API, the corresponding entry points are `Qy.read(...)`, `Qy.macroexpand_source(...)`, `Qy.lower(...)`, `Qy.lower_mir(...)`, `Qy.compile_bytecode(...)`, and `RegisterVirtualMachine(...)`.
@@ -42,8 +44,9 @@ pip install 'QyLang[cli]'
 Evaluate a file:
 
 ```shell
-qy examples/codes/code001.qy
-qy run examples/codes/code001.qy
+qy examples/validation/00_host_arithmetic.qy
+qy run examples/validation/00_host_arithmetic.qy
+uv run python examples/run_validation.py
 ```
 
 Start the interactive interpreter:
@@ -70,9 +73,9 @@ qy lsp
 Format, inspect, and type-check qy source:
 
 ```shell
-qy fmt examples/codes/code001.qy
-qy ast examples/codes/code001.qy
-qy check examples/codes/code001.qy
+qy fmt examples/validation/00_host_arithmetic.qy
+qy ast examples/validation/00_host_arithmetic.qy
+qy check examples/validation/00_host_arithmetic.qy
 ```
 
 Import standard operators with aliases:

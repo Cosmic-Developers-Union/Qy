@@ -208,7 +208,6 @@ def _module_from_public_callables(module: types.ModuleType, path: Path) -> Stand
 
 
 def _coerce_python_export(name: str, value: object) -> object:
-    from qy.evaluator import ComponentDefinition
     from qy.evaluator import ControlOperator
     from qy.evaluator import EffectOperator
     from qy.evaluator import MetaOperator
@@ -225,8 +224,7 @@ def _coerce_python_export(name: str, value: object) -> object:
         | EffectOperator
         | MetaOperator
         | MacroDefinition
-        | UserFunction
-        | ComponentDefinition,
+        | UserFunction,
     ):
         return value
     if callable(value):

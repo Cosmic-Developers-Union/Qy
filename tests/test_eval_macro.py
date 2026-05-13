@@ -206,6 +206,23 @@ def test_macro_hygiene_component_params_do_not_capture_call_site_symbols():
     )
 
 
+def test_macro_hygiene_alias_not_in_env_bindings():
+    """F2: hygiene aliases must not appear in env.bindings() (REPL/debug visibility)."""
+    env = standard_environment()
+    evaluate_source(
+        """
+        (macro add-one (x)
+          (cons '+ (cons x (cons 1 '()))))
+        (add-one 41)
+        """,
+        env,
+    )
+    visible_names = {sym.name for sym in env.bindings()}
+    assert not any(name.startswith("__qy_hygiene_") for name in visible_names), (
+        f"hygiene aliases leaked into env.bindings(): {[n for n in visible_names if n.startswith('__qy_hygiene_')]}"
+    )
+
+
 def test_macro_hygiene_handle_params_do_not_capture_call_site_symbols():
     env = standard_environment()
     evaluate_source(

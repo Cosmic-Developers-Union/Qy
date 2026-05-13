@@ -7,17 +7,24 @@ from typing import cast
 
 from qy.diagnostics import Diagnostic
 from qy.errors import SourceSpan
+from qy.ir import AssertExpr
 from qy.ir import CallExpr
-from qy.ir import ComponentExpr
 from qy.ir import CondExpr
+from qy.ir import DefeffectExpr
 from qy.ir import DefunExpr
+from qy.ir import FromImportExpr
+from qy.ir import HandleExpr
 from qy.ir import IRExpr
 from qy.ir import LambdaExpr
 from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import MacroExpr
+from qy.ir import ModuleExpr
+from qy.ir import PerformExpr
 from qy.ir import ProgramIR
 from qy.ir import QuoteExpr
+from qy.ir import ResumeExpr
+from qy.ir import RuntimeEvalExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.mir import MIRBlock
@@ -114,16 +121,6 @@ class _FunctionLowerer:
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
             self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
             return _LoweredExpression(register)
-        if isinstance(expression, ComponentExpr):
-            function_index = self.owner.lower_function(
-                expression.name,
-                expression.params,
-                expression.body,
-            )
-            register = self.register()
-            self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
-            self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
-            return _LoweredExpression(register)
         if isinstance(expression, LambdaExpr):
             function_index = self.owner.lower_function(
                 Symbol("<lambda>"),
@@ -151,6 +148,22 @@ class _FunctionLowerer:
             return self.lower_cond(expression, tail=tail)
         if isinstance(expression, CallExpr):
             return self.lower_call(expression, tail=tail)
+        if isinstance(expression, AssertExpr):
+            return self.lower_assert(expression, tail=tail)
+        if isinstance(expression, RuntimeEvalExpr):
+            return self.lower_runtime_eval(expression)
+        if isinstance(expression, ModuleExpr):
+            return self.lower_module(expression)
+        if isinstance(expression, FromImportExpr):
+            return self.lower_from_import(expression)
+        if isinstance(expression, DefeffectExpr):
+            return self.lower_defeffect(expression)
+        if isinstance(expression, PerformExpr):
+            return self.lower_perform(expression)
+        if isinstance(expression, HandleExpr):
+            return self.lower_handle(expression)
+        if isinstance(expression, ResumeExpr):
+            return self.lower_resume(expression)
 
         self.owner.diagnostic(f"MIR lowering does not support {type(expression).__name__}")
         return _LoweredExpression(None)
@@ -232,6 +245,118 @@ class _FunctionLowerer:
             return _LoweredExpression(None)
         result = self.register()
         self.emit("CALL", result, operator.register, tuple(arg_registers), span=expression.span)
+        return _LoweredExpression(result)
+
+    def lower_assert(self, expression: AssertExpr, *, tail: bool) -> _LoweredExpression:
+        condition = self.lower_expr(expression.condition)
+        if condition.register is None:
+            return _LoweredExpression(None)
+
+        pass_block = self.new_block()
+        fail_block = self.new_block()
+        self.terminate(
+            "BRANCH",
+            condition.register,
+            pass_block.id,
+            fail_block.id,
+            span=_span_of(expression.condition),
+        )
+
+        self.switch_to(fail_block)
+        if expression.message is not None:
+            msg_result = self.lower_expr(expression.message)
+            msg_reg = msg_result.register
+        else:
+            msg_reg = None
+        if msg_reg is None:
+            msg_reg = self.register()
+            self.emit("LOAD_CONST", msg_reg, Symbol("assertion failed"), span=expression.span)
+        if not self.current.terminated:
+            self.terminate(
+                "RAISE_EFFECT",
+                Symbol("assert-failed"),
+                msg_reg,
+                False,
+                span=expression.span,
+            )
+
+        self.switch_to(pass_block)
+        if tail:
+            self.terminate("RETURN", condition.register, span=expression.span)
+            return _LoweredExpression(None)
+
+        result_register = self.register()
+        end_block = self.new_block()
+        self.emit("MOVE", result_register, condition.register, span=expression.span)
+        self.terminate("JUMP", end_block.id, span=expression.span)
+        self.switch_to(end_block)
+        return _LoweredExpression(result_register)
+
+    def lower_runtime_eval(self, expression: RuntimeEvalExpr) -> _LoweredExpression:
+        inner = self.lower_expr(expression.expression)
+        if inner.register is None:
+            return _LoweredExpression(None)
+        result = self.register()
+        self.emit("RUNTIME_EVAL", result, inner.register, span=expression.span)
+        return _LoweredExpression(result)
+
+    def lower_module(self, expression: ModuleExpr) -> _LoweredExpression:
+        function_index = self.owner.lower_function(
+            Symbol("<module-body>"),
+            (),
+            expression.body,
+        )
+        result = self.register()
+        self.emit("DEFINE_MODULE", result, expression.name, function_index, span=expression.span)
+        return _LoweredExpression(result)
+
+    def lower_from_import(self, expression: FromImportExpr) -> _LoweredExpression:
+        self.emit("FROM_IMPORT", expression.module, expression.specs, span=expression.span)
+        return _LoweredExpression(None)
+
+    def lower_defeffect(self, expression: DefeffectExpr) -> _LoweredExpression:
+        self.emit("DEFEFFECT", expression.name, expression.resumable, span=expression.span)
+        return _LoweredExpression(None)
+
+    def lower_perform(self, expression: PerformExpr) -> _LoweredExpression:
+        arg = self.lower_expr(expression.argument)
+        if arg.register is None:
+            return _LoweredExpression(None)
+        result = self.register()
+        self.emit("PERFORM", result, expression.effect, arg.register, span=expression.span)
+        return _LoweredExpression(result)
+
+    def lower_handle(self, expression: HandleExpr) -> _LoweredExpression:
+        body_fn_idx = self.owner.lower_function(
+            Symbol("<handle-body>"),
+            (),
+            (expression.expression,),
+        )
+        handler_specs: list[tuple[object, ...]] = []
+        for handler in expression.handlers:
+            handler_fn_idx = self.owner.lower_function(
+                Symbol(f"<handler-{handler.effect.name}>"),
+                (handler.arg_name, handler.continuation_name),
+                handler.body,
+            )
+            handler_specs.append((handler.effect, handler_fn_idx))
+        result = self.register()
+        self.emit(
+            "HANDLE",
+            result,
+            body_fn_idx,
+            tuple(handler_specs),
+            span=expression.span,
+        )
+        return _LoweredExpression(result)
+
+    def lower_resume(self, expression: ResumeExpr) -> _LoweredExpression:
+        cont = self.lower_expr(expression.continuation)
+        value = self.lower_expr(expression.value)
+        if cont.register is None or value.register is None:
+            return _LoweredExpression(None)
+        result = self.register()
+        self.emit("RESUME", result, cont.register, value.register, span=expression.span)
         return _LoweredExpression(result)
 
     def new_block(self) -> _MutableBlock:

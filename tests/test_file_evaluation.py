@@ -1,20 +1,17 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import pytest
-
 from qy.evaluator import evaluate_file
 from qy.reader import Symbol
 
 S = Symbol
 
 
-def test_example_code001():
-    path = Path("examples/codes/code001.qy")
+def test_validation_example_file():
+    path = Path("examples/validation/00_host_arithmetic.qy")
     result = evaluate_file(path)
 
-    assert isinstance(result, float)
-    assert result == pytest.approx(51926.26973684211)
+    assert result == 42
 
 
 def test_evaluate_file_runs_program_and_returns_last_value():

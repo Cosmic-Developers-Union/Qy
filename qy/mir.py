@@ -37,17 +37,24 @@ MIRBlockId = int
 MIROpcode = Literal[
     "APPEND_RESULT",
     "CALL",
+    "DEFEFFECT",
+    "DEFINE_MODULE",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
+    "FROM_IMPORT",
+    "HANDLE",
     "LOAD_CONST",
     "LOAD_ENV",
     "MAKE_FUNCTION",
     "MAKE_MACRO",
     "MOVE",
+    "PERFORM",
+    "RESUME",
+    "RUNTIME_EVAL",
     "STORE_LOCAL",
 ]
 
-MIRTerminatorOpcode = Literal["BRANCH", "JUMP", "RETURN", "TAIL_CALL"]
+MIRTerminatorOpcode = Literal["BRANCH", "JUMP", "RAISE_EFFECT", "RETURN", "TAIL_CALL"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +198,66 @@ def _verify_instruction(
             _check_register(function, block_id, operands[0], diagnostics)
             _check_register(function, block_id, operands[1], diagnostics)
             _check_register_tuple(function, block_id, instruction.opcode, operands[2], diagnostics)
+        case "DEFINE_MODULE":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+            _check_int_operand(function, block_id, instruction.opcode, operands[2], diagnostics)
+        case "DEFEFFECT":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
+            if not isinstance(operands[1], bool):
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block_id} instruction {instruction.opcode!r} expects bool resumable operand, got {operands[1]!r}"
+                    )
+                )
+        case "PERFORM":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+            _check_register(function, block_id, operands[2], diagnostics)
+        case "HANDLE":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_int_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+            _check_tuple_operand(
+                function, block_id, instruction.opcode, "handler specs tuple", operands[2], diagnostics
+            )
+        case "RESUME":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
+            _check_register(function, block_id, operands[2], diagnostics)
+        case "FROM_IMPORT":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
+            _check_tuple_operand(
+                function,
+                block_id,
+                instruction.opcode,
+                "import specs tuple",
+                operands[1],
+                diagnostics,
+            )
         case "LOAD_CONST":
             if _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
@@ -234,6 +301,13 @@ def _verify_instruction(
                 diagnostics,
             )
         case "MOVE":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
+        case "RUNTIME_EVAL":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
             ):
@@ -289,6 +363,19 @@ def _verify_terminator(
                 return
             if operands[0] is not None:
                 _check_register(function, block_id, operands[0], diagnostics)
+        case "RAISE_EFFECT":
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_symbol_operand(function, block_id, terminator.opcode, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
+            if not isinstance(operands[2], bool):
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block_id} terminator {terminator.opcode!r} expects bool resumable operand, got {operands[2]!r}"
+                    )
+                )
         case "TAIL_CALL":
             if not _check_operand_arity(
                 function, block_id, "terminator", terminator.opcode, operands, 2, diagnostics
@@ -465,8 +552,17 @@ def _format_instruction(instruction: MIRInstruction) -> str:
                 f"{_format_register(operands[0])} = CALL {_format_register(operands[1])} "
                 f"{_format_operand(operands[2])}"
             )
+        case "DEFINE_MODULE":
+            rendered = f"{_format_register(operands[0])} = DEFINE_MODULE {_format_operand(operands[1])} fn#{operands[2]}"
         case "ENTER_SCOPE" | "EXIT_SCOPE":
             rendered = instruction.opcode
+        case "FROM_IMPORT":
+            specs = operands[1]
+            specs_str = ", ".join(
+                f"{s.name.name} as {s.alias.name}"
+                for s in (specs if isinstance(specs, tuple) else ())
+            )
+            rendered = f"FROM_IMPORT {_format_operand(operands[0])} [{specs_str}]"
         case "LOAD_CONST":
             rendered = (
                 f"{_format_register(operands[0])} = LOAD_CONST {_format_operand(operands[1])}"
@@ -482,6 +578,22 @@ def _format_instruction(instruction: MIRInstruction) -> str:
             )
         case "MOVE":
             rendered = f"{_format_register(operands[0])} = MOVE {_format_register(operands[1])}"
+        case "DEFEFFECT":
+            rendered = f"DEFEFFECT {_format_operand(operands[0])}, resumable={operands[1]}"
+        case "PERFORM":
+            rendered = f"{_format_register(operands[0])} = PERFORM {_format_operand(operands[1])} {_format_register(operands[2])}"
+        case "HANDLE":
+            specs = operands[2]
+            specs_str = ", ".join(
+                f"{s[0].name} -> fn#{s[1]}" for s in (specs if isinstance(specs, tuple) else ())
+            )
+            rendered = f"{_format_register(operands[0])} = HANDLE fn#{operands[1]} [{specs_str}]"
+        case "RESUME":
+            rendered = f"{_format_register(operands[0])} = RESUME {_format_register(operands[1])} {_format_register(operands[2])}"
+        case "RUNTIME_EVAL":
+            rendered = (
+                f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
+            )
         case "STORE_LOCAL":
             rendered = (
                 f"STORE_LOCAL {_format_operand(operands[0])}, {_format_register(operands[1])}"
@@ -500,6 +612,8 @@ def _format_terminator(terminator: MIRTerminator) -> str:
             rendered = f"JUMP bb{operands[0]}"
         case "RETURN":
             rendered = f"RETURN {_format_operand(operands[0])}"
+        case "RAISE_EFFECT":
+            rendered = f"RAISE_EFFECT {_format_operand(operands[0])}, {_format_register(operands[1])}, resumable={operands[2]}"
         case "TAIL_CALL":
             rendered = f"TAIL_CALL {_format_register(operands[0])} {_format_operand(operands[1])}"
         case _:

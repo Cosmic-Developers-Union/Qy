@@ -5,28 +5,34 @@
 ## 管线概览
 
 ```text
-read
-  -> macroexpand
-  -> lower (HIR / ProgramIR)
-  -> lower_mir (MIR / CFG)
-  -> compile_mir_bytecode / compile_bytecode
-  -> RegisterVirtualMachine
+source
+  -> ast
+  -> expand
+  -> HIR
+  -> MIR
+  -> LIR
+  -> bytecode
+  -> register VM
 ```
 
 `Qy.evaluate_source(...)` 默认仍使用 IR backend，因为它目前仍是语义最完整的参考实现。
 
 `Qy(backend="bytecode")` 已可用，但 bytecode backend 仍是实验性后端：它适合 review、调试和核心 eager 子集验证，不应被当作完整语言执行器。
 
+当前实现还没有独立 LIR dataclass/API；`compile_mir_bytecode` 暂时从 MIR 直接生成 bytecode。后续应补 LIR，禁止 bytecode compiler 重新理解 MIR 以上的语义。
+
 ## 分层边界
 
 | 层 | 输入 | 输出 | 是否产生 diagnostics | 是否依赖 Environment |
 | --- | --- | --- | --- | --- |
-| reader | 源码字符串 | `list[Form]` | 是，reader syntax error | 否 |
-| macroexpand | `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误、compile-time evaluation 错误 | 是，当前通过 compile-time facade 捕获环境快照 |
-| lower | macroexpanded form | `ProgramIR` | 是，未解析符号、arity、module import 等 | 是 |
-| lower_mir | `ProgramIR` | `MIRProgram` | 是，当前覆盖不到的 HIR 节点应进入 MIR diagnostics | 否，消费的是已 lowering 的 HIR |
-| compile_mir_bytecode | `MIRProgram` | `BytecodeProgram` | 是，沿用 MIR diagnostics | 否 |
-| RegisterVirtualMachine | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期错误通过异常返回 | 是，执行时需要 runtime environment |
+| source | 文本 | 源码字符串 | 否 | 否 |
+| ast / reader | 源码字符串 | `list[Form]` syntax datum | 是，reader syntax error | 否 |
+| expand / macroexpand | `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误、compile-time evaluation 错误 | 是，当前通过 compile-time facade 捕获环境快照 |
+| HIR / lower | macroexpanded form | `ProgramIR` | 是，未解析符号、arity、module import 等 | 是 |
+| MIR / lower_mir | `ProgramIR` | `MIRProgram` | 是，当前覆盖不到的 HIR 节点应进入 MIR diagnostics | 否，消费的是已 lowering 的 HIR |
+| LIR | `MIRProgram` | 待实现的低层 register VM IR | 是 | 否 |
+| bytecode | LIR，当前暂时为 `MIRProgram` | `BytecodeProgram` | 是，沿用 MIR/LIR diagnostics | 否 |
+| register VM | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期错误通过异常返回 | 是，执行时需要 runtime environment |
 
 ## 稳定 API 与兼容 API
 
@@ -48,7 +54,7 @@ read
 - `qy.__init__` 中 re-export 的 `evaluate*`、`standard_environment`、`Environment`
 - 直接从 `qy.evaluator` 引入运行时类型或 legacy evaluator helper
 
-后续新功能应优先沿着 `read -> macroexpand -> lower -> lower_mir -> bytecode/VM` 这条线推进，而不是继续扩大对 `evaluator.py` 的直接依赖。
+后续新功能应优先沿着 `source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM` 这条线推进，而不是继续扩大对 `evaluator.py` 的直接依赖。
 
 ## Compile-Time Runtime 现状
 
@@ -80,16 +86,16 @@ read
 当前 CLI 提供四个调试命令用于观察各阶段产物：
 
 ```shell
-qy expand examples/codes/code001.qy
-qy hir examples/codes/code001.qy
-qy mir examples/codes/code001.qy
-qy bytecode examples/codes/code001.qy
+qy expand examples/validation/00_host_arithmetic.qy
+qy hir examples/validation/00_host_arithmetic.qy
+qy mir examples/validation/00_host_arithmetic.qy
+qy bytecode examples/validation/09_register_vm_tail_call.qy
 ```
 
 四个命令都支持 stdin：
 
 ```shell
-cat examples/codes/code001.qy | qy mir -
+cat examples/validation/00_host_arithmetic.qy | qy mir -
 printf '(+ 1 2)\n' | qy bytecode -
 ```
 

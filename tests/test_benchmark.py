@@ -37,7 +37,7 @@ def test_benchmark_runner_smoke_test():
     assert all(result.ops_per_second > 0 for result in results)
 
 
-def test_benchmark_runner_skips_unsupported_bytecode_phase():
+def test_benchmark_runner_runs_effect_benchmark_in_bytecode_phase():
     results = run_benchmarks(
         cases=(
             BenchmarkCase(
@@ -52,7 +52,9 @@ def test_benchmark_runner_skips_unsupported_bytecode_phase():
         warmup=0,
     )
 
-    assert results == ()
+    assert len(results) == 1
+    assert results[0].case == "effect"
+    assert results[0].phase == "bytecode_vm"
 
 
 def test_benchmark_compare_reports_only_threshold_regressions():

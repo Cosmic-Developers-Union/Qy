@@ -7,12 +7,14 @@ Qy 是一个由 Python 实现的符号化 Lisp 方言。
 当前公开管线如下：
 
 ```text
-read
-  -> macroexpand
-  -> lower (HIR / ProgramIR)
-  -> lower_mir
-  -> compile_bytecode
-  -> RegisterVirtualMachine
+source
+  -> ast
+  -> expand
+  -> HIR
+  -> MIR
+  -> LIR
+  -> bytecode
+  -> register VM
 ```
 
 对应的 Python API 入口是 `Qy.read(...)`、`Qy.macroexpand_source(...)`、`Qy.lower(...)`、`Qy.lower_mir(...)`、`Qy.compile_bytecode(...)` 和 `RegisterVirtualMachine(...)`。
@@ -36,7 +38,8 @@ Macro expansion 默认通过 `MacroExpansionOptions(effect_policy="deny")` 拒�
 求值文件：
 
 ```shell
-qy examples/codes/code001.qy
+qy examples/validation/00_host_arithmetic.qy
+uv run python examples/run_validation.py
 ```
 
 启动交互式解释器：
@@ -54,9 +57,9 @@ qy lsp
 格式化、查看 AST、类型检查：
 
 ```shell
-qy fmt examples/codes/code001.qy
-qy ast examples/codes/code001.qy
-qy check examples/codes/code001.qy
+qy fmt examples/validation/00_host_arithmetic.qy
+qy ast examples/validation/00_host_arithmetic.qy
+qy check examples/validation/00_host_arithmetic.qy
 ```
 
 Python API：
