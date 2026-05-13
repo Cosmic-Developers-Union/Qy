@@ -133,6 +133,19 @@ UNITS = [
     (1_000, "K"),
 ]
 
+SIZE_MARKERS = [
+    (2048, "···"),  # ≤ 2K: 极为舒适
+    (4096, "·--"),  # ≤ 4K: 标准
+    (8192, "---"),  # ≤ 8K: 较为困难
+]
+
+
+def _size_mark(n: int) -> str:
+    for threshold, mark in SIZE_MARKERS:
+        if n <= threshold:
+            return mark
+    return "XXX"  # > 8K: 需要拆分
+
 
 def _fmt_tokens(n: int) -> str:
     if n >= 1_000:
@@ -167,7 +180,8 @@ def render_tree(
         connector = "└── " if is_last else "├── "
         suffix = "/" if node.is_dir else ""
         token_str = _fmt_tokens(node.tokens).rjust(10)
-        lines.append(f"{prefix}{connector}{node.name}{suffix}  {token_str} tokens")
+        mark = _size_mark(node.tokens) if not node.is_dir else ""
+        lines.append(f"{prefix}{connector}{node.name}{suffix}  {token_str} tokens {mark}")
 
     child_prefix = prefix + ("    " if is_last or is_root else "│   ")
     for i, child in enumerate(node.children):
@@ -198,8 +212,8 @@ def main() -> None:
     parser.add_argument(
         "path",
         nargs="?",
-        default=".",
-        help="Project root directory (default: current directory).",
+        default="qy",
+        help="Project root directory (default: qy).",
     )
     parser.add_argument(
         "-e",
@@ -249,6 +263,12 @@ def main() -> None:
     sep = "─" * 50
     lines.append(sep)
     lines.append(f"Total: {_fmt_tokens(total_tokens)} tokens ({len(files)} files)")
+    lines.append("")
+    lines.append("Marker legend:")
+    lines.append("  ···  ≤ 2,048 tokens  极为舒适")
+    lines.append("  ·--  ≤ 4,096 tokens  标准")
+    lines.append("  ---  ≤ 8,192 tokens  较为困难")
+    lines.append("  XXX  > 8,192 tokens  需要拆分")
 
     print("\n".join(lines))
 

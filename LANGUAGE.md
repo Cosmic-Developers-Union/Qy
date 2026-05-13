@@ -1,191 +1,104 @@
-# Qy 语言草稿
+# Qy Language
 
-Qy 是一个嵌入式、动态类型(强类型)、函数式、基于 effect 的 Lisp 方言，运行在 Python async runtime 上.
+Qy 是 Python 实现的 like-Lisp 语言，核心目标是 algebraic effects + register VM。Python 是宿主，不是语言语义本体。
 
-## 设计哲学
+## Pipeline
 
-- 一切皆符号.
-- 简单.
-
-## 语法
-
-Qy 语法基于 S-expression，使用前缀表示法。除此之外, 没有其他任何规则.
-
-对于单个的文件, 支持多个 S-expression, 以及注释. 例如:
-
-```qy
-; 这是一个注释
-(op ...)
-(op ...)
+```text
+source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 ```
 
-## 词法
+- `source`：文本。
+- `ast`：reader 输出的 syntax datum。
+- `expand`：macro 展开，输入/输出仍是 syntax datum。
+- `HIR`：高层语义 IR，解析 binding、operator signature、effect signature、module/macro 语义。
+- `MIR`：CFG / virtual register IR，表达控制流、tail call、effect control flow。
+- `LIR`：低层 register VM IR，完成 register layout、opcode lowering、host-call lowering、effect frame lowering。
+- `bytecode`：register VM 指令序列，不重新理解 HIR/MIR 语义。
+- `register VM`：最终执行器。IR VM 只是过渡期 reference runtime。
 
-核心 reader 规则:
+## Data Model
 
-- `abc` 读为 symbol.
-- `"abc"` 读为 symbol, 内容为 `abc`.
-- `(f a b)` 读为 chain form.
-- `(a . b)` 读为 dotted chain form.
-- `'x` 读为 `(quote x)`.
-- `tag"abc"` 读为 `(tag (quote "abc"))`.
-- `tag"""abc"""` 读为 `(tag (quote """abc"""))`.
-- `;` 开始一行注释.
+- Syntax datum 只有两类：`symbol` 与 `chain`。
+- Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
+- Runtime value 存在于 symbol-space/env 中，由 `number`、`string`、`object` 构成。
+- `number` 与 `string` 是特殊 object。
+- Host value 是一等 runtime value，Qy 可以直接操作。
+- `quote` 返回 syntax datum，不触发 runtime lookup。
 
-## Execution Backend 执行后端
+## Symbol Space
 
-Qy 通过 python 完成`执行后端`的设计.
+- Qy 没有 `setq`。
+- `define` 在当前 symbol-space 构建一次性绑定；如果当前 symbol-space 已存在该 symbol，则非法。
+- `define` 会保护当前 symbol-space 内已绑定的 symbol。
+- `let` 构建新的局部 symbol-space，可以绑定任意 symbol，包括外层已有 symbol、核心算子名、宿主注入名。
+- `module`、函数调用 frame、macro 定义环境都按 symbol-space 模型理解，只是生命周期、导出规则和 compile-time/runtime 可见性不同。
+- 外部宿主可以通过注入 symbol-space 来注入 object(host value) 与 operator。
+- 因为 symbol 不可在同一 symbol-space 内重绑定，HIR 可以把确定的 symbol ref 解析为稳定 binding/value；这是后续优化基础。
 
-Qy 支持如下特性:
+## Lookup
 
-- REPL, 解释执行
-- JIT and AOT 编译
-- 编译为纯 Python 代码
+求值一个 symbol 时：
 
-## 值类型
+1. 在当前 symbol-space 链中查找 binding。
+2. 找到则返回对应 runtime value。
+3. 未找到时，可由预空间/default resolver 按 symbol spelling 产生 `number`、`string` 或其他 host object。
+4. 仍无法解析则是 unresolved symbol error。
 
-标准值:
+宏展开阶段操作 syntax datum；runtime lookup 不应污染 macro namespace。macro 的 definition-site binding、hygiene、capture 必须由 compile-time symbol-space 明确建模。
 
-- SYMBOL: 符号类型。
-- CHAIN: Lisp 风格的链表结构。
+## Core Operators
 
-> note: nil <=> '() <=> 'nil, t <=> 't 在符号这一块, 我们完整继承了 Lisp 的设计.
+| 类别          | 算子                                              |
+| ------------- | ------------------------------------------------- |
+| syntax        | `quote`                                           |
+| chain         | `atom` `eq` `car` `cdr` `cons`                    |
+| binding       | `define` `let`                                    |
+| control       | `cond`                                            |
+| ordering/join | `pipeline` `parallel` `race` `all`                |
+| function      | `defun` `lambda` `apply`                          |
+| macro         | `macro` `quasiquote` `unquote` `gensym` `capture` |
+| effect        | `defeffect` `perform` `handle` `resume`           |
+| module        | `module` `from` `import` `exports`                |
 
-求值类型:
+`+`、`-` 等算术纯算子不属于最小语言核；它们来自宿主预空间、stdlib 或 operator namespace。
 
-- NUMBER: 包括整数和浮点数以及复数。
-- STRING: 字符串类型。
+## Operator Semantics
 
-关于数值类型:
+- `quote`：返回参数 syntax datum。
+- `atom`：判断是否非 chain/pair。
+- `eq`：遵循 Lisp eq 语义；symbol 按符号身份，chain/object 按 identity。
+- `car` / `cdr` / `cons`：核心 chain 操作。
+- `cond`：条件分支。
+- `pipeline`：begin/end；串行求值，返回最后一个表达式。
+- `parallel`：parallel-map 风格的 order-insensitive 求值组；允许 VM 并行求值，但不要求并行；支持 effect。
+- `all`：barrier continuation；全部分支完成后恢复 parent continuation。
+- `race`：first-resume wins；最先恢复 parent continuation 的分支决定结果。
+- `defun` / `lambda` / `apply`：函数定义、匿名函数、动态调用。
+- `macro`：compile-time syntax datum -> syntax datum 改写。
+- `quasiquote` / `unquote`：宏构造 syntax datum 的配套机制。
+- `gensym` / `capture`：hygiene 与 intentional capture 机制。
+- `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。
+- `module` / `from` / `import` / `exports`：模块 symbol-space 与导入导出。
 
-- int: 42, -7, +99, `1000,000,000`, `1000_000_000` (下划线分隔的数字)。
-- float: 3.14, -0.001, +2.0, 1e10, -2.5e-3
-- 有理数: 1/3, -5/2
-- complex: 1+2j, -3-4j
+## Effects And Parallel
 
-字符串:
+Qy 不使用 `spawn` / `await` 作为核心算子。
 
-我们特别设计了`tag"..."` 和 `tag"""..."""` 语法来支持带标签的字符串，这在某些场景下非常有用，例如：
+- 并发结构由 `parallel` 表达。
+- 顺序结构由 `pipeline` 表达。
+- 挂起点由 `perform` 表达。
+- 恢复由 `resume` 表达。
+- 调度策略由 `handle` 中的用户代码表达。
+- `all` 与 `race` 定义 parent continuation 的聚合/恢复策略。
 
-- 表达转义
-- 表示多行字符串
+`parallel` 只表示“允许并行”，不要求实现必须并行。没有并行能力的 VM 可以串行执行 `parallel`，但程序不能依赖其子表达式的 observable effect 顺序；需要固定顺序时使用 `pipeline`。
 
-## 求值模型
+`perform` 捕获当前 continuation 并交给最近的动态 handler。handler 可以立即 `resume`，也可以保存 continuation 并在 host callback、queue 或其他调度逻辑中稍后 `resume`。
 
-Qy 的求值模型基于 symbol space lookup 和默认求值。当对一个 symbol 进行求值时, Qy 首先会在 symbol space (env) 中查找该 symbol 的绑定. 如果找到了, 就返回绑定的值. 如果没有找到, 将会采用求职模型的默认求值规则进行求值. 默认求值规则如下:
+## Architecture Rules
 
-- 基本尊重
-
-## 值
-
-核心值：
-
-- symbol
-- chain
-- `nil`
-- `T`
-- `true`、`false`、`none`
-- 整数和浮点数
-- list
-- tuple
-- dict
-- set
-- 算子
-- continuation
-- effect definition
-- host object reference
-
-Qy 源码只直接产生两类结构：symbol 和 chain。symbol 是符号；chain 是 `()`、`(a b c)`、`(a . b)` 这样的 Lisp 链。
-
-`nil` 是 Qy 自己的空值，使用 `QyNil` 单例表示。`T` 是 Qy 自己的真值，使用独立单例表示。
-
-`true`、`false`、`none` 是预定义 symbol，直接映射到 Python `True`、`False`、`None`。
-
-`'()` 与 `nil` 是同一个 Qy 值，因此 `(eq nil '())` 为 `true`。`nil` 不是 Python `None`，也不是 Python `list`。
-
-`nil`、`false`、`none` 和空 chain `()` 为 falsey，数字 `0` 为 truthy。
-
-`'(a b c)` 是 proper chain，`'(a . b)` 是 dotted chain。`cons` 构造 pair，pair 串起来组成 chain。
-
-Python `list`、`tuple`、`dict`、`set` 是运行时数据值，由对应算子显式转换得到，用于宿主互操作和普通数据处理。它们和 chain 保持边界清晰。
-
-## 求值
-
-求值规则：
-
-- symbol 在当前词法环境中解析。
-- 内建 symbol `nil`、`T` 解析为 Qy 自有值。
-- 内建 symbol `true`、`false`、`none` 解析为 Python 值。
-- 数字符号解析为整数或浮点数。
-- 非空 chain 先求值第一个元素作为算子，然后应用算子。
-- `quote` 返回参数本身，不求值。
-- body 按顺序求值所有 form，并返回最后一个值。
-
-普通求值中，未解析 symbol 是错误。部分文本/数据边界算子会把未解析 symbol 保留为 symbol 值，例如 `print`、`str-*`、`py`、 `tuple`、`list`、`dict`、`set`。
-
-如果 symbol 名称已经被绑定，它会解析为该绑定。需要强制得到 symbol 值时使用 `quote`，例如 `'py`。
-
-## 数据算子
-
-构造：
-
-- `(cons head tail)` 构造 chain cell；`tail` 为 chain 时得到 proper chain，为其他值时得到 dotted chain。
-- `(chain value)` 把 Python list/tuple 转换为 Qy chain；chain 原样返回。
-- `(list value...)` 转换为 Python list；单参数为 chain 时展开 chain。
-- `(tuple value...)` 转换为 Python tuple；单参数为 chain 时展开 chain。
-- `(dict key value...)` 转换为 Python dict；单参数为 pair chain 时转为 dict。
-- `(set value...)` 转换为 Python set；单参数为 chain 时展开 chain。
-
-访问：
-
-- `(car value)` 返回 chain 的第一个元素；`nil` 返回 `nil`。
-- `(cdr value)` 返回 chain 的剩余部分；`nil` 返回 `nil`，dotted chain 返回 tail。
-- `(len value)`
-- `(get collection key [default])`
-- `(has? collection key)`
-- `(type value)` 返回类型名称；`(type '(1 2 3))` 返回 `chain`。
-
-比较：
-
-- `(== a b)` 使用 Python `==` 语义。
-- `(is a b)` 使用 Python `is` identity 语义。
-- `(eq a b)` 使用 Lisp 风格 eq；symbol 按名称比较，chain 按 identity 比较，`nil` 与 `'()` 相等。
-
-谓词：
-
-- `(tuple? value)`
-- `(list? value)`
-- `(dict? value)`
-- `(set? value)`
-
-## 作用域
-
-核心作用域 form：
-
-- `(let ((name expr) ...) body...)`
-- `(lambda (arg ...) body...)`
-- `(defun name (arg ...) body...)`
-- `(component name (arg ...) body...)`
-- `(module name body...)`
-- `(from module import name as alias ...)`
-
-Qy 使用词法作用域。函数、组件、宏会捕获其定义环境。
-
-## Effect
-
-核心 effect form：
-
-- `(defeffect name)`
-- `(defeffect name :resumable false)`
-- `(perform effect arg)`
-- `(handle expr ((effect (arg k) body...) ...))`
-- `(resume k value)`
-
-`perform` 执行 effect。`handle` 捕获匹配的 effect。`resume` 继续一个可恢复 effect 的 continuation。
-
-不可恢复 effect 可以像 catch 一样被处理；但尝试恢复它会抛出 `QY_EFFECT_ERROR`。
-
-内建不可恢复 effect：
-
-- `python-error`
-- `assert-failed`
+- stdlib 可以扩展 runtime 预空间、命名空间与 host interop，但不能反向定义语法核心。
+- analyzer/lowering/runtime 必须共享 operator metadata，不能各自发明语义。
+- bytecode compiler 不能重新理解 HIR/MIR；低层语义 lowering 必须经由 LIR。
+- register VM 是最终执行目标；IR VM 只能作为 reference/compatibility layer。
