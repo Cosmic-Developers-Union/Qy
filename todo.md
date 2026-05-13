@@ -4,8 +4,9 @@
 
 最近 review 基于当前 HEAD：
 
-- `8a613ed feat: 优化宏和MIR`
+- `603be01 feat: 推进 MIR and macro`
 - 开始 review 时工作区干净；本次只更新本文档。
+- 验证结果：`uv run python -m pytest -q` 通过，259 passed；`make lint` 通过。
 
 ## 协作规则
 
@@ -59,6 +60,77 @@ read
 - 主要技术债仍是 `evaluator.py`：它还承载 runtime value、operator class、Environment、legacy API、部分 stdlib helper。
 - macro 系统仍处于过渡期：已有局部 macro scope、trace、source_map 雏形，但模块级 macro、hygiene、compile-time runtime 还没闭合。
 - Register VM 是实验后端：可以跑核心 eager 子集和自尾递归，但 module/effect/component/eval/assert 等语义还未覆盖。
+
+## 本轮 Review 结论
+
+### 已确认完成
+
+- `P0-01`：`report.md` 已建立，记录格式可用。
+- `P0-02`：`docs/pipeline.md` 已建立。
+- `P0-03`：`compile_mir_bytecode` 与 `Qy.compile_mir_bytecode` 已公开。
+- `P0-04`：CLI 已新增 `expand`、`hir`、`mir`、`bytecode` 调试命令，支持 stdin。
+- `MIR-02`：`verify_mir(program)` 已实现，并接入 `compile_mir_bytecode`。
+- `MIR-01` 第一阶段：unsupported HIR 节点已改为明确 diagnostic，不再静默 `LOAD_CONST None`。
+- `MACRO-02` 第一阶段：module macro scope、`macro_exports`、macro-only import 已有基本路径和测试。
+- `MACRO-04` 第一阶段：新增 `qy/compile_time.py` facade，`MacroDefinition` 不再在 `qy.macro` 中直接引用 `Environment` 类型。
+- `MACRO-05` 第一阶段：nested macro error 已带 expansion chain。
+
+### Review 发现的问题
+
+#### REVIEW-01. `MACRO-01` 仍未真正完成
+
+`macroexpand` 阶段已经不再把 top-level macro 写入 runtime `Environment`，但完整求值路径仍会污染 runtime namespace：
+
+```python
+env = standard_environment()
+evaluate_source("(macro const-answer () 42)", env)
+env.resolve(Symbol("const-answer"))  # 仍然得到 MacroDefinition
+```
+
+原因是 macroexpand 后仍保留 `(macro ...)` form，HIR/IR VM 执行 `MacroExpr` 时仍调用 `env.define(...)`。
+
+要求：
+
+- 明确 `(macro ...)` 在 runtime 阶段到底是否应返回值。
+- 如果 macro 是纯 compile-time binding，runtime evaluation 不应再把它写入 value namespace。
+- 更新 `tests/test_eval_macro.py` 中仍期待 `evaluate_source("(macro ...)")` 返回 `MacroDefinition` 的旧断言。
+
+#### REVIEW-02. Analyzer 与 lowering 对 macro-only import 的语义不一致
+
+`lowering._scope_after_form` 已能把 `module.macro_exports` 加入 scope，但 `analyzer._scope_after_form` 仍只处理 runtime exports。
+
+复现：
+
+```python
+register_module(StandardModule("review.macros", {}, {
+    Symbol("const-answer"): MacroDefinition(Symbol("const-answer"), (), (42,), env)
+}))
+analyze_source("(from review.macros import const-answer)\n(const-answer)", env)
+# 当前会得到 unresolved symbol 'const-answer'
+```
+
+要求：
+
+- analyzer 的 `from` scope 更新逻辑必须与 lowering 对齐。
+- macro-only import 在 analyzer 中应作为 compile-time callable/operator 进入 scope，或在 analyze 前走 macroexpand。
+- 增加 analyzer 测试覆盖 macro-only import。
+
+#### REVIEW-03. MIR verifier 还需要 operand shape 校验
+
+`verify_mir` 已检查 jump target、register range、entry/main 等结构，但 malformed operand tuple 仍可能让 verifier 自身抛 `IndexError`。
+
+复现：
+
+```python
+MIRInstruction("CALL", (0,), None)
+verify_mir(program)  # 当前会 IndexError
+```
+
+要求：
+
+- verifier 不应对任何 public MIR dataclass 输入崩溃。
+- 每个 opcode/terminator 需要检查 operand arity 和 operand kind。
+- malformed operand 应转换为 diagnostic。
 
 ## 已完成或基本完成
 
@@ -132,6 +204,8 @@ read
 
 ### P0-01. 建立 `report.md`
 
+状态：已完成。
+
 要求：
 
 - 在仓库根目录新增并维护 `report.md`。
@@ -145,6 +219,8 @@ read
 - 记录中包含验证命令和结果。
 
 ### P0-02. API 边界文档
+
+状态：已完成第一版，后续随 pipeline 变化继续维护。
 
 要求：
 
@@ -165,6 +241,8 @@ read
 
 ### P0-03. Public API 收敛
 
+状态：已完成第一版。`compile_mir_bytecode` 已公开，legacy API 分组仍可继续优化。
+
 要求：
 
 - 明确哪些 API 是稳定 API，哪些是兼容 API。
@@ -177,6 +255,8 @@ read
 - 新 API 不再鼓励直接使用旧 evaluator。
 
 ### P0-04. CLI 调试管线命令
+
+状态：已完成第一版。
 
 要求：
 
@@ -200,6 +280,8 @@ read
 ## P1：MIR 完整化
 
 ### MIR-01. MIR 覆盖所有 HIR 节点
+
+状态：第一阶段已完成。unsupported HIR 节点已有明确 diagnostic；真正 MIR 表达仍未实现。
 
 当前 `lower_mir` 只覆盖：
 
@@ -228,11 +310,15 @@ read
 
 完成标准：
 
-- 每个 HIR 节点要么有 MIR 表达，要么产生明确 diagnostic。
-- 不支持的节点不能静默降级为 `LOAD_CONST None`。
+- 第一阶段：每个 HIR 节点要么有 MIR 表达，要么产生明确 diagnostic。
+- 第一阶段：不支持的节点不能静默降级为 `LOAD_CONST None`。
+- 第二阶段：`assert/module/from/component/eval` 需要真正 MIR 表达。
+- 第三阶段：effect 相关节点交给 `MIR-03`。
 - `tests/test_mir.py` 覆盖上述节点的 lowering 行为。
 
 ### MIR-02. MIR verifier
+
+状态：已完成第一版；仍需补 `REVIEW-03` 的 operand shape hardening。
 
 要求：
 
@@ -241,12 +327,14 @@ read
 - 检查 jump target 存在。
 - 检查 `TAIL_CALL` 只出现在 terminator。
 - 检查 register 使用不超过 `register_count`。
+- 检查每个 opcode/terminator 的 operand arity 和 operand kind。
 
 完成标准：
 
 - 有 `verify_mir(program)` 或等价 API。
 - bytecode compile 前可运行 verifier。
 - verifier diagnostics 可进入 `MIRProgram.diagnostics` 或独立结果。
+- verifier 对 malformed public MIR 输入不抛 Python exception。
 
 ### MIR-03. MIR effect model
 
@@ -266,30 +354,38 @@ read
 
 ### MACRO-01. Macro namespace 与 runtime namespace 解耦
 
+状态：部分完成。macroexpand namespace 已解耦，但 runtime evaluation 路径仍会把 `(macro ...)` 写入 value namespace，见 `REVIEW-01`。
+
 当前问题：
 
-- top-level macro 仍会通过 `context.env.define(name, macro)` 发布到 runtime `Environment`。
-- macro lookup 仍会 fallback 到 `env.resolve`。
-- 这会让 compile-time namespace 和 runtime namespace 继续耦合。
+- top-level macro 在 macroexpand 阶段已进入 compile-time cache。
+- 但 HIR/IR VM 执行 `MacroExpr` 时仍会 `env.define(...)`。
+- analyzer 对 macro-only import 还没有和 lowering 对齐，见 `REVIEW-02`。
 
 要求：
 
 - 设计独立的 compile-time macro namespace。
 - 明确同名 runtime binding 与 macro binding 的优先级。
 - 明确 macro 定义是否进入 runtime value namespace。
+- 统一 analyzer、lowering、macroexpand 对 compile-time namespace 的视图。
 
 完成标准：
 
 - macro 不再意外污染 runtime namespace。
 - macro lookup 不再依赖普通 `Environment.resolve` 作为主路径。
 - 对同名 macro/operator/value 有测试。
+- `evaluate_source("(macro ...)")` 后 runtime env 不出现 macro value，或文档明确这是有意兼容行为。
+- analyzer 不再把 macro-only import 误报为 unresolved。
 
 ### MACRO-02. Module-level macro scope
 
+状态：第一阶段已完成。module 内宏可见、`macro_exports`、imported macro expansion 已有测试；同一源码单元内先定义 module 再立即 import 仍未解决。
+
 当前问题：
 
-- `macroexpand.py` 对 `module` 只是创建 body child scope。
-- import/export 对 macro 的含义还没有建模。
+- compile-time module macro namespace 已出现。
+- import/export 对 macro 的基本含义已建模。
+- 加载时序还不完整：同一 source unit 中先 `(module m ...)` 再 `(from m import macro)` 仍需要单独设计。
 
 要求：
 
@@ -309,12 +405,107 @@ read
 
 - 已有显式 `gensym`。
 - 没有自动 hygiene。
+- 当前可以先快速推进“最小 hygiene”：先保证 macro 展开内部临时变量不会捕获或被捕获，再逐步处理完整 lexical binding hygiene。
+
+### MACRO-03A. Hygiene 语义测试先行
+
+要求：
+
+- 先补测试，锁住要实现的语义，不先改实现。
+- 必须覆盖：
+  - macro 内部引入的临时变量不捕获用户同名变量。
+  - 用户传入 form 中的 symbol 保持调用点语义。
+  - macro 定义中引用的全局 operator，例如 `+`、`let`、`cond`，仍按定义点或核心 binding 解析，不被调用点同名局部变量破坏。
+  - 普通程序的 `quote` 不执行宏展开；但 macro definition 中经由 quote/cons 进入 expansion 的 symbol 要能标记为 definition-introduced。
+  - nested macro expansion 的 generated symbol 不互相冲突。
+
+示例应覆盖：
+
+```lisp
+(macro use-temp (value)
+  (cons 'let
+    (cons
+      (cons (cons 'tmp (cons value '())) '())
+      (cons 'tmp '()))))
+
+(let ((tmp 99))
+  (use-temp 42))
+```
+
+上面的最终目标是返回 `42`，并且 macro 内部的 `tmp` 不应与用户的 `tmp` 冲突。
+
+还要覆盖用户传入 symbol 不被 macro 内部临时绑定捕获：
+
+```lisp
+(macro with-temp (expr)
+  (cons 'let
+    (cons
+      (cons (cons 'tmp (cons 1 '())) '())
+      (cons expr '()))))
+
+(let ((tmp 99))
+  (with-temp tmp))
+```
+
+上面的最终目标是返回 `99`，因为 `expr` 里的 `tmp` 来自调用点。
+
+完成标准：
+
+- 新增失败测试，明确当前未实现行为。
+- 测试名和断言能直接说明 capture 场景。
+- `report.md` 记录哪些测试是 expected failing，或采用当前项目接受的失败标记策略。
+
+### MACRO-03B. Symbol mark / rename 模型
+
+要求：
+
+- 引入 hygiene mark/rename 模型，但不要破坏现有 `Symbol(name)` 的常规使用。
+- 建议先不要直接改变 `Symbol.__eq__` / `Symbol.__hash__` 的核心语义，避免打穿 env dict、stdlib exports、reader/write 兼容性。
+- 可以新增独立结构，例如：
+  - `HygieneMark`
+  - `HygienicSymbol`
+  - `MacroExpansionContext` 内的 rename table
+  - 或者在 macroexpand 阶段把 macro-introduced local symbols rewrite 成稳定 gensym name。
+- 第一阶段优先解决局部绑定类 capture：
+  - `let` binding name
+  - `lambda` params
+  - `defun/component` params
+  - handler params
+- 暂时不要求完整 lexical module hygiene，但设计上不能阻塞后续扩展。
+
+完成标准：
+
+- macro-introduced local bindings 自动 rename。
+- 用户传入 form 中的 symbols 不被 rename。
+- `dump` / diagnostics 能显示原始 symbol 与 rewritten symbol 的关系。
+- expansion trace/source map 能记录 rename 信息，供后续 LSP 使用。
+
+### MACRO-03C. Intentional capture API
+
+要求：
+
+- hygiene 默认避免捕获。
+- 如果用户确实要捕获调用点 symbol，必须显式表达。
+- 先设计 API，不急着大范围实现。
+- 候选 API：
+  - `(capture sym)`
+  - `(datum->syntax ctx sym)`
+  - `(syntax-local sym)`
+  - 或更贴近 Qy 风格的 meta helper。
+
+完成标准：
+
+- 文档明确默认 hygiene 与 intentional capture 的区别。
+- 至少有一个测试证明用户可以显式选择捕获。
+- 没有显式 capture 时，不允许靠同名 symbol 偶然捕获。
 
 建议阶段：
 
 1. 保持显式 `gensym`。
-2. 增加 symbol mark/rename。
-3. 增加 intentional capture API。
+2. 先做 `MACRO-03A`，锁测试和语义。
+3. 做 `MACRO-03B`，解决 macro-introduced local binding rename。
+4. 做 `MACRO-03C`，补 intentional capture API。
+5. 再考虑完整 lexical hygiene 和模块级 hygiene。
 
 完成标准：
 
@@ -324,10 +515,12 @@ read
 
 ### MACRO-04. Compile-time runtime
 
+状态：第一阶段已完成。已有 compile-time facade，但仍是现有 runtime env 的薄封装。
+
 当前状态：
 
 - macro body 已改用 `lower + IR VM`，这是正确方向。
-- 但仍使用 runtime `Environment` 和一部分 evaluator 类型。
+- 但 compile-time facade 仍返回现有 `Environment`，capability/runtime 隔离尚未完成。
 
 要求：
 
@@ -342,6 +535,8 @@ read
 - compile-time 可用 operator 列表明确。
 
 ### MACRO-05. Source map 与 diagnostics
+
+状态：第一阶段已完成。nested expansion chain 已进入 diagnostics；完整 source map 仍未完成。
 
 要求：
 
@@ -517,16 +712,18 @@ read
 
 ## 建议执行顺序
 
-1. `P0-01`：建立 `report.md` 协作记录。
-2. `P0-04`：增加 CLI 调试管线命令。
-3. `MIR-02`：增加 MIR verifier。
-4. `MIR-01`：补全 MIR 对 HIR 节点的覆盖和 diagnostics。
-5. `MACRO-01`：macro namespace 与 runtime namespace 解耦。
-6. `MACRO-02`：module-level macro scope。
-7. `MACRO-04`：compile-time runtime facade。
-8. `EVAL-01`：拆出 environment/operator/runtime value。
-9. `VM-01`：bytecode backend 覆盖 `assert/module/from/component/eval`。
-10. `MIR-03`：effect MIR/bytecode model。
-11. `VM-03`：核心 primitive opcode。
-12. `PERF-01`：benchmark gate。
-13. `CODEGEN-01`：Python codegen 原型。
+1. `REVIEW-01`：修正 runtime evaluation 仍污染 macro binding 的问题。
+2. `REVIEW-02`：让 analyzer 与 lowering 对 macro-only import 的 scope 行为一致。
+3. `REVIEW-03`：补 MIR verifier operand shape 校验。
+4. `MACRO-03A`：先补 hygiene capture 语义测试。
+5. `MACRO-03B`：实现 macro-introduced local binding rename。
+6. `MACRO-03C`：设计 intentional capture API。
+7. `MIR-01` 第二阶段：为 `assert/module/from/component/eval` 建真正 MIR 表达。
+8. `MACRO-02` 第二阶段：处理同一 source unit 内 module macro 定义后立即 import 的加载时序。
+9. `MACRO-04` 第二阶段：compile-time runtime capability 隔离。
+10. `EVAL-01`：拆出 environment/operator/runtime value。
+11. `VM-01`：bytecode backend 覆盖 `assert/module/from/component/eval`。
+12. `MIR-03`：effect MIR/bytecode model。
+13. `VM-03`：核心 primitive opcode。
+14. `PERF-01`：benchmark gate。
+15. `CODEGEN-01`：Python codegen 原型。
