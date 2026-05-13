@@ -1,16 +1,8 @@
-# AGENTS.md
-
-本文件为 Codex 等编码代理提供本仓库的工作说明。沟通、说明文档和面向维护者的总结默认使用中文。
+# 协作文件
 
 ## 项目概览
 
 QyLang 是一个用 Python 实现的符号化 Lisp 方言。仓库主体是 `qy/` Python 包，配套包含 CLI、LSP、标准库、示例程序、测试，以及一个 VS Code 扩展。
-
-核心源码流向：
-
-```text
-Qy 源码 -> reader -> Form -> lowering -> IR -> evaluator / ir_vm -> 运行结果
-```
 
 重要目录和文件：
 
@@ -86,4 +78,7 @@ make build
 - 不要把 `node_modules/`、`dist/`、`QyLang.egg-info/` 等生成物当作主要编辑目标。
 - 如需新增操作符，优先补齐操作符签名、文档输出、分析器诊断和最小测试。
 - 如需新增 CLI 行为，保持 `qy FILE` 作为 `run` 快捷方式的现有语义。
-- 每次完成一次工作后最后用一句话总结你作出的修改
+
+## 特别注意
+
+- 如果要求你完成 todo.md 中的工作, 请按照 todo.md 中的要求, **全部**完成.
