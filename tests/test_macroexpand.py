@@ -20,11 +20,19 @@ def test_macroexpand_expands_bound_macro_call():
     expansion = macroexpand_source("(const-answer missing)", env)
 
     assert expansion.ok
-    assert expansion.forms == [(Symbol("+"), Symbol("20"), Symbol("22"))]
+    expanded = expansion.forms[0]
+    assert isinstance(expanded, tuple)
+    assert isinstance(expanded[0], Symbol)
+    assert expanded[1:] == (Symbol("20"), Symbol("22"))
     assert len(expansion.traces) == 1
     assert expansion.traces[0].macro == Symbol("const-answer")
     assert expansion.traces[0].depth == 1
     assert expansion.source_map[0].macro == Symbol("const-answer")
+    assert len(expansion.traces[0].renames) == 1
+    assert expansion.traces[0].renames[0].original == Symbol("+")
+    assert expansion.traces[0].renames[0].kind == "definition-site"
+    assert expanded[0].name == expansion.traces[0].renames[0].rewritten.name
+    assert expansion.source_map[0].renames == expansion.traces[0].renames
 
 
 def test_macroexpand_keeps_quote_boundary():
@@ -50,7 +58,10 @@ def test_macroexpand_keeps_local_macro_scope_inside_body():
     assert expansion.ok
     let_form = expansion.forms[0]
     assert isinstance(let_form, tuple)
-    assert let_form[3] == (Symbol("+"), Symbol("1"), Symbol("2"))
+    inner = let_form[3]
+    assert isinstance(inner, tuple)
+    assert isinstance(inner[0], Symbol)
+    assert inner[1:] == (Symbol("1"), Symbol("2"))
     assert expansion.forms[1] == (Symbol("local-answer"),)
     with pytest.raises(EvaluationError):
         env.resolve(Symbol("local-answer"))
@@ -82,11 +93,42 @@ def test_macroexpand_records_nested_trace_and_source_map_order():
     expansion = macroexpand_source("(outer 41)", env)
 
     assert expansion.ok
-    assert expansion.forms == [(Symbol("+"), Symbol("41"), 1)]
+    expanded = expansion.forms[0]
+    assert isinstance(expanded, tuple)
+    assert isinstance(expanded[0], Symbol)
+    assert expanded[1:] == (Symbol("41"), 1)
     assert [trace.macro for trace in expansion.traces] == [Symbol("outer"), Symbol("inner")]
     assert [trace.depth for trace in expansion.traces] == [1, 2]
     assert [entry.macro for entry in expansion.source_map] == [Symbol("outer"), Symbol("inner")]
     assert [entry.depth for entry in expansion.source_map] == [1, 2]
+    assert expansion.traces[0].renames == ()
+    assert len(expansion.traces[1].renames) == 1
+    assert expansion.traces[1].renames[0].original == Symbol("+")
+
+
+def test_macroexpand_records_binding_hygiene_renames_in_trace_and_source_map():
+    env = standard_environment()
+    macroexpand_source(
+        """
+        (macro with-temp (expr)
+          (cons 'let
+            (cons
+              (cons (cons 'tmp (cons 1 '())) '())
+              (cons expr '()))))
+        """,
+        env,
+    )
+
+    expansion = macroexpand_source("(with-temp tmp)", env)
+
+    assert expansion.ok
+    assert len(expansion.traces) == 1
+    assert len(expansion.traces[0].renames) == 1
+    rename = expansion.traces[0].renames[0]
+    assert rename.original == Symbol("tmp")
+    assert rename.kind == "binding"
+    assert rename.rewritten.name.startswith("__qy_hygiene_binding_tmp_")
+    assert expansion.source_map[0].renames == expansion.traces[0].renames
 
 
 def test_macroexpand_denies_compile_time_effects_by_default():
@@ -134,6 +176,24 @@ def test_macroexpand_reports_nested_expansion_chain_on_error():
 
     assert not expansion.ok
     assert "expansion chain: outer -> inner" in expansion.diagnostics[0].message
+
+
+def test_macroexpand_nested_gensym_symbols_do_not_conflict():
+    env = standard_environment()
+    macroexpand_source(
+        """
+        (macro inner () (gensym 'tmp))
+        (macro outer () '(inner))
+        """,
+        env,
+    )
+
+    expansion = macroexpand_source("(outer)\n(outer)", env)
+
+    assert expansion.ok
+    assert isinstance(expansion.forms[0], Symbol)
+    assert isinstance(expansion.forms[1], Symbol)
+    assert expansion.forms[0] != expansion.forms[1]
 
 
 def test_macroexpand_macro_namespace_does_not_overwrite_runtime_binding():

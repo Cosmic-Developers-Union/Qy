@@ -13,7 +13,6 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
 from qy.bytecode import Register
 from qy.bytecode_compiler import compile_bytecode
-from qy.compile_time import compile_time_environment
 from qy.errors import EvaluationError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
@@ -24,7 +23,6 @@ from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
-from qy.macro import MacroDefinition
 from qy.macroexpand import macroexpand_source_async
 from qy.operator_runtime import runtime_operator_semantics
 from qy.operator_runtime import validate_operator_arity
@@ -40,6 +38,8 @@ __all__ = [
     "evaluate_bytecode_source",
     "evaluate_bytecode_source_async",
 ]
+
+_COMPILE_TIME_MACRO = object()
 
 
 @dataclass(slots=True)
@@ -117,7 +117,10 @@ class RegisterVirtualMachine:
                 frame.registers[_register(dest)] = frame.registers[_register(source)]
             case "STORE_LOCAL":
                 symbol, source = operands
-                frame.env.define(_symbol(symbol), frame.registers[_register(source)])
+                value = frame.registers[_register(source)]
+                if value is _COMPILE_TIME_MACRO:
+                    return None
+                frame.env.define(_symbol(symbol), value)
             case "MAKE_FUNCTION":
                 dest, function_index = operands
                 frame.registers[_register(dest)] = BytecodeFunctionValue(
@@ -126,12 +129,8 @@ class RegisterVirtualMachine:
                 )
             case "MAKE_MACRO":
                 dest, name, params, raw_body = operands
-                frame.registers[_register(dest)] = MacroDefinition(
-                    _symbol(name),
-                    _symbols(params),
-                    _tuple(raw_body),
-                    compile_time_environment(frame.env),
-                )
+                del name, params, raw_body
+                frame.registers[_register(dest)] = _COMPILE_TIME_MACRO
             case "ENTER_SCOPE":
                 frame.parents.append(frame.env)
                 frame.env = frame.env.child()
@@ -139,7 +138,8 @@ class RegisterVirtualMachine:
                 frame.env = frame.parents.pop()
             case "APPEND_RESULT":
                 (source,) = operands
-                frame.results.append(frame.registers[_register(source)])
+                value = frame.registers[_register(source)]
+                frame.results.append(None if value is _COMPILE_TIME_MACRO else value)
             case "JUMP":
                 (target,) = operands
                 frame.pc = _int(target)
@@ -164,7 +164,11 @@ class RegisterVirtualMachine:
                 return _FrameResult(await self._call(callee, args, instruction.span), ())
             case "RETURN":
                 (source,) = operands
-                return _FrameResult(frame.registers[_register(source)], tuple(frame.results))
+                value = frame.registers[_register(source)]
+                return _FrameResult(
+                    None if value is _COMPILE_TIME_MACRO else value,
+                    tuple(frame.results),
+                )
         return None
 
     async def _call(

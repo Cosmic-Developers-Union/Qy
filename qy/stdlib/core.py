@@ -14,7 +14,6 @@ from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import cast
 
-from qy.compile_time import compile_time_environment
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
@@ -262,10 +261,10 @@ def _macro(expression: tuple[object, ...], env: Environment) -> object:
         )
 
     _, name, params, *body = expression
-    name = ensure_symbol(name, "macro name")
-    param_symbols = _ensure_parameter_list(params, "macro")
-    macro = MacroDefinition(name, param_symbols, tuple(body), compile_time_environment(env))
-    return env.define(name, macro)
+    ensure_symbol(name, "macro name")
+    _ensure_parameter_list(params, "macro")
+    del body, env
+    return None
 
 
 def _atom(value: object) -> bool:
@@ -697,6 +696,8 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
         raise QyArityError("module expects a name and body")
 
     from qy.macro import MacroDefinition
+    from qy.source_modules import build_provisional_module
+    from qy.source_modules import cache_source_module
 
     name, *body = args
     name = ensure_symbol(name, "module name")
@@ -728,12 +729,16 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     macro_exports = {
         symbol: value for symbol, value in selected.items() if isinstance(value, MacroDefinition)
     }
+    provisional = build_provisional_module((Symbol("module"), name, *body), env)
+    if provisional is not None:
+        macro_exports = {**dict(provisional.macro_exports), **macro_exports}
 
     module = StandardModule(name.name, exports, macro_exports)
 
     from qy.stdlib import register_module
 
     register_module(module)
+    cache_source_module(module, env)
     return env.define(name, module)
 
 

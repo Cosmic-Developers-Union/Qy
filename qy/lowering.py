@@ -49,7 +49,8 @@ from qy.semantics import literal_type
 from qy.semantics import operator_kind_for_value
 from qy.semantics import value_type
 from qy.semantics import value_uses_eager_arguments
-from qy.stdlib import load_module
+from qy.source_modules import remember_source_module
+from qy.source_modules import resolve_known_module
 from qy.stdlib.imports import parse_from_import
 from qy.types import TypeName
 
@@ -284,6 +285,11 @@ def _lower_macro(
         Binding(Symbol("gensym"), "local", "operator", "pure"),
         context,
     )
+    macro_scope = _define_local(
+        macro_scope,
+        Binding(Symbol("capture"), "local", "operator", "pure"),
+        context,
+    )
     lowered_body = _lower_body(tuple(body), macro_scope, context)
     return MacroExpr(name, param_symbols, lowered_body, tuple(body), get_span(form))
 
@@ -475,7 +481,7 @@ def _lower_from(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
         return FromImportExpr(Symbol("<invalid>"), (), get_span(form))
 
     try:
-        source_module = load_module(module_name.name)
+        source_module = resolve_known_module(module_name.name, context.env)
     except KeyError as e:
         context.diagnostic(str(e), form)
         return FromImportExpr(module_name, specs, get_span(form))
@@ -636,13 +642,14 @@ def _scope_after_form(
             context,
         )
     if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
+        remember_source_module(form, context.env)
         return _define_local(scope, Binding(form[1], "local", "any"), context)
     if form[0] != Symbol("from"):
         return scope
 
     try:
         module_name, specs = parse_from_import(form)
-        source_module = load_module(module_name.name)
+        source_module = resolve_known_module(module_name.name, context.env)
     except (KeyError, ValueError):
         return scope
 

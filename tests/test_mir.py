@@ -103,6 +103,23 @@ def test_mir_dump_shows_lambda_and_macro_construction():
     assert "STORE_LOCAL twice, r" in rendered
 
 
+def test_mir_lowering_lowers_component_definition_without_diagnostic():
+    mir = lower_mir(lower_source("(component scale (x factor) (* x factor))"))
+
+    assert mir.ok
+    main = mir.functions[mir.main]
+    assert any(
+        instruction.opcode == "MAKE_FUNCTION"
+        for block in main.blocks
+        for instruction in block.instructions
+    )
+    assert any(
+        instruction.opcode == "STORE_LOCAL" and instruction.operands[0] == Symbol("scale")
+        for block in main.blocks
+        for instruction in block.instructions
+    )
+
+
 def test_mir_dump_shows_tail_call_terminator():
     hir = lower_source(
         """
@@ -191,12 +208,67 @@ def test_compile_mir_bytecode_stops_on_verifier_errors():
     assert any("jumps to missing block bb99" in item.message for item in bytecode.diagnostics)
 
 
+def test_verify_mir_reports_malformed_operand_arity_instead_of_crashing():
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("broken"),
+                (),
+                1,
+                (
+                    MIRBlock(
+                        0,
+                        (MIRInstruction("CALL", (0,), None),),
+                        MIRTerminator("BRANCH", (0, 1), None),
+                    ),
+                ),
+                0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    assert any(
+        "instruction 'CALL' expects 3 operands, got 1" in item.message for item in diagnostics
+    )
+    assert any(
+        "terminator 'BRANCH' expects 3 operands, got 2" in item.message for item in diagnostics
+    )
+
+
+def test_verify_mir_reports_malformed_operand_kinds_instead_of_crashing():
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("broken"),
+                (),
+                1,
+                (
+                    MIRBlock(
+                        0,
+                        (MIRInstruction("CALL", (0, 0, "bad"), None),),
+                        MIRTerminator("JUMP", ("bad",), None),
+                    ),
+                ),
+                0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    assert any(
+        "instruction 'CALL' expects a register tuple" in item.message for item in diagnostics
+    )
+    assert any("jumps to non-block target 'bad'" in item.message for item in diagnostics)
+
+
 @pytest.mark.parametrize(
     ("source", "expected_expr"),
     (
         ('(assert false "bad")', "AssertExpr"),
         ("(eval '(+ 1 2))", "RuntimeEvalExpr"),
-        ("(component widget (x) x)", "ComponentExpr"),
         ("(defeffect ask)", "DefeffectExpr"),
         ("(module demo (defun triple (x) (* x 3)))", "ModuleExpr"),
         ("(from qy.str import str-upper as upper)", "FromImportExpr"),

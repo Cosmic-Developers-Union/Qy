@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Literal
 from typing import cast
 
-from qy.compile_time import compile_time_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
@@ -156,13 +155,7 @@ class IRVirtualMachine:
             )
             return env.define(expression.name, component)
         if isinstance(expression, MacroExpr):
-            macro = MacroDefinition(
-                expression.name,
-                expression.params,
-                expression.raw_body,
-                compile_time_environment(env),
-            )
-            return env.define(expression.name, macro)
+            return None
         if isinstance(expression, DefeffectExpr):
             effect = EffectDefinition(expression.name, expression.resumable)
             return env.define(expression.name, effect)
@@ -735,6 +728,8 @@ class IRVirtualMachine:
 
     async def _eval_module(self, expression: ModuleExpr, env: Environment) -> object:
         from qy.macro import MacroDefinition
+        from qy.source_modules import cache_source_module
+        from qy.source_modules import lookup_source_module
 
         module_env = env.child()
         baseline = set(module_env.local_bindings())
@@ -748,8 +743,12 @@ class IRVirtualMachine:
                 macro_exports[symbol] = value
             else:
                 runtime_exports[symbol] = value
+        provisional = lookup_source_module(expression.name.name, env)
+        if provisional is not None:
+            macro_exports = {**dict(provisional.macro_exports), **macro_exports}
         module = StandardModule(expression.name.name, runtime_exports, macro_exports)
         register_module(module)
+        cache_source_module(module, env)
         return env.define(expression.name, module)
 
     async def _eval_runtime_meta_call(

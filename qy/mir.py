@@ -151,80 +151,269 @@ def _verify_function(function: MIRFunction, diagnostics: list[Diagnostic]) -> No
             continue
 
         for instruction in block.instructions:
-            if instruction.opcode == "TAIL_CALL":
-                diagnostics.append(
-                    Diagnostic(
-                        f"function {function.name.name!r} block bb{block.id} uses TAIL_CALL as a non-terminator instruction"
-                    )
-                )
-            for register in _instruction_registers(instruction):
-                _check_register(function, block.id, register, diagnostics)
+            _verify_instruction(function, block.id, instruction, diagnostics)
 
-        for target in _terminator_targets(block.terminator):
-            if not isinstance(target, int):
-                diagnostics.append(
-                    Diagnostic(
-                        f"function {function.name.name!r} block bb{block.id} jumps to non-block target {target!r}"
-                    )
-                )
-                continue
-            if target not in block_ids:
-                diagnostics.append(
-                    Diagnostic(
-                        f"function {function.name.name!r} block bb{block.id} jumps to missing block bb{target}"
-                    )
-                )
-
-        for register in _terminator_registers(block.terminator):
-            _check_register(function, block.id, register, diagnostics)
+        _verify_terminator(function, block.id, block_ids, block.terminator, diagnostics)
 
 
-def _instruction_registers(instruction: MIRInstruction) -> tuple[object, ...]:
+def _verify_instruction(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    instruction: MIRInstruction,
+    diagnostics: list[Diagnostic],
+) -> None:
     operands = instruction.operands
+    if instruction.opcode == "TAIL_CALL":
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} uses TAIL_CALL as a non-terminator instruction"
+            )
+        )
+        if not _check_operand_arity(
+            function, block_id, "instruction", "TAIL_CALL", operands, 2, diagnostics
+        ):
+            return
+        _check_register(function, block_id, operands[0], diagnostics)
+        _check_register_tuple(function, block_id, "TAIL_CALL", operands[1], diagnostics)
+        return
+
     match instruction.opcode:
         case "APPEND_RESULT":
-            return (operands[0],)
+            if _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 1, diagnostics
+            ):
+                _check_register(function, block_id, operands[0], diagnostics)
         case "CALL":
-            return (operands[0], operands[1], *_operand_tuple(operands[2]))
-        case "LOAD_CONST" | "LOAD_ENV" | "MAKE_FUNCTION" | "MAKE_MACRO":
-            return (operands[0],)
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
+            _check_register_tuple(function, block_id, instruction.opcode, operands[2], diagnostics)
+        case "LOAD_CONST":
+            if _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                _check_register(function, block_id, operands[0], diagnostics)
+        case "LOAD_ENV":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+        case "MAKE_FUNCTION":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_int_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+        case "MAKE_MACRO":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 4, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
+            _check_tuple_operand(
+                function,
+                block_id,
+                instruction.opcode,
+                "parameter tuple",
+                operands[2],
+                diagnostics,
+            )
+            _check_tuple_operand(
+                function,
+                block_id,
+                instruction.opcode,
+                "raw body tuple",
+                operands[3],
+                diagnostics,
+            )
         case "MOVE":
-            return (operands[0], operands[1])
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
         case "STORE_LOCAL":
-            return (operands[1],)
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_symbol_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
         case "ENTER_SCOPE" | "EXIT_SCOPE":
-            return ()
-    return ()
+            _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 0, diagnostics
+            )
+        case _:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block_id} uses unknown instruction opcode {instruction.opcode!r}"
+                )
+            )
 
 
-def _terminator_targets(terminator: MIRTerminator) -> tuple[object, ...]:
+def _verify_terminator(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    block_ids: set[MIRBlockId],
+    terminator: MIRTerminator,
+    diagnostics: list[Diagnostic],
+) -> None:
     operands = terminator.operands
     match terminator.opcode:
         case "JUMP":
-            return (operands[0],)
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 1, diagnostics
+            ):
+                return
+            _check_block_target(function, block_id, operands[0], block_ids, diagnostics)
         case "BRANCH":
-            return (operands[1], operands[2])
-        case "RETURN" | "TAIL_CALL":
-            return ()
-    return ()
-
-
-def _terminator_registers(terminator: MIRTerminator) -> tuple[object, ...]:
-    operands = terminator.operands
-    match terminator.opcode:
-        case "BRANCH":
-            return (operands[0],)
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_block_target(function, block_id, operands[1], block_ids, diagnostics)
+            _check_block_target(function, block_id, operands[2], block_ids, diagnostics)
         case "RETURN":
-            return () if operands[0] is None else (operands[0],)
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 1, diagnostics
+            ):
+                return
+            if operands[0] is not None:
+                _check_register(function, block_id, operands[0], diagnostics)
         case "TAIL_CALL":
-            return (operands[0], *_operand_tuple(operands[1]))
-        case "JUMP":
-            return ()
-    return ()
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_register_tuple(function, block_id, terminator.opcode, operands[1], diagnostics)
+        case _:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block_id} uses unknown terminator opcode {terminator.opcode!r}"
+                )
+            )
 
 
-def _operand_tuple(value: object) -> tuple[object, ...]:
-    return value if isinstance(value, tuple) else ()
+def _check_operand_arity(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    kind: str,
+    opcode: object,
+    operands: tuple[object, ...],
+    expected: int,
+    diagnostics: list[Diagnostic],
+) -> bool:
+    if len(operands) == expected:
+        return True
+    diagnostics.append(
+        Diagnostic(
+            f"function {function.name.name!r} block bb{block_id} {kind} {opcode!r} expects {expected} operands, got {len(operands)}"
+        )
+    )
+    return False
+
+
+def _check_symbol_operand(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    opcode: object,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> None:
+    if isinstance(value, Symbol):
+        return
+    diagnostics.append(
+        Diagnostic(
+            f"function {function.name.name!r} block bb{block_id} instruction {opcode!r} expects a symbol operand, got {value!r}"
+        )
+    )
+
+
+def _check_int_operand(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    opcode: object,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> None:
+    if isinstance(value, int):
+        return
+    diagnostics.append(
+        Diagnostic(
+            f"function {function.name.name!r} block bb{block_id} instruction {opcode!r} expects an integer operand, got {value!r}"
+        )
+    )
+
+
+def _check_tuple_operand(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    opcode: object,
+    label: str,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> bool:
+    if isinstance(value, tuple):
+        return True
+    diagnostics.append(
+        Diagnostic(
+            f"function {function.name.name!r} block bb{block_id} instruction {opcode!r} expects {label}, got {value!r}"
+        )
+    )
+    return False
+
+
+def _check_register_tuple(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    opcode: object,
+    value: object,
+    diagnostics: list[Diagnostic],
+) -> None:
+    if not _check_tuple_operand(
+        function,
+        block_id,
+        opcode,
+        "a register tuple",
+        value,
+        diagnostics,
+    ):
+        return
+    assert isinstance(value, tuple)
+    for register in value:
+        _check_register(function, block_id, register, diagnostics)
+
+
+def _check_block_target(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    target: object,
+    block_ids: set[MIRBlockId],
+    diagnostics: list[Diagnostic],
+) -> None:
+    if not isinstance(target, int):
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} jumps to non-block target {target!r}"
+            )
+        )
+        return
+    if target not in block_ids:
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} jumps to missing block bb{target}"
+            )
+        )
 
 
 def _check_register(

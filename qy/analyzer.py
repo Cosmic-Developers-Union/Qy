@@ -25,7 +25,8 @@ from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import read
-from qy.stdlib import load_module
+from qy.source_modules import remember_source_module
+from qy.source_modules import resolve_known_module
 from qy.stdlib.imports import parse_from_import
 from qy.types import OperatorKind
 from qy.types import TypeName
@@ -151,7 +152,7 @@ def _infer(
             case "module":
                 return _infer_module(form, env, scope, diagnostics)
             case "from":
-                return _infer_from(form, diagnostics)
+                return _infer_from(form, env, diagnostics)
             case "perform":
                 return _infer_perform(args, env, scope, diagnostics)
             case "handle":
@@ -447,7 +448,9 @@ def _infer_data_arg(
     return _infer(arg, env, scope, diagnostics)
 
 
-def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> TypeName:
+def _infer_from(
+    form: tuple[object, ...], env: Environment, diagnostics: list[Diagnostic]
+) -> TypeName:
     try:
         module_name, specs = parse_from_import(form)
     except ValueError as e:
@@ -455,7 +458,7 @@ def _infer_from(form: tuple[object, ...], diagnostics: list[Diagnostic]) -> Type
         return "none"
 
     try:
-        source_module = load_module(module_name.name)
+        source_module = resolve_known_module(module_name.name, env)
     except KeyError as e:
         diagnostics.append(Diagnostic(str(e)))
         return "none"
@@ -604,6 +607,7 @@ def _infer_macro(
         )
     macro_scope = _scope_with_parameters(params, macro_scope, diagnostics, "macro")
     macro_scope = macro_scope.define(Symbol("gensym"), "operator", operator_kind="pure")
+    macro_scope = macro_scope.define(Symbol("capture"), "operator", operator_kind="pure")
     _infer_body(tuple(body), env, macro_scope, diagnostics)
     return "operator"
 
@@ -685,7 +689,7 @@ def _infer_module(
             assert isinstance(expression, tuple)
             for import_form in expression[1:]:
                 if isinstance(import_form, tuple):
-                    _infer_from(import_form, diagnostics)
+                    _infer_from(import_form, env, diagnostics)
             continue
         _infer(expression, env, module_scope, diagnostics)
         module_scope = _scope_after_form(expression, env, module_scope)
@@ -723,21 +727,24 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
         return scope.define(form[1], "operator", operator_kind="meta", eager_arguments=False)
     if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
+        remember_source_module(form, env)
         return scope.define(form[1])
     if form[0] != Symbol("from"):
         return scope
 
     try:
         module_name, specs = parse_from_import(form)
-        source_module = load_module(module_name.name)
+        source_module = resolve_known_module(module_name.name, env)
     except (KeyError, ValueError):
         return scope
 
     next_scope = scope
     for spec in specs:
-        try:
+        if spec.name in source_module.exports:
             value = source_module.resolve(spec.name)
-        except KeyError:
+        elif spec.name in source_module.macro_exports:
+            value = source_module.resolve_macro(spec.name)
+        else:
             continue
         next_scope = next_scope.define(
             spec.alias,

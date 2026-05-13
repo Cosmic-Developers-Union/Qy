@@ -65,7 +65,12 @@ def test_qy_instance_exposes_pipeline_helpers():
     assert expansion.ok
     expanded = expansion.forms[1]
     assert isinstance(expanded, tuple)
-    assert expanded[0] == S("+")
+    assert isinstance(expanded[0], Symbol)
+    assert expanded[1:] == (S("21"), S("21"))
+    assert len(expansion.traces) == 1
+    assert expansion.traces[0].renames[0].original == S("+")
+    assert expansion.traces[0].renames[0].kind == "definition-site"
+    assert expanded[0].name == expansion.traces[0].renames[0].rewritten.name
 
     program = qy.lower(expansion.forms)
     mir = qy.lower_mir(program)

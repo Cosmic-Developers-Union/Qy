@@ -8,6 +8,7 @@ from typing import cast
 from qy.diagnostics import Diagnostic
 from qy.errors import SourceSpan
 from qy.ir import CallExpr
+from qy.ir import ComponentExpr
 from qy.ir import CondExpr
 from qy.ir import DefunExpr
 from qy.ir import IRExpr
@@ -104,6 +105,16 @@ class _FunctionLowerer:
             self.emit("LOAD_ENV", register, expression.symbol, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, DefunExpr):
+            function_index = self.owner.lower_function(
+                expression.name,
+                expression.params,
+                expression.body,
+            )
+            register = self.register()
+            self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
+            self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
+            return _LoweredExpression(register)
+        if isinstance(expression, ComponentExpr):
             function_index = self.owner.lower_function(
                 expression.name,
                 expression.params,

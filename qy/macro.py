@@ -11,12 +11,18 @@ from qy.errors import QyArityError
 from qy.reader import Form
 from qy.reader import Symbol
 
-__all__ = ["MacroDefinition", "MacroExpansionServices"]
+__all__ = ["CapturedForm", "MacroDefinition", "MacroExpansionServices"]
+
+
+@dataclass(frozen=True, slots=True)
+class CapturedForm:
+    value: object
 
 
 @dataclass(frozen=True, slots=True)
 class MacroExpansionServices:
     gensym: Callable[[object | None], Symbol]
+    capture: Callable[[object], CapturedForm]
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +50,11 @@ class MacroDefinition:
         local_env = self.closure.child(dict(zip(self.params, args, strict=True)))
         if services is not None:
             local_env.register_pure("gensym", services.gensym, doc="生成 hygienic macro symbol。")
+            local_env.register_pure(
+                "capture",
+                services.capture,
+                doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
+            )
 
         from qy.ir_vm import evaluate_ir_async
         from qy.lowering import lower

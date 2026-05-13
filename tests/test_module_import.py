@@ -94,6 +94,44 @@ def test_from_import_supports_compile_time_macro_exports():
         env.resolve(S("const-answer"))
 
 
+def test_from_import_supports_same_source_unit_module_definition():
+    env = standard_environment()
+
+    assert (
+        evaluate_source(
+            """
+            (module test.inline
+              (defun triple (x) (* x 3))
+              (exports triple))
+            (from test.inline import triple as t)
+            (t 14)
+            """,
+            env,
+        )
+        == 42
+    )
+
+
+def test_from_import_supports_same_source_unit_module_macro_exports():
+    env = standard_environment()
+
+    assert (
+        evaluate_source(
+            """
+            (module test.inline.macros
+              (macro const-answer () 42)
+              (exports const-answer))
+            (from test.inline.macros import const-answer)
+            (const-answer)
+            """,
+            env,
+        )
+        == 42
+    )
+    with pytest.raises(EvaluationError):
+        env.resolve(S("const-answer"))
+
+
 def test_from_import_supports_qy_files():
     with TemporaryDirectory() as temp_dir:
         path = Path(temp_dir) / "math_ops.qy"

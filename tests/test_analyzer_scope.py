@@ -1,4 +1,11 @@
 from qy.analyzer import type_check_source
+from qy.evaluator import standard_environment
+from qy.macro import MacroDefinition
+from qy.reader import Symbol
+from qy.stdlib import StandardModule
+from qy.stdlib import register_module
+
+S = Symbol
 
 
 def test_let_scope_is_understood():
@@ -45,6 +52,62 @@ def test_reports_unknown_imports():
     diagnostics = type_check_source("(from qy.str import missing as m)")
 
     assert any("has no export 'missing'" in item.message for item in diagnostics)
+
+
+def test_macro_only_import_alias_scope_is_understood():
+    env = standard_environment()
+    register_module(
+        StandardModule(
+            "review.macros",
+            {},
+            {
+                S("const-answer"): MacroDefinition(
+                    S("const-answer"),
+                    (),
+                    (42,),
+                    env,
+                )
+            },
+        )
+    )
+
+    assert (
+        type_check_source(
+            """
+        (from review.macros import const-answer)
+        (const-answer)
+        """,
+            env,
+        )
+        == []
+    )
+
+
+def test_macro_capture_binding_is_understood_in_macro_body():
+    assert (
+        type_check_source(
+            """
+        (macro call-site-plus (value)
+          (cons (capture '+) (cons value (cons 1 '()))))
+        """
+        )
+        == []
+    )
+
+
+def test_same_source_unit_module_macro_import_scope_is_understood():
+    assert (
+        type_check_source(
+            """
+        (module review.inline.macros
+          (macro const-answer () 42)
+          (exports const-answer))
+        (from review.inline.macros import const-answer)
+        (const-answer)
+        """
+        )
+        == []
+    )
 
 
 def test_recursive_function_scope_is_understood():

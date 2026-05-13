@@ -55,10 +55,25 @@ read
 当前 macro body 执行仍复用 lowering 与 IR VM，但入口已经收敛到 compile-time facade：
 
 - macro 定义捕获的是 compile-time environment facade，而不是在 `qy.macro` 中直接依赖 `Environment` 类型。
-- compile-time 可用 binding 当前等于“定义时环境中的现有 binding 快照”加上展开期注入的 `gensym`。
+- compile-time 可用 binding 当前等于“定义时环境中的现有 binding 快照”加上展开期注入的 `gensym` 与 `capture`。
 - compile-time effect 继续受 `effect_policy` 控制；macro body 其它失败会统一包装成 `failed during compile-time evaluation` diagnostics。
 
 这仍是过渡实现，不代表 compile-time/runtime capability 已完全隔离，但边界已经比直接暴露 evaluator 类型更清晰。
+
+## Macro Hygiene 现状
+
+当前 macroexpand 已实现最小 hygiene：
+
+- macro 引入的局部 binder（`let` binding、`lambda` params、`defun/component` params、`handle` params）会在展开后自动 rewrite 成稳定的 hidden symbol，避免捕获调用点同名 symbol。
+- macro 引入的自由 symbol 默认按定义点绑定解析；展开 trace/source map 会记录原始 symbol 与 rewritten symbol 的映射关系。
+- 普通程序里的 `quote` 仍保持边界，不会继续展开或 rewrite 内部数据。
+
+如果确实需要显式捕获调用点 binding，目前可在 macro body 中使用 `(capture form)`：
+
+- 默认 hygiene：`(cons '+ ...)` 会固定到 macro 定义点的 `+`。
+- 显式捕获：`(cons (capture '+) ...)` 会保留调用点的 `+`，允许用户有意让局部 binding 参与解析。
+
+`MacroExpansionTrace.renames` 与 `MacroExpansion.source_map[*].renames` 现在会暴露这些 rewrite，供后续 diagnostics / LSP 消费。
 
 ## CLI 调试命令
 
