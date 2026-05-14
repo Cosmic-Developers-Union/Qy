@@ -24,7 +24,7 @@ __all__ = [
     "standard_bindings",
 ]
 
-PRELUDE_MODULES = ("qy.core", "qy.io", "qy.str")
+PRELUDE_MODULES = ("qy.core", "qy.io", "qy.py")
 type ModuleLoader = Callable[[], StandardModule]
 
 _MODULE_LOADERS: dict[str, ModuleLoader] = {}
@@ -74,6 +74,8 @@ def _install_builtin_loaders() -> None:
     _MODULE_LOADERS.setdefault("qy.core", _load_core_module)
     _MODULE_LOADERS.setdefault("qy.io", _load_io_module)
     _MODULE_LOADERS.setdefault("qy.str", _load_string_module)
+    _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
+    _MODULE_LOADERS.setdefault("qy.legacy", _load_legacy_module)
 
 
 def _load_core_module() -> StandardModule:
@@ -92,6 +94,19 @@ def _load_string_module() -> StandardModule:
     from qy.stdlib.strings import module
 
     return module()
+
+
+def _load_py_module() -> StandardModule:
+    from qy.stdlib.python import operators as python_operators
+
+    return StandardModule("qy.py", python_operators())
+
+
+def _load_legacy_module() -> StandardModule:
+    from qy.stdlib.control import legacy_operators as control_legacy
+    from qy.stdlib.effects import legacy_operators as effects_legacy
+
+    return StandardModule("qy.legacy", {**control_legacy(), **effects_legacy()})
 
 
 def _looks_like_file_module(name: str) -> bool:

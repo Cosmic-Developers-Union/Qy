@@ -29,15 +29,6 @@ def test_operator_kinds():
         "cdr",
         "chain",
         "cons",
-        "str-upper",
-        "tuple",
-        "list",
-        "dict",
-        "set",
-        "tuple?",
-        "list?",
-        "dict?",
-        "set?",
         "len",
         "get",
         "has?",
@@ -45,7 +36,7 @@ def test_operator_kinds():
     ]:
         assert isinstance(env.resolve(S(name)), PureOperator), f"{name} should be PureOperator"
 
-    for name in ["let", "lambda", "defun", "component", "defeffect", "module", "from"]:
+    for name in ["let", "lambda", "defun", "defeffect", "module", "from"]:
         assert isinstance(env.resolve(S(name)), ScopeOperator), f"{name} should be ScopeOperator"
 
     for name in ["cond", "handle"]:
@@ -59,8 +50,6 @@ def test_operator_kinds():
         "assert",
         "parallel",
         "cache",
-        "spawn",
-        "await",
         "perform",
         "py",
         "resume",

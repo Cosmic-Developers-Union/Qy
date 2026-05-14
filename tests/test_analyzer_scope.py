@@ -18,11 +18,20 @@ def test_lambda_scope_is_understood():
 
 
 def test_component_scope_is_understood():
+    from qy.evaluator import standard_environment
+    from qy.stdlib import load_module
+
+    env = standard_environment()
+    for sym, val in load_module("qy.legacy").exports.items():
+        env.define(sym, val)
     assert (
-        type_check_source("""
+        type_check_source(
+            """
     (component scale (x factor) (* x factor))
     (scale 7 6)
-    """)
+    """,
+            env,
+        )
         == []
     )
 

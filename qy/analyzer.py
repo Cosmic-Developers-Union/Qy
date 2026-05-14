@@ -163,6 +163,18 @@ def _infer(
                 return "any"
             case "assert":
                 return _infer_assert(args, env, scope, diagnostics)
+            case "define":
+                return _infer_define(form, env, scope, diagnostics)
+            case "pipeline":
+                return _infer_pipeline(args, env, scope, diagnostics)
+            case "parallel":
+                return _infer_parallel_or_all(args, env, scope, diagnostics)
+            case "all":
+                return _infer_parallel_or_all(args, env, scope, diagnostics)
+            case "race":
+                return _infer_parallel_or_all(args, env, scope, diagnostics)
+            case "apply":
+                return _infer_apply(args, env, scope, diagnostics)
 
     operator_type = _infer(operator, env, scope, diagnostics)
     signature = _operator_signature(operator, env, scope)
@@ -721,6 +733,8 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         and isinstance(form[1], Symbol)
     ):
         return scope.define(form[1], "function")
+    if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
+        return scope.define(form[1], "any")
     if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
         return scope.define(form[1], "effect")
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
@@ -799,3 +813,59 @@ def _scope_with_parameters(
 
 def _is_special_form(form: object, name: str) -> bool:
     return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+
+
+def _infer_define(
+    form: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(form) < 3:
+        diagnostics.append(Diagnostic("define expects a name and a value"))
+        return "unknown"
+    _, name, value = form[0], form[1], form[2]
+    if not isinstance(name, Symbol):
+        diagnostics.append(Diagnostic(f"define name must be a symbol, got {name!r}"))
+    _infer(value, env, scope, diagnostics)
+    return "any"
+
+
+def _infer_pipeline(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if not args:
+        diagnostics.append(Diagnostic("pipeline expects at least one expression"))
+        return "unknown"
+    result_type: TypeName = "none"
+    for arg in args:
+        result_type = _infer(arg, env, scope, diagnostics)
+    return result_type
+
+
+def _infer_parallel_or_all(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    for arg in args:
+        _infer(arg, env, scope, diagnostics)
+    return "any"
+
+
+def _infer_apply(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: _Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(args) != 2:
+        diagnostics.append(Diagnostic(f"apply expects exactly two arguments, got {len(args)}"))
+        return "unknown"
+    for arg in args:
+        _infer(arg, env, scope, diagnostics)
+    return "any"

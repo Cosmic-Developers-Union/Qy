@@ -56,7 +56,7 @@ def _defeffect(args: tuple[object, ...], env: Environment) -> object:
     name = ensure_symbol(name, "defeffect name")
     resumable = _parse_defeffect_resumable(tuple(options))
     effect = EffectDefinition(name, resumable=resumable)
-    return env.define(name, effect)
+    return env.define_once(name, effect)
 
 
 def _parse_defeffect_resumable(options: tuple[object, ...]) -> bool:
@@ -149,7 +149,6 @@ def operators() -> dict[Symbol, object]:
         Symbol("assert"): EffectOperator(
             "assert", _special_effect_form, "断言 debug 条件；失败时执行 assert-failed。"
         ),
-        Symbol("await"): EffectOperator("await", _await, "等待一个或多个异步值。"),
         Symbol("cache"): EffectOperator("cache", _cache, "缓存一个表达式的求值结果。"),
         Symbol("defeffect"): ScopeOperator(
             "defeffect", _defeffect, "声明 effect，供 perform/handle 和分析器使用。"
@@ -164,7 +163,6 @@ def operators() -> dict[Symbol, object]:
         Symbol("resume"): EffectOperator(
             "resume", _special_effect_form, "恢复捕获的 effect continuation。"
         ),
-        Symbol("spawn"): EffectOperator("spawn", _spawn, "创建 asyncio task。"),
         Symbol("assert-failed"): EffectDefinition(
             Symbol("assert-failed"),
             resumable=False,
@@ -175,4 +173,11 @@ def operators() -> dict[Symbol, object]:
             resumable=False,
             doc="py 宿主边界传播的 Python 异常 effect。",
         ),
+    }
+
+
+def legacy_operators() -> dict[Symbol, object]:
+    return {
+        Symbol("await"): EffectOperator("await", _await, "等待一个或多个异步值。"),
+        Symbol("spawn"): EffectOperator("spawn", _spawn, "创建 asyncio task。"),
     }

@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field
 
 from qy.errors import QyEffectError
 
@@ -22,6 +23,7 @@ class QyContinuation:
     effect: str
     resumable: bool
     _resume: Callable[[object], object]
+    _consumed: bool = field(default=False, init=False)
 
     async def resume(self, value: object) -> object:
         if not self.resumable:
@@ -29,4 +31,10 @@ class QyContinuation:
                 f"effect {self.effect!r} is not resumable",
                 metadata={"effect": self.effect, "value": value},
             )
+        if self._consumed:
+            raise QyEffectError(
+                f"continuation for effect {self.effect!r} has already been resumed (one-shot)",
+                metadata={"effect": self.effect},
+            )
+        self._consumed = True
         return await _await_if_needed(self._resume(value))

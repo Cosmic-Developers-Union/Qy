@@ -25,10 +25,13 @@ _HYGIENE_ALIAS_CACHE_KEY = ("qy", "hygiene_alias_namespace")
 
 _SYNTAX_FORM_NAMES = frozenset(
     {
+        "all",
+        "apply",
         "assert",
         "component",
         "cond",
         "defeffect",
+        "define",
         "defun",
         "eval",
         "from",
@@ -38,9 +41,15 @@ _SYNTAX_FORM_NAMES = frozenset(
         "let",
         "macro",
         "module",
+        "parallel",
         "perform",
+        "pipeline",
+        "quasiquote",
         "quote",
+        "race",
         "resume",
+        "unquote",
+        "unquote-splicing",
     }
 )
 
@@ -157,6 +166,18 @@ def _rewrite_hygienic_form(
     operator = value[0]
     if operator == Symbol("quote"):
         return value
+    if operator in {Symbol("quasiquote"), Symbol("unquote"), Symbol("unquote-splicing")}:
+        return value
+    if operator == Symbol("define"):
+        return _rewrite_hygienic_define(
+            value,
+            macro,
+            context,
+            call_site_ids,
+            renamed_locals,
+            renames,
+            rename_seen,
+        )
     if operator == Symbol("let"):
         return _rewrite_hygienic_let(
             value,
@@ -217,6 +238,39 @@ def _rewrite_hygienic_form(
             for item in value
         ],
     )
+
+
+def _rewrite_hygienic_define(
+    form: tuple[object, ...],
+    macro: MacroDefinition,
+    context: MacroExpansionContext,
+    call_site_ids: set[int],
+    renamed_locals: dict[str, str],
+    renames: list[MacroRename],
+    rename_seen: set[tuple[str, str, str]],
+) -> tuple[object, ...]:
+    if len(form) < 3:
+        return form
+    body_mapping = dict(renamed_locals)
+    rewritten_name = _rewrite_binding_symbol(
+        form[1],
+        context,
+        call_site_ids,
+        renames,
+        rename_seen,
+        body_mapping,
+    )
+    rewritten_value = _rewrite_hygienic_form(
+        form[2],
+        macro,
+        context,
+        call_site_ids,
+        body_mapping,
+        renames,
+        rename_seen,
+        captured=False,
+    )
+    return _tuple_like(form, [form[0], rewritten_name, rewritten_value])
 
 
 def _rewrite_hygienic_let(

@@ -31,6 +31,7 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 - Qy 没有 `setq`。
 - `define` 在当前 symbol-space 构建一次性绑定；如果当前 symbol-space 已存在该 symbol，则非法。
 - `define` 会保护当前 symbol-space 内已绑定的 symbol。
+- **宿主注入**（host injection）占用当前 symbol-space：host value、operator、stdlib 注册的 symbol 视为当前空间已有绑定；`define` 不能覆盖这些名字。
 - `let` 构建新的局部 symbol-space，可以绑定任意 symbol，包括外层已有 symbol、核心算子名、宿主注入名。
 - `module`、函数调用 frame、macro 定义环境都按 symbol-space 模型理解，只是生命周期、导出规则和 compile-time/runtime 可见性不同。
 - 外部宿主可以通过注入 symbol-space 来注入 object(host value) 与 operator。
@@ -74,11 +75,12 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 - `parallel`：parallel-map 风格的 order-insensitive 求值组；允许 VM 并行求值，但不要求并行；支持 effect。
 - `all`：barrier continuation；全部分支完成后恢复 parent continuation。
 - `race`：first-resume wins；最先恢复 parent continuation 的分支决定结果。
-- `defun` / `lambda` / `apply`：函数定义、匿名函数、动态调用。
+- `defun` / `lambda` / `apply`：函数定义、匿名函数、动态调用。`defun` 是 `(define name (lambda ...))` 的语义糖；服从不可重绑定规则，同一 symbol-space 不可重复 `defun` 同名函数。
 - `macro`：compile-time syntax datum -> syntax datum 改写。
 - `quasiquote` / `unquote`：宏构造 syntax datum 的配套机制。
 - `gensym` / `capture`：hygiene 与 intentional capture 机制。
-- `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。
+- `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。`defeffect` 走 `define` 语义，同一 symbol-space 内不可重复声明同名 effect。
+- `pipeline`、`parallel`、`all`、`race` 是 HIR 独立节点（`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`），不是普通 `CallExpr`；lowering 必须特殊处理，不能通过 operator dispatch 求值。
 - `module` / `from` / `import` / `exports`：模块 symbol-space 与导入导出。
 
 ## Effects And Parallel

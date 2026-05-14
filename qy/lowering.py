@@ -9,12 +9,15 @@ from qy.diagnostics import Diagnostic
 from qy.errors import EvaluationError
 from qy.evaluator import Environment
 from qy.evaluator import standard_environment
+from qy.ir import AllExpr
+from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
 from qy.ir import Binding
 from qy.ir import CallExpr
 from qy.ir import CondClause
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
+from qy.ir import DefineExpr
 from qy.ir import DefunExpr
 from qy.ir import EffectHandler
 from qy.ir import FromImportExpr
@@ -26,9 +29,12 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import MacroExpr
 from qy.ir import ModuleExpr
+from qy.ir import ParallelExpr
 from qy.ir import PerformExpr
+from qy.ir import PipelineExpr
 from qy.ir import ProgramIR
 from qy.ir import QuoteExpr
+from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
@@ -171,6 +177,8 @@ def _lower_form(
         match operator.name:
             case "quote":
                 return _lower_quote(args, context, form)
+            case "quasiquote":
+                return _lower_quasiquote(args, scope, context, form, tail=tail)
             case "eval":
                 return _lower_eval(args, scope, context, form)
             case "macro":
@@ -199,6 +207,18 @@ def _lower_form(
                 return _lower_resume(args, scope, context, form)
             case "assert":
                 return _lower_assert(args, scope, context, form)
+            case "define":
+                return _lower_define(form, scope, context)
+            case "pipeline":
+                return _lower_pipeline(args, scope, context, form, tail=tail)
+            case "parallel":
+                return _lower_parallel(args, scope, context, form)
+            case "all":
+                return _lower_all(args, scope, context, form)
+            case "race":
+                return _lower_race(args, scope, context, form)
+            case "apply":
+                return _lower_apply(args, scope, context, form)
 
     operator_expr = _lower_form(operator, scope, context)
     if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
@@ -252,6 +272,64 @@ def _lower_quote(
         context.diagnostic(f"quote expects exactly one argument, got {len(args)}", form)
         return QuoteExpr((), get_span(form))
     return QuoteExpr(cast(Form, args[0]), get_span(form))
+
+
+def _lower_quasiquote(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+    *,
+    tail: bool = False,
+) -> IRExpr:
+    if len(args) != 1:
+        context.diagnostic(f"quasiquote expects exactly one argument, got {len(args)}", form)
+        return QuoteExpr((), get_span(form))
+    expanded = _expand_quasiquote_form(args[0])
+    return _lower_form(expanded, scope, context, tail=tail)
+
+
+def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
+    from qy.reader import DottedTuple as _DottedTuple
+
+    if isinstance(form, tuple) and not isinstance(form, _DottedTuple) and form:
+        op = form[0]
+        if isinstance(op, Symbol) and op.name == "unquote":
+            if depth == 0:
+                return form[1] if len(form) == 2 else form
+            return (
+                Symbol("list"),
+                Symbol("unquote"),
+                _expand_quasiquote_form(form[1], depth=depth - 1),
+            )
+        if isinstance(op, Symbol) and op.name == "quasiquote":
+            inner = _expand_quasiquote_form(form[1] if len(form) == 2 else form, depth=depth + 1)
+            return (Symbol("list"), Symbol("quasiquote"), inner)
+        return _build_quasiquote_tuple(form, depth=depth)
+    return (Symbol("quote"), form)
+
+
+def _build_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
+    from qy.reader import DottedTuple as _DottedTuple
+
+    if not form:
+        return (Symbol("quote"), ())
+    head_form = form[0]
+    tail_form = form[1:]
+    if (
+        isinstance(head_form, tuple)
+        and not isinstance(head_form, _DottedTuple)
+        and head_form
+        and isinstance(head_form[0], Symbol)
+        and head_form[0].name == "unquote-splicing"
+        and depth == 0
+    ):
+        spliced = head_form[1] if len(head_form) == 2 else head_form
+        rest = _build_quasiquote_tuple(tail_form, depth=depth)
+        return (Symbol("qy-append"), spliced, rest)
+    head = _expand_quasiquote_form(head_form, depth=depth)
+    rest = _build_quasiquote_tuple(tail_form, depth=depth)
+    return (Symbol("cons"), head, rest)
 
 
 def _lower_eval(
@@ -633,6 +711,8 @@ def _scope_after_form(
         if scope.has_local(form[1]):
             return scope
         return _define_local(scope, Binding(form[1], "local", "function"), context)
+    if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
+        return _define_top_level(scope, Binding(form[1], "local", "any"), context)
     if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
         return _define_local(scope, Binding(form[1], "local", "effect"), context)
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
@@ -695,6 +775,15 @@ def _predeclare_callable_definitions(
 
 def _define_local(scope: Scope, binding: Binding, context: LoweringContext) -> Scope:
     if scope.has_local(binding.symbol):
+        context.diagnostic(
+            f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
+        )
+    return scope.define(binding)
+
+
+def _define_top_level(scope: Scope, binding: Binding, context: LoweringContext) -> Scope:
+    """Like _define_local but checks parent scopes too (catches shadowing of host/env symbols)."""
+    if scope.lookup(binding.symbol) is not None:
         context.diagnostic(
             f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
         )
@@ -820,3 +909,77 @@ def _body_type(body: tuple[IRExpr, ...]) -> TypeName:
 
 def _is_special_form(form: object, name: str) -> bool:
     return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+
+
+def _lower_define(form: tuple[object, ...], scope: Scope, context: LoweringContext) -> IRExpr:
+    if len(form) < 3:
+        context.diagnostic("define expects a name and a value", form)
+        return DefineExpr(
+            Symbol("<invalid>"), LiteralExpr(None, "none", get_span(form)), get_span(form)
+        )
+    _, name_form, value_form = form[0], form[1], form[2]
+    name = _ensure_symbol(name_form, "define name", context)
+    value = _lower_form(value_form, scope, context)
+    return DefineExpr(name, value, get_span(form))
+
+
+def _lower_pipeline(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+    *,
+    tail: bool = False,
+) -> IRExpr:
+    if not args:
+        context.diagnostic("pipeline expects at least one expression", form)
+        return LiteralExpr(None, "none", get_span(form))
+    lowered = tuple(
+        _lower_form(arg, scope, context, tail=tail and i == len(args) - 1)
+        for i, arg in enumerate(args)
+    )
+    return PipelineExpr(lowered, get_span(form))
+
+
+def _lower_parallel(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+) -> IRExpr:
+    lowered = tuple(_lower_form(arg, scope, context) for arg in args)
+    return ParallelExpr(lowered, get_span(form))
+
+
+def _lower_all(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+) -> IRExpr:
+    lowered = tuple(_lower_form(arg, scope, context) for arg in args)
+    return AllExpr(lowered, get_span(form))
+
+
+def _lower_race(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+) -> IRExpr:
+    lowered = tuple(_lower_form(arg, scope, context) for arg in args)
+    return RaceExpr(lowered, get_span(form))
+
+
+def _lower_apply(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+) -> IRExpr:
+    if len(args) != 2:
+        context.diagnostic("apply expects a function and an argument list", form)
+        return LiteralExpr(None, "none", get_span(form))
+    func_expr = _lower_form(args[0], scope, context)
+    args_expr = _lower_form(args[1], scope, context)
+    return ApplyExpr(func_expr, args_expr, get_span(form))

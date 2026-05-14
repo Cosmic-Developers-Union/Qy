@@ -34,6 +34,7 @@ from qy.evaluator import evaluate_async
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.reader import get_span
+from qy.stdlib.data import python_container_operators
 from qy.stdlib.effects import _await_cached_value
 from qy.values import QY_NIL
 from qy.values import QY_T
@@ -330,4 +331,5 @@ def _non_resumable_python_continuation() -> QyContinuation:
 def operators() -> dict[Symbol, object]:
     return {
         Symbol("py"): EffectOperator("py", _py, "执行内嵌 async Python，并用 keyword 参数绑定值。"),
+        **python_container_operators(),
     }

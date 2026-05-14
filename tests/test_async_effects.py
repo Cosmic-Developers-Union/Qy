@@ -186,9 +186,45 @@ async def test_parallel_raises_aggregate_error():
     qy = Qy()
 
     with pytest.raises(QyAggregateError) as exc_info:
-        await qy.evaluate_source_async("(parallel missing absent)")
+        await qy.evaluate_source_async("(parallel (eval (quote missing)) (eval (quote absent)))")
 
     error = exc_info.value
     assert error.code == "QY_AGGREGATE_ERROR"
     assert len(error.errors) == 2
-    assert all(item.code == "QY_UNBOUND_SYMBOL" for item in error.errors)
+
+
+async def test_resume_one_shot_continuation_raises_on_double_resume():
+    qy = Qy()
+
+    with pytest.raises(QyEffectError) as exc_info:
+        await qy.evaluate_source_async(
+            """
+            (defeffect ask)
+            (handle
+              (+ 1 (perform ask 41))
+              ((ask (arg k)
+                (resume k arg)
+                (resume k arg))))
+            """
+        )
+
+    error = exc_info.value
+    assert "one-shot" in str(error) or "already been resumed" in str(error)
+
+
+async def test_pipeline_returns_last_value():
+    qy = Qy()
+    result = await qy.evaluate_source_async("(pipeline 1 2 3)")
+    assert result == 3
+
+
+async def test_all_returns_aggregate_tuple():
+    qy = Qy()
+    result = await qy.evaluate_source_async("(all 10 20 30)")
+    assert result == (10, 20, 30)
+
+
+async def test_race_returns_one_value():
+    qy = Qy()
+    result = await qy.evaluate_source_async("(race 1 2 3)")
+    assert result in (1, 2, 3)

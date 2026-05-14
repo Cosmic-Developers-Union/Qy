@@ -8,10 +8,13 @@ effects emit a ``raise NotImplementedError`` placeholder.
 
 from __future__ import annotations
 
+from qy.ir import AllExpr
+from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
+from qy.ir import DefineExpr
 from qy.ir import DefunExpr
 from qy.ir import HandleExpr
 from qy.ir import IRExpr
@@ -20,9 +23,12 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import MacroExpr
 from qy.ir import ModuleExpr
+from qy.ir import ParallelExpr
 from qy.ir import PerformExpr
+from qy.ir import PipelineExpr
 from qy.ir import ProgramIR
 from qy.ir import QuoteExpr
+from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
@@ -77,6 +83,17 @@ def codegen_python(program: ProgramIR) -> str:
 def _toplevel(expr: IRExpr) -> list[str]:
     if isinstance(expr, DefunExpr):
         return _defun(expr)
+    if isinstance(expr, DefineExpr):
+        value_code = _expr(expr.value)
+        return [f"{_mangle(expr.name.name)} = {value_code}"]
+    if isinstance(expr, PipelineExpr):
+        if not expr.body:
+            return ["_result = None"]
+        lines: list[str] = []
+        for e in expr.body[:-1]:
+            lines.append(f"_result = {_expr(e)}")
+        lines.append(f"_result = {_expr(expr.body[-1])}")
+        return lines
     if isinstance(expr, MacroExpr):
         return [f"# macro {_mangle(expr.name.name)}"]
     if isinstance(expr, DefeffectExpr):
@@ -154,6 +171,15 @@ def _expr(expr: IRExpr) -> str:
         return "None"
     if isinstance(expr, DefunExpr):
         return _mangle(expr.name.name)
+    if isinstance(expr, DefineExpr):
+        return f"({_mangle(expr.name.name)} := {_expr(expr.value)})"
+    if isinstance(expr, PipelineExpr):
+        if not expr.body:
+            return "None"
+        parts = [_expr(e) for e in expr.body]
+        return f"({', '.join(parts)})[-1]" if len(parts) > 1 else parts[0]
+    if isinstance(expr, (ParallelExpr, AllExpr, RaceExpr, ApplyExpr)):
+        raise CodegenError(f"unsupported IR expression: {type(expr).__name__}")
     raise CodegenError(f"unsupported IR expression: {type(expr).__name__}")
 
 

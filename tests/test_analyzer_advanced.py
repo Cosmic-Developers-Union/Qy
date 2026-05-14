@@ -1,10 +1,26 @@
 from qy.analyzer import type_check_source
+from qy.evaluator import standard_environment
+from qy.stdlib import load_module
+
+
+def _legacy_env():
+    env = standard_environment()
+    for sym, val in load_module("qy.legacy").exports.items():
+        env.define(sym, val)
+    return env
+
+
+def _str_env():
+    env = standard_environment()
+    for sym, val in load_module("qy.str").exports.items():
+        env.define(sym, val)
+    return env
 
 
 def test_async_effect_operators_are_understood():
     assert type_check_source("(parallel (+ 1 2) (+ 3 4))") == []
     assert type_check_source("(cache (+ 1 2))") == []
-    assert type_check_source("(await (spawn (+ 1 2)))") == []
+    assert type_check_source("(await (spawn (+ 1 2)))", _legacy_env()) == []
     assert type_check_source('(assert true "ready")') == []
     assert type_check_source('(py "return a + b" :a 1 :b (+ 2 3))') == []
     assert (
@@ -62,7 +78,7 @@ def test_tagged_literals_are_understood_as_operator_calls():
 
 def test_print_and_str_accept_text_symbols():
     assert type_check_source('(print "hello")') == []
-    assert type_check_source('(str-upper "hello")') == []
+    assert type_check_source('(str-upper "hello")', _str_env()) == []
 
 
 def test_legacy_data_operators_are_treated_as_non_core_calls():

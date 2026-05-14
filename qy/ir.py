@@ -16,6 +16,8 @@ from qy.types import OperatorKind
 from qy.types import TypeName
 
 __all__ = [
+    "AllExpr",
+    "ApplyExpr",
     "AssertExpr",
     "Binding",
     "BindingSource",
@@ -23,6 +25,7 @@ __all__ = [
     "CondClause",
     "CondExpr",
     "DefeffectExpr",
+    "DefineExpr",
     "DefunExpr",
     "EffectHandler",
     "FromImportExpr",
@@ -34,9 +37,12 @@ __all__ = [
     "LiteralExpr",
     "MacroExpr",
     "ModuleExpr",
+    "ParallelExpr",
     "PerformExpr",
+    "PipelineExpr",
     "ProgramIR",
     "QuoteExpr",
+    "RaceExpr",
     "ResumeExpr",
     "RuntimeEvalExpr",
     "RuntimeMetaCallExpr",
@@ -162,6 +168,50 @@ class DefunExpr:
 
 
 @dataclass(frozen=True, slots=True)
+class DefineExpr:
+    name: Symbol
+    value: IRExpr
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
+class PipelineExpr:
+    body: tuple[IRExpr, ...]
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
+class ParallelExpr:
+    exprs: tuple[IRExpr, ...]
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
+class AllExpr:
+    exprs: tuple[IRExpr, ...]
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
+class RaceExpr:
+    exprs: tuple[IRExpr, ...]
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
+class ApplyExpr:
+    function: IRExpr
+    args: IRExpr
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
+
+
+@dataclass(frozen=True, slots=True)
 class MacroExpr:
     name: Symbol
     params: tuple[Symbol, ...]
@@ -249,10 +299,13 @@ class AssertExpr:
 
 
 type IRExpr = (
-    AssertExpr
+    AllExpr
+    | ApplyExpr
+    | AssertExpr
     | CallExpr
     | CondExpr
     | DefeffectExpr
+    | DefineExpr
     | DefunExpr
     | FromImportExpr
     | HandleExpr
@@ -261,8 +314,11 @@ type IRExpr = (
     | LiteralExpr
     | MacroExpr
     | ModuleExpr
+    | ParallelExpr
     | PerformExpr
+    | PipelineExpr
     | QuoteExpr
+    | RaceExpr
     | ResumeExpr
     | RuntimeEvalExpr
     | RuntimeMetaCallExpr

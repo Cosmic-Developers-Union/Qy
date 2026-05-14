@@ -78,5 +78,5 @@ def test_operators_command(runner, app):
     assert "`py` - Effect 算子" in result.output
     assert "## 模块 qy.io" in result.output
     assert "`print`" in result.output
-    assert "## 模块 qy.str" in result.output
-    assert "`str-upper`" in result.output
+    assert "## 模块 qy.py" in result.output
+    assert "`list`" in result.output

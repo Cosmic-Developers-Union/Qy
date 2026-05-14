@@ -181,7 +181,11 @@ def test_macro_hygiene_defun_params_do_not_capture_call_site_symbols():
 
 
 def test_macro_hygiene_component_params_do_not_capture_call_site_symbols():
+    from qy.stdlib import load_module
+
     env = standard_environment()
+    for sym, val in load_module("qy.legacy").exports.items():
+        env.define(sym, val)
     evaluate_source(
         """
                 (macro define-component-using (expr)

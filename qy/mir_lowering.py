@@ -7,10 +7,13 @@ from typing import cast
 
 from qy.diagnostics import Diagnostic
 from qy.errors import SourceSpan
+from qy.ir import AllExpr
+from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
+from qy.ir import DefineExpr
 from qy.ir import DefunExpr
 from qy.ir import FromImportExpr
 from qy.ir import HandleExpr
@@ -20,9 +23,12 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import MacroExpr
 from qy.ir import ModuleExpr
+from qy.ir import ParallelExpr
 from qy.ir import PerformExpr
+from qy.ir import PipelineExpr
 from qy.ir import ProgramIR
 from qy.ir import QuoteExpr
+from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
 from qy.ir import SymbolRefExpr
@@ -164,6 +170,11 @@ class _FunctionLowerer:
             return self.lower_handle(expression)
         if isinstance(expression, ResumeExpr):
             return self.lower_resume(expression)
+        if isinstance(expression, DefineExpr):
+            return self.lower_define(expression)
+        if isinstance(expression, PipelineExpr | ParallelExpr | AllExpr | RaceExpr | ApplyExpr):
+            self.owner.diagnostic(f"{type(expression).__name__} not yet supported in MIR lowering")
+            return _LoweredExpression(self.register())
 
         self.owner.diagnostic(f"MIR lowering does not support {type(expression).__name__}")
         return _LoweredExpression(None)
@@ -358,6 +369,14 @@ class _FunctionLowerer:
         result = self.register()
         self.emit("RESUME", result, cont.register, value.register, span=expression.span)
         return _LoweredExpression(result)
+
+    def lower_define(self, expression: DefineExpr) -> _LoweredExpression:
+        value = self.lower_expr(expression.value)
+        register = self.register()
+        if value.register is not None and not self.current.terminated:
+            self.emit("MOVE", register, value.register, span=expression.span)
+        self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
+        return _LoweredExpression(register)
 
     def new_block(self) -> _MutableBlock:
         block = _MutableBlock(len(self.blocks), [])

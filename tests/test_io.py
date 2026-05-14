@@ -28,7 +28,11 @@ def test_print_and_echo():
 
 
 def test_tagged_literal_calls_user_operator():
+    from qy.stdlib import load_module
+
     env = standard_environment()
+    for sym, val in load_module("qy.str").exports.items():
+        env.define(sym, val)
     evaluate_source('(defun t (source) (str-concat "template:" source))', env)
 
     assert evaluate_source('t"hello {name}"', env) == S("template:hello {name}")

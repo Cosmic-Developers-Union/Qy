@@ -46,6 +46,16 @@ class Environment:
         self._bindings[symbol] = value
         return value
 
+    def define_once(self, symbol: Symbol, value: object) -> object:
+        if symbol in self._bindings:
+            from qy.errors import QyRuntimeError
+
+            raise QyRuntimeError(
+                f"symbol {symbol.name!r} is already bound in this scope; use 'let' to shadow"
+            )
+        self._bindings[symbol] = value
+        return value
+
     def define_hidden(self, symbol: Symbol, value: object) -> object:
         self._hidden[symbol] = value
         return value

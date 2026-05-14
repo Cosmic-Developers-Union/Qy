@@ -87,10 +87,16 @@ GRAMMAR = r'''
 program: form*
 
 ?form: quote
+    | quasiquote
+    | unquote
+    | unquote_splicing
     | list
     | atom
 
 quote: "'" form
+quasiquote: "`" form
+unquote: "," form
+unquote_splicing: ",@" form
 
 list: "(" form* (DOT form)? ")" -> list_expr
 
@@ -103,13 +109,13 @@ list: "(" form* (DOT form)? ")" -> list_expr
     | BARE_SYMBOL            -> bare_symbol
 
 RAW_MULTILINE_SYMBOL.12: /(?s:[rR]""".*?""")/
-TAGGED_MULTILINE_SYMBOL.11: /(?s:[^()\s"';]+""".*?""")/
+TAGGED_MULTILINE_SYMBOL.11: /(?s:[^()\s"';`,@]+""".*?""")/
 MULTILINE_SYMBOL.10: /(?s:""".*?""")/
 RAW_QUOTED_SYMBOL.9: /[rR]"[^"]*"/
-TAGGED_QUOTED_SYMBOL.8: /[^()\s"';]+"(?:\\.|[^"\\])*"/
+TAGGED_QUOTED_SYMBOL.8: /[^()\s"';`,@]+"(?:\\.|[^"\\])*"/
 QUOTED_SYMBOL.7: /"(?:\\.|[^"\\])*"/
 DOT.13: "."
-BARE_SYMBOL: /[^()\s"';]+/
+BARE_SYMBOL: /[^()\s"';`,@]+/
 
 COMMENT: /;[^\n]*/
 
@@ -151,6 +157,18 @@ class _ReaderTransformer(lark.Transformer):
     def quote(self, meta: lark.tree.Meta, form: Form) -> Form:
         span = self._span(meta)
         return SpannedTuple((Symbol("quote", span), form), span)
+
+    def quasiquote(self, meta: lark.tree.Meta, form: Form) -> Form:
+        span = self._span(meta)
+        return SpannedTuple((Symbol("quasiquote", span), form), span)
+
+    def unquote(self, meta: lark.tree.Meta, form: Form) -> Form:
+        span = self._span(meta)
+        return SpannedTuple((Symbol("unquote", span), form), span)
+
+    def unquote_splicing(self, meta: lark.tree.Meta, form: Form) -> Form:
+        span = self._span(meta)
+        return SpannedTuple((Symbol("unquote-splicing", span), form), span)
 
     def list_expr(self, meta: lark.tree.Meta, *items: object) -> Form:
         span = self._span(meta)

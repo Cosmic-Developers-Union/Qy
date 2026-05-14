@@ -34,7 +34,13 @@ def test_register_vm_defun_can_be_called_across_steps():
 
 
 def test_register_vm_component_can_be_called_across_steps():
-    qy = Qy(backend="bytecode")
+    from qy.evaluator import standard_environment
+    from qy.stdlib import load_module
+
+    env = standard_environment()
+    for sym, val in load_module("qy.legacy").exports.items():
+        env.define(sym, val)
+    qy = Qy(env=env, backend="bytecode")
 
     qy.evaluate_source("(component scale (x factor) (* x factor))")
 

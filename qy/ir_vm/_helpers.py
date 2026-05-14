@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+from typing import TYPE_CHECKING
 
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
@@ -12,6 +13,9 @@ from qy.ir import SymbolRefExpr
 from qy.reader import DottedTuple
 from qy.values import QY_NIL
 from qy.values import list_to_qy_cons
+
+if TYPE_CHECKING:
+    from qy.virtual_stack import VirtualStackFrame
 
 __all__: list[str] = []
 
@@ -42,7 +46,7 @@ def _raw_operator_expression(expression: CallExpr) -> object:
     return expression.operator
 
 
-def _function_stack_frame(function: object, span: SourceSpan | None) -> object:
+def _function_stack_frame(function: object, span: SourceSpan | None) -> VirtualStackFrame:
     from qy.ir_vm._core import IRFunction
     from qy.virtual_stack import VirtualStackFrame
 

@@ -132,6 +132,15 @@ def _lambda(args: tuple[object, ...], env: Environment) -> object:
     return UserFunction(Symbol("<lambda>"), param_symbols, tuple(body), env)
 
 
+async def _define(args: tuple[object, ...], env: Environment) -> object:
+    if len(args) != 2:
+        raise QyArityError("define expects a name and a value")
+    name_form, value_form = args
+    name = ensure_symbol(name_form, "define name")
+    value = await evaluate_async(value_form, env)
+    return env.define_once(name, value)
+
+
 def _defun(args: tuple[object, ...], env: Environment) -> object:
     if len(args) < 3:
         raise QyArityError("defun expects a name, parameter list, and body")
@@ -157,11 +166,19 @@ def _component(args: tuple[object, ...], env: Environment) -> object:
 def operators() -> dict[Symbol, object]:
     return {
         Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
-        Symbol("component"): ScopeOperator("component", _component, "在当前作用域定义可复用组件。"),
+        Symbol("define"): ScopeOperator(
+            "define", _define, "在当前 symbol-space 一次性绑定 symbol。"
+        ),
         Symbol("defun"): ScopeOperator("defun", _defun, "在当前环境定义函数。"),
         Symbol("eval"): MetaOperator("eval", _eval, "求值一个符号 form。"),
         Symbol("lambda"): ScopeOperator("lambda", _lambda, "创建匿名函数。"),
         Symbol("let"): ScopeOperator("let", _let, "在词法局部作用域中求值 body。"),
         Symbol("macro"): MetaOperator("macro", _macro, "定义接收未求值 form 并展开的宏。"),
         Symbol("quote"): MetaOperator("quote", _quote, "返回一个表达式，不求值。"),
+    }
+
+
+def legacy_operators() -> dict[Symbol, object]:
+    return {
+        Symbol("component"): ScopeOperator("component", _component, "在当前作用域定义可复用组件。"),
     }

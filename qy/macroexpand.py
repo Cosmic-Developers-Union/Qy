@@ -313,6 +313,14 @@ async def _macroexpand_form(
     args = tuple(form[1:])
     if operator == Symbol("quote"):
         return form
+    if operator == Symbol("quasiquote"):
+        if len(args) != 1:
+            return form
+        return await _macroexpand_form(
+            _expand_quasiquote(args[0], depth=0),
+            context,
+            depth=depth,
+        )
     if operator == Symbol("macro"):
         _define_macro(form, context)
         return form
@@ -329,6 +337,8 @@ async def _macroexpand_form(
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
     if operator in {Symbol("defun"), Symbol("component")}:
         return await _macroexpand_body_form(form, context, depth=depth, body_start=3)
+    if operator == Symbol("define"):
+        return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
 
     if isinstance(operator, Symbol):
         if (value := context.resolve_macro(operator)) is not None:
@@ -460,6 +470,42 @@ def _macroexpand_imports_form(
         if isinstance(item, tuple):
             _import_macros_from_form(item, context)
     return form
+
+
+def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
+    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and form:
+        op = form[0]
+        if op == Symbol("unquote"):
+            if depth == 0:
+                return form[1] if len(form) == 2 else form
+            return (Symbol("list"), Symbol("unquote"), _expand_quasiquote(form[1], depth=depth - 1))
+        if op == Symbol("quasiquote"):
+            inner = _expand_quasiquote(form[1] if len(form) == 2 else form, depth=depth + 1)
+            return (Symbol("list"), Symbol("quasiquote"), inner)
+        return _expand_quasiquote_tuple(form, depth=depth)
+    if isinstance(form, DottedTuple):
+        return (Symbol("quote"), form)
+    return (Symbol("quote"), form)
+
+
+def _expand_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
+    if not form:
+        return (Symbol("quote"), ())
+    head_form = form[0]
+    tail = form[1:]
+    if (
+        isinstance(head_form, tuple)
+        and not isinstance(head_form, DottedTuple)
+        and head_form
+        and head_form[0] == Symbol("unquote-splicing")
+        and depth == 0
+    ):
+        spliced = head_form[1] if len(head_form) == 2 else head_form
+        rest = _expand_quasiquote_tuple(tail, depth=depth)
+        return (Symbol("qy-append"), spliced, rest)
+    head = _expand_quasiquote(head_form, depth=depth)
+    rest = _expand_quasiquote_tuple(tail, depth=depth)
+    return (Symbol("cons"), head, rest)
 
 
 async def _expand_macro(

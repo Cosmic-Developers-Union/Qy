@@ -24,10 +24,13 @@ from qy.evaluator import QyContinuation
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
+from qy.ir import AllExpr
+from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
+from qy.ir import DefineExpr
 from qy.ir import DefunExpr
 from qy.ir import EffectHandler
 from qy.ir import FromImportExpr
@@ -38,9 +41,12 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import MacroExpr
 from qy.ir import ModuleExpr
+from qy.ir import ParallelExpr
 from qy.ir import PerformExpr
+from qy.ir import PipelineExpr
 from qy.ir import ProgramIR
 from qy.ir import QuoteExpr
+from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
 from qy.ir import RuntimeMetaCallExpr
@@ -140,7 +146,7 @@ class IRVirtualMachine:
             return None
         if isinstance(expression, DefeffectExpr):
             effect = EffectDefinition(expression.name, expression.resumable)
-            return env.define(expression.name, effect)
+            return env.define_once(expression.name, effect)
         if isinstance(expression, CondExpr):
             return await self._eval_cond(expression, env, current_function=current_function)
         if isinstance(expression, FromImportExpr):
@@ -155,6 +161,52 @@ class IRVirtualMachine:
             return await self._eval_resume(expression, env, current_function=current_function)
         if isinstance(expression, AssertExpr):
             return await self._eval_assert(expression, env, current_function=current_function)
+        if isinstance(expression, DefineExpr):
+            value = await self._eval(expression.value, env, current_function=current_function)
+            return env.define_once(expression.name, value)
+        if isinstance(expression, PipelineExpr):
+            result: object = None
+            for expr in expression.body:
+                result = await self._eval(expr, env, current_function=current_function)
+            return result
+        if isinstance(expression, ParallelExpr):
+            import asyncio
+
+            from qy.errors import QyAggregateError
+            from qy.errors import QyError
+
+            tasks = [asyncio.create_task(self.evaluate(expr, env)) for expr in expression.exprs]
+            raw = await asyncio.gather(*tasks, return_exceptions=True)
+            errors = tuple(
+                r if isinstance(r, QyError) else QyRuntimeError(str(r), cause=r)
+                for r in raw
+                if isinstance(r, BaseException)
+            )
+            if errors:
+                raise QyAggregateError(
+                    f"parallel failed with {len(errors)} error(s)", errors=errors
+                )
+            return tuple(raw)
+        if isinstance(expression, AllExpr):
+            import asyncio
+
+            tasks = [asyncio.create_task(self.evaluate(expr, env)) for expr in expression.exprs]
+            results = await asyncio.gather(*tasks)
+            return tuple(results)
+        if isinstance(expression, RaceExpr):
+            import asyncio
+
+            tasks = [asyncio.create_task(self.evaluate(expr, env)) for expr in expression.exprs]
+            done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+            for t in pending:
+                t.cancel()
+            return next(iter(done)).result()
+        if isinstance(expression, ApplyExpr):
+            func = await self._eval(expression.function, env, current_function=current_function)
+            args_val = await self._eval(expression.args, env, current_function=current_function)
+            if not isinstance(args_val, tuple):
+                raise QyTypeError(f"apply expects a tuple of arguments, got {args_val!r}")
+            return await self._apply_value(func, args_val, expression.span, env)
         raise QyRuntimeError(f"unsupported IR expression {expression!r}")
 
     async def _eval_body(
@@ -691,6 +743,35 @@ class IRVirtualMachine:
             )
             raise
         return await continuation.resume(value)
+
+    async def _apply_value(
+        self,
+        func: object,
+        args: tuple[object, ...],
+        span: SourceSpan | None,
+        env: Environment,
+    ) -> object:
+        try:
+            if isinstance(func, IRFunction):
+                return await self._apply_ir_function(func, args, span=span)
+            if isinstance(func, PureOperator):
+                return await _await_if_needed(func(*args))
+            if isinstance(func, UserFunction):
+                return await _await_if_needed(func(*args))
+            raise QyTypeError(
+                f"apply: {func!r} is not callable",
+                span=span,
+                metadata={"func": func},
+            )
+        except (EvaluationError, QyEffectSignal):
+            raise
+        except Exception as e:
+            raise QyRuntimeError(
+                str(e),
+                span=span,
+                cause=e,
+                metadata={"python_exception": type(e).__name__},
+            ) from e
 
     async def _eval_from_import(self, expression: FromImportExpr, env: Environment) -> object:
         try:

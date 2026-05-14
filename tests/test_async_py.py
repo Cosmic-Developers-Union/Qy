@@ -2,10 +2,19 @@ import pytest
 
 from qy.evaluator import EvaluationError
 from qy.evaluator import HostObjectRef
+from qy.evaluator import standard_environment
 from qy.reader import Symbol
 from qy.runtime import Qy
+from qy.stdlib import load_module
 
 S = Symbol
+
+
+def _str_env():
+    env = standard_environment()
+    for sym, val in load_module("qy.str").exports.items():
+        env.define(sym, val)
+    return env
 
 
 async def test_py_runs_async_python_with_keyword_bindings():
@@ -61,7 +70,7 @@ return later()
 
 
 async def test_py_wraps_qy_callables_as_async_python_functions():
-    qy = Qy()
+    qy = Qy(env=_str_env())
     await qy.evaluate_source_async("(defun normalize-doc (doc) (str-upper doc))")
 
     result = await qy.evaluate_source_async(

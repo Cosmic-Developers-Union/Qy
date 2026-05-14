@@ -562,10 +562,13 @@ def _format_instruction(instruction: MIRInstruction) -> str:
         case "ENTER_SCOPE" | "EXIT_SCOPE":
             rendered = instruction.opcode
         case "FROM_IMPORT":
+            from qy.stdlib.imports import ImportSpec
+
             specs = operands[1]
             specs_str = ", ".join(
                 f"{s.name.name} as {s.alias.name}"
                 for s in (specs if isinstance(specs, tuple) else ())
+                if isinstance(s, ImportSpec)
             )
             rendered = f"FROM_IMPORT {_format_operand(operands[0])} [{specs_str}]"
         case "LOAD_HOST":
@@ -588,7 +591,9 @@ def _format_instruction(instruction: MIRInstruction) -> str:
         case "HANDLE":
             specs = operands[2]
             specs_str = ", ".join(
-                f"{s[0].name} -> fn#{s[1]}" for s in (specs if isinstance(specs, tuple) else ())
+                f"{s[0].name} -> fn#{s[1]}"
+                for s in (specs if isinstance(specs, tuple) else ())
+                if isinstance(s, tuple) and len(s) >= 2 and isinstance(s[0], Symbol)
             )
             rendered = f"{_format_register(operands[0])} = HANDLE fn#{operands[1]} [{specs_str}]"
         case "RESUME":

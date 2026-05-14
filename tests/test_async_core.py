@@ -1,7 +1,9 @@
 import asyncio
 from typing import cast
 
+from qy.evaluator import standard_environment
 from qy.runtime import Qy
+from qy.stdlib import load_module
 
 
 async def test_async_api_awaits_python_coroutines():
@@ -27,7 +29,10 @@ async def test_parallel_evaluates_expressions_concurrently():
 
 
 async def test_spawn_and_await_use_asyncio_tasks():
-    qy = Qy()
+    env = standard_environment()
+    for sym, val in load_module("qy.legacy").exports.items():
+        env.define(sym, val)
+    qy = Qy(env=env)
 
     task = cast(asyncio.Task[object], await qy.evaluate_source_async("(spawn (+ 1 2))"))
 

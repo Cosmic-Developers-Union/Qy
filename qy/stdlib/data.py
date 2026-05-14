@@ -365,6 +365,25 @@ def _has(*args: object) -> bool:
     )
 
 
+def python_container_operators() -> dict[Symbol, object]:
+    return {
+        Symbol("dict"): PureOperator(
+            "dict", _dict, "把 key/value 参数转换为 Python dict。", _evaluate_data_args
+        ),
+        Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
+        Symbol("list"): PureOperator(
+            "list", _list, "把参数转换为 Python list。", _evaluate_data_args
+        ),
+        Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
+        Symbol("set"): PureOperator("set", _set, "把参数转换为 Python set。", _evaluate_data_args),
+        Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
+        Symbol("tuple"): PureOperator(
+            "tuple", _tuple, "把参数转换为 Python tuple。", _evaluate_data_args
+        ),
+        Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
+    }
+
+
 def operators() -> dict[Symbol, object]:
     return {
         Symbol("atom"): PureOperator("atom", _atom, "如果值不是非空 chain 或 tuple，则返回 true。"),
@@ -374,10 +393,6 @@ def operators() -> dict[Symbol, object]:
         Symbol("cons"): PureOperator(
             "cons", _cons, "构造 chain cell；对 Python tuple/list 保持同类拼接。"
         ),
-        Symbol("dict"): PureOperator(
-            "dict", _dict, "把 key/value 参数转换为 Python dict。", _evaluate_data_args
-        ),
-        Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
         Symbol("eq"): PureOperator("eq", _eq, "Lisp 风格 eq；chain 按 identity 比较。"),
         Symbol("get"): PureOperator(
             "get", _get, "从 chain/tuple/list/dict 获取项。", _evaluate_lookup_args
@@ -390,16 +405,6 @@ def operators() -> dict[Symbol, object]:
         ),
         Symbol("is"): PureOperator("is", _is, "按 Python is 语义比较 identity。"),
         Symbol("len"): PureOperator("len", _len, "返回 collection 长度。"),
-        Symbol("list"): PureOperator(
-            "list", _list, "把参数转换为 Python list。", _evaluate_data_args
-        ),
-        Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
-        Symbol("set"): PureOperator("set", _set, "把参数转换为 Python set。", _evaluate_data_args),
-        Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
-        Symbol("tuple"): PureOperator(
-            "tuple", _tuple, "把参数转换为 Python tuple。", _evaluate_data_args
-        ),
-        Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
         Symbol("type"): PureOperator("type", _type, "返回值的类型名称。"),
         Symbol("true"): True,
         Symbol("false"): False,
