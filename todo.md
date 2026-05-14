@@ -4,8 +4,9 @@
 
 当前验证基线：
 
-- `uv run python -m pytest -q`：323 passed
-- `uv run ty check`：6 diagnostics，见 `P0-0`
+- `uv run python -m pytest -q`：352 passed
+- `uv run ty check`：passed
+- `uv run ruff check .`：passed
 
 ## 语言契约
 
@@ -14,54 +15,78 @@ Qy 是 Python 实现的 like-Lisp，核心是 algebraic effects + register VM。
 目标管线固定为：
 
 ```text
-source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
+source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 ```
 
 不可变约束：
 
 - Syntax datum 只有 `symbol` 与 `chain`。
+- `chain` 是不可变对象；所有构造、拼接、macro 改写必须返回新 chain。
 - Everything is symbol：数字拼写、字符串拼写、名字、算子名进入 syntax datum 时都不是独立 primitive syntax type。
 - Runtime value 存在于 symbol-space/env 中，由 `number`、`string`、`object` 构成。
 - `number` 与 `string` 是特殊 object；host value 是一等 runtime value。
+- pre-symbol-space 取决于 Qy 实例化；语言内核没有宿主环境，但默认 Qy 实例可以惰性预定义数字、字符串等传统符号。
+- host value/operator 可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
 - `quote` 返回 syntax datum，不触发 runtime lookup。
 - 同一 symbol-space 内不可重绑定。
-- host 注入的 object/operator 视为当前 symbol-space 已绑定，不能被 `define` 覆盖。
+- `define` 只检查当前 symbol-space；允许 shadow parent symbol-space 中的任意 symbol，包括核心、stdlib、host 注入名。
+- pre-symbol-space / host 注入的 object/operator 视为其所在 symbol-space 的已有绑定；同一空间内不能被 `define` 覆盖，但子空间可以 shadow。
 - `define` 是一次性绑定，不是 `set`。
 - `let` 创建新的局部 symbol-space，可以 shadow 任意外层 symbol，包括核心算子名与 host 注入名。
 - `defun` 等价于 `(define name (lambda ...))` 的语义糖，必须服从不可重绑定。
 - `defeffect` 走 `define` 语义，同一 symbol-space 内不可重复定义。
 - `pipeline`、`parallel`、`all`、`race` 是 HIR 独立节点，不是普通 operator call。
 - `spawn`、`await`、`component` 不属于语言核心；`component` 后续只能作为库层组合算子回归。
-- register VM 是最终执行器；IR VM 只允许作为 reference/compatibility layer。
+- register VM 是唯一执行器；移除除 register VM 之外的 runtime backend，不保留 backend 选择。
 
 核心算子集合：
 
-| 类别          | 算子                                              |
-| ------------- | ------------------------------------------------- |
-| syntax        | `quote`                                           |
-| chain         | `atom` `eq` `car` `cdr` `cons`                    |
-| binding       | `define` `let`                                    |
-| control       | `cond`                                            |
-| ordering/join | `pipeline` `parallel` `all` `race`                |
-| function      | `defun` `lambda` `apply`                          |
-| macro         | `macro` `quasiquote` `unquote` `gensym` `capture` |
-| effect        | `defeffect` `perform` `handle` `resume`           |
-| module        | `module` `from` `import` `exports`                |
+| 类别 | 算子 |
+| --- | --- |
+| syntax | `quote` |
+| chain | `atom` `eq` `car` `cdr` `cons` |
+| binding | `define` `let` |
+| control | `cond` |
+| ordering/join | `pipeline` `parallel` `all` `race` |
+| function | `defun` `lambda` `apply` |
+| macro | `macro` `quasiquote` `unquote` `unquote-splicing` `gensym` `capture` |
+| effect | `defeffect` `perform` `handle` `resume` |
+| module | `module` `from` `import` `exports` |
 
 非核心但可作为 stdlib/host interop 存在：
 
 - 算术：`+` `-` `*` `/` 等
-- Python 容器：`list` `tuple` `dict` `set`
-- string helper：`str-*`
-- async helper：历史 `spawn` / `await`
-- Python interop：`py` / `py::*`
+- Python 容器：`list` `tuple` `dict` `set`，只能显式 import 或 host 注入
+- string helper：`str-*`，只能显式 import
+- async helper：历史 `spawn` / `await`，只能显式 legacy import
+- Python interop：`py` / `py::*`，只能显式 import 或 host 注入
+
+Surface dialect：
+
+核心语言不实现 unrestricted reader macro；默认 Qy surface dialect 在 reader 后、macroexpand 前实现以下习惯拼写：
+
+| sugar | form                   |
+| ----- | ---------------------- |
+| `'x`  | `(quote x)`            |
+| `,x`  | `(unquote x)`          |
+| `,@x` | `(unquote-splicing x)` |
+
+`,` 与 `,@` 裸符号保留为普通 symbol；`,x` / `,@x` 只在 `quasiquote` 上下文展开。binding/parameter 位置不做 surface dialect expansion。
+
+surface dialect 约束：
+
+- 规则必须可枚举、可静态描述，供 analyzer、LSP、formatter、source map 与 expansion trace 使用。
+- 规则不查 runtime symbol-space，不受 `define` / `let` / import 影响。
+- 规则不执行 Qy runtime 代码，不允许 effect / IO。
+- Qy 源码内暂不支持用户自定义 reader macro。
+- 宿主嵌入未来可以在 Qy 实例化时选择或提供 surface dialect。
 
 ## 工作纪律
 
 - 每个任务批次只处理一个主题，不混改 macro、MIR、VM、stdlib。
 - 每个任务批次必须更新 `report.md`，写清：范围、完成、未完成、风险、验证。
 - 每个行为变更必须同步检查 `LANGUAGE.md`、`CLAUDE.md`、`AGENTS.md`、`docs/pipeline.md`、`docs/language-core-audit.md`。
-- 新语义必须落到明确阶段：expand / HIR / MIR / LIR / bytecode / VM。
+- 新语义必须落到明确阶段：surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM。
 - bytecode compiler 不允许重新理解 HIR/MIR；语义 lowering 必须经由 LIR。
 - 新核心算子不得通过 legacy `PureOperator` / `ScopeOperator` / `ControlOperator` / `MetaOperator` 扩散。
 - 超过 6k tokens 的文件冻结增长，只允许修 bug 或拆分；超过 8k tokens 的文件优先拆分。
@@ -69,21 +94,26 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 
 ## P0: 立即修正
 
-### P0-0. 恢复类型检查
+### P0-0. 移除多 backend，register VM 唯一化
 
-状态：`pytest` 通过，但 `uv run ty check` 失败。
+状态：当前代码仍有 `EvaluationBackend = "ir" | "bytecode"`、`Qy(backend=...)`、`evaluate_ir_*`、IR VM 测试与 examples runner 的 backend 分支。
 
-已知错误：
+任务：
 
-- `qy/ir_vm/_core.py:824`：`_function_stack_frame(...)` 返回 `object`，调用方需要 `VirtualStackFrame`。
-- `qy/ir_vm/_core.py:827`：同类 `replace_top` 参数错误。
-- `qy/mir.py:567`：dump `FROM_IMPORT` 时未收窄 operand 类型。
-- `qy/mir.py:591`：dump `HANDLE` handler specs 时未收窄 tuple 元素类型。
+- 删除 `EvaluationBackend` 和 `Qy(backend=...)` 参数。
+- `Qy.evaluate_*`、CLI `run`、examples runner 全部固定走 `source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
+- 删除或下沉 `Qy.evaluate_ir*`、`qy.ir_vm.evaluate_ir*` 作为 public API；IR VM 代码进入删除队列，不再作为 reference runtime。
+- 删除 `evaluate_source` / `evaluate_async` 等 legacy evaluator public path，或标记为内部迁移待删并停止导出。
+- 更新 `__init__.py`，不再把 IR VM / evaluator backend 当稳定 API re-export。
+- benchmark 只保留 register VM 维度；不再比较 IR backend 与 bytecode backend。
+- tests 改名：`test_ir_vm.py` 不能作为语义验收；必要场景迁移到 register VM 测试。
 
 验收：
 
-- `uv run ty check` 通过。
-- `uv run python -m pytest -q` 仍通过。
+- `Qy()` 无 backend 参数，默认且唯一使用 register VM。
+- `rg "backend=|EvaluationBackend|evaluate_ir|IRVirtualMachine"` 只剩待删兼容文件、迁移注释或不存在。
+- CLI `run` 与 `qy FILE` 只能走 register VM。
+- `uv run python -m pytest -q`、`uv run ty check`、`uv run ruff check .` 通过。
 
 ### P0-1. 文档一致性收口
 
@@ -95,21 +125,21 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
   - 删除旧管线 `Source -> Reader -> Forms -> Lowering -> IR -> Evaluator -> Values`。
   - 删除 `async-first` 作为语言定位。
   - 删除把 `component`、`await` 当核心能力的描述。
-  - 写入完整管线 `source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
-  - 明确 IR VM 是 reference runtime，register VM 是最终执行器。
+  - 写入完整管线 `source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
+  - 明确 register VM 是唯一执行器；IR VM / evaluator 是删除对象，不是 reference runtime。
 - 更新 `AGENTS.md`：
   - 更新项目概览和重要文件路径：`qy/environment.py`、`qy/operators.py`、`qy/runtime_values.py`、`qy/continuation.py`、`qy/ir_vm/`、`qy/lir.py`、`qy/lir_lowering.py`、`qy/register_vm.py`。
   - 更新核心源码流向到完整 pipeline。
   - 删除过时 examples 路径，改为当前 validation/example 入口。
   - 加入：修改语言语义时必须同步 `LANGUAGE.md` 与 `todo.md`。
 - 更新 `LANGUAGE.md`：
-  - 明确 host 注入占用当前 symbol-space，`define` 不能覆盖。
+  - 明确 pre-symbol-space 是实例配置；默认可惰性预定义数字/字符串，但 Python host interop 不属于默认语言核心；`define` 只检查当前 symbol-space，允许 shadow parent。
   - 明确 `defun` 是 `define + lambda` 语义糖。
   - 明确 `defeffect` 走 `define` 语义。
   - 明确 `pipeline/parallel/all/race` 是 HIR 独立节点。
 - 重写 `docs/language-core-audit.md`：
   - 删除已完成的旧阻塞描述。
-  - 只保留当前真实偏差：`define` 未落地、旧 core 暴露、`component` 残留、`spawn/await` 残留、`RuntimeMetaCallExpr`、legacy operator dispatch、Python codegen 绕过 MIR/LIR、effect continuation 未最终化。
+  - 只保留当前真实偏差：多 backend 残留、`define` 仍按 parent 查重、默认环境预加载 host interop、旧 core 暴露、`component` 残留、`RuntimeMetaCallExpr`、legacy operator dispatch、Python codegen 绕过 MIR/LIR、effect continuation 未最终化。
 - 更新 `docs/pipeline.md`：
   - 描述 debug CLI 输出：ast / expanded ast / HIR / MIR / LIR / bytecode。
   - 明确每层输入输出和禁止跨层解释。
@@ -117,7 +147,7 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 验收：
 
 - 文档中不再把 `component`、`spawn`、`await` 描述为核心。
-- 文档中不再把 evaluator/IR VM 描述为最终执行路径。
+- 文档中不再把 evaluator/IR VM 描述为执行路径或 reference backend。
 - `LANGUAGE.md`、`CLAUDE.md`、`AGENTS.md`、`todo.md` 对核心算子集合一致。
 
 ### P0-2. symbol-space 与不可重绑定
@@ -128,19 +158,21 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 
 - 为 `Environment` 增加显式一次性绑定 API，例如 `define_once`。
 - 当前 symbol-space 已存在 symbol 时，`define_once` 必须报错。
-- host 注入、core operator 注册、stdlib 注册要被视为当前空间已有绑定。
+- pre-symbol-space、host 注入、core operator 注册、stdlib 注册只在其所在当前空间内是已有绑定；子空间允许 shadow。
+- 默认数字/字符串 pre-symbol-space 需要显式建模或惰性建模；analyzer/LSP 必须能读取 Qy 实例的 pre-symbol-space 配置。
 - `let` 创建子 symbol-space；子空间允许 shadow 外层任意 symbol。
 - `defun` 使用 define 语义：不能覆盖同一空间已有 symbol。
 - `defeffect` 使用 define 语义：不能重复声明同一空间 effect。
-- `module` export/import 绑定需要明确是 define-once 还是 import-once；默认按 define-once 处理。
+- `module` export/import 绑定需要明确是当前空间 define-once / import-once；不得检查 parent。
 - analyzer 必须诊断同一 symbol-space 内重复 define。
 - HIR binding 记录必须能表达 stable binding/value，为后续预查找优化服务。
 
 验收：
 
 - `(define x 1) (define x 2)` 报错。
-- host 注入 `x` 后，顶层 `(define x 1)` 报错。
-- `(let ((x 1)) ...)` 可以 shadow 外层或 host 注入的 `x`。
+- host 注入 `x` 到当前空间后，同一空间 `(define x 1)` 报错。
+- 子空间 `(define x 1)` 与 `(let ((x 1)) ...)` 均可以 shadow 外层或 host 注入的 `x`。
+- 默认 Qy 实例若把 `1` 预定义在当前/pre-symbol-space，则同一空间 `(define 1 10)` 报错；`let` 创建的空子空间中可以定义 `1` 并 shadow。
 - `(defun f ...) (defun f ...)` 报错。
 - `(defeffect ask) (defeffect ask)` 报错。
 
@@ -155,12 +187,14 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 - 从默认 core 移除 `component`，并删除相关 HIR/MIR/LSP/operator signature 测试残留。
 - 从默认 core 移除 Python 容器 helper：`list`、`tuple`、`dict`、`set`。
 - 从默认 core 移除 `str-*` 暴露；保留到显式 stdlib namespace。
+- 从默认环境移除 `qy.py` / `py` / Python container prelude；host interop 只能显式 import 或显式注入。
 - 保留 arithmetic 为 host/stdlib 注入，不把它写入最小语言核。
+- 保留或实现默认 pre-symbol-space 对数字、字符串等传统符号的惰性预定义；这不是 host interop prelude。
 - 更新 `operator_signature.py`、`operator_docs.py`、`semantics.py`、CLI `operators` 输出。
 
 验收：
 
-- 默认环境不能解析 `spawn`、`await`、`component`。
+- 默认环境不能解析 `spawn`、`await`、`component`、`py`、`list`、`tuple`、`dict`、`set`、`str-*`。
 - 核心算子列表与 `LANGUAGE.md` 完全一致。
 - 需要兼容的旧算子只能通过显式 namespace 或 legacy module 引入。
 
@@ -264,15 +298,14 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 
 任务：
 
-- `Qy.evaluate_*` 默认走 bytecode/register VM。
-- IR VM 仅作为 debug/reference API 保留。
-- 新功能只加到 HIR/MIR/LIR/bytecode/register VM，不再加到 IR VM。
-- `evaluate_ir_*` 文档标注 compatibility/reference。
+- 删除 `Qy.evaluate_ir*` 与 IR VM public API。
+- 新功能只加到 HIR/MIR/LIR/bytecode/register VM。
+- legacy evaluator 与 IR VM 不再被视为 backend；只作为待删除迁移代码。
 
 验收：
 
-- CLI `run` 与公共 `Qy.evaluate_source` 默认使用 register VM。
-- 旧 IR VM 测试只覆盖兼容行为，不作为新语义验收。
+- CLI `run` 与公共 `Qy.evaluate_source` 只能使用 register VM。
+- 旧 IR VM 测试迁移或删除，不作为新语义验收。
 
 ### P1-3. legacy evaluator 退场
 
@@ -339,6 +372,7 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 验收：
 
 - 默认 `qy.core` 不含非核心容器/string/async helper。
+- 默认 prelude 不含 `qy.py`；host interop 不自动进入 symbol-space。
 - 示例中显式 import 非核心能力。
 
 ### P2-2. Python codegen 重新定位
@@ -405,7 +439,8 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 - legacy `UserFunction`，在 bytecode function value 完全接管后删除
 - legacy operator class dispatch，转为 operator metadata + VM host-call ABI
 - `source_modules.py` provisional runtime/module 混合逻辑，module system 稳定后合并或删除
-- IR VM 中继续增长的新语义实现
+- IR VM 全部 public backend API 与实现
+- legacy evaluator public backend API
 
 ## 调试 CLI 目标
 

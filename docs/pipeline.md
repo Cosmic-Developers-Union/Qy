@@ -1,13 +1,14 @@
 # Qy Pipeline
 
-本文档描述当前公开的 Qy 编译与执行管线，以及哪些 API 属于稳定入口，哪些仍是兼容层。
+本文档描述 Qy 唯一编译与执行管线。Qy 不保留可选 runtime backend；register VM 是唯一执行器。
 
 ## 管线概览
 
 ```text
 source
-  -> ast
-  -> expand
+  -> raw AST
+  -> surface dialect
+  -> macro expand
   -> HIR
   -> MIR
   -> LIR
@@ -15,7 +16,7 @@ source
   -> register VM
 ```
 
-`Qy.evaluate_source(...)` 默认使用 register VM（bytecode backend）。IR VM 作为 reference/compatibility runtime 保留，可通过 `Qy.evaluate_ir_source(...)` 访问，但不再作为主执行路径。
+`Qy.evaluate_source(...)` 必须使用 register VM。IR VM / legacy evaluator 不再作为 reference backend；任何残留调用都属于迁移待删除代码。
 
 ## 分层边界
 
@@ -24,8 +25,9 @@ source
 | 层 | 输入 | 输出 | 产生 diagnostics | 是否依赖 Environment |
 | --- | --- | --- | --- | --- |
 | source | 文本文件 / stdin | 源码字符串 | 否 | 否 |
-| ast / reader | 源码字符串 | `list[Form]` syntax datum（`Symbol`、tuple、`DottedTuple`） | 是，reader syntax error | 否 |
-| expand / macroexpand | `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
+| ast / reader | 源码字符串 | raw `list[Form]` syntax datum（`Symbol`、tuple、`DottedTuple`） | 是，reader syntax error | 否 |
+| surface dialect | raw `list[Form]` | default-dialect `list[Form]`，如 `'x`、quasiquote 内 `,x` / `,@x` | 否 | 否 |
+| expand / macroexpand | surface-dialect-expanded `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
 | HIR / lower | macroexpanded forms | `ProgramIR`（`CallExpr`、`LetExpr`、`HandleExpr`、`PipelineExpr` 等） | 是，未解析符号、arity、module import 等 | 是 |
 | MIR / lower_mir | `ProgramIR` | `MIRProgram`（CFG + virtual register） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
 | LIR / lower_lir | `MIRProgram` | `LIRProgram`（线性化低层 IR，register layout、effect frame layout、host-call lowering） | 是 | 否 |
@@ -36,9 +38,9 @@ source
 
 - bytecode compiler 不能重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - MIR lowering 不能访问 Environment（不能查 runtime binding）。
-- HIR 之上（reader/macroexpand）不得引入 bytecode/VM 特定的 representation。
+- HIR 之上（reader/surface dialect/macroexpand）不得引入 bytecode/VM 特定的 representation。
 
-## 稳定 API 与兼容 API
+## 稳定 API 与删除对象
 
 推荐稳定入口：
 
@@ -51,9 +53,11 @@ source
 - `Qy.evaluate_source` / `Qy.evaluate_bytecode`
 - `RegisterVirtualMachine`
 
-兼容层（不应继续扩展）：
+删除对象（不应继续扩展）：
 
-- `Qy.evaluate_ir` / `Qy.evaluate_ir_source`（IR VM reference runtime）
+- `Qy.evaluate_ir` / `Qy.evaluate_ir_source`
+- `qy.ir_vm.*` public execution API
+- `Qy(backend=...)` 与 `EvaluationBackend`
 - 直接从 `qy.evaluator` 引入运行时类型或 legacy evaluator helper
 
 ## CLI 调试命令

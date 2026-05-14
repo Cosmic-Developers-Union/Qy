@@ -21,6 +21,7 @@ from qy.mir import dump_mir
 from qy.operator_docs import format_operator_docs
 from qy.reader import ReaderSyntaxError
 from qy.reader import read
+from qy.reader import read_raw
 from qy.runtime import Qy
 
 INSTALL_CLI_MESSAGE = (
@@ -243,7 +244,7 @@ def create_app() -> Any:
     def ast_command(
         path: Annotated[Path, typer.Argument(help="Qy source file to inspect.")],
     ) -> None:
-        typer.echo(dump_program(read(path.read_text(encoding="utf-8"))))
+        typer.echo(dump_program(read_raw(path.read_text(encoding="utf-8"))))
 
     @app.command("check")
     def check_command(
@@ -500,7 +501,7 @@ def _print_repl_ast(source: str) -> None:
     import typer
 
     try:
-        typer.echo(dump_program(read(source)))
+        typer.echo(dump_program(read_raw(source)))
     except ReaderSyntaxError as e:
         typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
 

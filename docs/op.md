@@ -1,210 +1,57 @@
-Qy Operator System
-
-Pure Operator
-
-定义
-
-Pure Operator 表示纯求值算子。
-
-Pure Operator 具有：
-
-- eager evaluation
-- immutable semantics
-- deterministic result
-- no runtime effect
-- no env mutation
-- cacheable
-- parallelizable
-- statically analyzable
-
-Pure Operator 构成：
-
-```text
-Value -> Value
-```
-
-Qy 核心 Pure Operator：
-
-- identity返回输入值
-
-- equal判断值相等性
-
-- not逻辑取反
-
-- -
-
-数值加法
-
-- -
-
-数值减法
-
-- -
-
-数值乘法
-
-- / 数值除法
-
-- list构造列表
-
-- object构造对象
-
-- get读取对象/列表成员
-
-- assoc创建新对象字段
-
-- concat拼接字符串或列表
-
----
-
-Scope Operator
-
-定义
-
-Scope Operator 表示作用域构造算子。
-
-Scope Operator 控制：
-
-- lexical binding
-- closure capture
-- callable creation
-- namespace visibility
-- symbol resolution chain
-
-Scope Operator 构成：
-
-```text id="jlwmzu"
-Env -> Scoped Evaluation Context
-```
-
-Qy 核心 Scope Operator：
-
-- let创建局部绑定
-
-- lambda创建匿名算子
-
-- defun创建命名算子绑定
-
-- component创建组件定义
-
-- module创建模块作用域
-
----
-
-Control Operator
-
-定义
-
-Control Operator 表示求值控制算子。
-
-Control Operator 控制：
-
-- evaluation order
-- branch selection
-- short-circuit
-- repetition
-- evaluation timing
-
-Control Operator 构成：
-
-```text id="jlwmzu"
-Form -> Controlled Evaluation
-```
-
-Qy 核心 Control Operator：
-
-- if条件分支求值
-
-- cond多分支条件求值
-
-- and短路逻辑与
-
-- or短路逻辑或
-
-- loop重复求值控制
-
-- return提前结束当前求值
-
----
-
-Effect Operator
-
-定义
-
-Effect Operator 表示 runtime effect 算子。
-
-Effect Operator 具有：
-
-- runtime dependency
-- external interaction
-- scheduler effect
-- possible nondeterminism
-- possible side effect
-
-Effect Operator 控制：
-
-- runtime execution
-- async scheduling
-- state interaction
-- IO semantics
-- execution graph behavior
-
-Effect Operator 构成：
-
-```text id="jlwmzu"
-Computation -> Runtime Effect
-```
-
-Qy 核心 Effect Operator：
-
-- load加载外部资源
-
-- save写入外部资源
-
-- call调用宿主能力
-
-- parallel声明并行执行
-
-- cache声明结果缓存
-
-- spawn创建异步任务
-
-- await等待异步结果
-
-- state访问运行时状态
-
----
-
-Meta Operator
-
-定义
-
-Meta Operator 表示语言元算子。
-
-Meta Operator 控制：
-
-- symbolic tree
-- evaluator semantics
-- macro expansion
-- AST transformation
-- language rewriting
-
-Meta Operator 构成：
-
-```text id="jlwmzu"
-AST -> AST
-```
-
-Qy 核心 Meta Operator：
-
-- quote 返回未求值 symbolic form
-
-- quasiquote 构造 symbolic template
-
-- unquote局部恢复求值
-
-- unquote-splicing 展开 symbolic list
-
-- macro 定义 AST 变换规则
-
-- eval 执行 symbolic form
+# Qy Operator / Form Model
+
+本文档只描述当前语言核。旧的 `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 是 legacy runtime dispatch 分类，不再作为语言设计分类继续扩展。
+
+## 核心原则
+
+- syntax datum 只有 `symbol` / `chain`。
+- `chain` 是不可变对象，任何构造/改写都必须产生新 chain。
+- symbol 求值沿当前 symbol-space-chain 查找。
+- `define` 只在当前 symbol-space 一次性绑定，可以 shadow parent。
+- pre-symbol-space 由 Qy 实例化决定；语言内核没有宿主环境，但默认实例可以惰性预定义数字、字符串等传统符号。
+- host value/operator 是 runtime value，可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
+- register VM 是唯一执行器。
+
+## Surface Dialect
+
+核心语言不实现 unrestricted reader macro。默认 Qy surface dialect 在 reader 后、macroexpand 前做可枚举的符号拼写规约。
+
+| sugar | form                   |
+| ----- | ---------------------- |
+| `'x`  | `(quote x)`            |
+| `,x`  | `(unquote x)`          |
+| `,@x` | `(unquote-splicing x)` |
+
+`,` 与 `,@` 裸符号保留为普通 symbol；`,x` / `,@x` 只在 `quasiquote` 上下文展开。binding/parameter 位置不做 surface dialect expansion。源码内用户自定义 reader macro 暂不进入核心。
+
+## 核心 form
+
+| 类别 | form |
+| --- | --- |
+| syntax | `quote` |
+| chain | `atom` `eq` `car` `cdr` `cons` |
+| binding | `define` `let` |
+| control | `cond` |
+| ordering/join | `pipeline` `parallel` `all` `race` |
+| function | `defun` `lambda` `apply` |
+| macro | `macro` `quasiquote` `unquote` `unquote-splicing` `gensym` `capture` |
+| effect | `defeffect` `perform` `handle` `resume` |
+| module | `module` `from` `import` `exports` |
+
+## 非核心能力
+
+这些能力可以存在于 stdlib、legacy module 或 host injection，但不得作为默认语言核心：
+
+- arithmetic：`+` `-` `*` `/`
+- Python containers：`list` `tuple` `dict` `set`
+- string helpers：`str-*`
+- legacy async helpers：`spawn` `await`
+- Python interop：`py` / `py::*`
+- `component`：后续只能以库层组合算子回归
+
+## 实现约束
+
+- 核心 form 必须 lowering 为 HIR 独立节点或明确的核心 call 语义，再进入 MIR/LIR/bytecode/register VM。
+- `pipeline`、`parallel`、`all`、`race` 不是普通 host operator。
+- macro 只能在 expand 阶段改变 syntax datum；runtime 不能重新解释 macro。
+- 新语义不得通过 legacy operator dispatch 扩展。

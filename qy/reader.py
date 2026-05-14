@@ -33,6 +33,7 @@ __all__ = [
     "read",
     "read_one",
     "read_one_tuple",
+    "read_raw",
     "read_tuple",
     "tuple_to_form",
     "write",
@@ -86,17 +87,8 @@ GRAMMAR = r'''
 
 program: form*
 
-?form: quote
-    | quasiquote
-    | unquote
-    | unquote_splicing
-    | list
+?form: list
     | atom
-
-quote: "'" form
-quasiquote: "`" form
-unquote: "," form
-unquote_splicing: ",@" form
 
 list: "(" form* (DOT form)? ")" -> list_expr
 
@@ -115,7 +107,7 @@ RAW_QUOTED_SYMBOL.9: /[rR]"[^"]*"/
 TAGGED_QUOTED_SYMBOL.8: /[^()\s"';`,@]+"(?:\\.|[^"\\])*"/
 QUOTED_SYMBOL.7: /"(?:\\.|[^"\\])*"/
 DOT.13: "."
-BARE_SYMBOL: /[^()\s"';`,@]+/
+BARE_SYMBOL: /[^()\s";]+/
 
 COMMENT: /;[^\n]*/
 
@@ -153,22 +145,6 @@ class _ReaderTransformer(lark.Transformer):
     def program(self, meta: lark.tree.Meta, *forms: Form) -> list[Form]:
         del meta
         return list(forms)
-
-    def quote(self, meta: lark.tree.Meta, form: Form) -> Form:
-        span = self._span(meta)
-        return SpannedTuple((Symbol("quote", span), form), span)
-
-    def quasiquote(self, meta: lark.tree.Meta, form: Form) -> Form:
-        span = self._span(meta)
-        return SpannedTuple((Symbol("quasiquote", span), form), span)
-
-    def unquote(self, meta: lark.tree.Meta, form: Form) -> Form:
-        span = self._span(meta)
-        return SpannedTuple((Symbol("unquote", span), form), span)
-
-    def unquote_splicing(self, meta: lark.tree.Meta, form: Form) -> Form:
-        span = self._span(meta)
-        return SpannedTuple((Symbol("unquote-splicing", span), form), span)
 
     def list_expr(self, meta: lark.tree.Meta, *items: object) -> Form:
         span = self._span(meta)
@@ -247,7 +223,7 @@ class _ReaderTransformer(lark.Transformer):
         )
 
 
-def read(source: str, *, source_name: str | None = None) -> list[Form]:
+def read_raw(source: str, *, source_name: str | None = None) -> list[Form]:
     try:
         tree = _parser.parse(source)
         return _ReaderTransformer(source_name).transform(tree)
@@ -260,11 +236,214 @@ def read(source: str, *, source_name: str | None = None) -> list[Form]:
         raise ReaderSyntaxError(str(e)) from e
 
 
+def read(source: str, *, source_name: str | None = None) -> list[Form]:
+    return _expand_surface_program(read_raw(source, source_name=source_name))
+
+
 def read_one(source: str, *, source_name: str | None = None) -> Form:
     forms = read(source, source_name=source_name)
     if len(forms) != 1:
         raise ReaderSyntaxError(f"expected exactly one form, got {len(forms)}")
     return forms[0]
+
+
+def _expand_surface_program(forms: list[Form]) -> list[Form]:
+    return list(_expand_surface_sequence(tuple(forms), in_quasiquote=False))
+
+
+def _expand_surface_form(form: Form, *, in_quasiquote: bool) -> Form:
+    if isinstance(form, Symbol):
+        expanded = _expand_surface_symbol(form, in_quasiquote=in_quasiquote)
+        if expanded is not form:
+            return expanded
+        return form
+    if isinstance(form, DottedTuple):
+        return _expand_surface_dotted_tuple(form, in_quasiquote=in_quasiquote)
+    if isinstance(form, tuple):
+        return _expand_surface_tuple(form, in_quasiquote=in_quasiquote)
+    return form
+
+
+def _expand_surface_sequence(forms: tuple[Form, ...], *, in_quasiquote: bool) -> tuple[Form, ...]:
+    expanded: list[Form] = []
+    index = 0
+    while index < len(forms):
+        form = forms[index]
+        if (
+            isinstance(form, Symbol)
+            and form.name == "'"
+            and index + 1 < len(forms)
+            and _forms_are_adjacent(form, forms[index + 1])
+        ):
+            expanded.append(
+                _surface_call(
+                    "quote",
+                    (_expand_surface_form(forms[index + 1], in_quasiquote=in_quasiquote),),
+                    span=_combine_spans(form, forms[index + 1]),
+                )
+            )
+            index += 2
+            continue
+        expanded.append(_expand_surface_form(form, in_quasiquote=in_quasiquote))
+        index += 1
+    return tuple(expanded)
+
+
+def _expand_surface_tuple(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if not form:
+        return SpannedTuple((), get_span(form))
+    head = form[0]
+    if not isinstance(head, Symbol):
+        return SpannedTuple(
+            _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
+        )
+
+    match head.name:
+        case "define":
+            return _expand_define_surface(form, in_quasiquote=in_quasiquote)
+        case "defun" | "macro":
+            return _expand_named_body_surface(form, in_quasiquote=in_quasiquote)
+        case "lambda":
+            return _expand_lambda_surface(form, in_quasiquote=in_quasiquote)
+        case "let":
+            return _expand_let_surface(form, in_quasiquote=in_quasiquote)
+        case "defeffect" | "exports" | "from" | "import":
+            return SpannedTuple(form, get_span(form))
+        case "module":
+            if len(form) <= 2:
+                return SpannedTuple(form, get_span(form))
+            body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
+            return SpannedTuple((form[0], form[1], *body), get_span(form))
+        case "quasiquote":
+            if len(form) != 2:
+                return SpannedTuple(
+                    _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
+                )
+            return SpannedTuple(
+                (
+                    form[0],
+                    _expand_surface_form(form[1], in_quasiquote=True),
+                ),
+                get_span(form),
+            )
+
+    return SpannedTuple(_expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form))
+
+
+def _expand_surface_dotted_tuple(form: DottedTuple, *, in_quasiquote: bool) -> DottedTuple:
+    return DottedTuple(
+        _expand_surface_sequence(tuple(form), in_quasiquote=in_quasiquote),
+        _expand_surface_form(cast(Form, form.tail), in_quasiquote=in_quasiquote),
+        get_span(form),
+    )
+
+
+def _expand_define_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if len(form) <= 2:
+        return SpannedTuple(form, get_span(form))
+    values = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
+    return SpannedTuple((form[0], form[1], *values), get_span(form))
+
+
+def _expand_named_body_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if len(form) <= 3:
+        return SpannedTuple(form, get_span(form))
+    body = _expand_surface_sequence(tuple(form[3:]), in_quasiquote=in_quasiquote)
+    return SpannedTuple((form[0], form[1], form[2], *body), get_span(form))
+
+
+def _expand_lambda_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if len(form) <= 2:
+        return SpannedTuple(form, get_span(form))
+    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
+    return SpannedTuple((form[0], form[1], *body), get_span(form))
+
+
+def _expand_let_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if len(form) <= 2:
+        return SpannedTuple(form, get_span(form))
+    bindings = form[1]
+    if isinstance(bindings, tuple):
+        bindings = SpannedTuple(
+            (
+                _expand_let_binding_surface(binding, in_quasiquote=in_quasiquote)
+                if isinstance(binding, tuple)
+                else binding
+                for binding in bindings
+            ),
+            get_span(bindings),
+        )
+    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
+    return SpannedTuple((form[0], bindings, *body), get_span(form))
+
+
+def _expand_let_binding_surface(binding: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+    if len(binding) <= 1:
+        return SpannedTuple(binding, get_span(binding))
+    values = _expand_surface_sequence(tuple(binding[1:]), in_quasiquote=in_quasiquote)
+    return SpannedTuple((binding[0], *values), get_span(binding))
+
+
+def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> Form:
+    if symbol.name.startswith("'") and len(symbol.name) > 1:
+        quoted = Symbol(symbol.name[1:], symbol.span)
+        return _surface_call(
+            "quote",
+            (_expand_surface_form(quoted, in_quasiquote=in_quasiquote),),
+            span=symbol.span,
+        )
+    if in_quasiquote and symbol.name.startswith(",@") and len(symbol.name) > 2:
+        return _surface_call(
+            "unquote-splicing",
+            (_expand_surface_form(Symbol(symbol.name[2:], symbol.span), in_quasiquote=False),),
+            span=symbol.span,
+        )
+    if (
+        in_quasiquote
+        and symbol.name.startswith(",")
+        and len(symbol.name) > 1
+        and not symbol.name.startswith(",@")
+    ):
+        return _surface_call(
+            "unquote",
+            (_expand_surface_form(Symbol(symbol.name[1:], symbol.span), in_quasiquote=False),),
+            span=symbol.span,
+        )
+    return symbol
+
+
+def _surface_call(name: str, args: tuple[Form, ...], *, span: SourceSpan | None) -> Form:
+    return SpannedTuple((Symbol(name, span), *args), span)
+
+
+def _forms_are_adjacent(left: Form, right: Form) -> bool:
+    left_span = get_span(left)
+    right_span = get_span(right)
+    return (
+        left_span is not None
+        and right_span is not None
+        and left_span.source == right_span.source
+        and left_span.end_line == right_span.start_line
+        and left_span.end_column == right_span.start_column
+    )
+
+
+def _combine_spans(left: Form, right: Form) -> SourceSpan | None:
+    left_span = get_span(left)
+    right_span = get_span(right)
+    if left_span is None:
+        return right_span
+    if right_span is None:
+        return left_span
+    if left_span.source != right_span.source:
+        return left_span
+    return SourceSpan(
+        left_span.source,
+        left_span.start_line,
+        left_span.start_column,
+        right_span.end_line,
+        right_span.end_column,
+    )
 
 
 def read_tuple(source: str) -> list[TupleForm]:

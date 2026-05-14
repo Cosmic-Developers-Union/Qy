@@ -9,12 +9,12 @@ QyLang 是 Python 实现的 like-Lisp 方言，核心是 algebraic effects + reg
 目标管线（固定）：
 
 ```text
-source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
+source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 ```
 
 ## 重要目录和文件
 
-- `qy/reader.py`：基于 Lark 的 S-expression 读取器，生成 `Symbol`、tuple 等 syntax datum（Form）。
+- `qy/reader.py`：基于 Lark 的 S-expression 读取器，生成 raw `Symbol`、tuple 等 syntax datum（Form），并提供 default surface dialect。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
 - `qy/mir.py`：MIR 数据结构，CFG / virtual register IR，含 effect opcode。
@@ -23,8 +23,8 @@ source -> ast -> expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 - `qy/lir_lowering.py`：MIR → LIR lowering，CFG 展平，跳转 offset 解析。
 - `qy/bytecode.py`：Bytecode 数据结构与 opcode 定义。
 - `qy/bytecode_compiler.py`：LIR → BytecodeProgram，纯结构转换，不重新理解语义。
-- `qy/register_vm.py`：主执行器（Register VM）；最终执行目标。
-- `qy/ir_vm/`：IR VM 包（reference/compatibility runtime，不是主执行路径）。
+- `qy/register_vm.py`：唯一执行器（Register VM）。
+- `qy/ir_vm/`：迁移待删代码；不能作为 reference backend 或新语义承载点。
 - `qy/environment.py`：`Environment`（symbol-space 实现）、`standard_environment`。
 - `qy/operators.py`：`PureOperator`/`ScopeOperator`/`ControlOperator`/`EffectOperator`/`MetaOperator`（legacy dispatch）。
 - `qy/runtime_values.py`：`EffectDefinition`、`UserFunction`、`HostObjectRef`、`_TailCall`。
@@ -77,9 +77,13 @@ make bench-check
 - Ruff 配置在 `pyproject.toml`，行宽 100。
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
-- 新核心语义必须落到明确 pipeline 阶段（expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
+- 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
 - 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation` import。
 - bytecode compiler 不允许重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
+- Qy 不保留可选 runtime backend；不得新增或维护 IR VM/evaluator backend 语义。公共执行入口必须走 register VM。
+- 语言内核没有宿主环境；Qy 实例可配置 pre-symbol-space，默认实现可惰性预定义数字/字符串等传统符号。
+- Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
+- `define` 只在当前 symbol-space 内一次性绑定，可以 shadow parent symbol-space 中的任意 symbol。
 - 修改语言语义时，必须同步更新 `LANGUAGE.md` 与 `todo.md`。
 - 修改 reader、lowering、evaluator、IR 或 analyzer 时，同步考虑 CLI、LSP、formatter 和测试覆盖。
 

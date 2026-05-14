@@ -6,6 +6,7 @@ from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
+from qy.reader import read_raw
 
 S = Symbol
 
@@ -15,6 +16,45 @@ def test_list_and_quote_forms():
         (S("quote"), S("abc")),
         (S("quote"), S("abc")),
         (S("quote"), (S("+"), S("1"), S("2"))),
+    ]
+
+
+def test_raw_reader_keeps_surface_symbols():
+    assert read_raw("'abc '(+ 1 2) ,x ,@xs") == [
+        S("'abc"),
+        S("'"),
+        (S("+"), S("1"), S("2")),
+        S(",x"),
+        S(",@xs"),
+    ]
+
+
+def test_default_surface_keeps_comma_symbols_outside_quasiquote():
+    assert read("(define , 10) (1 ,x) (, 1 2)") == [
+        (S("define"), S(","), S("10")),
+        (S("1"), S(",x")),
+        (S(","), S("1"), S("2")),
+    ]
+
+
+def test_default_surface_expands_unquote_symbols_inside_quasiquote():
+    assert read("(quasiquote (,x ,@xs , ,@))") == [
+        (
+            S("quasiquote"),
+            (
+                (S("unquote"), S("x")),
+                (S("unquote-splicing"), S("xs")),
+                S(","),
+                S(",@"),
+            ),
+        )
+    ]
+
+
+def test_define_target_is_not_surface_expanded():
+    assert read("(define 'x 1) (define ' 2)") == [
+        (S("define"), S("'x"), S("1")),
+        (S("define"), S("'"), S("2")),
     ]
 
 
