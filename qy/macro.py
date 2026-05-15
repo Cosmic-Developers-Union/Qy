@@ -56,9 +56,10 @@ class MacroDefinition:
                 doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
             )
 
-        from qy.ir_vm import evaluate_ir_async
+        from qy.bytecode_compiler import compile_bytecode
         from qy.lowering import lower
+        from qy.register_vm import RegisterVirtualMachine
 
-        return await evaluate_ir_async(
-            lower(list(cast(tuple[Form, ...], self.body)), local_env), local_env
-        )
+        program = lower(list(cast(tuple[Form, ...], self.body)), local_env)
+        bytecode = compile_bytecode(program)
+        return await RegisterVirtualMachine(bytecode, local_env).evaluate()

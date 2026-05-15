@@ -335,7 +335,7 @@ async def _macroexpand_form(
         return _macroexpand_imports_form(form, context)
     if operator == Symbol("lambda"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
-    if operator in {Symbol("defun"), Symbol("component")}:
+    if operator == Symbol("defun"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=3)
     if operator == Symbol("define"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
@@ -409,7 +409,7 @@ async def _macroexpand_module_form(
     prefix = [await _macroexpand_form(item, context, depth=depth) for item in form[:2]]
 
     # Build a module-local env pre-populated with compile-time placeholder bindings for
-    # defun/component/defeffect forms in the module body.  This lets macros defined later
+    # defun/defeffect forms in the module body.  This lets macros defined later
     # in the same module body capture those symbols in their definition-site closure.
     module_env = context.env.child()
     _prepopulate_module_locals(form[2:], module_env)
@@ -439,16 +439,6 @@ def _prepopulate_module_locals(body: tuple[object, ...], env: Environment) -> No
             continue
         operator = item[0]
         if operator == Symbol("defun") and len(item) >= 3 and isinstance(item[1], Symbol):
-            name = item[1]
-            params_form = item[2] if len(item) > 2 else ()
-            params = tuple(
-                p
-                for p in (params_form if isinstance(params_form, tuple) else ())
-                if isinstance(p, Symbol)
-            )
-            body_forms = tuple(item[3:])
-            env.define(name, UserFunction(name, params, body_forms, env))
-        elif operator == Symbol("component") and len(item) >= 3 and isinstance(item[1], Symbol):
             name = item[1]
             params_form = item[2] if len(item) > 2 else ()
             params = tuple(

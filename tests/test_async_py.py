@@ -10,15 +10,22 @@ from qy.stdlib import load_module
 S = Symbol
 
 
-def _str_env():
+def _py_env():
     env = standard_environment()
+    for sym, val in load_module("qy.py").exports.items():
+        env.define(sym, val)
+    return env
+
+
+def _str_env():
+    env = _py_env()
     for sym, val in load_module("qy.str").exports.items():
         env.define(sym, val)
     return env
 
 
 async def test_py_runs_async_python_with_keyword_bindings():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -35,7 +42,7 @@ return a + b
 
 
 async def test_py_converts_hyphenated_keywords_to_python_identifiers():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -51,7 +58,7 @@ return user_name.upper()
 
 
 async def test_py_supports_await_and_awaits_returned_coroutines():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -88,7 +95,7 @@ return await normalize(doc)
 
 
 async def test_py_converts_quoted_symbolic_literals_to_python_values():
-    qy = Qy()
+    qy = Qy(env=_py_env())
     await qy.evaluate_source_async("(defun double (x) (* x 2))")
 
     result = await qy.evaluate_source_async(
@@ -109,7 +116,7 @@ return results
 
 
 async def test_py_converts_python_values_back_to_qy_values():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -124,7 +131,7 @@ return ["qy", 1, None, {"name": "Qy"}]
 
 
 async def test_py_preserves_core_data_types_across_bindings():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -165,7 +172,7 @@ return [
 
 
 async def test_py_wraps_unknown_python_objects_as_host_refs():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     result = await qy.evaluate_source_async(
         '''
@@ -180,7 +187,7 @@ return object()
 
 
 async def test_py_rejects_invalid_python_parameter_names():
-    qy = Qy()
+    qy = Qy(env=_py_env())
 
     with pytest.raises(EvaluationError, match="valid Python identifier"):
         await qy.evaluate_source_async(

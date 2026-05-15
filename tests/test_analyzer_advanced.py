@@ -17,12 +17,19 @@ def _str_env():
     return env
 
 
+def _py_env():
+    env = standard_environment()
+    for sym, val in load_module("qy.py").exports.items():
+        env.define(sym, val)
+    return env
+
+
 def test_async_effect_operators_are_understood():
     assert type_check_source("(parallel (+ 1 2) (+ 3 4))") == []
     assert type_check_source("(cache (+ 1 2))") == []
     assert type_check_source("(await (spawn (+ 1 2)))", _legacy_env()) == []
     assert type_check_source('(assert true "ready")') == []
-    assert type_check_source('(py "return a + b" :a 1 :b (+ 2 3))') == []
+    assert type_check_source('(py "return a + b" :a 1 :b (+ 2 3))', _py_env()) == []
     assert (
         type_check_source(
             """
@@ -82,16 +89,17 @@ def test_print_and_str_accept_text_symbols():
 
 
 def test_legacy_data_operators_are_treated_as_non_core_calls():
-    assert type_check_source('(tuple 1 "two" true)') == []
-    assert type_check_source('(list 1 "two" true)') == []
-    assert type_check_source('(dict "name" "Qy" "items" (list 1 2))') == []
-    assert type_check_source('(set "qy" "core")') == []
-    assert type_check_source('(get (dict "name" "Qy") "name")') == []
-    assert type_check_source('(has? (set "core") "core")') == []
+    env = _py_env()
+    assert type_check_source('(tuple 1 "two" true)', env) == []
+    assert type_check_source('(list 1 "two" true)', env) == []
+    assert type_check_source('(dict "name" "Qy" "items" (list 1 2))', env) == []
+    assert type_check_source('(set "qy" "core")', env) == []
+    assert type_check_source('(get (dict "name" "Qy") "name")', env) == []
+    assert type_check_source('(has? (set "core") "core")', env) == []
     assert type_check_source("(type '(a b c))") == []
     assert type_check_source("(== '(a b) '(a b))") == []
     assert type_check_source("(is '() none)") == []
 
 
 def test_non_core_data_operator_arities_are_not_hard_coded():
-    assert type_check_source('(dict "name")') == []
+    assert type_check_source('(dict "name")', _py_env()) == []

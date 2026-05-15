@@ -15,7 +15,7 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
-from qy.ir_vm import IRFunction
+from qy.ir_vm._core import IRFunction
 from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
@@ -63,6 +63,9 @@ class _Binding:
 @dataclass(frozen=True, slots=True)
 class _Scope:
     bindings: dict[Symbol, _Binding] | None = None
+
+    def has_local(self, symbol: Symbol) -> bool:
+        return self.bindings is not None and symbol in self.bindings
 
     def define(
         self,
@@ -144,8 +147,6 @@ def _infer(
                 return _infer_lambda(args, env, scope, diagnostics)
             case "defun":
                 return _infer_defun(form, env, scope, diagnostics)
-            case "component":
-                return _infer_component(form, env, scope, diagnostics)
             case "defeffect":
                 return _infer_defeffect(form, diagnostics)
             case "module":
@@ -558,27 +559,6 @@ def _infer_defun(
     return "function"
 
 
-def _infer_component(
-    form: tuple[object, ...],
-    env: Environment,
-    scope: _Scope,
-    diagnostics: list[Diagnostic],
-) -> TypeName:
-    if len(form) < 4:
-        diagnostics.append(Diagnostic("component expects a name, parameter list, and body"))
-        return "unknown"
-
-    _, name, params, *body = form
-    if not isinstance(name, Symbol):
-        diagnostics.append(Diagnostic(f"component name must be a symbol, got {name!r}"))
-    component_scope = scope
-    if isinstance(name, Symbol):
-        component_scope = component_scope.define(name, "function")
-    component_scope = _scope_with_parameters(params, component_scope, diagnostics, "component")
-    _infer_body(tuple(body), env, component_scope, diagnostics)
-    return "function"
-
-
 def _infer_defeffect(
     form: tuple[object, ...],
     diagnostics: list[Diagnostic],
@@ -727,20 +707,26 @@ def _infer_body(
 def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
     if not isinstance(form, tuple) or not form:
         return scope
-    if (
-        len(form) >= 2
-        and form[0] in {Symbol("defun"), Symbol("component")}
-        and isinstance(form[1], Symbol)
-    ):
+    if len(form) >= 2 and form[0] == Symbol("defun") and isinstance(form[1], Symbol):
+        if scope.has_local(form[1]):
+            return scope
         return scope.define(form[1], "function")
     if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
+        if scope.has_local(form[1]):
+            return scope
         return scope.define(form[1], "any")
     if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
+        if scope.has_local(form[1]):
+            return scope
         return scope.define(form[1], "effect")
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
+        if scope.has_local(form[1]):
+            return scope
         return scope.define(form[1], "operator", operator_kind="meta", eager_arguments=False)
     if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
         remember_source_module(form, env)
+        if scope.has_local(form[1]):
+            return scope
         return scope.define(form[1])
     if form[0] != Symbol("from"):
         return scope
@@ -774,10 +760,10 @@ def _predeclare_callable_definitions(body: tuple[object, ...], scope: _Scope) ->
     for expression in body:
         if not isinstance(expression, tuple) or len(expression) < 2:
             continue
-        if expression[0] not in {Symbol("defun"), Symbol("component")}:
+        if expression[0] != Symbol("defun"):
             continue
         name = expression[1]
-        if isinstance(name, Symbol):
+        if isinstance(name, Symbol) and not next_scope.has_local(name):
             next_scope = next_scope.define(name, "function")
     return next_scope
 
@@ -827,6 +813,8 @@ def _infer_define(
     _, name, value = form[0], form[1], form[2]
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"define name must be a symbol, got {name!r}"))
+    elif scope.has_local(name):
+        diagnostics.append(Diagnostic(f"symbol {name.name!r} is already bound in this scope"))
     _infer(value, env, scope, diagnostics)
     return "any"
 

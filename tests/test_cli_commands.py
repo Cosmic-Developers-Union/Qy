@@ -75,8 +75,7 @@ def test_operators_command(runner, app):
     assert result.exit_code == 0, result.output
     assert "## 内建算子" in result.output
     assert "模块：`qy.core`" in result.output
-    assert "`py` - Effect 算子" in result.output
     assert "## 模块 qy.io" in result.output
     assert "`print`" in result.output
-    assert "## 模块 qy.py" in result.output
-    assert "`list`" in result.output
+    assert "qy.py" not in result.output
+    assert "`list`" not in result.output

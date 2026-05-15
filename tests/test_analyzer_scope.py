@@ -17,17 +17,12 @@ def test_lambda_scope_is_understood():
     assert type_check_source("((lambda (x) (+ x 1)) 41)") == []
 
 
-def test_component_scope_is_understood():
-    from qy.evaluator import standard_environment
-    from qy.stdlib import load_module
-
+def test_defun_scope_is_understood():
     env = standard_environment()
-    for sym, val in load_module("qy.legacy").exports.items():
-        env.define(sym, val)
     assert (
         type_check_source(
             """
-    (component scale (x factor) (* x factor))
+    (defun scale (x factor) (* x factor))
     (scale 7 6)
     """,
             env,
@@ -129,3 +124,13 @@ def test_recursive_function_scope_is_understood():
     """)
         == []
     )
+
+
+def test_duplicate_define_reports_same_scope_error():
+    diagnostics = type_check_source("(define x 1) (define x 2)")
+
+    assert any("'x' is already bound in this scope" in item.message for item in diagnostics)
+
+
+def test_define_may_shadow_parent_binding():
+    assert type_check_source("(define + 99)") == []

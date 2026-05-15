@@ -10,7 +10,7 @@ from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
-from qy.ir_vm import IRFunction
+from qy.ir_vm._core import IRFunction
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.types import OperatorKind

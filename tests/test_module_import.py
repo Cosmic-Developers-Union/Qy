@@ -21,7 +21,7 @@ def test_module_defines_and_registers_exports():
         """
         (module test.local
           (defun triple (x) (* x 3))
-          (component scale (x factor) (* x factor))
+                    (defun scale (x factor) (* x factor))
           (exports triple scale))
         """,
         env,
@@ -70,6 +70,14 @@ def test_from_import_supports_registered_modules():
     evaluate_source("(from test.math import triple as t)", env)
 
     assert evaluate_source("(t 14)", env) == 42
+
+
+def test_from_import_cannot_override_existing_binding():
+    env = standard_environment()
+    env.define(S("upper"), 42)
+
+    with pytest.raises(EvaluationError, match="already bound in this scope"):
+        evaluate_source("(from qy.str import str-upper as upper)", env)
 
 
 def test_from_import_supports_compile_time_macro_exports():
@@ -138,7 +146,7 @@ def test_from_import_supports_qy_files():
         path.write_text(
             """
             (defun triple (x) (* x 3))
-            (component scale (x factor) (* x factor))
+            (defun scale (x factor) (* x factor))
             """,
             encoding="utf-8",
         )

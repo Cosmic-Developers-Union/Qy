@@ -17,7 +17,7 @@ from qy.bytecode_compiler import compile_mir_bytecode
 from qy.evaluator import Environment
 from qy.evaluator import run_async
 from qy.ir import ProgramIR
-from qy.ir_vm import IRVirtualMachine
+from qy.lir_lowering import lower_lir
 from qy.lowering import lower
 from qy.macroexpand import macroexpand
 from qy.mir import MIRProgram
@@ -45,7 +45,7 @@ BenchmarkPhase = Literal[
     "lower",
     "hir_lower",
     "mir_lower",
-    "ir",
+    "lir_lower",
     "bytecode_compile",
     "bytecode_vm",
 ]
@@ -130,7 +130,7 @@ def run_benchmarks(
         "macroexpand",
         "hir_lower",
         "mir_lower",
-        "ir",
+        "lir_lower",
         "bytecode_compile",
         "bytecode_vm",
     ),
@@ -237,10 +237,10 @@ def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float | None:
     program = lower(expansion.forms, qy.env)
     if phase == "mir_lower":
         return _elapsed(lambda: _run_mir_lower_iterations(program, case.iterations))
-    if phase == "ir":
-        return _elapsed(lambda: _run_ir_iterations(qy.env, program, case.iterations))
 
     mir = lower_mir(program)
+    if phase == "lir_lower":
+        return _elapsed(lambda: _run_lir_lower_iterations(mir, case.iterations))
     if phase == "bytecode_compile":
         return _elapsed(lambda: _run_bytecode_compile_iterations(mir, case.iterations))
 
@@ -270,9 +270,9 @@ def _run_mir_lower_iterations(program: ProgramIR, iterations: int) -> None:
         lower_mir(program)
 
 
-def _run_ir_iterations(env: Environment, program: ProgramIR, iterations: int) -> None:
+def _run_lir_lower_iterations(program: MIRProgram, iterations: int) -> None:
     for _ in range(iterations):
-        run_async(IRVirtualMachine(env).evaluate_program(program))
+        lower_lir(program)
 
 
 def _run_bytecode_compile_iterations(program: MIRProgram, iterations: int) -> None:
@@ -344,7 +344,7 @@ def main(argv: list[str] | None = None) -> None:
             "lower",
             "hir_lower",
             "mir_lower",
-            "ir",
+            "lir_lower",
             "bytecode_compile",
             "bytecode_vm",
         ),
@@ -368,7 +368,7 @@ def main(argv: list[str] | None = None) -> None:
             "macroexpand",
             "hir_lower",
             "mir_lower",
-            "ir",
+            "lir_lower",
             "bytecode_compile",
             "bytecode_vm",
         )

@@ -1,3 +1,5 @@
+import pytest
+
 from qy.evaluator import EffectOperator
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
@@ -30,12 +32,25 @@ def test_core_operators_expose_static_signatures():
 
 
 def test_non_core_legacy_data_operators_do_not_have_core_signatures():
-    qy = Qy()
+    from qy.environment import Environment
+    from qy.stdlib import standard_bindings
+
+    qy = Qy(env=Environment(standard_bindings(("qy.core", "qy.io", "qy.py"))))
 
     for name in ("list", "tuple", "dict", "set"):
         operator = qy.env.resolve(S(name))
         assert isinstance(operator, PureOperator)
         assert operator.signature is None
+
+
+def test_default_core_does_not_expose_python_container_helpers():
+    from qy.errors import EvaluationError
+
+    qy = Qy()
+
+    for name in ("list", "tuple", "dict", "set"):
+        with pytest.raises(EvaluationError):
+            qy.env.resolve(S(name))
 
 
 def test_custom_operator_can_declare_signature():

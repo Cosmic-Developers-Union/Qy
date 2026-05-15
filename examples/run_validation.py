@@ -6,7 +6,6 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from qy.display import format_value
@@ -20,7 +19,6 @@ ROOT = Path(__file__).resolve().parent
 class Case:
     path: str
     expected: str
-    backend: Literal["ir", "bytecode"] = "ir"
 
 
 CASES = (
@@ -33,18 +31,18 @@ CASES = (
     Case("validation/06_parallel_effects.qy", "(2 40)"),
     Case("validation/07_module_import.qy", "42"),
     Case("validation/08_host_interop.qy", "42"),
-    Case("validation/09_register_vm_tail_call.qy", "2001000", backend="bytecode"),
+    Case("validation/09_register_vm_tail_call.qy", "2001000"),
 )
 
 
 def run_case(case: Case) -> None:
     path = ROOT / case.path
-    qy = Qy(backend=case.backend)  # type: ignore[arg-type]
+    qy = Qy()
     result = qy.evaluate_file(path)
     formatted = format_value(result)
     if formatted != case.expected:
         raise AssertionError(f"{case.path}: expected {case.expected!r}, got {formatted!r}")
-    print(f"[ok] {case.backend:8s} {case.path} -> {formatted}")
+    print(f"[ok] {case.path} -> {formatted}")
 
 
 def main() -> int:

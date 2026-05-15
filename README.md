@@ -4,34 +4,27 @@ Qy is a symbolic Lisp-like language implemented in Python.
 
 ## Compilation Pipeline
 
-The public pipeline is intentionally explicit:
+The language contract is centered on a single explicit pipeline:
 
 ```text
-source
-  -> ast
-  -> expand
-  -> HIR
-  -> MIR
-  -> LIR
-  -> bytecode
-  -> register VM
+source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 ```
 
 For the Python API, the corresponding entry points are `Qy.read(...)`, `Qy.macroexpand_source(...)`, `Qy.lower(...)`, `Qy.lower_mir(...)`, `Qy.compile_bytecode(...)`, and `RegisterVirtualMachine(...)`.
 
-`Qy.evaluate_source(...)` still defaults to the IR backend because it is the most complete runtime. `Qy(backend="bytecode")` is available, but the bytecode backend is still experimental and does not yet cover the full language surface, especially modules, effects, and several advanced operators.
+`Qy.evaluate_source(...)` remains available as a compatibility convenience, but register VM is the execution target and backend selection is not part of the model.
 
 Macro expansion denies compile-time effects by default through `MacroExpansionOptions(effect_policy="deny")`. This keeps expansion deterministic unless a caller explicitly opts into a looser policy.
 
 The current core is intentionally small:
 
 - reader: qy source -> symbolic forms
+- surface dialect: deterministic spelling normalization such as `'x` and quasiquote unquote sugar
 - tuple exchange: Python tuple forms with explicit `Symbol(...)`
 - analyzer: diagnostics and lightweight type checks
-- evaluator: simple symbolic evaluation
 - formatter: locked qy source formatting
-- CLI: optional file evaluation, REPL, formatting, AST, and type checking
-- LSP: optional diagnostics, completion, hover, and formatting over pygls
+- CLI: AST, macro expansion, HIR, MIR, LIR, bytecode, and execution views
+- LSP: diagnostics, completion, hover, and formatting over pygls
 
 ## Usage
 
@@ -143,7 +136,7 @@ Embed a qy instance and register application operators:
 ```python
 from qy import Qy
 from qy import Symbol
-from qy.evaluator import PureOperator
+from qy.operators import PureOperator
 from qy.stdlib import StandardModule
 from qy.stdlib import register_module
 
@@ -162,17 +155,7 @@ assert qy.evaluate_source("(t 14)") == 42
 
 ## Operator Kinds
 
-Qy currently has three operator kinds:
-
-- pure operators: evaluate all arguments, then apply
-- evaluation operators: receive unevaluated arguments and control evaluation order
-- syntax operators: receive the whole syntax tree
-
-Built-ins:
-
-- pure: `atom`, `eq`, `car`, `cdr`, `cons`, `+`, `-`, `*`, `/`
-- evaluation: `quote`, `cond`, `let`, `print`, `echo`, `str-*`
-- syntax: `defun`, `from`
+Qy uses operator metadata to describe evaluation behavior. The minimal core remains centered on syntax, chain, binding, control, ordering/join, function, macro, effect, and module forms; additional helpers live in stdlib or explicit host-injected namespaces.
 
 Example:
 

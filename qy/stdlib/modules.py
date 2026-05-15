@@ -85,7 +85,7 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
 
     register_module(module)
     cache_source_module(module, env)
-    return env.define(name, module)
+    return env.define_once(name, module)
 
 
 async def _from_import(args: tuple[object, ...], env: Environment) -> object:
@@ -96,7 +96,7 @@ async def _from_import(args: tuple[object, ...], env: Environment) -> object:
         source_module = await load_module_async(module_name.name)
         for spec in specs:
             if spec.name in source_module.exports:
-                env.define(spec.alias, source_module.resolve(spec.name))
+                env.define_once(spec.alias, source_module.resolve(spec.name))
             elif spec.name in source_module.macro_exports:
                 continue
             else:

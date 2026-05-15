@@ -14,7 +14,7 @@ def test_benchmark_runner_smoke_test():
             "macroexpand",
             "hir_lower",
             "mir_lower",
-            "ir",
+            "lir_lower",
             "bytecode_compile",
             "bytecode_vm",
         ),
@@ -27,7 +27,7 @@ def test_benchmark_runner_smoke_test():
         "macroexpand",
         "hir_lower",
         "mir_lower",
-        "ir",
+        "lir_lower",
         "bytecode_compile",
         "bytecode_vm",
     }
@@ -59,11 +59,11 @@ def test_benchmark_runner_runs_effect_benchmark_in_bytecode_phase():
 
 def test_benchmark_compare_reports_only_threshold_regressions():
     baseline = (
-        BenchmarkResult("tiny", "ir", 10, 1, 1.0, 1.0, 1.0, 10.0, 0.1),
+        BenchmarkResult("tiny", "lir_lower", 10, 1, 1.0, 1.0, 1.0, 10.0, 0.1),
         BenchmarkResult("tiny", "lower", 10, 1, 2.0, 2.0, 2.0, 5.0, 0.2),
     )
     current = (
-        BenchmarkResult("tiny", "ir", 10, 1, 1.2, 1.2, 1.2, 8.0, 0.12),
+        BenchmarkResult("tiny", "lir_lower", 10, 1, 1.2, 1.2, 1.2, 8.0, 0.12),
         BenchmarkResult("tiny", "lower", 10, 1, 2.1, 2.1, 2.1, 4.8, 0.21),
     )
 
@@ -71,7 +71,7 @@ def test_benchmark_compare_reports_only_threshold_regressions():
 
     assert len(regressions) == 1
     assert regressions[0].case == "tiny"
-    assert regressions[0].phase == "ir"
+    assert regressions[0].phase == "lir_lower"
 
 
 def test_benchmark_baseline_roundtrip(tmp_path):

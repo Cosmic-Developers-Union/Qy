@@ -16,7 +16,7 @@ source
   -> register VM
 ```
 
-`Qy.evaluate_source(...)` 必须使用 register VM。IR VM / legacy evaluator 不再作为 reference backend；任何残留调用都属于迁移待删除代码。
+`Qy.evaluate_source(...)` 目前仍保留为兼容入口，但 register VM 是唯一执行目标；IR VM / legacy evaluator 仅作为迁移待删除代码存在，不应继续扩展。
 
 ## 分层边界
 
@@ -104,7 +104,7 @@ printf '(+ 1 2)\n' | qy bytecode -
 
 ## Compile-Time Runtime 现状
 
-macro body 执行仍复用 lowering 与 IR VM，但入口已收敛到 compile-time facade：
+macro body 的 compile-time facade 仍然是过渡实现，但已经不再把 evaluator 当作主执行面：
 
 - macro 定义捕获的是 compile-time environment facade，不直接依赖 `Environment` 类型。
 - compile-time 可用 binding 当前等于定义时环境中的现有 binding 快照，加上展开期注入的 `gensym` 与 `capture`。

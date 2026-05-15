@@ -21,6 +21,7 @@ __all__ = [
     "AssertExpr",
     "Binding",
     "BindingSource",
+    "CacheExpr",
     "CallExpr",
     "CondClause",
     "CondExpr",
@@ -124,6 +125,14 @@ class RuntimeMetaCallExpr:
     raw_form: tuple[object, ...]
     span: SourceSpan | None = None
     type_name: TypeName = "unknown"
+
+
+@dataclass(frozen=True, slots=True)
+class CacheExpr:
+    expression: IRExpr
+    cache_key: object
+    span: SourceSpan | None = None
+    type_name: TypeName = "any"
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +311,7 @@ type IRExpr = (
     AllExpr
     | ApplyExpr
     | AssertExpr
+    | CacheExpr
     | CallExpr
     | CondExpr
     | DefeffectExpr

@@ -13,6 +13,7 @@ from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
 from qy.ir import Binding
+from qy.ir import CacheExpr
 from qy.ir import CallExpr
 from qy.ir import CondClause
 from qy.ir import CondExpr
@@ -191,8 +192,6 @@ def _lower_form(
                 return _lower_lambda(args, scope, context, form)
             case "defun":
                 return _lower_defun(form, scope, context)
-            case "component":
-                return _lower_component(form, scope, context)
             case "defeffect":
                 return _lower_defeffect(form, context)
             case "module":
@@ -219,14 +218,19 @@ def _lower_form(
                 return _lower_race(args, scope, context, form)
             case "apply":
                 return _lower_apply(args, scope, context, form)
+            case "cache":
+                return _lower_cache(args, scope, context, form)
 
     operator_expr = _lower_form(operator, scope, context)
     if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
         return RuntimeMetaCallExpr(operator_expr, form, get_span(form))
 
     args_as_data = _call_uses_non_eager_arguments(operator_expr)
-    lowered_args = tuple(
-        _lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args
+    raw_args = _call_uses_raw_arguments(operator_expr)
+    lowered_args = (
+        tuple(_lower_raw_form_as_data(arg) for arg in args)
+        if raw_args
+        else tuple(_lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args)
     )
     return CallExpr(
         operator_expr,
@@ -263,6 +267,12 @@ def _lower_symbol(
 
     context.diagnostic(f"unresolved symbol {symbol.name!r}", symbol)
     return UnresolvedSymbolExpr(symbol, symbol.span)
+
+
+def _lower_raw_form_as_data(form: object) -> IRExpr:
+    if isinstance(form, Symbol):
+        return LiteralExpr(form, "symbol", form.span, form)
+    return LiteralExpr(form, literal_type(form), get_span(form))
 
 
 def _lower_quote(
@@ -475,31 +485,6 @@ def _lower_defun(
     )
 
 
-def _lower_component(
-    form: tuple[object, ...],
-    scope: Scope,
-    context: LoweringContext,
-) -> IRExpr:
-    if len(form) < 4:
-        context.diagnostic("component expects a name, parameter list, and body", form)
-        return DefunExpr(Symbol("<invalid>"), (), (), get_span(form))
-    _, name, params, *body = form
-    name = _ensure_symbol(name, "component name", context)
-    param_symbols = _parameter_symbols(params, "component", context)
-    component_scope = _define_local(
-        scope.child(),
-        Binding(name, "local", "function"),
-        context,
-    )
-    component_scope = _define_parameters(component_scope, param_symbols, context)
-    return DefunExpr(
-        name,
-        param_symbols,
-        _lower_body(tuple(body), component_scope, context, tail=True),
-        get_span(form),
-    )
-
-
 def _lower_defeffect(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
     if len(form) < 2:
         context.diagnostic("defeffect expects an effect name", form)
@@ -703,16 +688,12 @@ def _scope_after_form(
     del expr
     if not isinstance(form, tuple) or not form:
         return scope
-    if (
-        len(form) >= 2
-        and form[0] in {Symbol("defun"), Symbol("component")}
-        and isinstance(form[1], Symbol)
-    ):
+    if len(form) >= 2 and form[0] == Symbol("defun") and isinstance(form[1], Symbol):
         if scope.has_local(form[1]):
             return scope
         return _define_local(scope, Binding(form[1], "local", "function"), context)
     if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
-        return _define_top_level(scope, Binding(form[1], "local", "any"), context)
+        return _define_local(scope, Binding(form[1], "local", "any"), context)
     if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
         return _define_local(scope, Binding(form[1], "local", "effect"), context)
     if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
@@ -765,7 +746,7 @@ def _predeclare_callable_definitions(
     for expression in body:
         if not isinstance(expression, tuple) or len(expression) < 2:
             continue
-        if expression[0] not in {Symbol("defun"), Symbol("component")}:
+        if expression[0] != Symbol("defun"):
             continue
         name = expression[1]
         if isinstance(name, Symbol):
@@ -775,15 +756,6 @@ def _predeclare_callable_definitions(
 
 def _define_local(scope: Scope, binding: Binding, context: LoweringContext) -> Scope:
     if scope.has_local(binding.symbol):
-        context.diagnostic(
-            f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
-        )
-    return scope.define(binding)
-
-
-def _define_top_level(scope: Scope, binding: Binding, context: LoweringContext) -> Scope:
-    """Like _define_local but checks parent scopes too (catches shadowing of host/env symbols)."""
-    if scope.lookup(binding.symbol) is not None:
         context.diagnostic(
             f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
         )
@@ -831,7 +803,19 @@ def _effect_is_declared(effect: Symbol, scope: Scope, context: LoweringContext) 
 
 
 def _call_uses_non_eager_arguments(operator: IRExpr) -> bool:
-    return isinstance(operator, SymbolRefExpr) and not operator.binding.eager_arguments
+    return (
+        isinstance(operator, SymbolRefExpr)
+        and operator.binding.type_name == "operator"
+        and not operator.binding.eager_arguments
+    )
+
+
+def _call_uses_raw_arguments(operator: IRExpr) -> bool:
+    return (
+        isinstance(operator, SymbolRefExpr)
+        and operator.binding.type_name == "operator"
+        and operator.symbol.name == "component"
+    )
 
 
 def _infer_call_type(
@@ -983,3 +967,21 @@ def _lower_apply(
     func_expr = _lower_form(args[0], scope, context)
     args_expr = _lower_form(args[1], scope, context)
     return ApplyExpr(func_expr, args_expr, get_span(form))
+
+
+def _lower_cache(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: tuple[object, ...],
+) -> IRExpr:
+    if len(args) != 1:
+        context.diagnostic("cache expects exactly one expression", form)
+        return LiteralExpr(None, "none", get_span(form))
+    expression = _lower_form(args[0], scope, context)
+    try:
+        cache_key = args[0]
+        hash(cache_key)
+    except TypeError:
+        cache_key = repr(args[0])
+    return CacheExpr(expression, cache_key, get_span(form))

@@ -76,14 +76,6 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
         if operator == Symbol("defun") and len(item) >= 3 and isinstance(item[1], Symbol):
             locals_map[item[1]] = UserFunction(item[1], _parameter_symbols(item[2]), (None,), env)
             continue
-        if operator == Symbol("component") and len(item) >= 3 and isinstance(item[1], Symbol):
-            locals_map[item[1]] = UserFunction(
-                item[1],
-                _parameter_symbols(item[2]),
-                (None,),
-                env,
-            )
-            continue
         if operator == Symbol("macro") and len(item) >= 4 and isinstance(item[1], Symbol):
             locals_map[item[1]] = MacroDefinition(
                 item[1],

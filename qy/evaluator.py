@@ -147,9 +147,10 @@ async def _evaluate_ir_forms_async(
 ) -> list[object]:
     runtime_env = env or standard_environment()
 
-    from qy.ir_vm import IRVirtualMachine
+    from qy.bytecode_compiler import compile_bytecode
     from qy.lowering import lower
     from qy.macroexpand import macroexpand_async
+    from qy.register_vm import RegisterVirtualMachine
 
     expansion = await macroexpand_async(forms, runtime_env)
     program = lower(expansion.forms, runtime_env)
@@ -171,7 +172,16 @@ async def _evaluate_ir_forms_async(
             f"cannot evaluate program with diagnostics: {messages}",
             span=SourceSpan(start_line=first.line, start_column=first.column),
         )
-    return await IRVirtualMachine(runtime_env).evaluate_program(program)
+    bytecode = compile_bytecode(program)
+    bytecode_errors = tuple(item for item in bytecode.diagnostics if item.severity == "error")
+    if bytecode_errors:
+        messages = "; ".join(item.message for item in bytecode_errors)
+        first = bytecode_errors[0]
+        raise QyRuntimeError(
+            f"cannot evaluate bytecode program with diagnostics: {messages}",
+            span=SourceSpan(start_line=first.line, start_column=first.column),
+        )
+    return await RegisterVirtualMachine(bytecode, runtime_env).evaluate_program()
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:

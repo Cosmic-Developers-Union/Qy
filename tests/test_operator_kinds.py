@@ -9,6 +9,7 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
+from qy.stdlib import load_module
 
 S = Symbol
 
@@ -51,10 +52,17 @@ def test_operator_kinds():
         "parallel",
         "cache",
         "perform",
-        "py",
         "resume",
     ]:
         assert isinstance(env.resolve(S(name)), EffectOperator), f"{name} should be EffectOperator"
+
+    with pytest.raises(EvaluationError):
+        env.resolve(S("py"))
+
+    py_env = standard_environment()
+    for sym, val in load_module("qy.py").exports.items():
+        py_env.define(sym, val)
+    assert isinstance(py_env.resolve(S("py")), EffectOperator)
 
     for name in ["quote", "eval", "macro"]:
         assert isinstance(env.resolve(S(name)), MetaOperator), f"{name} should be MetaOperator"

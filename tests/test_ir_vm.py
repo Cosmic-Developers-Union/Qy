@@ -1,8 +1,6 @@
 import pytest
 
-from qy import IRFunction
 from qy import Qy
-from qy import evaluate_ir_source
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
@@ -10,25 +8,24 @@ from qy.evaluator import standard_environment
 from qy.reader import Symbol
 
 
-def test_ir_vm_evaluates_core_calls_and_let():
-    assert evaluate_ir_source("(let ((x 10) (y 20)) (+ x y))") == 30
+def test_vm_evaluates_core_calls_and_let():
+    assert Qy().evaluate_source("(let ((x 10) (y 20)) (+ x y))") == 30
 
 
-def test_ir_vm_defun_can_be_called_across_repl_steps():
+def test_vm_defun_can_be_called_across_repl_steps():
     qy = Qy()
 
-    function = qy.evaluate_ir_source("(defun square (x) (* x x))")
+    qy.evaluate_source("(defun square (x) (* x x))")
 
-    assert isinstance(function, IRFunction)
-    assert qy.evaluate_ir_source("(square 12)") == 144
-
-
-def test_ir_vm_lambda_call():
-    assert evaluate_ir_source("((lambda (x) (+ x 1)) 41)") == 42
+    assert qy.evaluate_source("(square 12)") == 144
 
 
-def test_ir_vm_self_tail_recursion_uses_virtual_stack():
-    result = evaluate_ir_source(
+def test_vm_lambda_call():
+    assert Qy().evaluate_source("((lambda (x) (+ x 1)) 41)") == 42
+
+
+def test_vm_self_tail_recursion():
+    result = Qy().evaluate_source(
         """
         (let ()
           (defun sum-to (n acc)
@@ -42,8 +39,8 @@ def test_ir_vm_self_tail_recursion_uses_virtual_stack():
     assert result == 2001000
 
 
-def test_ir_vm_mutual_tail_recursion_uses_virtual_stack():
-    result = evaluate_ir_source(
+def test_vm_mutual_tail_recursion():
+    result = Qy().evaluate_source(
         """
         (let ()
           (defun even (n)
@@ -61,11 +58,11 @@ def test_ir_vm_mutual_tail_recursion_uses_virtual_stack():
     assert result is False
 
 
-def test_ir_vm_runtime_errors_include_virtual_stack_frames():
+def test_vm_runtime_errors_include_virtual_stack_frames():
     qy = Qy()
 
     with pytest.raises(QyTypeError) as exc_info:
-        qy.evaluate_ir_source(
+        qy.evaluate_source(
             """
             (let ()
               (defun bad (x) (car x))
@@ -74,45 +71,47 @@ def test_ir_vm_runtime_errors_include_virtual_stack_frames():
             """
         )
 
-    assert [frame.name for frame in exc_info.value.frames] == ["outer", "bad"]
+    assert [frame.name for frame in exc_info.value.frames if frame.name is not None] == [
+        "outer",
+        "bad",
+    ]
 
 
-def test_ir_vm_function_is_visible_to_lowering_after_definition():
+def test_vm_function_is_visible_to_lowering_after_definition():
     qy = Qy()
-    qy.evaluate_ir_source("(defun identity (x) x)")
+    qy.evaluate_source("(defun identity (x) x)")
 
     program = qy.lower_source("(identity 42)")
 
     assert program.ok
-    assert qy.evaluate_ir(program) == 42
+    assert qy.evaluate_source("(identity 42)") == 42
 
 
-def test_ir_vm_can_resolve_runtime_environment_bindings():
+def test_vm_can_resolve_runtime_environment_bindings():
     env = standard_environment()
     env.define(Symbol("answer"), 42)
 
-    assert evaluate_ir_source("answer", env) == 42
+    assert Qy(env=env).evaluate_source("answer") == 42
 
 
-def test_qy_ir_backend_routes_evaluate_source_through_vm():
-    qy = Qy(backend="ir")
+def test_qy_evaluate_source_routes_through_register_vm():
+    qy = Qy()
 
     assert qy.evaluate_source("(let ((x 10) (y 32)) (+ x y))") == 42
 
 
-def test_qy_ir_backend_evaluates_program_with_shared_scope():
-    qy = Qy(backend="ir")
-
-    assert qy.evaluate_program("(defun square (x) (* x x))\n(square 12)") == [
-        qy.env.resolve(Symbol("square")),
-        144,
-    ]
-
-
-async def test_ir_vm_perform_handle_resume_resumable_effect():
+def test_qy_evaluate_program_with_shared_scope():
     qy = Qy()
 
-    result = await qy.evaluate_ir_source_async(
+    result = qy.evaluate_program("(defun square (x) (* x x))\n(square 12)")
+    assert len(result) == 2
+    assert result[1] == 144
+
+
+async def test_vm_perform_handle_resume_resumable_effect():
+    qy = Qy()
+
+    result = await qy.evaluate_source_async(
         """
         (let ()
           (defeffect ask)
@@ -125,10 +124,10 @@ async def test_ir_vm_perform_handle_resume_resumable_effect():
     assert result == 42
 
 
-async def test_ir_vm_handle_without_resume_behaves_like_catch():
+async def test_vm_handle_without_resume_behaves_like_catch():
     qy = Qy()
 
-    result = await qy.evaluate_ir_source_async(
+    result = await qy.evaluate_source_async(
         """
         (let ()
           (defeffect fail)
@@ -141,10 +140,10 @@ async def test_ir_vm_handle_without_resume_behaves_like_catch():
     assert result == 41
 
 
-async def test_ir_vm_resume_continues_body_after_perform():
+async def test_vm_resume_continues_body_after_perform():
     qy = Qy()
 
-    result = await qy.evaluate_ir_source_async(
+    result = await qy.evaluate_source_async(
         """
         (let ()
           (defeffect ask)
@@ -159,10 +158,10 @@ async def test_ir_vm_resume_continues_body_after_perform():
     assert result == 42
 
 
-async def test_ir_vm_assert_failure_is_handleable():
+async def test_vm_assert_failure_is_handleable():
     qy = Qy()
 
-    result = await qy.evaluate_ir_source_async(
+    result = await qy.evaluate_source_async(
         """
         (handle
           (assert false "missing title")
@@ -173,11 +172,11 @@ async def test_ir_vm_assert_failure_is_handleable():
     assert result == Symbol("debugged")
 
 
-async def test_ir_vm_resume_rejects_non_resumable_assert_failure():
+async def test_vm_resume_rejects_non_resumable_assert_failure():
     qy = Qy()
 
     with pytest.raises(QyEffectError, match="not resumable"):
-        await qy.evaluate_ir_source_async(
+        await qy.evaluate_source_async(
             """
             (handle
               (assert false "missing title")
@@ -186,10 +185,10 @@ async def test_ir_vm_resume_rejects_non_resumable_assert_failure():
         )
 
 
-async def test_ir_vm_unhandled_assert_failure_raises_signal():
+async def test_vm_unhandled_assert_failure_raises_signal():
     qy = Qy()
 
     with pytest.raises(QyEffectSignal) as exc_info:
-        await qy.evaluate_ir_source_async('(assert false "missing title")')
+        await qy.evaluate_source_async('(assert false "missing title")')
 
     assert exc_info.value.effect == "assert-failed"

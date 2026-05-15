@@ -98,11 +98,11 @@ def test_mir_dump_shows_lambda_and_macro_construction():
     assert "MAKE_FUNCTION fn#" in rendered
     assert "MAKE_MACRO twice" in rendered
     assert "STORE_LOCAL inc, r" in rendered
-    assert "STORE_LOCAL twice, r" in rendered
+    assert "DEFINE_ONCE twice, r" in rendered
 
 
-def test_mir_lowering_lowers_component_definition_without_diagnostic():
-    mir = lower_mir(lower_source("(component scale (x factor) (* x factor))"))
+def test_mir_lowering_lowers_defun_definition_without_diagnostic():
+    mir = lower_mir(lower_source("(defun scale (x factor) (* x factor))"))
 
     assert mir.ok
     main = mir.functions[mir.main]
@@ -112,7 +112,7 @@ def test_mir_lowering_lowers_component_definition_without_diagnostic():
         for instruction in block.instructions
     )
     assert any(
-        instruction.opcode == "STORE_LOCAL" and instruction.operands[0] == Symbol("scale")
+        instruction.opcode == "DEFINE_ONCE" and instruction.operands[0] == Symbol("scale")
         for block in main.blocks
         for instruction in block.instructions
     )
@@ -262,7 +262,7 @@ def test_verify_mir_reports_malformed_operand_kinds_instead_of_crashing():
     assert any("jumps to non-block target 'bad'" in item.message for item in diagnostics)
 
 
-def test_mir_lowering_reports_runtime_meta_calls_explicitly():
+def test_mir_lowering_lowers_runtime_meta_calls_to_opcode():
     env = standard_environment()
 
     @env.register_meta("first-symbol")
@@ -272,7 +272,11 @@ def test_mir_lowering_reports_runtime_meta_calls_explicitly():
 
     mir = lower_mir(lower_source("(first-symbol unknown)", env))
 
-    assert any("RuntimeMetaCallExpr" in item.message for item in mir.diagnostics)
+    assert mir.ok
+    instructions = [
+        instr for fn in mir.functions for block in fn.blocks for instr in block.instructions
+    ]
+    assert any(instr.opcode == "RUNTIME_META_CALL" for instr in instructions)
 
 
 def test_mir_lowering_assert_emits_branch_and_raise_effect():

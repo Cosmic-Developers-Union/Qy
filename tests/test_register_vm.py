@@ -19,14 +19,14 @@ def test_bytecode_compiler_emits_program_for_core_call():
 
 
 def test_register_vm_evaluates_arithmetic_and_let():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     assert qy.evaluate_source("(+ 1 2 3)") == 6
     assert qy.evaluate_source("(let ((x 10) (y 32)) (+ x y))") == 42
 
 
 def test_register_vm_defun_can_be_called_across_steps():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     qy.evaluate_source("(defun square (x) (* x x))")
 
@@ -40,7 +40,7 @@ def test_register_vm_component_can_be_called_across_steps():
     env = standard_environment()
     for sym, val in load_module("qy.legacy").exports.items():
         env.define(sym, val)
-    qy = Qy(env=env, backend="bytecode")
+    qy = Qy(env=env)
 
     qy.evaluate_source("(component scale (x factor) (* x factor))")
 
@@ -48,7 +48,7 @@ def test_register_vm_component_can_be_called_across_steps():
 
 
 def test_register_vm_tail_recursion_uses_frame_replacement():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     result = qy.evaluate_source(
         """
@@ -65,7 +65,7 @@ def test_register_vm_tail_recursion_uses_frame_replacement():
 
 
 def test_register_vm_runs_after_macroexpand():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     assert qy.evaluate_source("(macro twice (form) (cons '+ (cons form (cons form '()))))") is None
     with pytest.raises(EvaluationError):
@@ -75,7 +75,7 @@ def test_register_vm_runs_after_macroexpand():
 
 
 def test_register_vm_preserves_macro_hygiene_and_explicit_capture():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     assert (
         qy.evaluate_source(
@@ -100,6 +100,6 @@ def test_register_vm_preserves_macro_hygiene_and_explicit_capture():
 
 
 def test_register_vm_evaluate_program_returns_each_top_level_result():
-    qy = Qy(backend="bytecode")
+    qy = Qy()
 
     assert qy.evaluate_program("(+ 1 2)\n(+ 3 4)") == [3, 7]

@@ -4,22 +4,15 @@ Qy 是一个由 Python 实现的符号化 Lisp 方言。
 
 ## 编译管线
 
-当前公开管线如下：
+语言契约围绕单一路径展开：
 
 ```text
-source
-  -> ast
-  -> expand
-  -> HIR
-  -> MIR
-  -> LIR
-  -> bytecode
-  -> register VM
+source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM
 ```
 
 对应的 Python API 入口是 `Qy.read(...)`、`Qy.macroexpand_source(...)`、`Qy.lower(...)`、`Qy.lower_mir(...)`、`Qy.compile_bytecode(...)` 和 `RegisterVirtualMachine(...)`。
 
-`Qy.evaluate_source(...)` 默认仍使用 IR backend，因为它目前语义最完整。`Qy(backend="bytecode")` 已可用，但 bytecode backend 仍是实验性后端，暂未覆盖完整语言表面，尤其是 module、effect 和部分高级算子。
+`Qy.evaluate_source(...)` 仍然保留为兼容性便利入口，但执行目标是 register VM，backend 选择不再是模型的一部分。
 
 Macro expansion 默认通过 `MacroExpansionOptions(effect_policy="deny")` 拒绝 compile-time effect，避免在未显式授权的情况下执行不透明的编译期副作用。
 
@@ -28,9 +21,9 @@ Macro expansion 默认通过 `MacroExpansionOptions(effect_policy="deny")` 拒�
 - reader：qy 源码 -> 符号表达式
 - tuple exchange：使用显式 `Symbol(...)` 的 Python tuple 交换格式
 - analyzer：诊断和轻量类型检查
-- evaluator：简单符号求值
+- surface dialect：如 `'x` 和 quasiquote 内 `,x` 的确定性拼写规约
 - formatter：锁定风格的 qy 源码格式化
-- CLI：文件求值、交互式解释器、格式化、AST 查看和类型检查
+- CLI：AST、macro 展开、HIR、MIR、LIR、bytecode 和执行视图
 - LSP：基于 pygls 的诊断、补全、hover 和格式化
 
 ## 使用
@@ -115,17 +108,7 @@ assert qy.evaluate_source("(double 21)") == 42
 
 ## 算子类型
 
-Qy 当前有三类算子：
-
-- 纯算子：先求值所有参数，再调用算子
-- 求值算子：接收未求值参数，自行控制求值顺序
-- 语法树算子：接收完整语法树
-
-内置算子：
-
-- 纯算子：`atom`、`eq`、`car`、`cdr`、`cons`、`+`、`-`、`*`、`/`
-- 求值算子：`quote`、`cond`、`let`
-- 语法树算子：`defun`
+Qy 使用算子元数据描述求值行为。最小核心围绕 syntax、chain、binding、control、ordering/join、function、macro、effect 和 module 形式；其余能力放在 stdlib 或显式 host 注入命名空间中。
 
 示例：
 

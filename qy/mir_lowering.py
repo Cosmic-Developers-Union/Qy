@@ -10,6 +10,7 @@ from qy.errors import SourceSpan
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
+from qy.ir import CacheExpr
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
@@ -31,6 +32,7 @@ from qy.ir import QuoteExpr
 from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
+from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.mir import MIRBlock
@@ -125,7 +127,7 @@ class _FunctionLowerer:
             )
             register = self.register()
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
-            self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
+            self.emit("DEFINE_ONCE", expression.name, register, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, LambdaExpr):
             function_index = self.owner.lower_function(
@@ -146,7 +148,7 @@ class _FunctionLowerer:
                 expression.raw_body,
                 span=expression.span,
             )
-            self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
+            self.emit("DEFINE_ONCE", expression.name, register, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, LetExpr):
             return self.lower_let(expression, tail=tail)
@@ -172,9 +174,18 @@ class _FunctionLowerer:
             return self.lower_resume(expression)
         if isinstance(expression, DefineExpr):
             return self.lower_define(expression)
-        if isinstance(expression, PipelineExpr | ParallelExpr | AllExpr | RaceExpr | ApplyExpr):
-            self.owner.diagnostic(f"{type(expression).__name__} not yet supported in MIR lowering")
-            return _LoweredExpression(self.register())
+        if isinstance(expression, PipelineExpr):
+            return self.lower_pipeline(expression, tail=tail)
+        if isinstance(expression, ParallelExpr | AllExpr):
+            return self.lower_parallel_all(expression, tail=tail)
+        if isinstance(expression, RaceExpr):
+            return self.lower_race(expression, tail=tail)
+        if isinstance(expression, ApplyExpr):
+            return self.lower_apply(expression, tail=tail)
+        if isinstance(expression, RuntimeMetaCallExpr):
+            return self.lower_runtime_meta_call(expression)
+        if isinstance(expression, CacheExpr):
+            return self.lower_cache(expression)
 
         self.owner.diagnostic(f"MIR lowering does not support {type(expression).__name__}")
         return _LoweredExpression(None)
@@ -370,12 +381,85 @@ class _FunctionLowerer:
         self.emit("RESUME", result, cont.register, value.register, span=expression.span)
         return _LoweredExpression(result)
 
+    def lower_pipeline(self, expression: PipelineExpr, *, tail: bool) -> _LoweredExpression:
+        result = self.lower_body(expression.body, tail=tail)
+        return _LoweredExpression(result)
+
+    def lower_parallel_all(
+        self, expression: ParallelExpr | AllExpr, *, tail: bool
+    ) -> _LoweredExpression:
+        opcode = "PARALLEL_GATHER" if isinstance(expression, ParallelExpr) else "ALL_GATHER"
+        thunk_indices: list[int] = []
+        for expr in expression.exprs:
+            thunk_index = self.owner.lower_function(
+                Symbol("<parallel-thunk>"),
+                (),
+                (expr,),
+            )
+            thunk_indices.append(thunk_index)
+        result = self.register()
+        self.emit(opcode, result, *thunk_indices, span=expression.span)
+        if tail and not self.current.terminated:
+            self.terminate("RETURN", result, span=expression.span)
+            return _LoweredExpression(None)
+        return _LoweredExpression(result)
+
+    def lower_race(self, expression: RaceExpr, *, tail: bool) -> _LoweredExpression:
+        if not expression.exprs:
+            result = self.register()
+            self.emit("LOAD_HOST", result, None, span=expression.span)
+            return _LoweredExpression(result)
+        thunk_indices: list[int] = []
+        for expr in expression.exprs:
+            thunk_index = self.owner.lower_function(
+                Symbol("<race-thunk>"),
+                (),
+                (expr,),
+            )
+            thunk_indices.append(thunk_index)
+        result = self.register()
+        self.emit("RACE_FIRST", result, *thunk_indices, span=expression.span)
+        if tail and not self.current.terminated:
+            self.terminate("RETURN", result, span=expression.span)
+            return _LoweredExpression(None)
+        return _LoweredExpression(result)
+
+    def lower_apply(self, expression: ApplyExpr, *, tail: bool) -> _LoweredExpression:
+        func = self.lower_expr(expression.function)
+        args = self.lower_expr(expression.args)
+        if func.register is None or args.register is None:
+            return _LoweredExpression(None)
+        result = self.register()
+        self.emit("APPLY", result, func.register, args.register, span=expression.span)
+        return _LoweredExpression(result)
+
+    def lower_runtime_meta_call(self, expression: RuntimeMetaCallExpr) -> _LoweredExpression:
+        result = self.register()
+        self.emit(
+            "RUNTIME_META_CALL",
+            result,
+            expression.operator.symbol,
+            expression.raw_form,
+            span=expression.span,
+        )
+        return _LoweredExpression(result)
+
+    def lower_cache(self, expression: CacheExpr) -> _LoweredExpression:
+        thunk_index = self.owner.lower_function(
+            Symbol("<cache-thunk>"),
+            (),
+            (expression.expression,),
+        )
+        result = self.register()
+        self.emit("CACHE_EVAL", result, expression.cache_key, thunk_index, span=expression.span)
+        return _LoweredExpression(result)
+
     def lower_define(self, expression: DefineExpr) -> _LoweredExpression:
         value = self.lower_expr(expression.value)
         register = self.register()
         if value.register is not None and not self.current.terminated:
             self.emit("MOVE", register, value.register, span=expression.span)
-        self.emit("STORE_LOCAL", expression.name, register, span=expression.span)
+        self.emit("DEFINE_ONCE", expression.name, register, span=expression.span)
         return _LoweredExpression(register)
 
     def new_block(self) -> _MutableBlock:

@@ -7,12 +7,21 @@ from qy.errors import QyPythonError
 from qy.errors import format_qy_error
 from qy.reader import Symbol
 from qy.runtime import Qy
+from qy.stdlib import load_module
+
+
+def _py_env():
+    qy = Qy()
+    for sym, val in load_module("qy.py").exports.items():
+        qy.env.define(sym, val)
+    return qy
+
 
 S = Symbol
 
 
 async def test_py_native_python_exceptions_escape_as_unhandled_effect():
-    qy = Qy()
+    qy = _py_env()
 
     with pytest.raises(QyEffectSignal) as exc_info:
         await qy.evaluate_source_async(
@@ -36,7 +45,7 @@ raise ValueError("bad")
 
 
 async def test_handle_can_catch_python_error_without_resume():
-    qy = Qy()
+    qy = _py_env()
 
     result = await qy.evaluate_source_async(
         '''
@@ -53,7 +62,7 @@ raise ValueError("bad")
 
 
 async def test_resume_rejects_non_resumable_python_error():
-    qy = Qy()
+    qy = _py_env()
 
     with pytest.raises(QyEffectError, match="not resumable"):
         await qy.evaluate_source_async(

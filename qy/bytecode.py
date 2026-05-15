@@ -27,9 +27,14 @@ Register = int
 
 Opcode = Literal[
     "APPEND_RESULT",
+    "ALL_GATHER",
+    "APPLY",
+    "BUILD_TUPLE",
+    "CACHE_EVAL",
     "CALL",
     "DEFEFFECT",
     "DEFINE_MODULE",
+    "DEFINE_ONCE",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
     "FROM_IMPORT",
@@ -41,11 +46,14 @@ Opcode = Literal[
     "MAKE_MACRO",
     "MAKE_FUNCTION",
     "MOVE",
+    "PARALLEL_GATHER",
     "PERFORM",
     "RAISE_EFFECT",
+    "RACE_FIRST",
     "RESUME",
     "RETURN",
     "RUNTIME_EVAL",
+    "RUNTIME_META_CALL",
     "STORE_LOCAL",
     "TAIL_CALL",
 ]
@@ -81,6 +89,7 @@ class BytecodeProgram:
 class BytecodeFunctionValue:
     function: BytecodeFunction
     closure: Environment
+    program: BytecodeProgram | None = None
 
 
 def dump_bytecode(program: BytecodeProgram) -> str:

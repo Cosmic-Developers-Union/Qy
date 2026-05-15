@@ -70,12 +70,6 @@ from qy.ir import ProgramIR
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.ir import dump_ir
-from qy.ir_vm import IRFunction
-from qy.ir_vm import IRVirtualMachine
-from qy.ir_vm import evaluate_ir
-from qy.ir_vm import evaluate_ir_async
-from qy.ir_vm import evaluate_ir_source
-from qy.ir_vm import evaluate_ir_source_async
 from qy.lir import LIRFunction
 from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
@@ -130,7 +124,6 @@ from qy.register_vm import evaluate_bytecode
 from qy.register_vm import evaluate_bytecode_async
 from qy.register_vm import evaluate_bytecode_source
 from qy.register_vm import evaluate_bytecode_source_async
-from qy.runtime import EvaluationBackend
 from qy.runtime import Qy
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
@@ -165,12 +158,9 @@ __all__ = [
     "EffectOperator",
     "EffectSpec",
     "Environment",
-    "EvaluationBackend",
     "EvaluationError",
     "Form",
     "HostObjectRef",
-    "IRFunction",
-    "IRVirtualMachine",
     "Instruction",
     "LIRFunction",
     "LIRInstruction",
@@ -244,10 +234,6 @@ __all__ = [
     "evaluate_bytecode_source_async",
     "evaluate_file",
     "evaluate_file_async",
-    "evaluate_ir",
-    "evaluate_ir_async",
-    "evaluate_ir_source",
-    "evaluate_ir_source_async",
     "evaluate_program",
     "evaluate_program_async",
     "evaluate_source",

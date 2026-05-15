@@ -180,36 +180,6 @@ def test_macro_hygiene_defun_params_do_not_capture_call_site_symbols():
     )
 
 
-def test_macro_hygiene_component_params_do_not_capture_call_site_symbols():
-    from qy.stdlib import load_module
-
-    env = standard_environment()
-    for sym, val in load_module("qy.legacy").exports.items():
-        env.define(sym, val)
-    evaluate_source(
-        """
-                (macro define-component-using (expr)
-                    (cons 'component
-                        (cons 'use-outer-component
-                            (cons (cons 'tmp '())
-                                (cons expr '())))))
-                """,
-        env,
-    )
-
-    assert (
-        evaluate_source(
-            """
-                        (let ((tmp 99))
-                            (define-component-using tmp)
-                            (use-outer-component 1))
-                        """,
-            env,
-        )
-        == 99
-    )
-
-
 def test_macro_hygiene_alias_not_in_env_bindings():
     """F2: hygiene aliases must not appear in env.bindings() (REPL/debug visibility)."""
     env = standard_environment()

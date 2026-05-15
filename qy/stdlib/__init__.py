@@ -24,7 +24,7 @@ __all__ = [
     "standard_bindings",
 ]
 
-PRELUDE_MODULES = ("qy.core", "qy.io", "qy.py")
+PRELUDE_MODULES = ("qy.core", "qy.io")
 type ModuleLoader = Callable[[], StandardModule]
 
 _MODULE_LOADERS: dict[str, ModuleLoader] = {}

@@ -30,7 +30,6 @@ def diagnostics_for_source(source: str) -> list[types.Diagnostic]:
 
 _SIGNATURES = {
     "defun": "(defun name (arg ...) body...)",
-    "component": "(component name (arg ...) body...)",
     "lambda": "(lambda (arg ...) body...)",
     "let": "(let ((name expr) ...) body...)",
     "cond": "(cond (condition result) ...)",
@@ -346,7 +345,7 @@ def _document_symbol_for_form(form: Form) -> types.DocumentSymbol | None:
 def _defined_name(form: Form) -> Symbol | None:
     if not isinstance(form, tuple) or len(form) < 2 or not isinstance(form[0], Symbol):
         return None
-    if form[0].name not in {"defun", "component", "macro", "module", "defeffect"}:
+    if form[0].name not in {"defun", "macro", "module", "defeffect"}:
         return None
     return form[1] if isinstance(form[1], Symbol) else None
 

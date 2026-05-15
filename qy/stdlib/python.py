@@ -23,7 +23,6 @@ from qy.errors import QyTypeError
 from qy.evaluator import ControlOperator
 from qy.evaluator import EffectOperator
 from qy.evaluator import Environment
-from qy.evaluator import EvaluationError
 from qy.evaluator import HostObjectRef
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
@@ -81,11 +80,11 @@ async def _py(args: tuple[object, ...], env: Environment) -> object:
 async def _evaluate_py_source(expression: object, env: Environment) -> str:
     if isinstance(expression, Symbol):
         try:
-            value = await evaluate_async(expression, env)
-        except EvaluationError:
+            value = env.resolve(expression)
+        except Exception:
             return expression.name
     else:
-        value = await evaluate_async(expression, env)
+        value = expression
 
     if isinstance(value, Symbol):
         return value.name
@@ -119,10 +118,10 @@ async def _evaluate_py_bindings(args: tuple[object, ...], env: Environment) -> d
 async def _evaluate_py_value(expression: object, env: Environment) -> object:
     if isinstance(expression, Symbol):
         try:
-            return await evaluate_async(expression, env)
-        except EvaluationError:
+            return env.resolve(expression)
+        except Exception:
             return expression
-    return await evaluate_async(expression, env)
+    return expression
 
 
 def _py_parameter_name(value: object) -> str:
@@ -264,7 +263,8 @@ def _python_to_qy(value: object) -> object:
 
 
 def _is_qy_callable(value: object) -> bool:
-    from qy.ir_vm import IRFunction
+    from qy.bytecode import BytecodeFunctionValue
+    from qy.ir_vm._core import IRFunction
 
     return isinstance(
         value,
@@ -275,7 +275,8 @@ def _is_qy_callable(value: object) -> bool:
         | MetaOperator
         | MacroDefinition
         | UserFunction
-        | IRFunction,
+        | IRFunction
+        | BytecodeFunctionValue,
     )
 
 
@@ -293,7 +294,8 @@ def _wrap_qy_callable(value: object, env: Environment) -> Callable[..., object]:
 
 
 def _qy_callable_name(value: object) -> str | None:
-    from qy.ir_vm import IRFunction
+    from qy.bytecode import BytecodeFunctionValue
+    from qy.ir_vm._core import IRFunction
 
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
@@ -301,16 +303,23 @@ def _qy_callable_name(value: object) -> str | None:
         return value.name
     if isinstance(value, MacroDefinition | UserFunction | IRFunction):
         return value.name.name
+    if isinstance(value, BytecodeFunctionValue):
+        return value.function.name.name
     return None
 
 
 async def _call_qy_callable(value: object, args: tuple[object, ...], env: Environment) -> object:
-    from qy.ir_vm import IRFunction
+    from qy.bytecode import BytecodeFunctionValue
+    from qy.ir_vm._core import IRFunction
 
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))
     if isinstance(value, UserFunction | IRFunction):
         return await _await_cached_value(value(*args))
+    if isinstance(value, BytecodeFunctionValue):
+        from qy.register_vm import call_function_value
+
+        return await call_function_value(value, args, env)
     if isinstance(value, ScopeOperator | ControlOperator | EffectOperator):
         return await _await_cached_value(value(args, env))
     if isinstance(value, MacroDefinition):

@@ -84,7 +84,7 @@ def test_pipeline_executes_sequentially():
     from qy import Qy
 
     q = Qy()
-    result = q.evaluate_ir_source("(pipeline 1 2 3)")
+    result = q.evaluate_source("(pipeline 1 2 3)")
     assert result == 3
 
 
@@ -92,7 +92,7 @@ def test_pipeline_single_expr():
     from qy import Qy
 
     q = Qy()
-    result = q.evaluate_ir_source("(pipeline 42)")
+    result = q.evaluate_source("(pipeline 42)")
     assert result == 42
 
 
@@ -100,7 +100,7 @@ def test_define_binds_value():
     from qy import Qy
 
     q = Qy()
-    result = q.evaluate_ir_source("(define x 99)")
+    result = q.evaluate_source("(define x 99)")
     assert result == 99
 
 
@@ -108,7 +108,7 @@ def test_parallel_returns_tuple():
     from qy import Qy
 
     q = Qy()
-    result = q.evaluate_ir_source("(parallel 1 2 3)")
+    result = q.evaluate_source("(parallel 1 2 3)")
     assert result == (1, 2, 3)
 
 
@@ -116,7 +116,7 @@ def test_all_returns_tuple():
     from qy import Qy
 
     q = Qy()
-    result = q.evaluate_ir_source("(all 10 20)")
+    result = q.evaluate_source("(all 10 20)")
     assert result == (10, 20)
 
 
@@ -125,5 +125,5 @@ def test_race_returns_first():
 
     q = Qy()
     # With literals all finish instantly; result must be one of the values
-    result = q.evaluate_ir_source("(race 1 2 3)")
+    result = q.evaluate_source("(race 1 2 3)")
     assert result in (1, 2, 3)

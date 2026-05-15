@@ -28,7 +28,6 @@ _SYNTAX_FORM_NAMES = frozenset(
         "all",
         "apply",
         "assert",
-        "component",
         "cond",
         "defeffect",
         "define",
@@ -200,7 +199,7 @@ def _rewrite_hygienic_form(
             params_index=1,
             body_start=2,
         )
-    if operator in {Symbol("defun"), Symbol("component")}:
+    if operator == Symbol("defun"):
         return _rewrite_hygienic_callable(
             value,
             macro,

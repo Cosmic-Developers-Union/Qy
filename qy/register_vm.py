@@ -123,11 +123,18 @@ class RegisterVirtualMachine:
                 if value is _COMPILE_TIME_MACRO:
                     return None
                 frame.env.define(_symbol(symbol), value)
+            case "DEFINE_ONCE":
+                symbol, source = operands
+                value = frame.registers[_register(source)]
+                if value is _COMPILE_TIME_MACRO:
+                    return None
+                frame.env.define_once(_symbol(symbol), value)
             case "MAKE_FUNCTION":
                 dest, function_index = operands
                 frame.registers[_register(dest)] = BytecodeFunctionValue(
                     self.program.functions[_int(function_index)],
                     frame.env,
+                    self.program,
                 )
             case "MAKE_MACRO":
                 dest, name, params, raw_body = operands
@@ -142,10 +149,47 @@ class RegisterVirtualMachine:
                 (source,) = operands
                 value = frame.registers[_register(source)]
                 frame.results.append(None if value is _COMPILE_TIME_MACRO else value)
+            case "BUILD_TUPLE":
+                dest = operands[0]
+                values = tuple(frame.registers[_register(r)] for r in operands[1:])
+                frame.registers[_register(dest)] = values
+            case "APPLY":
+                dest, func_reg, args_reg = operands
+                func = frame.registers[_register(func_reg)]
+                args_val = frame.registers[_register(args_reg)]
+                args = tuple(_sequence_to_args(args_val))
+                frame.registers[_register(dest)] = await self._call(
+                    func, args, instruction.span, frame.env
+                )
             case "RUNTIME_EVAL":
                 dest, form_reg = operands
                 form = frame.registers[_register(form_reg)]
                 frame.registers[_register(dest)] = await self._eval_form(form, frame.env)
+            case "RUNTIME_META_CALL":
+                dest, operator_symbol, raw_form = operands
+                frame.registers[_register(dest)] = await self._runtime_meta_call(
+                    _symbol(operator_symbol), _tuple(raw_form), frame.env, instruction.span
+                )
+            case "PARALLEL_GATHER":
+                dest, *thunk_indices = operands
+                frame.registers[_register(dest)] = await self._parallel_gather(
+                    [_int(i) for i in thunk_indices], frame.env, aggregate_errors=True
+                )
+            case "ALL_GATHER":
+                dest, *thunk_indices = operands
+                frame.registers[_register(dest)] = await self._parallel_gather(
+                    [_int(i) for i in thunk_indices], frame.env, aggregate_errors=False
+                )
+            case "RACE_FIRST":
+                dest, *thunk_indices = operands
+                frame.registers[_register(dest)] = await self._race_first(
+                    [_int(i) for i in thunk_indices], frame.env
+                )
+            case "CACHE_EVAL":
+                dest, cache_key, thunk_idx = operands
+                frame.registers[_register(dest)] = await self._cache_eval(
+                    cache_key, _int(thunk_idx), frame.env
+                )
             case "DEFINE_MODULE":
                 dest, module_name, function_index = operands
                 frame.registers[_register(dest)] = await self._define_module(
@@ -186,6 +230,7 @@ class RegisterVirtualMachine:
                     frame.registers[_register(callee_register)],
                     args,
                     instruction.span,
+                    frame.env,
                 )
             case "TAIL_CALL":
                 callee_register, arg_registers = operands
@@ -193,7 +238,7 @@ class RegisterVirtualMachine:
                 callee = frame.registers[_register(callee_register)]
                 if isinstance(callee, BytecodeFunctionValue):
                     return self._make_frame(callee, args, collect_results=False)
-                return _FrameResult(await self._call(callee, args, instruction.span), ())
+                return _FrameResult(await self._call(callee, args, instruction.span, frame.env), ())
             case "RETURN":
                 (source,) = operands
                 value = frame.registers[_register(source)]
@@ -220,11 +265,28 @@ class RegisterVirtualMachine:
         callee: object,
         args: tuple[object, ...],
         span: SourceSpan | None,
+        env: Environment | None = None,
     ) -> object:
         if isinstance(callee, BytecodeFunctionValue):
             return (await self._run_function(callee, args, call_span=span)).value
         semantics = runtime_operator_semantics(callee)
         if semantics.argument_mode != "eager":
+            if env is None:
+                raise QyRuntimeError(
+                    "bytecode VM only supports eager operators in host-call compatibility mode",
+                    span=span,
+                    metadata={"operator": getattr(callee, "name", None)},
+                )
+            if isinstance(callee, PureOperator) and callee.argument_evaluator is not None:
+                processed = cast(
+                    tuple[object, ...],
+                    await _await_if_needed(callee.argument_evaluator(args, env)),
+                )
+                return await _await_if_needed(callee.func(*processed))
+            func = getattr(callee, "func", None)
+            if callable(func):
+                result = func(args, env)
+                return await _await_if_needed(result)
             raise QyRuntimeError(
                 "bytecode VM only supports eager operators in host-call compatibility mode",
                 span=span,
@@ -309,6 +371,104 @@ class RegisterVirtualMachine:
         result = await sub_vm.evaluate_program()
         return None if not result else result[-1]
 
+    async def _runtime_meta_call(
+        self,
+        operator_symbol: Symbol,
+        raw_form: tuple[object, ...],
+        env: Environment,
+        span: SourceSpan | None,
+    ) -> object:
+        from qy.errors import QyTypeError as _QyTypeError
+        from qy.evaluator import MetaOperator
+        from qy.macro import MacroDefinition
+
+        operator = env.resolve(operator_symbol)
+        if isinstance(operator, MetaOperator):
+            return await _await_if_needed(operator(raw_form, env))
+        if isinstance(operator, MacroDefinition):
+            expanded = await operator.expand(raw_form[1:])
+            return await self._eval_form(expanded, env)
+        raise _QyTypeError(
+            f"{operator_symbol.name!r} is not a runtime meta operator",
+            span=span,
+            metadata={"operator": operator},
+        )
+
+    async def _parallel_gather(
+        self,
+        thunk_indices: list[int],
+        env: Environment,
+        *,
+        aggregate_errors: bool,
+    ) -> tuple[object, ...]:
+        import asyncio
+
+        from qy.errors import QyAggregateError
+        from qy.errors import QyError
+
+        async def run_thunk(idx: int) -> object:
+            thunk = BytecodeFunctionValue(self.program.functions[idx], env, self.program)
+            return (await self._run_function(thunk, ())).value
+
+        tasks = [asyncio.create_task(run_thunk(i)) for i in thunk_indices]
+        raw = await asyncio.gather(*tasks, return_exceptions=True)
+        if aggregate_errors:
+            errors = tuple(
+                r if isinstance(r, QyError) else QyRuntimeError(str(r), span=None, cause=r)
+                for r in raw
+                if isinstance(r, BaseException)
+            )
+            if errors:
+                raise QyAggregateError(
+                    f"parallel failed with {len(errors)} error(s)", errors=errors
+                )
+        else:
+            for r in raw:
+                if isinstance(r, BaseException):
+                    raise r
+        return tuple(raw)
+
+    async def _race_first(
+        self,
+        thunk_indices: list[int],
+        env: Environment,
+    ) -> object:
+        import asyncio
+
+        async def run_thunk(idx: int) -> object:
+            thunk = BytecodeFunctionValue(self.program.functions[idx], env, self.program)
+            return (await self._run_function(thunk, ())).value
+
+        tasks = [asyncio.create_task(run_thunk(i)) for i in thunk_indices]
+        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        for t in pending:
+            t.cancel()
+        return next(iter(done)).result()
+
+    async def _cache_eval(self, cache_key: object, thunk_idx: int, env: Environment) -> object:
+        import asyncio
+
+        try:
+            cached = env.cache_lookup(cache_key)
+            return await _await_if_needed(cached)
+        except KeyError:
+            pass
+
+        thunk = BytecodeFunctionValue(self.program.functions[thunk_idx], env, self.program)
+
+        async def run_thunk() -> object:
+            return (await self._run_function(thunk, ())).value
+
+        task: asyncio.Task[object] = asyncio.create_task(run_thunk())
+        env.cache_define(cache_key, task)
+        try:
+            result = await task
+        except Exception:
+            env.cache_discard(cache_key)
+            raise
+        env.cache_define(cache_key, result)
+        return result
+
     async def _define_module(
         self, module_name: Symbol, function_index: int, env: Environment
     ) -> object:
@@ -337,7 +497,7 @@ class RegisterVirtualMachine:
         module = StandardModule(module_name.name, runtime_exports, macro_exports)
         register_module(module)
         cache_source_module(module, env)
-        return env.define(module_name, module)
+        return env.define_once(module_name, module)
 
     async def _from_import(
         self, module_name: Symbol, specs: tuple[object, ...], env: Environment
@@ -351,7 +511,7 @@ class RegisterVirtualMachine:
                 if not isinstance(spec, ImportSpec):
                     continue
                 if spec.name in module.exports:
-                    env.define(spec.alias, module.resolve(spec.name))
+                    env.define_once(spec.alias, module.resolve(spec.name))
                 elif spec.name not in module.macro_exports:
                     raise KeyError(f"module {module_name.name!r} has no export {spec.name.name!r}")
         except (KeyError, ValueError) as e:
@@ -360,7 +520,7 @@ class RegisterVirtualMachine:
     async def _defeffect(self, name: Symbol, resumable: bool, env: Environment) -> None:
         from qy.evaluator import EffectDefinition
 
-        env.define(name, EffectDefinition(name, resumable))
+        env.define_once(name, EffectDefinition(name, resumable))
 
     async def _perform(
         self,
@@ -485,12 +645,46 @@ async def evaluate_bytecode_source_async(
     return await evaluate_bytecode_async(bytecode, runtime_env)
 
 
+async def call_function_value(
+    function_value: BytecodeFunctionValue,
+    args: tuple[object, ...],
+    env: Environment,
+) -> object:
+    if function_value.program is None:
+        raise QyRuntimeError(
+            "cannot call BytecodeFunctionValue without program context",
+            span=None,
+        )
+    vm = RegisterVirtualMachine(function_value.program, env)
+    result = await vm._run_function(function_value, args)
+    return result.value
+
+
 def _raise_for_diagnostics(program: BytecodeProgram) -> None:
     diagnostics = tuple(item for item in program.diagnostics if item.severity == "error")
     if not diagnostics:
         return
     messages = "; ".join(item.message for item in diagnostics)
     raise QyRuntimeError(f"cannot execute bytecode with diagnostics: {messages}")
+
+
+def _sequence_to_args(value: object) -> tuple[object, ...]:
+    from qy.values import QyCons
+    from qy.values import QyEmptyChain
+    from qy.values import QyEmptyList
+
+    if isinstance(value, (list, tuple)):
+        return tuple(value)
+    if isinstance(value, QyEmptyChain | QyEmptyList):
+        return ()
+    if isinstance(value, QyCons):
+        result: list[object] = []
+        node: object = value
+        while isinstance(node, QyCons):
+            result.append(node.head)
+            node = node.tail
+        return tuple(result)
+    return (value,)
 
 
 def _function_stack_frame(

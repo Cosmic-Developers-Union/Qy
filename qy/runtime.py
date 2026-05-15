@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
 from typing import cast
 
 from qy.bytecode import BytecodeProgram
@@ -12,15 +11,9 @@ from qy.bytecode_compiler import compile_bytecode
 from qy.bytecode_compiler import compile_mir_bytecode
 from qy.evaluator import ArgumentEvaluator
 from qy.evaluator import Environment
-from qy.evaluator import evaluate_file_async
 from qy.evaluator import run_async
 from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
-from qy.ir_vm import IRVirtualMachine
-from qy.ir_vm import evaluate_ir
-from qy.ir_vm import evaluate_ir_async
-from qy.ir_vm import evaluate_ir_source
-from qy.ir_vm import evaluate_ir_source_async
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macroexpand import MacroExpansion
@@ -41,17 +34,12 @@ from qy.register_vm import evaluate_bytecode_async
 from qy.register_vm import evaluate_bytecode_source
 from qy.register_vm import evaluate_bytecode_source_async
 
-__all__ = ["EvaluationBackend", "Qy"]
-
-EvaluationBackend = Literal["ir", "bytecode"]
+__all__ = ["Qy"]
 
 
 class Qy:
-    def __init__(
-        self, env: Environment | None = None, *, backend: EvaluationBackend = "ir"
-    ) -> None:
+    def __init__(self, env: Environment | None = None) -> None:
         self.env = env or standard_environment()
-        self.backend = backend
 
     def read(self, source: str) -> list[Form]:
         return read(source)
@@ -107,12 +95,6 @@ class Qy:
     def lower_mir(self, program: ProgramIR) -> MIRProgram:
         return lower_mir(program)
 
-    def evaluate_ir(self, program: ProgramIR) -> object:
-        return evaluate_ir(program, self.env)
-
-    async def evaluate_ir_async(self, program: ProgramIR) -> object:
-        return await evaluate_ir_async(program, self.env)
-
     def compile_bytecode(self, program: ProgramIR) -> BytecodeProgram:
         return compile_bytecode(program)
 
@@ -125,14 +107,6 @@ class Qy:
     async def evaluate_bytecode_async(self, program: BytecodeProgram) -> object:
         return await evaluate_bytecode_async(program, self.env)
 
-    def evaluate_ir_source(self, source: str, *, source_name: str | None = None) -> object:
-        return evaluate_ir_source(source, self.env, source_name=source_name)
-
-    async def evaluate_ir_source_async(
-        self, source: str, *, source_name: str | None = None
-    ) -> object:
-        return await evaluate_ir_source_async(source, self.env, source_name=source_name)
-
     def evaluate_bytecode_source(self, source: str, *, source_name: str | None = None) -> object:
         return evaluate_bytecode_source(source, self.env, source_name=source_name)
 
@@ -144,49 +118,37 @@ class Qy:
     def evaluate(self, expression: object) -> object:
         expansion = macroexpand([cast(Form, expression)], self.env)
         program = lower(expansion.forms, self.env)
-        if self.backend == "bytecode":
-            return self.evaluate_bytecode(compile_bytecode(program))
-        return self.evaluate_ir(program)
+        return self.evaluate_bytecode(compile_bytecode(program))
 
     async def evaluate_async(self, expression: object) -> object:
         expansion = await macroexpand_async([cast(Form, expression)], self.env)
         program = lower(expansion.forms, self.env)
-        if self.backend == "bytecode":
-            return await self.evaluate_bytecode_async(compile_bytecode(program))
-        return await self.evaluate_ir_async(program)
+        return await self.evaluate_bytecode_async(compile_bytecode(program))
 
     def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
-        if self.backend == "bytecode":
-            return self.evaluate_bytecode_source(source, source_name=source_name)
-        return self.evaluate_ir_source(source, source_name=source_name)
+        return self.evaluate_bytecode_source(source, source_name=source_name)
 
     async def evaluate_source_async(self, source: str, *, source_name: str | None = None) -> object:
-        if self.backend == "bytecode":
-            return await self.evaluate_bytecode_source_async(source, source_name=source_name)
-        return await self.evaluate_ir_source_async(source, source_name=source_name)
+        return await self.evaluate_bytecode_source_async(source, source_name=source_name)
 
     def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
         expansion = macroexpand(read(source, source_name=source_name), self.env)
         program = lower(expansion.forms, self.env)
-        if self.backend == "bytecode":
-            bytecode = compile_bytecode(program)
-            return cast(
-                list[object],
-                run_async(RegisterVirtualMachine(bytecode, self.env).evaluate_program()),
-            )
-        return cast(list[object], run_async(IRVirtualMachine(self.env).evaluate_program(program)))
+        bytecode = compile_bytecode(program)
+        return cast(
+            list[object],
+            run_async(RegisterVirtualMachine(bytecode, self.env).evaluate_program()),
+        )
 
     async def evaluate_program_async(
         self, source: str, *, source_name: str | None = None
     ) -> list[object]:
         expansion = await macroexpand_async(read(source, source_name=source_name), self.env)
         program = lower(expansion.forms, self.env)
-        if self.backend == "bytecode":
-            return await RegisterVirtualMachine(
-                compile_bytecode(program),
-                self.env,
-            ).evaluate_program()
-        return await IRVirtualMachine(self.env).evaluate_program(program)
+        return await RegisterVirtualMachine(
+            compile_bytecode(program),
+            self.env,
+        ).evaluate_program()
 
     def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)
@@ -199,14 +161,12 @@ class Qy:
         return results[-1]
 
     async def evaluate_file_async(self, path: str | Path) -> object:
-        if self.backend == "bytecode":
-            path = Path(path)
-            results = await self.evaluate_program_async(
-                path.read_text(encoding="utf-8"),
-                source_name=str(path),
-            )
-            return None if not results else results[-1]
-        return await evaluate_file_async(path, self.env)
+        path = Path(path)
+        results = await self.evaluate_program_async(
+            path.read_text(encoding="utf-8"),
+            source_name=str(path),
+        )
+        return None if not results else results[-1]
 
     def register_pure(
         self,

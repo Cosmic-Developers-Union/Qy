@@ -65,7 +65,6 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "atom": OperatorSignature("bool", Arity(1, 1)),
     "car": OperatorSignature("any", Arity(1, 1)),
     "cdr": OperatorSignature("any", Arity(1, 1)),
-    "component": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
     "cond": OperatorSignature("any", Arity(), ("raw",), tail_transparent=True),
     "cons": OperatorSignature("chain", Arity(2, 2)),
     "defeffect": OperatorSignature("effect", Arity(1), ("binding", "raw")),

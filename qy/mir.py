@@ -36,9 +36,14 @@ MIRBlockId = int
 
 MIROpcode = Literal[
     "APPEND_RESULT",
+    "ALL_GATHER",
+    "APPLY",
+    "BUILD_TUPLE",
+    "CACHE_EVAL",
     "CALL",
     "DEFEFFECT",
     "DEFINE_MODULE",
+    "DEFINE_ONCE",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
     "FROM_IMPORT",
@@ -48,9 +53,12 @@ MIROpcode = Literal[
     "MAKE_FUNCTION",
     "MAKE_MACRO",
     "MOVE",
+    "PARALLEL_GATHER",
     "PERFORM",
+    "RACE_FIRST",
     "RESUME",
     "RUNTIME_EVAL",
+    "RUNTIME_META_CALL",
     "STORE_LOCAL",
 ]
 
@@ -190,6 +198,39 @@ def _verify_instruction(
                 function, block_id, "instruction", instruction.opcode, operands, 1, diagnostics
             ):
                 _check_register(function, block_id, operands[0], diagnostics)
+        case "ALL_GATHER" | "PARALLEL_GATHER" | "RACE_FIRST":
+            if len(operands) < 1:
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block_id} instruction {instruction.opcode!r} expects at least 1 operand"
+                    )
+                )
+            else:
+                _check_register(function, block_id, operands[0], diagnostics)
+        case "CACHE_EVAL":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+        case "BUILD_TUPLE":
+            if len(operands) < 1:
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block_id} instruction BUILD_TUPLE expects at least 1 operand"
+                    )
+                )
+            else:
+                _check_register(function, block_id, operands[0], diagnostics)
+                for reg in operands[1:]:
+                    _check_register(function, block_id, reg, diagnostics)
+        case "APPLY":
+            if _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                _check_register(function, block_id, operands[0], diagnostics)
+                _check_register(function, block_id, operands[1], diagnostics)
+                _check_register(function, block_id, operands[2], diagnostics)
         case "CALL":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
@@ -319,7 +360,13 @@ def _verify_instruction(
                 return
             _check_register(function, block_id, operands[0], diagnostics)
             _check_register(function, block_id, operands[1], diagnostics)
-        case "STORE_LOCAL":
+        case "RUNTIME_META_CALL":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+        case "STORE_LOCAL" | "DEFINE_ONCE":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
             ):
@@ -552,6 +599,18 @@ def _format_instruction(instruction: MIRInstruction) -> str:
     match instruction.opcode:
         case "APPEND_RESULT":
             rendered = f"APPEND_RESULT {_format_register(operands[0])}"
+        case "ALL_GATHER" | "PARALLEL_GATHER" | "RACE_FIRST":
+            indices_str = " ".join(f"fn#{i}" for i in operands[1:])
+            rendered = f"{_format_register(operands[0])} = {instruction.opcode} [{indices_str}]"
+        case "CACHE_EVAL":
+            rendered = (
+                f"{_format_register(operands[0])} = CACHE_EVAL {operands[1]!r} fn#{operands[2]}"
+            )
+        case "BUILD_TUPLE":
+            args_str = " ".join(_format_register(r) for r in operands[1:])
+            rendered = f"{_format_register(operands[0])} = BUILD_TUPLE {args_str}"
+        case "APPLY":
+            rendered = f"{_format_register(operands[0])} = APPLY {_format_register(operands[1])} {_format_register(operands[2])}"
         case "CALL":
             rendered = (
                 f"{_format_register(operands[0])} = CALL {_format_register(operands[1])} "
@@ -602,10 +661,10 @@ def _format_instruction(instruction: MIRInstruction) -> str:
             rendered = (
                 f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
             )
-        case "STORE_LOCAL":
-            rendered = (
-                f"STORE_LOCAL {_format_operand(operands[0])}, {_format_register(operands[1])}"
-            )
+        case "RUNTIME_META_CALL":
+            rendered = f"{_format_register(operands[0])} = RUNTIME_META_CALL {operands[1]!r}"
+        case "STORE_LOCAL" | "DEFINE_ONCE":
+            rendered = f"{instruction.opcode} {_format_operand(operands[0])}, {_format_register(operands[1])}"
         case _:
             rendered = _format_generic(instruction.opcode, operands)
     return rendered + _format_span(instruction.span)

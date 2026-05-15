@@ -1,4 +1,6 @@
 ; py exposes host objects as first-class runtime values at the host boundary.
+(from qy.py import py)
+
 (py
   """
 return py_value + 1

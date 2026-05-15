@@ -4,7 +4,7 @@
 
 当前验证基线：
 
-- `uv run python -m pytest -q`：352 passed
+- `uv run python -m pytest -q`：356 passed
 - `uv run ty check`：passed
 - `uv run ruff check .`：passed
 
@@ -96,7 +96,7 @@ surface dialect 约束：
 
 ### P0-0. 移除多 backend，register VM 唯一化
 
-状态：当前代码仍有 `EvaluationBackend = "ir" | "bytecode"`、`Qy(backend=...)`、`evaluate_ir_*`、IR VM 测试与 examples runner 的 backend 分支。
+状态：`Qy` 与 CLI 已固定 register VM；`EvaluationBackend` / `Qy(backend=...)` 已移除。`qy.ir_vm` 仅保留内部迁移代码，顶层 public API 已下沉，待后续物理删除目录。
 
 任务：
 

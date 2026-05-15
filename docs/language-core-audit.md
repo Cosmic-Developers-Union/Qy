@@ -15,17 +15,15 @@
 
 ## B1. 多 backend 残留
 
-**位置**：`qy/runtime.py`、`qy/ir_vm/`、`qy/evaluator.py`、`qy/__init__.py`、`tests/test_ir_vm.py`
+**位置**：`qy/runtime.py`、`qy/ir_vm/`、`qy/evaluator.py`、`qy/__init__.py`、`tests/test_ir_vm.py`、`README.md`
 
-当前仍有 `EvaluationBackend = "ir" | "bytecode"`、`Qy(backend=...)`、`evaluate_ir_*` 与 IR VM public API。  
-这与“只保留 register VM”的裁决冲突。
+当前仓库仍保留 IR VM / evaluator 的兼容代码，但公开执行入口已经收口到 register VM：`Qy.evaluate_*`、`qy.evaluator.evaluate_*`、macro compile-time 执行和 benchmark 主路径都不再依赖 IR VM。`qy.ir_vm` 顶层 public execution API 已移除，剩余问题主要是目录级删除与内部兼容类型。
 
 **处置方向**：
 
-- 删除 backend 参数与 backend 类型。
-- 公共执行入口固定走 register VM。
-- IR VM / legacy evaluator 从 public API 中移除，进入删除队列。
-- tests/examples/benchmark 不再比较或依赖 IR backend。
+- 删除或降级 `Qy.evaluate_ir*`、`qy.ir_vm.*` public API。
+- 继续缩减 `IRFunction` 等 IR VM 类型的公开表面。
+- 旧 IR VM 测试迁移或删除，不再作为新语义验收。
 
 ---
 
@@ -33,12 +31,11 @@
 
 **位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/register_vm.py`
 
-`define_once` 已存在，但 lowering 里的 top-level define 检查会查 parent scope，导致 `define` 不能 shadow 外层符号。  
-最新语言契约要求：`define` 只检查当前 symbol-space，允许 shadow parent 中的核心、stdlib、pre-symbol-space、host 注入名。
+`define_once` 已存在，且 lowering / analyzer 已改成 current-scope-only 诊断；`(define + 99)` 这类 parent shadow 现在允许。剩余问题主要在 module/import 的 define-once 规则还没有完全统一到 current-space-only 语义。
 
 **处置方向**：
 
-- lowering/analyzer/runtime 全部改为 current-space-only define。
+- 继续把 module/import/export 写入语义统一到 current-space-only define。
 - 默认数字/字符串 pre-symbol-space 需要显式建模或惰性建模；同一空间不能 redefine，子空间可以 shadow。
 - `defun`、`defeffect`、module import/export 同步使用 current-space-only define-once。
 - register VM 的 `STORE_LOCAL`、`DEFEFFECT`、module/import 写入也要按 define-once 语义收口。
@@ -49,7 +46,7 @@
 
 **位置**：`qy/stdlib/__init__.py`、`qy/stdlib/core.py`、`qy/stdlib/python.py`
 
-当前默认 prelude 仍包含 `qy.py`，`qy.core` 也合入 `python_operators()`，因此 `py`、`list`、`tuple`、`dict`、`set` 仍会进入默认 symbol-space。
+默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。剩余问题是 pre-symbol-space 仍未形成显式可读模型，analyzer/LSP 也还不能消费实例化配置。
 
 **偏差**：默认数字/字符串 pre-symbol-space 是合理实现策略；但 Python host interop prelude 不应与它混在一起。analyzer/LSP 也需要能读取当前 Qy 实例的 pre-symbol-space 配置。
 
@@ -62,17 +59,16 @@
 
 ---
 
-## B4. 新 HIR 节点尚未接入 register VM 主路径
+## B4. 新 HIR 节点接入 register VM 主路径
 
-**位置**：`qy/mir_lowering.py`
+**位置**：`qy/mir_lowering.py`、`qy/register_vm.py`
 
-`DefineExpr` 已部分 lower；但 `PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr` 仍在 MIR lowering 中产生 unsupported diagnostic。  
-这些节点在 IR VM 中可运行不算验收，因为 IR VM 不再是 backend。
+`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr`、`CacheExpr`、`RuntimeMetaCallExpr` 已有 lowering 和 VM 路径，但它们仍与旧 operator dispatch、legacy runtime helpers 混合存在，尚未完全收口到“只走 register VM”的最终模型。
 
 **处置方向**：
 
-- 为这些 HIR 节点补 MIR/LIR/bytecode/register VM 语义。
-- examples validation 不能依赖 IR backend 验收这些核心语义。
+- 保持这些节点的 MIR/LIR/bytecode 路径稳定。
+- 逐步移除 legacy evaluator / IR VM 对同类语义的重复实现。
 
 ---
 
@@ -80,7 +76,7 @@
 
 **位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/lsp.py`、`qy/operator_signature.py`、`docs/op.md`、`tests/*`
 
-`component` 已从默认环境移到 legacy module，但 HIR/lowering/analyzer/LSP/docs/tests 中仍有核心级路径或说明。
+`component` 已从默认环境移到 legacy module，且已从 lowering、analyzer、macro hygiene、source module 建模、LSP snippet 与核心测试路径中移除专门分支。当前只保留 legacy module 显式引入兼容语义。
 
 **处置方向**：
 
@@ -130,13 +126,13 @@
 
 ## 优先级汇总
 
-| 编号 | 偏差                                 | 优先级 |
-| ---- | ------------------------------------ | ------ |
-| B1   | 多 backend 残留                      | P0     |
-| B2   | `define` 查 parent，不能 shadow 外层 | P0     |
-| B3   | 默认环境加载 host interop            | P0     |
-| B4   | 新 HIR 节点未进入 register VM        | P0     |
-| B5   | `component` / legacy API 残留        | P1     |
-| B6   | `RuntimeMetaCallExpr`                | P1     |
-| B7   | 遗留 operator dispatch               | P1     |
-| B8   | Python codegen 绕过 MIR/LIR          | P2     |
+| 编号 | 偏差 | 优先级 | 状态 |
+| --- | --- | --- | --- |
+| B1 | 多 backend / 兼容 API 残留 | P0 | 已缓解（public API 已收口） |
+| B2 | `define` 查 parent，不能 shadow 外层 | P0 | 部分完成 |
+| B3 | 默认环境加载 host interop | P0 | 部分完成 |
+| B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 部分完成 |
+| B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入） |
+| B6 | `RuntimeMetaCallExpr` | P1 | 已缓解（RUNTIME_META_CALL opcode） |
+| B7 | 遗留 operator dispatch | P1 | 待处理 |
+| B8 | Python codegen 绕过 MIR/LIR | P2 | 待处理 |
