@@ -56,7 +56,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - **LIR** (`lir.py`, `lir_lowering.py`) — 线性化低层 IR，CFG 展平，跳转目标解析为 offset
 - **Bytecode compiler** (`bytecode_compiler.py`) — LIR → `BytecodeProgram`，纯结构转换，不重新理解语义
 - **Register VM** (`register_vm.py`) — 唯一执行器
-- **IR VM** (`ir_vm/`) — 迁移待删代码；不能作为 reference backend 或新语义承载点
+- **IR VM** (`ir_vm/`) — 已删除；不得重新引入第二执行后端
 - **Analyzer** (`analyzer.py`) — 静态分析，类型推断、作用域追踪、参数数量检查
 - **Runtime** (`runtime.py`) — `Qy` 主类 API，串联完整 pipeline
 - **Environment** (`environment.py`) — symbol-space 实现，`standard_environment`
@@ -74,10 +74,10 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 | 执行器           | 状态                                                      |
 | ---------------- | --------------------------------------------------------- |
 | `register_vm.py` | 唯一执行器，新语义目标；使用 \_EffectFrame 显式表达效应帧 |
-| `ir_vm/`         | 迁移待删，不能新增语义                                    |
+| `ir_vm/`         | 已删除，不能重新引入第二执行后端                          |
 | `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入       |
 
-Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，pre-symbol-space 是该实例的起点，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。默认实现可惰性预定义数字/字符串等传统符号。Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow parent。
+Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。语言核与默认 profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow 后续链节点。
 
 ### 效应系统
 

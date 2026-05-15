@@ -25,7 +25,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
 - Runtime value 存在于 symbol-space/env 中，由 `number`、`string`、`object` 构成。
 - `number` 与 `string` 是特殊 object。
-- Host value 是一等 runtime value，Qy 可以直接操作；host/project 可以在实例化 Qy 时提供 pre-symbol-space，把任意 host value/operator 预先放进 symbol-space-chain。
+- Host value 是一等 runtime value，Qy 可以直接操作；host/project 可以在实例化 Qy 时提供 `pre-symbol-space-chain`，把任意 host value/operator 放进初始查找链的指定位置。
 - `quote` 返回 syntax datum，不触发 runtime lookup。
 
 ## Surface Dialect
@@ -50,11 +50,11 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 - Qy 没有 `setq`。
 - `define` 在当前 symbol-space 构建一次性绑定；只检查当前 symbol-space 是否已有该 symbol，不检查 parent。
-- `define` 会保护当前 symbol-space 内已绑定的 symbol，但可以 shadow 外层 symbol-space 中的任意 symbol，包括核心算子名、stdlib 名、pre-symbol-space 名、宿主注入名。
-- **pre-symbol-space** 不是语言设计目标本身，但它是标准实现的起点。一个 `Qy` 实例先给出自己的 pre-symbol-space，reader、analyzer、LSP、lowering、runtime 都必须围绕这个同一实例工作。
-- 默认实现可以把传统符号预定义在 pre-symbol-space，例如数字 spelling `1` 解析为 runtime `number(1)`。
-- pre-symbol-space 可以是惰性的：不需要真的注册全部数字符号，但语义上这些符号被视为已经在该空间中定义。
-- **宿主注入**（host injection）只是向某个明确的 symbol-space 注入 host value/operator。被注入的名字只在该 symbol-space 内不可重定义，子 symbol-space 可用 `define` 或 `let` shadow。
+- `define` 会保护当前 symbol-space 内已绑定的 symbol，但可以 shadow 链上后续 symbol-space 中的任意 symbol，包括核心算子名、stdlib 名、预置字面量名、宿主注入名。
+- **pre-symbol-space-chain** 不是语言设计目标本身，但它是标准实现的起点。一个 `Qy` 实例先给出自己的初始 symbol-space-chain；reader、analyzer、LSP、lowering、runtime 都必须围绕这个同一实例工作。
+- `pre-symbol-space-chain` 不是单个特殊空间，而是一段有序链。标准 profile、项目注入、字面量空间、stdlib 空间都可以是链上的不同节点；它们的相对位置决定 lookup 与 shadow 结果。
+- 默认实现可以在链上放入传统符号空间，例如让数字 spelling `1` 解析为 runtime `number(1)`；这样的空间可以是惰性的，不需要真的注册全部数字 symbol。
+- **宿主注入**（host injection）只是向链上的某个明确 symbol-space 放入 host value/operator。被注入的名字只在那个空间内不可重定义；若当前 head 位于它之前，则 `define` 或 `let` 可以自然 shadow。
 - `let` 构建新的局部 symbol-space，可以绑定任意 symbol，包括外层已有 symbol、核心算子名、宿主注入名。
 - `module`、函数调用 frame、macro 定义环境都按 symbol-space 模型理解，只是生命周期、导出规则和 compile-time/runtime 可见性不同。
 - 外部宿主可以通过注入 symbol-space 来注入 object(host value) 与 operator。
@@ -66,7 +66,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 1. 在当前 symbol-space 链中查找 binding。
 2. 找到则返回对应 runtime value。
-3. 若当前查询已经到达实例起点，则按该 `Qy` 实例的 pre-symbol-space 规则继续解析。默认实现通常在这里把数字 spelling 解析为 `number`，把字符串 spelling 解析为 `string`，也可以由嵌入方提供项目自己的预定义符号。
+3. 若局部 frame 已查尽，则继续沿该 `Qy` 实例提供的 `pre-symbol-space-chain` 顺序查找。默认 profile 可以在链上放入数字、字符串、stdlib 或项目自定义空间。
 4. 仍无法解析则是 unresolved symbol error。
 
 宏展开阶段操作 syntax datum；runtime lookup 不应污染 macro namespace。macro 的 definition-site binding、hygiene、capture 必须由 compile-time symbol-space 明确建模。
@@ -85,7 +85,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 | effect | `defeffect` `perform` `handle` `resume` |
 | module | `module` `from` `import` `exports` |
 
-`+`、`-` 等算术纯算子不属于最小语言核；它们来自显式 stdlib、显式 host 注入或 operator namespace，不得通过默认宿主空间隐式出现。
+`+`、`-` 等算术纯算子不属于最小语言核；它们可以来自显式 stdlib、显式 host 注入，或由标准 profile 预装进 `pre-symbol-space-chain`。默认 profile 是否加载它们属于标准实现策略，不改变语言核边界。
 
 ## Operator Semantics
 
@@ -123,7 +123,7 @@ Qy 不使用 `spawn` / `await` 作为核心算子。
 
 ## Architecture Rules
 
-- stdlib 可以扩展命名空间与 host interop。语言内核没有宿主环境；Qy 实例可以配置 pre-symbol-space，默认实现也可以为数字、字符串等传统符号提供惰性预定义。
+- stdlib 可以扩展命名空间与 host interop。语言内核没有宿主环境；Qy 实例可以配置 `pre-symbol-space-chain`，标准 profile 也可以把数字、字符串或常用 stdlib 作为链段预装进去。
 - 新增算子前必须先判断它是否能由 Qy 自身实现；可以由 Qy 组合出的能力应写成 Qy library，而不是新增 host operator。只有文件系统、进程参数、宿主对象桥接等不可由语言自身构造的能力，才应进入 host capability 层。
 - analyzer/lowering/runtime 必须共享 operator metadata，不能各自发明语义。
 - bytecode compiler 不能重新理解 HIR/MIR；低层语义 lowering 必须经由 LIR。

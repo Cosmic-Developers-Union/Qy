@@ -48,9 +48,9 @@ source
 - `Qy.macroexpand` / `Qy.macroexpand_source`
 - `Qy.lower` / `Qy.lower_source`
 - `Qy.lower_mir`
-- `Qy.lower_lir`
 - `Qy.compile_bytecode`
 - `Qy.evaluate_source` / `Qy.evaluate_bytecode`
+- `lower_lir`
 - `RegisterVirtualMachine`
 
 已删除对象（禁止回归）：

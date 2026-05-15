@@ -1,23 +1,23 @@
 # Qy TODO
 
-本文件只保留当前工作面；历史批次写入 `report.md`。  
-最近一次基线验证：
+本文件只描述**当前事实**和**下一步工作**；历史批次放入 `report.md`。  
+最近一次基线验证（2026-05-16）：
 
 - `uv run python -m pytest -q`：345 passed
 - `uv run ty check .`：passed
 - `uv run ruff check .`：passed
+- `uv run python examples/run_validation.py`：10 / 10 passed
+- `uv run python -m qy test.qy tests/qy`：4 / 4 passed
 
-## 1. 不可漂移的语言契约
+## 0. 不可漂移的契约
 
-- Qy 是 Python 实现的 like-Lisp，语言核心是 algebraic effects + register VM。
-- 固定管线：`source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
+- Qy 是 Python 实现的 like-Lisp；核心目标是 algebraic effects + register VM。
+- 唯一管线：`source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
 - syntax datum 只有 `symbol` 与不可变 `chain`。
 - runtime value 由 `number`、`string`、`object` 构成；`number` / `string` 是特殊 object；host value 是一等 runtime value。
 - symbol 求值沿 symbol-space-chain 查找。
-- pre-symbol-space 不是语言设计目标本身，但它是标准实现的起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例及其 pre-symbol-space 工作。
-- 同一 symbol-space 内不可重绑定。
-- `define` 只检查当前 symbol-space；允许 shadow parent。`let` 创建新的局部 symbol-space，可绑定任意 symbol。
-- `defun` 是 `define + lambda` 语义糖；`defeffect` 也服从 define-once。
+- `pre-symbol-space-chain` 不是语言设计目标，但它是标准实现起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例读取同一份初始链事实。
+- 同一 symbol-space 不可重绑定。`define` 只检查当前空间；`let` 创建新空间，可绑定任何 symbol；`defun = define + lambda`；`defeffect` 服从 define-once。
 - 核心 form：
   - `quote`
   - `atom eq car cdr cons`
@@ -27,266 +27,231 @@
   - `macro quasiquote unquote unquote-splicing gensym capture`
   - `defeffect perform handle resume`
   - `module from import exports`
-- `parallel` 只表示“允许并行”，不是强制并行；它支持 effect。`pipeline` 表示串行；`all` 是 barrier continuation；`race` 是 first-resume-wins。
-- 不实现 unrestricted reader macro。默认实现只提供可静态描述的 surface dialect：`'x`、quasiquote 内的 `,x`、`,@x`。
-- register VM 是唯一 runtime backend；任何新 backend、绕过 pipeline 的执行路径、以及重新把 evaluator/IR VM 当语义来源，均视为回退。
+- `pipeline` 串行；`parallel` 只表示“允许并行”，并且支持 effect；`all` 是 barrier continuation；`race` 是 first-resume-wins。
+- 不实现 unrestricted reader macro。默认 surface dialect 只提供可静态描述的 `'x`、quasiquote 内 `,x` / `,@x`。
+- register VM 是唯一 runtime backend；任何第二执行路径都只能是删除对象。
+- 新增算子前先判断能否由 Qy 自身实现；能自举的能力优先写成 Qy library。
 
-## 2. 当前进度判定
+## 1. 当前判定
 
 ### 已完成
 
-- register VM 已成为唯一公开执行路径；`qy.ir_vm/` 已删除。
-- raw AST / surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM 的主链已经存在。
-- `chain` 已实现为不可变对象。
-- `pipeline`、`parallel`、`all`、`race`、`apply`、effect HIR/MIR/VM 路径已有形状。
-- macro namespace、hygiene、trace、source map 已拆出基础模块。
+- register VM 已成为唯一公开执行路径；`qy.ir_vm/` 与 `python_codegen.py` 已删除。
+- `raw AST -> surface dialect -> macroexpand -> HIR -> MIR -> LIR -> bytecode -> VM` 主链已存在。
+- `pipeline` / `parallel` / `all` / `race` / `apply` / effect 已进入 HIR、MIR、VM 主路径。
+- macro 已具备 namespace、hygiene、trace、source map 的基础实现。
 - CLI 已能查看 `ast` / `expand` / `hir` / `mir` / `lir` / `bytecode`。
-- validation examples、Python 测试、类型检查、lint 当前均可通过。
+- qytest 初版已落地：`test.qy` + `tests/qy/` + Python 集成测试。
+- `evaluator.py` 已从主求值路径退出，体积降到约 450 行。
 
-### 正在完成
+### 部分完成
 
-- macro 已从 evaluator 主路径中脱离，但 compile-time capability、module macro scope、LSP 消费 trace/source map 还未最终化。
-- evaluator 已退成兼容层，但 legacy operator dispatch 仍然承载大量行为。
-- MIR 已承担 CFG；LIR 仍只是“扁平 MIR + bytecode opcode”，还不是独立低层 IR。
-- operator metadata 已存在，但尚未统一 analyzer / lowering / runtime dispatch。
-- examples 已开始重写，但仍更多是在验证“当前实现”，不是完整验证“目标语言”。
+- **pre-symbol-space-chain**：已有实例级 `literal_resolver`，但还不是“有序初始链”的完整模型。
+- **LIR**：已有线性化与 register layout rewrite，但仍接近“扁平 MIR + bytecode opcode”。
+- **macro**：展开已独立，compile-time facade 已有形状，但 module scope、capability、LSP 消费链路未闭合。
+- **operator metadata**：已拆出 core / stdlib / legacy signature，但 analyzer、lowering、runtime 还没有完全由同一模型驱动。
+- **qytest**：普通 Qy runner 已能跑，但仍依赖过渡 stdlib；精确的 public command 形态尚未作为真实入口验收。
+- **examples**：已重写一批 validation，但仍有样例验证的是当前过渡实现，不是最终语言面。
 
-### 已确认语义漂移 / 工程缺口
+### 已确认漂移
 
-1. `define` 的 root scope 语义分裂已修复（2026-05-16）：  
-   `lowering` / `analyzer` / runtime 对 `(define + 99)` 已统一为同层重绑定错误；子空间（如 `let`）仍允许 shadow parent。
-2. pre-symbol-space 已显式建模（2026-05-16）：  
-   `Environment` 支持实例级 `literal_resolver`，并在 child 环境继承；`analyzer` / `lowering` / `runtime` 可读取同一实例环境事实。未完成项：字符串 spelling 仍未默认映射为 runtime `string`。
-3. 默认 core 与语言契约不一致：  
-   `qy.core` 仍默认引入算术；文档却已把算术定义为非核心、需显式 stdlib/host 注入。
-4. quasiquote 收口已完成（2026-05-16）：  
-   `unquote-splicing` 现使用正式 `append` 语义，不再生成未定义 helper。
-5. `apply` 语义收口已完成（2026-05-16）：  
-   `(apply + (quote (1 2)))` 可按 runtime 参数序列工作，默认字面量 spelling 会在 apply 边界归一化。
-6. module surface 双轨已移除（2026-05-16）：  
-   `imports` block 已从语义路径移除，module 内统一使用 `from` form。
-7. `LIR -> bytecode` 部分收口（2026-05-16）：  
-   `LIR` 已新增 register layout 重写（虚拟寄存器压缩与布局归整），不再完全是 MIR 结构直拷贝。未完成项：effect frame layout / host-call ABI / block rerank / debug 注入仍待实现。
-8. metadata / legacy 层持续收口（2026-05-16）：  
-   `evaluator.py` 已删除一段不再走主 pipeline 的遗留 effect/assert 解释路径；`qy/` 内对 evaluator 的直接依赖已收敛到 `eval_runtime.py`。未完成项：legacy operator classes 仍作为兼容层存在。
+1. 当前实现仍把初始环境近似成“root scope + literal resolver”，还不能表达多个初始链节点及其相对位置。  
+   这会让 standard profile、项目注入空间、字面量空间的 shadow 规则无法被统一建模。
+2. runtime `string` 还未落地；当前 `"hello"` 仍报 unresolved symbol。
+3. 语言核、standard profile、optional stdlib 仍未正式拆层；当前 `qy.core` / 默认环境还没有说明“哪些是核心，哪些只是默认 profile 预装”。
+4. `eq` 契约需要再次核对：文档写 Lisp identity 语义，当前 number 路径仍带有 value-equality 实现痕迹。
+5. LSP 仍直接使用 `standard_environment()`，没有跟随具体 `Qy` 实例，也没有消费 macro trace/source map。
+6. `docs/language-core-audit.md` 仍需要持续跟踪 root shadow / `pre-symbol-space-chain` 的最终实现是否与文档一致。
+7. benchmark baseline 仍保留旧 phase 名 `ir`，与当前 `hir_lower` / `mir_lower` / `lir_lower` 分段不一致。
+8. qytest 的 Python 测试只覆盖 Typer runner；`python -m qy test.qy tests/qy` 可用，但 exact shell 入口 `qy test.qy tests/qy` 在当前环境仍未形成可靠验收。
 
-## 3. P0: 先闭合语义
+## 2. P0：先把语言面闭合
 
-### P0-1. symbol-space / pre-symbol-space 一次定型
+### P0-1. pre-symbol-space-chain / lookup / define
 
-- 把 pre-symbol-space 建模为标准实现起点，而不是隐式 fallback：
-  - `Qy` 实例拥有自己的起始 symbol-space；
-  - reader、analyzer、LSP、lowering、runtime 都从该实例读取同一份 pre-symbol-space 事实；
-  - 不允许再出现脱离实例的默认全局解析。
-- 把当前 fallback resolver 收口成显式 pre-symbol-space 能力：
-  - 支持实例级配置；
-  - analyzer / LSP 可读取；
-  - 默认实现如何处理 number / string spelling 要与文档一致。
-- `define` / `defun` / `defeffect` / module import/export 全部统一到 current-space-only define-once。
-- 加入回归测试：
-  - 同层重复 `define` 失败；
-  - 子空间 shadow parent 成功；
-  - host 注入名在同层不可重定义、在子层可 shadow；
-  - 顶层程序对 pre-symbol-space 的行为与文档完全一致。
+- 把当前 resolver fallback 收口为标准实现的正式起点模型：
+  - `Qy` 实例拥有可读的 `pre-symbol-space-chain`；
+  - 链节点、节点顺序、lazy segment、可写 head 都要能表达；
+  - reader、analyzer、LSP、lowering、runtime 读取同一份实例事实；
+  - 不再依赖脱离实例的默认全局 literal 解析。
+- 明确 profile 对 number / string spelling 的规则：
+  - 某个 symbol 能否在当前层 `define`，只由它是否已存在于当前 head space 决定；
+  - 若 `1` 只存在于链的后续节点，当前 head 可自然 shadow；若当前 head 已含 `1`，同层 `define` 必须失败；
+  - 字符串 spelling 必须解析为 runtime `string`，而不是 unresolved symbol。
+- 把 `define` / `defun` / `defeffect` / module import/export 全部统一到 current-space-only define-once。
+- 加回归测试：同层重复绑定、子层 shadow、host 注入名、数字 spelling、字符串 spelling、analyzer/lowering/runtime 三方一致。
 
-**完成标准**：同一段源码在 analyzer、lowering、runtime 三处对 binding 的判断一致；不再出现“静态允许、VM 拒绝”的 root-scope 分裂。
+**完成标准**：同一段源码在 analyzer、lowering、runtime 对 binding 的判断完全一致；同一 profile 在所有阶段呈现同一条初始链。
 
-### P0-2. 默认语言面收口
+### P0-2. 语言核 / standard profile / stdlib 边界
 
-- 明确 `qy.core` 的最小导出集合；算术、string helper、Python 容器、legacy async helper 全部显式 namespace 化。
-- 重新整理 `operator_signature.py`：
-  - 只保留真实 core；
-  - 为 `define`、`pipeline`、`parallel`、`all`、`race`、`apply`、quasiquote family、module family 补齐 signature；
-  - signature 至少描述 arity、argument policy、return type、effect、tail transparency。
-- analyzer、lowering、stdlib、CLI `operators` 必须读取同一 metadata 源。
-- 新增 operator 必须先经过“是否可由 Qy 自身实现”的审查：
-  - 可由 core + library 组合出的能力写成 Qy library；
-  - 只有文件系统、进程参数、宿主对象桥接等不可下沉能力才进入 host capability 层；
-  - 测试、容器 sugar、控制组合、reporting 一类能力默认不得先做成 host operator。
+- 固定三层边界：
+  - 语言核：不可替代的 core form；
+  - standard profile：默认 `Qy()` 是否预装 arithmetic 等常用能力；
+  - optional stdlib / host capability：显式引入的扩展能力。
+- `+` 等 arithmetic 可以由 standard profile 预装，但不能因此写回语言核。
+- Python container、legacy async helper、host interop 不得因为默认 profile 便利性而伪装成核心语义。
+- 以 `docs/stdlib-operators.md` 为工作草案，先落地：
+  - `qy.num`：最小 host primitive + 可由 Qy 自举的派生库；
+  - runtime `string` 后再设计 `qy.str`，停止扩展旧 `str-*`。
+- `operator_signature.py` 继续收口：
+  - core 只保留真实核心 form；
+  - stdlib / compat 明确分层；
+  - metadata 至少统一 arity、argument policy、return type、effect、tail transparency。
+- 默认 `Qy()`、CLI `operators`、analyzer、lowering、stdlib loader 必须看到同一个 profile 事实。
 
-**完成标准**：默认 `Qy()` 的可见符号集合、`LANGUAGE.md`、`operators` 输出、静态分析结果一致。
+**完成标准**：语言核文档、standard profile、可选 stdlib 三层边界清楚；给定同一 profile，默认可见符号集合、CLI、静态分析完全一致。
 
-### P0-3. macro / quasiquote / apply 收口
+### P0-3. macro 完成
 
-- 完成 `quasiquote` / `unquote` / `unquote-splicing` 的正式语义；删除 `qy-append` 这类悬空 helper。
-- 明确 syntax datum 与 runtime value 的转换边界：
-  - `quote` 只返回 syntax datum；
-  - `apply` 需要明确接收何种 runtime chain / callable；
-  - 不能靠偶然的 host callable 容忍错误类型。
-- 完成 macro compile-time capability：
-  - definition-site compile-time symbol-space；
+- 完成 compile-time symbol-space：
+  - definition-site binding；
   - module macro import/export；
+  - capability / effect policy；
   - hygiene + `capture`；
-  - compile-time effect policy；
-  - expansion trace / source map 给 diagnostics 与 LSP 使用。
-- surface dialect 继续保持可枚举、静态、无 runtime 依赖；若继续增长，先从 `reader.py` 拆出独立模块。
+  - trace / source map 接入 diagnostics 与 LSP。
+- 保持 surface dialect 可枚举、静态、无 runtime 依赖；若继续增长，从 `reader.py` 拆出独立模块。
+- 给 macro、quasiquote、splice、capture、module import 增加正向与负向 qytest。
 
-**完成标准**：macro 系统能用自身定义验证例；quasiquote splice、`apply`、macro module import 都有正向和负向测试。
+**完成标准**：macro 不再依赖“运行时环境顺手可用”的偶然行为，LSP 能解释展开来源。
 
-### P0-4. module surface 定稿
+### P0-4. 语义审计收口
 
-- 决定 public surface：
-  - `import` 保持 `from` 结构关键字，不单独作为 form；
-  - `imports` block 视为历史残留并已移除出语义路径。
-- 只保留一种 public model；其余若保留，必须降为内部表示，不再出现在语言契约中。
-- 统一 module runtime export、macro export、source module 预扫描、analyzer、lowering、VM 的 define-once 规则。
+- 明确 `eq` 对 `number` / `string` 的正式语义，并统一代码、测试、`LANGUAGE.md`、`docs/stdlib-operators.md`。
+- 模块表面只保留 `module/from/import/exports` 一套模型；清掉残余 `imports` 兼容路径和文档残影。
+- `quote`、syntax datum、runtime value、`apply` 边界继续保持清晰，不允许旧 helper 把三者混用。
 
-**完成标准**：`LANGUAGE.md`、reader、macroexpand、HIR、source module、analyzer、VM 只表达同一套模块语义。
+## 3. P1：把编译器边界做实
 
-## 4. P1: 把编译器边界做实
+### P1-1. LIR 变成真正低层 IR
 
-### P1-1. LIR 变成真正的低层 IR
-
-- MIR 继续负责 CFG、控制流、virtual register、tail position。
-- LIR 新增并承接：
+- MIR 只负责 CFG、virtual register、tail position。
+- LIR 接管：
   - instruction selection；
-  - register layout / physical allocation；
+  - physical register layout / allocation；
   - effect frame layout；
   - host-call ABI lowering；
   - block layout / rerank；
   - jump fixup；
   - peephole / copy cleanup；
   - debug span / trace injection。
-- bytecode compiler 只消费最终 LIR，不再承担任何高层决策。
-- register VM 不再替编译器补高层语义；VM 只执行 bytecode。
+- bytecode compiler 只消费最终 LIR，不再承担高层决策。
 
-**完成标准**：`LIR -> bytecode` 不再是一比一结构复制；能明确列出每个低层 rewrite 在哪一层完成。
+**完成标准**：`LIR -> bytecode` 不再接近结构复制；每类 rewrite 都能指出唯一归属层。
 
-### P1-2. continuation / effect VM 语义最终化
+### P1-2. continuation / effect / virtual stack
 
-- 把 effect frame、handler frame、resume token、parent continuation 在 LIR/bytecode 中显式建模。
-- 收口 `parallel` / `all` / `race` 在 effect 下的 continuation 合流规则。
+- 把 effect frame、handler frame、resume token、parent continuation 显式建模到 LIR/bytecode。
+- 固定 `parallel` / `all` / `race` 在 effect 下的 continuation 合流规则。
 - 继续推进虚拟栈：
-  - 自尾递归、互递归、effect 边界下的 tail call 规则都要可说明；
-  - 不再依赖 Python call stack 作为语义基础。
+  - 自尾递归；
+  - 互递归；
+  - effect 边界下 tail call；
+  - 禁止 Python call stack 成为语义基础。
 
-**完成标准**：effect + tail call + ordering/join 的组合有系统测试，VM 行为能从 LIR/bytecode 直接解释。
+**完成标准**：effect + tail call + ordering/join 组合可从 LIR/bytecode 直接解释，并有系统测试。
 
-### P1-3. 删除遗留层
+### P1-3. 删除 legacy
 
-- `python_codegen.py` 已删除（2026-05-16）：当前目标只有 register VM。
-- `evaluator.py` 继续缩成兼容 facade，禁止新增语义；能迁出的全部迁出。
-- legacy `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 逐步降级为 host adapter，不再承载 core semantics。
-- `eval_runtime.py`、文件模块加载、旧 stdlib 路径逐步切到正式 pipeline。
+- `evaluator.py` 只允许继续缩小，不允许新增语义。
+- `eval_runtime.py` 继续降级为兼容 facade。
+- legacy `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 最终只允许作为 host adapter。
+- 把 stdlib、module loader、测试逐步迁到正式 metadata + VM 路径。
 
-**完成标准**：新增核心语义时无需同时修改 evaluator + VM 两套实现；repo 中不再存在第二条事实上的执行路径。
+**完成标准**：新增核心语义时无需同时改 evaluator 与 VM 两套实现。
 
-## 5. P1: Qy 原生测试框架
+## 4. P1：qytest 成熟化
 
-### 目标
+- 固定 public 目标：`qy test.qy tests/`；`pytest` 与 qytest 长期共存。
+- qytest 继续保持“runner 用 Qy 写，宿主只给最小 capability”：
+  - 文件读取；
+  - 列目录；
+  - 路径判断；
+  - CLI args；
+  - 其他 DSL、assertion、reporting 优先用 Qy 自举。
+- 迁移更多行为测试：
+  - lookup / `pre-symbol-space-chain` / define / let；
+  - runtime string；
+  - macro hygiene；
+  - `pipeline` / `parallel` / `all` / `race`；
+  - effect；
+  - module；
+  - 错误路径。
+- 增加真实 CLI 入口验收，不只测 Typer runner。
+- 逐步移除 qytest 对过渡符号 `append`、`print`、默认 `+` 的隐式依赖，或明确把它们放入显式测试环境。
 
-目标不是新增一个 `qy test` 子命令，而是先让普通 Qy 程序承担测试运行器职责：
+**完成标准**：一批核心语言契约由 qytest 自己验收，且命令行真实入口稳定。
 
-```bash
-qy test.qy tests/
-```
+## 5. P2：文档、测试、复杂度
 
-`pytest` 与 qytest 长期共存：
+### P2-1. 文档修正
 
-- `pytest` 验证 Qy 执行器与编译器各层是否正确：reader、macroexpand、HIR/MIR/LIR、bytecode、VM、diagnostics、LSP、host bridge。
-- `qy test.qy tests/` 验证语言从使用者角度呈现出的行为特征：binding、macro、effect、module、并发组合等。
+- 以 `LANGUAGE.md` 为唯一语言真源；`docs/*`、`AGENTS.md`、`CLAUDE.md` 只复述，不另起定义。
+- 持续核对：
+  - `docs/language-core-audit.md` 中的 root shadow / `pre-symbol-space-chain` 结论；
+  - `report.md` 中不再适用的完成宣告不得回流成当前事实。
+- examples 必须说明验证的是哪条目标契约；只验证历史实现的样例删除。
 
-### 设计原则
+### P2-2. benchmark / CI
 
-- qytest 自身优先用 Qy 实现，不把测试 DSL 直接做成 host operator。
-- 宿主只补 Qy 无法自举的最小 capability，先按下列候选收敛：
-  - 读取文本文件；
-  - 列出目录；
-  - 必要时的路径判断；
-  - CLI 参数暴露给程序。
-- 在真正写 `test.qy` 前，不预先新增高层测试 operator；`suite`、`test`、assertion、过滤、reporting 等若能由 Qy 写出，就必须由 Qy 写出。
-- Qy 没有 `set`，`chain` 不可变，因此 suite / report 应优先建模为不可变数据。
-- 失败优先建模为 effect，而不是依赖 Python exception 直通。
-- 若测试文件发现、动态加载仍无法仅靠现有 module 语义完成，再单独论证是否需要一个新的最小 capability；不得先把整套 runner 做进 Python。
+- benchmark 只保留 register VM 维度。
+- 重建 baseline，统一 phase：`source / macroexpand / hir_lower / mir_lower / lir_lower / bytecode_compile / bytecode_vm`。
+- 覆盖 workload：
+  - tail recursion；
+  - effect-heavy；
+  - module-heavy；
+  - macro-heavy；
+  - qytest runner。
+- 先做趋势记录，再决定硬阈值与 CI gate。
 
-### 第一批迁移到 Qy 的测试
+### P2-3. 复杂度治理
 
-- quote / chain / `eq`
-- `define` / `let` / shadow / root-space 行为
-- `lambda` / `defun` / `apply`
-- `pipeline` / `parallel` / `all` / `race`
-- `defeffect` / `perform` / `handle` / `resume`
-- macro hygiene / quasiquote
-- module import/export 的正向路径
-
-### 仍保留在 Python 的测试
-
-- reader tokenization、span、surface dialect 原始 form
-- analyzer/LSP diagnostics 的精确内容
-- HIR/MIR/LIR/bytecode dump 与 verifier
-- host injection、stdlib loader、CLI、性能基准
-
-### 落地任务
-
-- 新建 `tests/qy/` 作为 qytest 输入，不再把 `examples/validation/` 同时当示例和测试。
-- 先写普通 Qy 程序 `test.qy`，目标执行形态固定为 `qy test.qy tests/`。
-- 只实现最小 host capability module；其余 runner 逻辑由 Qy 自身实现。
-- Python 侧只保留启动/集成验证，不把 qytest 逻辑反向搬回 pytest。
-- 每次新增语言语义，至少判断是否需要：
-  - Python unit test；
-  - Qy behavior test；
-  - validation example。
-
-**完成标准**：至少一组核心语义验收由 Qy suite 自己完成，并纳入默认 CI；examples 回到“示例”，tests/qy 承担“验证”。（已完成：`test.qy` + `tests/qy/` + `tests/test_qytest_runner.py`）
-
-## 6. P2: 文档、示例、复杂度治理
-
-### P2-1. 文档与示例对齐
-
-- `LANGUAGE.md` 是语言真源；`docs/*`、`AGENTS.md`、`CLAUDE.md` 只能复述，不得另起定义。
-- validation examples 继续清理：
-  - 不再把默认算术称作 host pre-space，除非实现最终确实如此；
-  - 每个 example 必须标明验证的是目标语言哪一条契约；
-  - 过时示例直接删，不保留兼容展示。
-- `docs/language-core-audit.md` 只保留真实未闭合项，不再保存已完成历史。
-
-### P2-2. 复杂度预算
-
-当前需要冻结增长的文件：
+当前冻结增长的文件：
 
 - `qy/lowering.py`
 - `qy/analyzer.py`
 - `qy/register_vm.py`
-- `qy/evaluator.py`
 - `qy/mir.py`
 - `qy/macroexpand.py`
 - `qy/macro_hygiene.py`
+- `qy/reader.py`
+- `qy/evaluator.py`
 
 规则：
 
-- 触碰这些文件时，优先拆职责，再加新分支。
-- `evaluator.py` 只允许减少语义，不允许新增语义。
-- 新增模块必须对应明确边界，不允许把旧混乱平移到新文件。
-- 每批次 `report.md` 必须写出：新增文件、删除文件、复杂度变化、仍未删除的 legacy 面。
+- 触碰这些文件，先确认能否拆职责，再新增分支。
+- `evaluator.py` 只能减，不准加。
+- 新模块必须对应明确边界，不能只是把旧复杂度搬家。
+- 每批 `report.md` 必须记录：
+  - 新增 / 删除文件；
+  - 复杂度变化；
+  - 仍未删除的 legacy 面；
+  - 验证命令。
 
-### P2-3. benchmark / CI
+## 6. 当前删除清单
 
-- benchmark 只保留 register VM 维度。
-- 建立历史基线与 regression gate：
-  - parse / expand / lower / MIR / LIR / bytecode / VM 分段计时；
-  - tail recursion、effect-heavy、module-heavy 三类 workload；
-  - 至少先做趋势记录，再决定硬阈值。
+- 已删除：`qy.ir_vm/`、`python_codegen.py`。
+- 待删除或降级：
+  - `evaluator.py` 中剩余语义；
+  - `eval_runtime.py` 兼容面；
+  - legacy operator dispatch 对 core semantics 的承担；
+  - 旧 `str-*`；
+  - `imports` 残影；
+  - 只验证过渡实现的 examples/tests。
 
-## 7. 当前删除清单
+## 7. 批次要求
 
-- `python_codegen.py` 已删除。
-- 继续削减 `evaluator.py` 与 `eval_runtime.py` 的真实语义承担。
-- 清理 operator metadata 中不属于 core 的条目。
-- 继续清理 legacy async、旧 compatibility tests 中不再被 public language 接受的路径（`imports` block 已移除）。
-- 删除 examples 中只验证历史实现、无法说明目标语言契约的内容。
-
-## 8. 批次工作要求
-
-- 每次只推进一个主题：symbol-space、macro、module、LIR、VM、testing、docs 中择一。
-- 每次提交后更新 `report.md`，至少写：
-  - 本批目标
-  - 修改范围
-  - 已完成
-  - 未完成 / 风险
-  - 删除了什么
-  - 验证命令
+- 每批只推进一个主题：`symbol-space`、`stdlib`、`macro`、`LIR`、`VM/effect`、`qytest`、`docs` 任选其一。
+- 每批结束后更新 `report.md`，至少包含：
+  - 本批目标；
+  - 修改范围；
+  - 已完成；
+  - 未完成 / 风险；
+  - 删除了什么；
+  - 验证命令。
 - 行为变更必须同步检查：
   - `LANGUAGE.md`
+  - `docs/op.md`
   - `docs/pipeline.md`
   - `docs/language-core-audit.md`
   - `AGENTS.md`

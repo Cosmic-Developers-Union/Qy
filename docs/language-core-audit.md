@@ -6,9 +6,10 @@
 - `chain` 是不可变对象。
 - 核心语言不实现 unrestricted reader macro；默认 Qy surface dialect 是 reader 后、macroexpand 前的可静态描述规约层。
 - symbol 求值沿 symbol-space-chain 查找。
-- `define` 只在当前 symbol-space 一次性绑定；允许 shadow parent。
-- pre-symbol-space 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例工作。默认实例可以惰性预定义数字、字符串等传统符号。
-- host value 是 runtime value，可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
+- `define` 只在当前 symbol-space 一次性绑定；允许 shadow 链上后续节点。
+- `pre-symbol-space-chain` 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例工作。
+- `pre-symbol-space-chain` 是有序链，不是单个特殊空间；profile、字面量空间、stdlib 空间、宿主注入空间都应以链节点建模。
+- host value 是 runtime value，可以通过实例 `pre-symbol-space-chain`、显式注入或显式 import 进入 symbol-space-chain。
 - register VM 是唯一执行器；不保留可选 runtime backend。
 
 ---
@@ -25,33 +26,34 @@
 
 ---
 
-## B2. `define` 查重边界过宽
+## B2. `define` 与初始链边界仍未显式
 
 **位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/register_vm.py`
 
-`define_once` 已存在，且 lowering / analyzer 已改成 current-scope-only 诊断；`(define + 99)` 这类 parent shadow 现在允许。剩余问题主要在 module/import 的 define-once 规则还没有完全统一到 current-space-only 语义。
+`define_once` 已存在，但当前实现仍倾向把初始环境展平成一个 root scope，再附加 literal resolver。这样只能表达“当前 root 已有 / 没有某名字”，还不能表达多个初始链节点及其相对位置；因此标准 profile、项目注入、字面量空间之间的 shadow 关系还没有被正式建模。
 
 **处置方向**：
 
 - 继续把 module/import/export 写入语义统一到 current-space-only define。
-- 默认数字/字符串 pre-symbol-space 需要显式建模或惰性建模；同一空间不能 redefine，子空间可以 shadow。
+- 把默认数字/字符串空间、stdlib 空间、项目注入空间建模为 `pre-symbol-space-chain` 上的明确节点；同一节点不能 redefine，位于其前方的节点可以自然 shadow。
 - `defun`、`defeffect`、module import/export 同步使用 current-space-only define-once。
 - register VM 的 `STORE_LOCAL`、`DEFEFFECT`、module/import 写入也要按 define-once 语义收口。
 
 ---
 
-## B3. pre-symbol-space 与 host interop 边界未清
+## B3. 初始 profile 与 host interop 边界未清
 
 **位置**：`qy/stdlib/__init__.py`、`qy/stdlib/core.py`、`qy/stdlib/python.py`
 
-默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。剩余问题是 pre-symbol-space 仍未形成显式可读模型，analyzer/LSP 也还不能消费实例化配置。
+默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。剩余问题是 `pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界；analyzer/LSP 仍不能消费实例化配置。
 
-**偏差**：默认数字/字符串 pre-symbol-space 是合理实现策略；但 Python host interop prelude 不应与它混在一起。analyzer/LSP 也需要能读取当前 Qy 实例的 pre-symbol-space 配置。
+**偏差**：默认数字/字符串链段、默认是否预装算术等都可以是 standard profile 策略；但 profile 不能和语言核混写，Python host interop 也不应被误当成语言核心。analyzer/LSP 需要能读取当前 Qy 实例的完整初始链配置。
 
 **处置方向**：
 
-- 明确 pre-symbol-space API：数字、字符串等传统符号可惰性预定义；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
-- 默认 prelude 只加载最小语言 core，不自动加载 Python host interop。
+- 明确 `pre-symbol-space-chain` API：链节点、相对顺序、lazy segment、可写 head、profile 组合都要能表达；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
+- 明确区分语言核、standard profile、optional stdlib。standard profile 可以预装常用能力，但这不把它们提升为核心 form。
+- 默认 profile 是否加载 arithmetic 由实现策略决定；Python host interop 仍应保持显式 opt-in。
 - `qy.py`、Python container helper、string helper、legacy async helper 全部改为显式 import 或显式 host injection。
 - 示例和测试中需要 host interop 时显式构造 env 或 import module。
 

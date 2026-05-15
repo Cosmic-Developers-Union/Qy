@@ -7,9 +7,10 @@
 - syntax datum 只有 `symbol` / `chain`。
 - `chain` 是不可变对象，任何构造/改写都必须产生新 chain。
 - symbol 求值沿当前 symbol-space-chain 查找。
-- `define` 只在当前 symbol-space 一次性绑定，可以 shadow parent。
-- pre-symbol-space 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都围绕同一个 `Qy` 实例工作。默认实例可以惰性预定义数字、字符串等传统符号。
-- host value/operator 是 runtime value，可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
+- `define` 只在当前 symbol-space 一次性绑定，可以 shadow 链上后续节点。
+- `pre-symbol-space-chain` 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都围绕同一个 `Qy` 实例工作。
+- `pre-symbol-space-chain` 是有序链，不是单个特殊空间；profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。
+- host value/operator 是 runtime value，可以通过实例 `pre-symbol-space-chain`、显式注入或显式 import 进入 symbol-space-chain。
 - register VM 是唯一执行器。
 
 ## Surface Dialect
@@ -40,7 +41,7 @@
 
 ## 非核心能力
 
-这些能力可以存在于 stdlib、legacy module 或 host injection，但不得作为默认语言核心：
+这些能力可以存在于 stdlib、legacy module、host injection，或由标准 profile 预装，但不得因此成为语言核心：
 
 - arithmetic：`+` `-` `*` `/`
 - Python containers：`list` `tuple` `dict` `set`
@@ -48,6 +49,8 @@
 - legacy async helpers：`spawn` `await`
 - Python interop：`py` / `py::*`
 - `component`：后续只能以库层组合算子回归
+
+非核心算子的工作草案单独维护在 `docs/stdlib-operators.md`，不进入核心语言规范。
 
 ## 实现约束
 
