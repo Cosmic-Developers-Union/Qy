@@ -84,8 +84,9 @@ make bench-check
 - 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation`、`qy.errors` import。库代码（stdlib 等）若需要评估函数应从 `qy.eval_runtime` 导入（P1-3 兼容门面）。
 - bytecode compiler 不允许重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - Qy 不保留可选 runtime backend；不得新增或维护 IR VM/evaluator backend 语义。公共执行入口必须走 register VM。
-- 语言内核没有宿主环境；Qy 实例可配置 pre-symbol-space，默认实现可惰性预定义数字/字符串等传统符号。
+- 语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，pre-symbol-space 是该实例的起点，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。默认实现可惰性预定义数字/字符串等传统符号。
 - Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
+- 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
 - `define` 只在当前 symbol-space 内一次性绑定，可以 shadow parent symbol-space 中的任意 symbol。
 - 修改语言语义时，必须同步更新 `LANGUAGE.md` 与 `todo.md`。
 - 修改 reader、lowering、evaluator、IR 或 analyzer 时，同步考虑 CLI、LSP、formatter 和测试覆盖。

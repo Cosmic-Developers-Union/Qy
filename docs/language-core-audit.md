@@ -7,7 +7,7 @@
 - 核心语言不实现 unrestricted reader macro；默认 Qy surface dialect 是 reader 后、macroexpand 前的可静态描述规约层。
 - symbol 求值沿 symbol-space-chain 查找。
 - `define` 只在当前 symbol-space 一次性绑定；允许 shadow parent。
-- pre-symbol-space 由 Qy 实例化决定；默认实例可以惰性预定义数字、字符串等传统符号。
+- pre-symbol-space 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例工作。默认实例可以惰性预定义数字、字符串等传统符号。
 - host value 是 runtime value，可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
 - register VM 是唯一执行器；不保留可选 runtime backend。
 
@@ -50,7 +50,7 @@
 
 **处置方向**：
 
-- 明确 default resolver / pre-symbol-space API：数字、字符串等传统符号可惰性预定义。
+- 明确 pre-symbol-space API：数字、字符串等传统符号可惰性预定义；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
 - 默认 prelude 只加载最小语言 core，不自动加载 Python host interop。
 - `qy.py`、Python container helper、string helper、legacy async helper 全部改为显式 import 或显式 host injection。
 - 示例和测试中需要 host interop 时显式构造 env 或 import module。

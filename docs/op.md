@@ -8,7 +8,7 @@
 - `chain` 是不可变对象，任何构造/改写都必须产生新 chain。
 - symbol 求值沿当前 symbol-space-chain 查找。
 - `define` 只在当前 symbol-space 一次性绑定，可以 shadow parent。
-- pre-symbol-space 由 Qy 实例化决定；语言内核没有宿主环境，但默认实例可以惰性预定义数字、字符串等传统符号。
+- pre-symbol-space 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都围绕同一个 `Qy` 实例工作。默认实例可以惰性预定义数字、字符串等传统符号。
 - host value/operator 是 runtime value，可以通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
 - register VM 是唯一执行器。
 
@@ -54,4 +54,5 @@
 - 核心 form 必须 lowering 为 HIR 独立节点或明确的核心 call 语义，再进入 MIR/LIR/bytecode/register VM。
 - `pipeline`、`parallel`、`all`、`race` 不是普通 host operator。
 - macro 只能在 expand 阶段改变 syntax datum；runtime 不能重新解释 macro。
+- 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
 - 新语义不得通过 legacy operator dispatch 扩展。

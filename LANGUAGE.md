@@ -51,7 +51,8 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - Qy 没有 `setq`。
 - `define` 在当前 symbol-space 构建一次性绑定；只检查当前 symbol-space 是否已有该 symbol，不检查 parent。
 - `define` 会保护当前 symbol-space 内已绑定的 symbol，但可以 shadow 外层 symbol-space 中的任意 symbol，包括核心算子名、stdlib 名、pre-symbol-space 名、宿主注入名。
-- **pre-symbol-space** 是 Qy 实例化时提供的外层/初始符号空间，不是语言内核。默认实现可以把传统符号预定义在这里，例如数字 spelling `1` 解析为 runtime `number(1)`。
+- **pre-symbol-space** 不是语言设计目标本身，但它是标准实现的起点。一个 `Qy` 实例先给出自己的 pre-symbol-space，reader、analyzer、LSP、lowering、runtime 都必须围绕这个同一实例工作。
+- 默认实现可以把传统符号预定义在 pre-symbol-space，例如数字 spelling `1` 解析为 runtime `number(1)`。
 - pre-symbol-space 可以是惰性的：不需要真的注册全部数字符号，但语义上这些符号被视为已经在该空间中定义。
 - **宿主注入**（host injection）只是向某个明确的 symbol-space 注入 host value/operator。被注入的名字只在该 symbol-space 内不可重定义，子 symbol-space 可用 `define` 或 `let` shadow。
 - `let` 构建新的局部 symbol-space，可以绑定任意 symbol，包括外层已有 symbol、核心算子名、宿主注入名。
@@ -65,7 +66,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 1. 在当前 symbol-space 链中查找 binding。
 2. 找到则返回对应 runtime value。
-3. 未找到时，进入 Qy 实例的 pre-symbol-space / default resolver。默认实现通常在这里把数字 spelling 解析为 `number`，把字符串 spelling 解析为 `string`，也可以由嵌入方提供项目自己的预定义符号。
+3. 若当前查询已经到达实例起点，则按该 `Qy` 实例的 pre-symbol-space 规则继续解析。默认实现通常在这里把数字 spelling 解析为 `number`，把字符串 spelling 解析为 `string`，也可以由嵌入方提供项目自己的预定义符号。
 4. 仍无法解析则是 unresolved symbol error。
 
 宏展开阶段操作 syntax datum；runtime lookup 不应污染 macro namespace。macro 的 definition-site binding、hygiene、capture 必须由 compile-time symbol-space 明确建模。
@@ -123,6 +124,7 @@ Qy 不使用 `spawn` / `await` 作为核心算子。
 ## Architecture Rules
 
 - stdlib 可以扩展命名空间与 host interop。语言内核没有宿主环境；Qy 实例可以配置 pre-symbol-space，默认实现也可以为数字、字符串等传统符号提供惰性预定义。
+- 新增算子前必须先判断它是否能由 Qy 自身实现；可以由 Qy 组合出的能力应写成 Qy library，而不是新增 host operator。只有文件系统、进程参数、宿主对象桥接等不可由语言自身构造的能力，才应进入 host capability 层。
 - analyzer/lowering/runtime 必须共享 operator metadata，不能各自发明语义。
 - bytecode compiler 不能重新理解 HIR/MIR；低层语义 lowering 必须经由 LIR。
 - register VM 是唯一执行目标；不得新增或保留可选 runtime backend。IR VM / legacy evaluator 只能作为迁移期删除对象。

@@ -77,7 +77,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 | `ir_vm/`         | 迁移待删，不能新增语义                                    |
 | `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入       |
 
-Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；Qy 实例可配置 pre-symbol-space，默认实现可惰性预定义数字/字符串等传统符号。Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow parent。
+Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，pre-symbol-space 是该实例的起点，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。默认实现可惰性预定义数字/字符串等传统符号。Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow parent。
 
 ### 效应系统
 
