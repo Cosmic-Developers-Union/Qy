@@ -26,16 +26,22 @@
 
 ---
 
-## B2. `define` 与初始链边界仍未显式
+## B2. `define` / fold / 初始 root 边界仍未显式
 
 **位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/register_vm.py`
 
-`define_once` 已存在，但当前实现仍倾向把初始环境展平成一个 root scope，再附加 literal resolver。这样只能表达“当前 root 已有 / 没有某名字”，还不能表达多个初始链节点及其相对位置；因此标准 profile、项目注入、字面量空间之间的 shadow 关系还没有被正式建模。
+`define_once` 已存在，但当前实现仍倾向把初始环境展平成一个 root scope，再附加 literal resolver。这样只能表达“当前 root 已有 / 没有某名字”，还不能显式表达：
+
+- 哪些空间只参与 lookup chain；
+- 哪些 binding 已经 fold 到当前 root，成为本地 binding；
+- 标准 profile、项目注入、字面量空间之间的 shadow / 吸收关系。
 
 **处置方向**：
 
-- 继续把 module/import/export 写入语义统一到 current-space-only define。
-- 把默认数字/字符串空间、stdlib 空间、项目注入空间建模为 `pre-symbol-space-chain` 上的明确节点；同一节点不能 redefine，位于其前方的节点可以自然 shadow。
+- 把 chain 与 fold 分开建模：chain 只负责 lookup；fold 才把可见 binding 吸收到当前 symbol-space。
+- 明确 module root 是否 fold 某些 profile chain；若 fold，目标名在 root 中就是本地 binding，`define` 必须失败。
+- 把默认数字/字符串空间、stdlib 空间、项目注入空间建模为 `pre-symbol-space-chain` 上的明确节点，并明确哪些节点会在 root 构造时被 fold。
+- `from` 统一解释为受 `exports` 限制的选择性 fold；导入冲突按 current-space define-once 处理。
 - `defun`、`defeffect`、module import/export 同步使用 current-space-only define-once。
 - register VM 的 `STORE_LOCAL`、`DEFEFFECT`、module/import 写入也要按 define-once 语义收口。
 
@@ -51,7 +57,7 @@
 
 **处置方向**：
 
-- 明确 `pre-symbol-space-chain` API：链节点、相对顺序、lazy segment、可写 head、profile 组合都要能表达；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
+- 明确 `pre-symbol-space-chain` API：链节点、相对顺序、lazy layer、可写 head、fold 计划、profile 组合都要能表达；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
 - 明确区分语言核、standard profile、optional stdlib。standard profile 可以预装常用能力，但这不把它们提升为核心 form。
 - 默认 profile 是否加载 arithmetic 由实现策略决定；Python host interop 仍应保持显式 opt-in。
 - `qy.py`、Python container helper、string helper、legacy async helper 全部改为显式 import 或显式 host injection。

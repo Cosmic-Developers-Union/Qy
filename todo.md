@@ -55,8 +55,10 @@
 
 ### 已确认漂移
 
-1. 当前实现仍把初始环境近似成“root scope + literal resolver”，还不能表达多个初始链节点及其相对位置。  
-   这会让 standard profile、项目注入空间、字面量空间的 shadow 规则无法被统一建模。
+1. 当前实现仍把初始环境近似成“root scope + literal resolver”，还不能区分：
+   - 哪些空间只是 chain 上的 lookup 来源；
+   - 哪些 binding 已经 fold 到当前 root，成为本地 binding。  
+     这会让 standard profile、项目注入空间、字面量空间，以及 `(define 1 10)` 的 root 语义无法被统一建模。
 2. runtime `string` 还未落地；当前 `"hello"` 仍报 unresolved symbol。
 3. 语言核、standard profile、optional stdlib 仍未正式拆层；当前 `qy.core` / 默认环境还没有说明“哪些是核心，哪些只是默认 profile 预装”。
 4. `eq` 契约需要再次核对：文档写 Lisp identity 语义，当前 number 路径仍带有 value-equality 实现痕迹。
@@ -67,21 +69,26 @@
 
 ## 2. P0：先把语言面闭合
 
-### P0-1. pre-symbol-space-chain / lookup / define
+### P0-1. pre-symbol-space-chain / fold / define
 
 - 把当前 resolver fallback 收口为标准实现的正式起点模型：
   - `Qy` 实例拥有可读的 `pre-symbol-space-chain`；
-  - 链节点、节点顺序、lazy segment、可写 head 都要能表达；
+  - 链节点、节点顺序、lazy layer、可写 head、fold 计划都要能表达；
   - reader、analyzer、LSP、lowering、runtime 读取同一份实例事实；
   - 不再依赖脱离实例的默认全局 literal 解析。
+- 固定 chain / fold 的语义区分：
+  - chain 只增加 lookup 可见性；
+  - fold 把被选中的 visible binding 吸收到目标 symbol-space，改变 local membership；
+  - module root 初始化与 `from` 都必须走同一套 fold 规则。
 - 明确 profile 对 number / string spelling 的规则：
   - 某个 symbol 能否在当前层 `define`，只由它是否已存在于当前 head space 决定；
-  - 若 `1` 只存在于链的后续节点，当前 head 可自然 shadow；若当前 head 已含 `1`，同层 `define` 必须失败；
+  - 若 `1` 只存在于链的后续节点，当前 head 可自然 shadow；
+  - 若字面量空间已被 fold 到 module root，则 `1` 已是 root 本地 binding，同层 `define` 必须失败；
   - 字符串 spelling 必须解析为 runtime `string`，而不是 unresolved symbol。
-- 把 `define` / `defun` / `defeffect` / module import/export 全部统一到 current-space-only define-once。
+- 把 `define` / `defun` / `defeffect` / `from` / module import/export 全部统一到 current-space-only define-once。
 - 加回归测试：同层重复绑定、子层 shadow、host 注入名、数字 spelling、字符串 spelling、analyzer/lowering/runtime 三方一致。
 
-**完成标准**：同一段源码在 analyzer、lowering、runtime 对 binding 的判断完全一致；同一 profile 在所有阶段呈现同一条初始链。
+**完成标准**：同一段源码在 analyzer、lowering、runtime 对 binding 的判断完全一致；同一 profile 在所有阶段呈现同一条初始链和同一份 fold 结果。
 
 ### P0-2. 语言核 / standard profile / stdlib 边界
 
@@ -118,7 +125,12 @@
 ### P0-4. 语义审计收口
 
 - 明确 `eq` 对 `number` / `string` 的正式语义，并统一代码、测试、`LANGUAGE.md`、`docs/stdlib-operators.md`。
-- 模块表面只保留 `module/from/import/exports` 一套模型；清掉残余 `imports` 兼容路径和文档残影。
+- 模块表面只保留 `module/from/import/exports` 一套模型：
+  - module 是具名 symbol-space；
+  - exports 是可被外部 fold 的 export view；
+  - from 是受 exports 约束的选择性 fold；
+  - 导入冲突与同层 `define` 使用同一规则。
+- 清掉残余 `imports` 兼容路径和文档残影。
 - `quote`、syntax datum、runtime value、`apply` 边界继续保持清晰，不允许旧 helper 把三者混用。
 
 ## 3. P1：把编译器边界做实
@@ -171,6 +183,7 @@
   - 其他 DSL、assertion、reporting 优先用 Qy 自举。
 - 迁移更多行为测试：
   - lookup / `pre-symbol-space-chain` / define / let；
+  - fold / `from` / export view；
   - runtime string；
   - macro hygiene；
   - `pipeline` / `parallel` / `all` / `race`；

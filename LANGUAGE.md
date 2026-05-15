@@ -56,6 +56,9 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - 默认实现可以在链上放入传统符号空间，例如让数字 spelling `1` 解析为 runtime `number(1)`；这样的空间可以是惰性的，不需要真的注册全部数字 symbol。
 - **宿主注入**（host injection）只是向链上的某个明确 symbol-space 放入 host value/operator。被注入的名字只在那个空间内不可重定义；若当前 head 位于它之前，则 `define` 或 `let` 可以自然 shadow。
 - `let` 构建新的局部 symbol-space，可以绑定任意 symbol，包括外层已有 symbol、核心算子名、宿主注入名。
+- `symbol-space-chain` 只描述 lookup 可见性，不改变任何节点的本地 binding 集合。
+- **fold** 把一个 chain 或某个 export view 当前可见的 binding 吸收到目标 symbol-space：fold 之后，这些 binding 对目标空间而言就是本地 binding，后续 `define` 必须按同层重复定义处理。
+- `module` root 可以在构造时 fold profile chain；这样被吸收的名字不再只是“外层可见”，而是 module root 已有的本地 binding。
 - `module`、函数调用 frame、macro 定义环境都按 symbol-space 模型理解，只是生命周期、导出规则和 compile-time/runtime 可见性不同。
 - 外部宿主可以通过注入 symbol-space 来注入 object(host value) 与 operator。
 - 因为 symbol 不可在同一 symbol-space 内重绑定，HIR 可以把确定的 symbol ref 解析为稳定 binding/value；这是后续优化基础。
@@ -104,7 +107,10 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `gensym` / `capture`：hygiene 与 intentional capture 机制。
 - `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。`defeffect` 走 `define` 语义，同一 symbol-space 内不可重复声明同名 effect。
 - `pipeline`、`parallel`、`all`、`race` 是 HIR 独立节点（`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`），不是普通 `CallExpr`；lowering 必须特殊处理，不能通过 operator dispatch 求值。
-- `module` / `from` / `import` / `exports`：模块 symbol-space 与导入导出。
+- `module`：构造具名 symbol-space。
+- `exports`：给模块的本地 binding 建立一个可对外 fold 的 export view。
+- `from`：从另一个模块的 export view 选择 binding，并 fold 到当前 symbol-space；它改变当前空间的 local membership，不只是追加 lookup fallback。
+- `import`：模块导入语法中的命名动作；若导入本地名已存在，冲突规则与同层 `define` 一致，除非显式 alias。
 
 ## Effects And Parallel
 
@@ -124,6 +130,7 @@ Qy 不使用 `spawn` / `await` 作为核心算子。
 ## Architecture Rules
 
 - stdlib 可以扩展命名空间与 host interop。语言内核没有宿主环境；Qy 实例可以配置 `pre-symbol-space-chain`，标准 profile 也可以把数字、字符串或常用 stdlib 作为链段预装进去。
+- chain 与 fold 必须分离建模：chain 只提供 lookup；fold 才会把 binding 纳入某个 symbol-space。本规则同时约束 module root 初始化与 `from`。
 - 新增算子前必须先判断它是否能由 Qy 自身实现；可以由 Qy 组合出的能力应写成 Qy library，而不是新增 host operator。只有文件系统、进程参数、宿主对象桥接等不可由语言自身构造的能力，才应进入 host capability 层。
 - analyzer/lowering/runtime 必须共享 operator metadata，不能各自发明语义。
 - bytecode compiler 不能重新理解 HIR/MIR；低层语义 lowering 必须经由 LIR。

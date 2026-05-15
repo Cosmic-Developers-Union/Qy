@@ -86,6 +86,7 @@ make bench-check
 - Qy 不保留可选 runtime backend；不得新增或维护 IR VM/evaluator backend 语义。公共执行入口必须走 register VM。
 - 语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。
 - `pre-symbol-space-chain` 是链，不是单个特殊空间；standard profile、字面量空间、stdlib 空间、宿主注入空间都应以明确链节点建模。host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。
+- chain 只负责 lookup；fold 才会把 binding 吸收到某个 symbol-space。`from` 是受 `exports` 约束的选择性 fold，module root 初始化也应使用同一模型。
 - 语言核与默认 profile 分离；standard profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。
 - 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
 - `define` 只在当前 symbol-space 内一次性绑定，可以 shadow 链上后续 symbol-space 中的任意 symbol。

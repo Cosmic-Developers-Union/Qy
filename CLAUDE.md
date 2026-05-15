@@ -77,7 +77,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 | `ir_vm/`         | 已删除，不能重新引入第二执行后端                          |
 | `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入       |
 
-Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。语言核与默认 profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow 后续链节点。
+Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。chain 只提供 lookup；fold 才会把 binding 吸收到某个 symbol-space。module root 初始化与 `from` 必须共用这套 fold 模型，后者是受 `exports` 约束的选择性 fold。语言核与默认 profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow 后续链节点。
 
 ### 效应系统
 

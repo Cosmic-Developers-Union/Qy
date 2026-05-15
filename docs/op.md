@@ -11,6 +11,8 @@
 - `pre-symbol-space-chain` 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都围绕同一个 `Qy` 实例工作。
 - `pre-symbol-space-chain` 是有序链，不是单个特殊空间；profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。
 - host value/operator 是 runtime value，可以通过实例 `pre-symbol-space-chain`、显式注入或显式 import 进入 symbol-space-chain。
+- chain 只决定 lookup；fold 才会把可见 binding 吸收到当前 symbol-space，并使其成为本地 binding。
+- `from` 是受 `exports` 约束的选择性 fold，不是普通 lookup fallback。
 - register VM 是唯一执行器。
 
 ## Surface Dialect
@@ -56,6 +58,7 @@
 
 - 核心 form 必须 lowering 为 HIR 独立节点或明确的核心 call 语义，再进入 MIR/LIR/bytecode/register VM。
 - `pipeline`、`parallel`、`all`、`race` 不是普通 host operator。
+- `module` 是具名 symbol-space；`exports` 是可被外部 fold 的 view；`from` 把被选中的 export binding 纳入当前 symbol-space。
 - macro 只能在 expand 阶段改变 syntax datum；runtime 不能重新解释 macro。
 - 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
 - 新语义不得通过 legacy operator dispatch 扩展。
