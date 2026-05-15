@@ -12,10 +12,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from qy.async_runtime import run_async
 from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_mir_bytecode
-from qy.evaluator import Environment
-from qy.evaluator import run_async
+from qy.environment import Environment
 from qy.ir import ProgramIR
 from qy.lir_lowering import lower_lir
 from qy.lowering import lower

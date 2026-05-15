@@ -8,8 +8,8 @@ from typing import TYPE_CHECKING
 from typing import Literal
 from typing import cast
 
-from qy.evaluator import Environment
-from qy.evaluator import EvaluationError as QyResolutionError
+from qy.environment import Environment
+from qy.errors import EvaluationError as QyResolutionError
 from qy.literals import default_literal_type
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition

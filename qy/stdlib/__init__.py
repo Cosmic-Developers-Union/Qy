@@ -124,7 +124,7 @@ def _load_file_module(name: str) -> StandardModule:
     if path.suffix == ".py":
         return _load_python_file_module(path)
     if path.suffix == ".qy":
-        from qy.evaluator import run_async
+        from qy.async_runtime import run_async
 
         return cast(StandardModule, run_async(_load_qy_file_module_async(path)))
     raise KeyError(f"unsupported module file type {path.suffix!r}")
@@ -166,9 +166,9 @@ def _load_python_file_module(path: Path) -> StandardModule:
 
 
 async def _load_qy_file_module_async(path: Path) -> StandardModule:
-    from qy.evaluator import MacroDefinition
-    from qy.evaluator import evaluate_async
-    from qy.evaluator import standard_environment
+    from qy.environment import standard_environment
+    from qy.eval_runtime import evaluate_async
+    from qy.macro import MacroDefinition
     from qy.reader import read
 
     env = standard_environment()
@@ -223,13 +223,13 @@ def _module_from_public_callables(module: types.ModuleType, path: Path) -> Stand
 
 
 def _coerce_python_export(name: str, value: object) -> object:
-    from qy.evaluator import ControlOperator
-    from qy.evaluator import EffectOperator
-    from qy.evaluator import MetaOperator
-    from qy.evaluator import PureOperator
-    from qy.evaluator import ScopeOperator
-    from qy.evaluator import UserFunction
     from qy.macro import MacroDefinition
+    from qy.operators import ControlOperator
+    from qy.operators import EffectOperator
+    from qy.operators import MetaOperator
+    from qy.operators import PureOperator
+    from qy.operators import ScopeOperator
+    from qy.runtime_values import UserFunction
 
     if isinstance(
         value,

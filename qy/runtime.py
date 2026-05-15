@@ -6,13 +6,12 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from qy.async_runtime import run_async
 from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_bytecode
 from qy.bytecode_compiler import compile_mir_bytecode
-from qy.evaluator import ArgumentEvaluator
-from qy.evaluator import Environment
-from qy.evaluator import run_async
-from qy.evaluator import standard_environment
+from qy.environment import Environment
+from qy.environment import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
 from qy.lowering import lower_source
@@ -25,6 +24,7 @@ from qy.macroexpand import macroexpand_source_async
 from qy.mir import MIRProgram
 from qy.mir_lowering import lower_mir
 from qy.operator_signature import OperatorSignature
+from qy.operators import ArgumentEvaluator
 from qy.reader import Form
 from qy.reader import read
 from qy.reader import read_one

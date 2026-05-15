@@ -5,21 +5,21 @@ from __future__ import annotations
 import asyncio
 import inspect
 
+from qy.environment import Environment
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
 from qy.errors import QyError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.evaluator import ControlOperator
-from qy.evaluator import EffectDefinition
-from qy.evaluator import EffectOperator
-from qy.evaluator import Environment
-from qy.evaluator import ScopeOperator
-from qy.evaluator import ensure_symbol
-from qy.evaluator import evaluate_async
+from qy.eval_runtime import evaluate_async
+from qy.operators import ControlOperator
+from qy.operators import EffectOperator
+from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.reader import get_span
+from qy.runtime_values import EffectDefinition
+from qy.symbol_utils import ensure_symbol
 
 
 def _cache_key(expression: object) -> object:

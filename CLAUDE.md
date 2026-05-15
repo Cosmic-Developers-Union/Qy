@@ -61,21 +61,29 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - **Runtime** (`runtime.py`) — `Qy` 主类 API，串联完整 pipeline
 - **Environment** (`environment.py`) — symbol-space 实现，`standard_environment`
 - **Operators** (`operators.py`) — `PureOperator`/`ScopeOperator`/`ControlOperator`/`EffectOperator`/`MetaOperator`（legacy dispatch，新语义不走这里）
-- **Stdlib** (`stdlib/`) — 内置操作符，`core.py` 只注册最小核心
+- **Runtime Values** (`runtime_values.py`) — `UserFunction`、`EffectDefinition`、`HostObjectRef` 等 runtime 值类型
+- **Continuation** (`continuation.py`) — `QyContinuation`，可恢复的效应续延
+- **Compatibility Facades** (新) — 为迁移期间的兼容性提供：
+  - `async_runtime.py`：`run_async` 同步/异步桥接，从 evaluator 抽离
+  - `eval_runtime.py`：`evaluate_async` / `evaluate_body_async` / `evaluate_tail_body_async`，stdlib 用兼容门面
+  - `symbol_utils.py`：`ensure_symbol` 工具函数
+- **Stdlib** (`stdlib/`) — 内置操作符，`core.py` 只注册最小核心；import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator
 
 ### 执行器约束
 
-| 执行器           | 状态                    |
-| ---------------- | ----------------------- |
-| `register_vm.py` | 唯一执行器，新语义目标  |
-| `ir_vm/`         | 迁移待删，不能新增语义  |
-| `evaluator.py`   | legacy，迁移待删 facade |
+| 执行器           | 状态                                                      |
+| ---------------- | --------------------------------------------------------- |
+| `register_vm.py` | 唯一执行器，新语义目标；使用 \_EffectFrame 显式表达效应帧 |
+| `ir_vm/`         | 迁移待删，不能新增语义                                    |
+| `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入       |
 
 Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；Qy 实例可配置 pre-symbol-space，默认实现可惰性预定义数字/字符串等传统符号。Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow parent。
 
 ### 效应系统
 
 代数效应通过 `defeffect`/`perform`/`handle`/`resume` 实现。`QyContinuation` 是可恢复的效应续延。效应在 MIR 层有独立 opcode，LIR/bytecode/register VM 中有对应支持。
+
+**Effect Frame**：在 register VM 中，当 `PERFORM` 指令执行时，当前帧的状态（registers、env、pc、parents、results、function_value、function）被显式捕获为 `_EffectFrame` 冻结数据类，而非分散的 Python 变量。这为后续迁移到 LIR 级别的 effect frame 表达做准备。
 
 ### 值类型（values.py）
 

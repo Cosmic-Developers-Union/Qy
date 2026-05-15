@@ -7,17 +7,17 @@ from dataclasses import field
 from typing import Literal
 from typing import cast
 
+from qy.async_runtime import run_async
 from qy.compile_time import compile_time_binding_names
 from qy.compile_time import compile_time_environment
 from qy.diagnostics import Diagnostic
+from qy.environment import Environment
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.evaluator import Environment
-from qy.evaluator import run_async
-from qy.evaluator import standard_environment
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionServices
@@ -381,8 +381,8 @@ async def _macroexpand_module_form(
 
 
 def _prepopulate_module_locals(body: tuple[object, ...], env: Environment) -> None:
-    from qy.evaluator import EffectDefinition
-    from qy.evaluator import UserFunction
+    from qy.runtime_values import EffectDefinition
+    from qy.runtime_values import UserFunction
 
     for item in body:
         if not isinstance(item, tuple) or not item:

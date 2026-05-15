@@ -27,12 +27,15 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/ir_vm/`：迁移待删代码；不能作为 reference backend 或新语义承载点。
 - `qy/environment.py`：`Environment`（symbol-space 实现）、`standard_environment`。
 - `qy/operators.py`：`PureOperator`/`ScopeOperator`/`ControlOperator`/`EffectOperator`/`MetaOperator`（legacy dispatch）。
-- `qy/runtime_values.py`：`EffectDefinition`、`UserFunction`、`HostObjectRef`、`_TailCall`。
-- `qy/continuation.py`：`QyContinuation`、`_await_if_needed`。
-- `qy/evaluator.py`：legacy 求值器，兼容 facade；新代码不应从这里 import runtime 类型。
+- `qy/runtime_values.py`：`EffectDefinition`、`UserFunction`、`HostObjectRef` 等 runtime 值类型。
+- `qy/continuation.py`：`QyContinuation`，可恢复的效应续延。
+- `qy/async_runtime.py`：`run_async` 同步/异步桥接（P1-3 兼容门面）。
+- `qy/eval_runtime.py`：`evaluate_async` / `evaluate_body_async` / `evaluate_tail_body_async`（P1-3 兼容门面）。
+- `qy/symbol_utils.py`：`ensure_symbol` 工具函数（P1-3 兼容门面）。
+- `qy/evaluator.py`：legacy 求值器，仅通过 `eval_runtime.py` 受控导入；新代码不应从这里 import runtime 类型。
 - `qy/runtime.py`：`Qy` 主类 API，串联完整 pipeline。
 - `qy/analyzer.py`：静态分析、诊断、作用域和轻量类型检查。
-- `qy/stdlib/`：内置标准库操作符和模块导入支持。
+- `qy/stdlib/`：内置标准库操作符和模块导入支持；import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator。
 - `qy/cli.py`：Typer CLI，包括 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`py`、`fmt`、`check`、`typecheck`、`operators`、`lsp`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例。
@@ -78,13 +81,14 @@ make bench-check
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
-- 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation` import。
+- 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation`、`qy.errors` import。库代码（stdlib 等）若需要评估函数应从 `qy.eval_runtime` 导入（P1-3 兼容门面）。
 - bytecode compiler 不允许重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - Qy 不保留可选 runtime backend；不得新增或维护 IR VM/evaluator backend 语义。公共执行入口必须走 register VM。
 - 语言内核没有宿主环境；Qy 实例可配置 pre-symbol-space，默认实现可惰性预定义数字/字符串等传统符号。
 - Python host interop 不属于默认语言核心；host value/operator 必须通过实例 pre-symbol-space、显式注入或显式 import 进入 symbol-space-chain。
 - `define` 只在当前 symbol-space 内一次性绑定，可以 shadow parent symbol-space 中的任意 symbol。
 - 修改语言语义时，必须同步更新 `LANGUAGE.md` 与 `todo.md`。
+- 修改 reader、lowering、evaluator、IR 或 analyzer 时，同步考虑 CLI、LSP、formatter 和测试覆盖。
 - 修改 reader、lowering、evaluator、IR 或 analyzer 时，同步考虑 CLI、LSP、formatter 和测试覆盖。
 
 ## 测试策略

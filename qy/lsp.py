@@ -8,7 +8,7 @@ from pygls.lsp.server import LanguageServer
 from qy import __version__
 from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
-from qy.evaluator import standard_environment
+from qy.environment import standard_environment
 from qy.formatter import format_source
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError

@@ -6,9 +6,9 @@ from dataclasses import dataclass
 from typing import cast
 
 from qy.diagnostics import Diagnostic
+from qy.environment import Environment
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
-from qy.evaluator import Environment
-from qy.evaluator import standard_environment
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -493,7 +493,11 @@ def _lower_defun(
 def _lower_defeffect(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
     if len(form) < 2:
         context.diagnostic("defeffect expects an effect name", form)
-        return DefeffectExpr(Symbol("<invalid>"), True, get_span(form))
+        return DefineExpr(
+            Symbol("<invalid>"),
+            DefeffectExpr(Symbol("<invalid>"), True, get_span(form)),
+            get_span(form),
+        )
     _, name, *options = form
     name = _ensure_symbol(name, "defeffect name", context)
     resumable = True
@@ -510,7 +514,11 @@ def _lower_defeffect(form: tuple[object, ...], context: LoweringContext) -> IREx
             context.diagnostic("defeffect options must be empty or :resumable true|false", form)
         else:
             resumable = options[1] == Symbol("true")
-    return DefeffectExpr(name, resumable, get_span(form))
+    return DefineExpr(
+        name,
+        DefeffectExpr(name, resumable, get_span(form)),
+        get_span(form),
+    )
 
 
 def _lower_module(

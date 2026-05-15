@@ -443,6 +443,13 @@ class _FunctionLowerer:
     def lower_define(self, expression: DefineExpr) -> _LoweredExpression:
         register = self.register()
 
+        if isinstance(expression.value, DefeffectExpr):
+            self.emit(
+                "DEFEFFECT", expression.name, expression.value.resumable, span=expression.span
+            )
+            self.emit("LOAD_ENV", register, expression.name, span=expression.span)
+            return _LoweredExpression(register)
+
         if isinstance(expression.value, LambdaExpr):
             function_index = self.owner.lower_function(
                 expression.name,

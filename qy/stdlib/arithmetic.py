@@ -5,7 +5,7 @@ from __future__ import annotations
 import operator
 
 from qy.errors import QyTypeError
-from qy.evaluator import PureOperator
+from qy.operators import PureOperator
 from qy.reader import Symbol
 
 

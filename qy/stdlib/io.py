@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 from qy.display import format_value
-from qy.evaluator import EffectOperator
-from qy.evaluator import Environment
-from qy.evaluator import EvaluationError
-from qy.evaluator import evaluate_async
+from qy.environment import Environment
+from qy.errors import EvaluationError
+from qy.eval_runtime import evaluate_async
+from qy.operators import EffectOperator
 from qy.reader import Symbol
 from qy.stdlib.module import StandardModule
 

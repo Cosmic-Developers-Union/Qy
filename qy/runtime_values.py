@@ -40,7 +40,7 @@ class UserFunction:
     closure: Environment
 
     async def __call__(self, *args: object) -> object:
-        from qy.evaluator import _evaluate_tail_body_async
+        from qy.eval_runtime import evaluate_tail_body_async
 
         if len(args) != len(self.params):
             raise QyArityError(
@@ -55,7 +55,7 @@ class UserFunction:
         current_args = args
         while True:
             local_env = self.closure.child(dict(zip(self.params, current_args, strict=True)))
-            result = await _evaluate_tail_body_async(self.body, local_env, self)
+            result = await evaluate_tail_body_async(self.body, local_env, self)
             if not isinstance(result, _TailCall) or result.function is not self:
                 return result
             current_args = result.args

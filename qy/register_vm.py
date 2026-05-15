@@ -7,28 +7,29 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
+from qy.async_runtime import run_async
 from qy.bytecode import BytecodeFunction
 from qy.bytecode import BytecodeFunctionValue
 from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
 from qy.bytecode import Register
 from qy.bytecode_compiler import compile_bytecode
+from qy.continuation import QyContinuation
+from qy.environment import Environment
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
-from qy.evaluator import Environment
-from qy.evaluator import PureOperator
-from qy.evaluator import QyContinuation
-from qy.evaluator import run_async
-from qy.evaluator import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
 from qy.macroexpand import macroexpand_source_async
 from qy.operator_runtime import runtime_operator_semantics
 from qy.operator_runtime import validate_operator_arity
+from qy.operators import PureOperator
 from qy.reader import Symbol
+from qy.runtime_values import EffectDefinition
 from qy.values import QY_NIL
 from qy.virtual_stack import VirtualStack
 from qy.virtual_stack import VirtualStackFrame
@@ -42,6 +43,24 @@ __all__ = [
 ]
 
 _COMPILE_TIME_MACRO = object()
+
+
+@dataclass(frozen=True, slots=True)
+class _EffectFrame:
+    """Captured frame state for effect continuation.
+
+    When an effect is performed, the current frame state must be saved so that
+    the effect handler can resume execution at this point with a value.
+    This data structure explicitly models the saved frame state.
+    """
+
+    registers: tuple[object, ...]
+    env: Environment
+    pc: int
+    parents: tuple[Environment, ...]
+    results: tuple[object, ...]
+    function_value: BytecodeFunctionValue
+    function: BytecodeFunction
 
 
 @dataclass(slots=True)
@@ -490,8 +509,6 @@ class RegisterVirtualMachine:
             raise EvaluationError(str(e)) from e
 
     async def _defeffect(self, name: Symbol, resumable: bool, env: Environment) -> None:
-        from qy.evaluator import EffectDefinition
-
         env.define_once(name, EffectDefinition(name, resumable))
 
     async def _perform(
@@ -512,28 +529,32 @@ class RegisterVirtualMachine:
             continuation = _make_identity_continuation(effect_name, False)
             raise QyEffectSignal(effect_name, arg, continuation, resumable=False)
 
-        # Capture current frame state to build a resumable continuation
-        saved_registers = list(frame.registers)
-        saved_env = frame.env
-        saved_parents = list(frame.parents)
-        saved_results = list(frame.results)
-        saved_pc = frame.pc
-        function_value = frame.function_value
-        function = frame.function
+        # Capture current frame state into an EffectFrame structure.
+        # This explicit representation clarifies what must be saved for resumption.
+        effect_frame = _EffectFrame(
+            registers=tuple(frame.registers),
+            env=frame.env,
+            pc=frame.pc,
+            parents=tuple(frame.parents),
+            results=tuple(frame.results),
+            function_value=frame.function_value,
+            function=frame.function,
+        )
 
         vm = self
 
         async def resume(value: object) -> object:
-            resume_registers = list(saved_registers)
+            # Restore the captured frame state and continue execution.
+            resume_registers = list(effect_frame.registers)
             resume_registers[dest_reg] = value
             resume_frame = _Frame(
-                function_value,
-                function,
-                saved_pc,
+                effect_frame.function_value,
+                effect_frame.function,
+                effect_frame.pc,
                 resume_registers,
-                saved_env,
-                list(saved_parents),
-                list(saved_results),
+                effect_frame.env,
+                list(effect_frame.parents),
+                list(effect_frame.results),
             )
             while resume_frame.pc < len(resume_frame.function.instructions):
                 inst = resume_frame.function.instructions[resume_frame.pc]
@@ -573,9 +594,7 @@ class RegisterVirtualMachine:
             raise
 
     async def _resume(self, continuation: object, value: object) -> object:
-        from qy.evaluator import QyContinuation as _QyContinuation
-
-        if not isinstance(continuation, _QyContinuation):
+        if not isinstance(continuation, QyContinuation):
             raise QyRuntimeError(
                 f"resume expects a continuation, got {continuation!r}",
                 metadata={"value": continuation},

@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
+from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.evaluator import ControlOperator
-from qy.evaluator import Environment
-from qy.evaluator import MetaOperator
-from qy.evaluator import ScopeOperator
-from qy.evaluator import UserFunction
-from qy.evaluator import ensure_symbol
-from qy.evaluator import evaluate_async
-from qy.evaluator import evaluate_body_async
+from qy.eval_runtime import evaluate_async
+from qy.eval_runtime import evaluate_body_async
+from qy.operators import ControlOperator
+from qy.operators import MetaOperator
+from qy.operators import ScopeOperator
 from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
+from qy.runtime_values import UserFunction
+from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
 from qy.values import list_to_qy_cons
 

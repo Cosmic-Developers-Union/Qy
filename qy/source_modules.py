@@ -5,11 +5,11 @@ from __future__ import annotations
 from typing import cast
 
 from qy.compile_time import compile_time_environment
-from qy.evaluator import EffectDefinition
-from qy.evaluator import Environment
-from qy.evaluator import UserFunction
+from qy.environment import Environment
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
+from qy.runtime_values import EffectDefinition
+from qy.runtime_values import UserFunction
 from qy.stdlib import load_module
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule

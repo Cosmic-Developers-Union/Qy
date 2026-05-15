@@ -85,6 +85,8 @@ def _toplevel(expr: IRExpr) -> list[str]:
     if isinstance(expr, DefineExpr):
         if isinstance(expr.value, LambdaExpr):
             return _define_lambda(expr.name, expr.value)
+        if isinstance(expr.value, DefeffectExpr):
+            return [f"# effect {expr.name.name} (resumable={expr.value.resumable})"]
         value_code = _expr(expr.value)
         return [f"{_mangle(expr.name.name)} = {value_code}"]
     if isinstance(expr, PipelineExpr):

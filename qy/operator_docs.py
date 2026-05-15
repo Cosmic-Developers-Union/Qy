@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from qy.evaluator import ControlOperator
-from qy.evaluator import EffectDefinition
-from qy.evaluator import EffectOperator
-from qy.evaluator import MetaOperator
-from qy.evaluator import PureOperator
-from qy.evaluator import ScopeOperator
 from qy.macro import MacroDefinition
+from qy.operators import ControlOperator
+from qy.operators import EffectOperator
+from qy.operators import MetaOperator
+from qy.operators import PureOperator
+from qy.operators import ScopeOperator
+from qy.runtime_values import EffectDefinition
 from qy.stdlib import PRELUDE_MODULES
 from qy.stdlib import load_module
 

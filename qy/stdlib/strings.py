@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from qy.evaluator import Environment
-from qy.evaluator import EvaluationError
-from qy.evaluator import PureOperator
-from qy.evaluator import evaluate_async
+from qy.environment import Environment
+from qy.errors import EvaluationError
+from qy.eval_runtime import evaluate_async
+from qy.operators import PureOperator
 from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple

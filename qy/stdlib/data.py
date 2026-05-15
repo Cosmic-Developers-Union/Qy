@@ -4,12 +4,12 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.environment import Environment
+from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.evaluator import Environment
-from qy.evaluator import EvaluationError
-from qy.evaluator import PureOperator
-from qy.evaluator import evaluate_async
+from qy.eval_runtime import evaluate_async
+from qy.operators import PureOperator
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.values import QY_EMPTY_LIST

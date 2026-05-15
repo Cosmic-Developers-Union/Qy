@@ -215,7 +215,7 @@ surface dialect 约束：
 - 删除 `ComponentExpr`。
 - 删除或裁决 `RuntimeMetaCallExpr`；默认方向是删除，runtime eval 只能走显式 `eval`/`RuntimeEvalExpr`。
 - `defun` lowering 成 define/function 语义，不再是独立可重绑定定义。（已完成：`DefineExpr(name, LambdaExpr(...))`）
-- `defeffect` lowering 成 define/effect 语义。
+- `defeffect` lowering 成 define/effect 语义。（已完成：`DefineExpr(name, DefeffectExpr(...))`）
 - analyzer、formatter、LSP、CLI HIR dump 同步。
 
 验收：
@@ -251,6 +251,12 @@ surface dialect 约束：
 ### P0-6. ordering/join/effect VM 语义
 
 目标：`pipeline/parallel/all/race` 与 algebraic effects 在 VM 中形成统一控制模型。
+
+当前架构约束：
+
+- effect frame 在 register VM 中仍作为 Python 对象动态保存（saved_registers / saved_env / saved_pc）。
+- LIR 层尚未显式建模 effect frame 的保存与恢复，这是下一步重构方向。
+- bytecode 编译仍然直接生成 PERFORM/HANDLE/RESUME opcode，VM 在动态创建 closure。
 
 任务：
 
@@ -322,8 +328,9 @@ surface dialect 约束：
 
 验收：
 
-- `rg "from qy.evaluator"` 只剩 compatibility/test 明确场景。
+- `rg "from qy.evaluator"` 只剩 compatibility/test 明确场景。（✓ 已完成：仅 `qy/eval_runtime.py` 作为兼容门面）
 - 新核心算子没有 legacy operator class 实例。
+- `async_runtime`、`eval_runtime`、`symbol_utils` 门面模块已就位，stdlib 无直接 evaluator 类型导入。
 
 ### P1-4. module/import/export 模型收口
 

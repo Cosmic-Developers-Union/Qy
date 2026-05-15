@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from qy.environment import Environment
+from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.evaluator import Environment
-from qy.evaluator import EvaluationError
-from qy.evaluator import ScopeOperator
-from qy.evaluator import ensure_symbol
-from qy.evaluator import evaluate_async
+from qy.eval_runtime import evaluate_async
+from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule
+from qy.symbol_utils import ensure_symbol
 
 
 def _is_special_form(form: object, name: str) -> bool:

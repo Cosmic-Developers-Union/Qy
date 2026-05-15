@@ -1,5 +1,6 @@
 from qy.ir import CallExpr
 from qy.ir import CondExpr
+from qy.ir import DefeffectExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
 from qy.ir import LetExpr
@@ -79,3 +80,14 @@ def test_lowering_uses_operator_signature_argument_types():
     program = lower_source("(+ true 1)")
 
     assert any("expects number arguments" in item.message for item in program.diagnostics)
+
+
+def test_defeffect_lowers_to_define_with_effect_value():
+    program = lower_source("(defeffect ask :resumable false)")
+
+    assert program.ok
+    definition = program.body[0]
+    assert isinstance(definition, DefineExpr)
+    assert definition.name.name == "ask"
+    assert isinstance(definition.value, DefeffectExpr)
+    assert definition.value.resumable is False

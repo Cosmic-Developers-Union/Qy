@@ -11,7 +11,7 @@ from qy.errors import SourceSpan
 from qy.reader import Symbol
 
 if TYPE_CHECKING:
-    from qy.evaluator import Environment
+    from qy.environment import Environment
 
 __all__ = [
     "BytecodeFunction",
