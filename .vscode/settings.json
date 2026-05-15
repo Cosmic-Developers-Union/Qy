@@ -1,5 +1,0 @@
-{
-  "github.copilot.chat.otel.enabled": true,
-  "github.copilot.chat.otel.otlpEndpoint": "http://langfuse.local/api/public/otel",
-  "github.copilot.chat.otel.captureContent": true
-}
