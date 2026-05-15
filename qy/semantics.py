@@ -10,7 +10,6 @@ from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
-from qy.ir_vm._core import IRFunction
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.types import OperatorKind
@@ -58,7 +57,7 @@ def value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | IRFunction | BytecodeFunctionValue):
+    if isinstance(value, UserFunction | BytecodeFunctionValue):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

@@ -58,7 +58,6 @@ MIROpcode = Literal[
     "RACE_FIRST",
     "RESUME",
     "RUNTIME_EVAL",
-    "RUNTIME_META_CALL",
     "STORE_LOCAL",
 ]
 
@@ -360,12 +359,6 @@ def _verify_instruction(
                 return
             _check_register(function, block_id, operands[0], diagnostics)
             _check_register(function, block_id, operands[1], diagnostics)
-        case "RUNTIME_META_CALL":
-            if not _check_operand_arity(
-                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
-            ):
-                return
-            _check_register(function, block_id, operands[0], diagnostics)
         case "STORE_LOCAL" | "DEFINE_ONCE":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
@@ -661,8 +654,6 @@ def _format_instruction(instruction: MIRInstruction) -> str:
             rendered = (
                 f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
             )
-        case "RUNTIME_META_CALL":
-            rendered = f"{_format_register(operands[0])} = RUNTIME_META_CALL {operands[1]!r}"
         case "STORE_LOCAL" | "DEFINE_ONCE":
             rendered = f"{instruction.opcode} {_format_operand(operands[0])}, {_format_register(operands[1])}"
         case _:

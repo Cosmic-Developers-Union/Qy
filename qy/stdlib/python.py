@@ -264,7 +264,6 @@ def _python_to_qy(value: object) -> object:
 
 def _is_qy_callable(value: object) -> bool:
     from qy.bytecode import BytecodeFunctionValue
-    from qy.ir_vm._core import IRFunction
 
     return isinstance(
         value,
@@ -275,7 +274,6 @@ def _is_qy_callable(value: object) -> bool:
         | MetaOperator
         | MacroDefinition
         | UserFunction
-        | IRFunction
         | BytecodeFunctionValue,
     )
 
@@ -295,13 +293,12 @@ def _wrap_qy_callable(value: object, env: Environment) -> Callable[..., object]:
 
 def _qy_callable_name(value: object) -> str | None:
     from qy.bytecode import BytecodeFunctionValue
-    from qy.ir_vm._core import IRFunction
 
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return value.name
-    if isinstance(value, MacroDefinition | UserFunction | IRFunction):
+    if isinstance(value, MacroDefinition | UserFunction):
         return value.name.name
     if isinstance(value, BytecodeFunctionValue):
         return value.function.name.name
@@ -310,11 +307,10 @@ def _qy_callable_name(value: object) -> str | None:
 
 async def _call_qy_callable(value: object, args: tuple[object, ...], env: Environment) -> object:
     from qy.bytecode import BytecodeFunctionValue
-    from qy.ir_vm._core import IRFunction
 
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))
-    if isinstance(value, UserFunction | IRFunction):
+    if isinstance(value, UserFunction):
         return await _await_cached_value(value(*args))
     if isinstance(value, BytecodeFunctionValue):
         from qy.register_vm import call_function_value

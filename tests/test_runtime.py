@@ -1,3 +1,6 @@
+import pytest
+
+from qy.errors import QyRuntimeError
 from qy.evaluator import ControlOperator
 from qy.evaluator import MetaOperator
 from qy.evaluator import evaluate
@@ -28,7 +31,10 @@ def test_qy_instance_registers_external_operators():
 
     assert qy.evaluate_source("(double 21)") == 42
     assert qy.evaluate_source("(unless false 7)") == 7
-    assert qy.evaluate_source("(first-symbol unknown)") == S("first-symbol")
+    with pytest.raises(
+        QyRuntimeError, match="meta operator 'first-symbol' can only run during macro expansion"
+    ):
+        qy.evaluate_source("(first-symbol unknown)")
 
 
 def test_legacy_operator_registration_names():
@@ -49,7 +55,10 @@ def test_legacy_operator_registration_names():
     assert isinstance(qy.env.resolve(S("unless")), ControlOperator)
     assert isinstance(qy.env.resolve(S("first-symbol")), MetaOperator)
     assert qy.evaluate_source("(unless false 7)") == 7
-    assert qy.evaluate_source("(first-symbol unknown)") == S("first-symbol")
+    with pytest.raises(
+        QyRuntimeError, match="meta operator 'first-symbol' can only run during macro expansion"
+    ):
+        qy.evaluate_source("(first-symbol unknown)")
 
 
 def test_qy_instance_exposes_pipeline_helpers():

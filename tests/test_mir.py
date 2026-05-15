@@ -9,10 +9,10 @@ from qy import compile_mir_bytecode
 from qy import dump_mir
 from qy import lower_mir
 from qy import verify_mir
-from qy.evaluator import standard_environment
 from qy.ir import CallExpr
 from qy.ir import CondExpr
-from qy.ir import DefunExpr
+from qy.ir import DefineExpr
+from qy.ir import LambdaExpr
 from qy.lowering import lower_source
 from qy.mir import MIROpcode
 from qy.reader import Symbol
@@ -40,17 +40,21 @@ def test_mir_lowering_preserves_tail_call_as_terminator():
         """
     )
     definition = hir.body[0]
-    assert isinstance(definition, DefunExpr)
-    cond = definition.body[0]
+    assert isinstance(definition, DefineExpr)
+    assert isinstance(definition.value, LambdaExpr)
+    cond = definition.value.body[0]
     assert isinstance(cond, CondExpr)
     recursive_call = cond.clauses[1].result
     assert isinstance(recursive_call, CallExpr)
     assert recursive_call.tail_position
 
     mir = lower_mir(hir)
-    sum_to = next(function for function in mir.functions if function.name.name == "sum-to")
 
-    assert any(block.terminator.opcode == "TAIL_CALL" for block in sum_to.blocks)
+    assert any(
+        block.terminator.opcode == "TAIL_CALL"
+        for function in mir.functions
+        for block in function.blocks
+    )
 
 
 def test_mir_lowering_keeps_top_level_results():
@@ -260,23 +264,6 @@ def test_verify_mir_reports_malformed_operand_kinds_instead_of_crashing():
         "instruction 'CALL' expects a register tuple" in item.message for item in diagnostics
     )
     assert any("jumps to non-block target 'bad'" in item.message for item in diagnostics)
-
-
-def test_mir_lowering_lowers_runtime_meta_calls_to_opcode():
-    env = standard_environment()
-
-    @env.register_meta("first-symbol")
-    def first_symbol(expression, current_env):
-        del current_env
-        return expression[0]
-
-    mir = lower_mir(lower_source("(first-symbol unknown)", env))
-
-    assert mir.ok
-    instructions = [
-        instr for fn in mir.functions for block in fn.blocks for instr in block.instructions
-    ]
-    assert any(instr.opcode == "RUNTIME_META_CALL" for instr in instructions)
 
 
 def test_mir_lowering_assert_emits_branch_and_raise_effect():

@@ -96,7 +96,7 @@ surface dialect 约束：
 
 ### P0-0. 移除多 backend，register VM 唯一化
 
-状态：`Qy` 与 CLI 已固定 register VM；`EvaluationBackend` / `Qy(backend=...)` 已移除。`qy.ir_vm` 仅保留内部迁移代码，顶层 public API 已下沉，待后续物理删除目录。
+状态：已完成。`Qy` 与 CLI 已固定 register VM；`EvaluationBackend` / `Qy(backend=...)`、`qy.ir_vm/`、legacy evaluator public re-export、`tests/test_ir_vm.py` 均已清理。
 
 任务：
 
@@ -128,7 +128,7 @@ surface dialect 约束：
   - 写入完整管线 `source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
   - 明确 register VM 是唯一执行器；IR VM / evaluator 是删除对象，不是 reference runtime。
 - 更新 `AGENTS.md`：
-  - 更新项目概览和重要文件路径：`qy/environment.py`、`qy/operators.py`、`qy/runtime_values.py`、`qy/continuation.py`、`qy/ir_vm/`、`qy/lir.py`、`qy/lir_lowering.py`、`qy/register_vm.py`。
+  - 更新项目概览和重要文件路径：`qy/environment.py`、`qy/operators.py`、`qy/runtime_values.py`、`qy/continuation.py`、`qy/lir.py`、`qy/lir_lowering.py`、`qy/register_vm.py`。
   - 更新核心源码流向到完整 pipeline。
   - 删除过时 examples 路径，改为当前 validation/example 入口。
   - 加入：修改语言语义时必须同步 `LANGUAGE.md` 与 `todo.md`。
@@ -139,7 +139,7 @@ surface dialect 约束：
   - 明确 `pipeline/parallel/all/race` 是 HIR 独立节点。
 - 重写 `docs/language-core-audit.md`：
   - 删除已完成的旧阻塞描述。
-  - 只保留当前真实偏差：多 backend 残留、`define` 仍按 parent 查重、默认环境预加载 host interop、旧 core 暴露、`component` 残留、`RuntimeMetaCallExpr`、legacy operator dispatch、Python codegen 绕过 MIR/LIR、effect continuation 未最终化。
+  - 只保留当前真实偏差：`define` 与 module/import define-once 统一、pre-symbol-space 显式模型、legacy operator dispatch、Python codegen 绕过 MIR/LIR、effect continuation 未最终化。
 - 更新 `docs/pipeline.md`：
   - 描述 debug CLI 输出：ast / expanded ast / HIR / MIR / LIR / bytecode。
   - 明确每层输入输出和禁止跨层解释。
@@ -214,7 +214,7 @@ surface dialect 约束：
   - macro family：`QuasiquoteExpr` / `UnquoteExpr` / `GensymExpr` / `CaptureExpr`，或等价 compile-time 表示
 - 删除 `ComponentExpr`。
 - 删除或裁决 `RuntimeMetaCallExpr`；默认方向是删除，runtime eval 只能走显式 `eval`/`RuntimeEvalExpr`。
-- `defun` lowering 成 define/function 语义，不再是独立可重绑定定义。
+- `defun` lowering 成 define/function 语义，不再是独立可重绑定定义。（已完成：`DefineExpr(name, LambdaExpr(...))`）
 - `defeffect` lowering 成 define/effect 语义。
 - analyzer、formatter、LSP、CLI HIR dump 同步。
 

@@ -15,7 +15,6 @@ from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import UserFunction
 from qy.evaluator import standard_environment
-from qy.ir_vm._core import IRFunction
 from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
@@ -243,7 +242,7 @@ def _value_type(value: object) -> TypeName:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | IRFunction):
+    if isinstance(value, UserFunction):
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

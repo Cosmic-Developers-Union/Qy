@@ -31,7 +31,6 @@ from qy.ir import QuoteExpr
 from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
-from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.reader import DottedTuple
@@ -84,6 +83,8 @@ def _toplevel(expr: IRExpr) -> list[str]:
     if isinstance(expr, DefunExpr):
         return _defun(expr)
     if isinstance(expr, DefineExpr):
+        if isinstance(expr.value, LambdaExpr):
+            return _define_lambda(expr.name, expr.value)
         value_code = _expr(expr.value)
         return [f"{_mangle(expr.name.name)} = {value_code}"]
     if isinstance(expr, PipelineExpr):
@@ -108,6 +109,14 @@ def _defun(expr: DefunExpr, indent: int = 0) -> list[str]:
     lines = [f"{prefix}def {_mangle(expr.name.name)}({params}):"]
     body_lines = _body(expr.body, indent + 1)
     lines.extend(body_lines)
+    return lines
+
+
+def _define_lambda(name: Symbol, value: LambdaExpr, indent: int = 0) -> list[str]:
+    prefix = "    " * indent
+    params = ", ".join(_mangle(p.name) for p in value.params)
+    lines = [f"{prefix}def {_mangle(name.name)}({params}):"]
+    lines.extend(_body(value.body, indent + 1))
     return lines
 
 
@@ -165,8 +174,6 @@ def _expr(expr: IRExpr) -> str:
         return f"_effect_resume({_expr(expr.continuation)}, {_expr(expr.value)})"
     if isinstance(expr, RuntimeEvalExpr):
         return f"_runtime_eval({_expr(expr.expression)})"
-    if isinstance(expr, RuntimeMetaCallExpr):
-        return f"_meta_call({_mangle(expr.operator.symbol.name)!r})"
     if isinstance(expr, (DefeffectExpr, MacroExpr, ModuleExpr)):
         return "None"
     if isinstance(expr, DefunExpr):

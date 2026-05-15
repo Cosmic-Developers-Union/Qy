@@ -32,7 +32,6 @@ from qy.ir import QuoteExpr
 from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
-from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.mir import MIRBlock
@@ -182,8 +181,6 @@ class _FunctionLowerer:
             return self.lower_race(expression, tail=tail)
         if isinstance(expression, ApplyExpr):
             return self.lower_apply(expression, tail=tail)
-        if isinstance(expression, RuntimeMetaCallExpr):
-            return self.lower_runtime_meta_call(expression)
         if isinstance(expression, CacheExpr):
             return self.lower_cache(expression)
 
@@ -433,17 +430,6 @@ class _FunctionLowerer:
         self.emit("APPLY", result, func.register, args.register, span=expression.span)
         return _LoweredExpression(result)
 
-    def lower_runtime_meta_call(self, expression: RuntimeMetaCallExpr) -> _LoweredExpression:
-        result = self.register()
-        self.emit(
-            "RUNTIME_META_CALL",
-            result,
-            expression.operator.symbol,
-            expression.raw_form,
-            span=expression.span,
-        )
-        return _LoweredExpression(result)
-
     def lower_cache(self, expression: CacheExpr) -> _LoweredExpression:
         thunk_index = self.owner.lower_function(
             Symbol("<cache-thunk>"),
@@ -455,10 +441,20 @@ class _FunctionLowerer:
         return _LoweredExpression(result)
 
     def lower_define(self, expression: DefineExpr) -> _LoweredExpression:
-        value = self.lower_expr(expression.value)
         register = self.register()
-        if value.register is not None and not self.current.terminated:
-            self.emit("MOVE", register, value.register, span=expression.span)
+
+        if isinstance(expression.value, LambdaExpr):
+            function_index = self.owner.lower_function(
+                expression.name,
+                expression.value.params,
+                expression.value.body,
+            )
+            self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
+        else:
+            value = self.lower_expr(expression.value)
+            if value.register is not None and not self.current.terminated:
+                self.emit("MOVE", register, value.register, span=expression.span)
+
         self.emit("DEFINE_ONCE", expression.name, register, span=expression.span)
         return _LoweredExpression(register)
 

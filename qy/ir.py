@@ -46,7 +46,6 @@ __all__ = [
     "RaceExpr",
     "ResumeExpr",
     "RuntimeEvalExpr",
-    "RuntimeMetaCallExpr",
     "SymbolRefExpr",
     "UnresolvedSymbolExpr",
     "dump_ir",
@@ -117,14 +116,6 @@ class RuntimeEvalExpr:
     expression: IRExpr
     span: SourceSpan | None = None
     type_name: TypeName = "any"
-
-
-@dataclass(frozen=True, slots=True)
-class RuntimeMetaCallExpr:
-    operator: SymbolRefExpr
-    raw_form: tuple[object, ...]
-    span: SourceSpan | None = None
-    type_name: TypeName = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -331,7 +322,6 @@ type IRExpr = (
     | RaceExpr
     | ResumeExpr
     | RuntimeEvalExpr
-    | RuntimeMetaCallExpr
     | SymbolRefExpr
     | UnresolvedSymbolExpr
 )

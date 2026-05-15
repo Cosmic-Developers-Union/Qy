@@ -24,10 +24,12 @@ from qy.macro import MacroExpansionServices
 from qy.macro_hygiene import MacroRename
 from qy.macro_hygiene import _tuple_like
 from qy.macro_hygiene import apply_hygiene
+from qy.macro_scope import MacroScope
+from qy.macro_trace import MacroExpansionTrace
+from qy.macro_trace import MacroSourceMapEntry
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
-from qy.reader import SourceSpan
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
@@ -59,38 +61,6 @@ _MODULE_MACRO_NAMESPACE_CACHE_KEY = ("qy", "module_macro_namespace")
 class MacroExpansionOptions:
     max_depth: int = _MAX_MACRO_EXPANSION_DEPTH
     effect_policy: MacroEffectPolicy = "deny"
-
-
-@dataclass(frozen=True, slots=True)
-class MacroSourceMapEntry:
-    macro: Symbol
-    original_span: SourceSpan | None
-    expanded_span: SourceSpan | None
-    depth: int
-    generated_symbols: tuple[Symbol, ...] = ()
-    renames: tuple[MacroRename, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class MacroExpansionTrace:
-    macro: Symbol
-    input_span: SourceSpan | None
-    output_span: SourceSpan | None
-    depth: int
-    input_form: object = field(compare=False, repr=False)
-    output_form: object = field(compare=False, repr=False)
-    generated_symbols: tuple[Symbol, ...] = ()
-    renames: tuple[MacroRename, ...] = ()
-
-    def source_map_entry(self) -> MacroSourceMapEntry:
-        return MacroSourceMapEntry(
-            self.macro,
-            self.input_span,
-            self.output_span,
-            self.depth,
-            self.generated_symbols,
-            self.renames,
-        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,26 +147,6 @@ async def macroexpand_source_async(
             (Diagnostic(str(e), "error", line=e.line, column=e.column),),
         )
     return await macroexpand_async(forms, env, options=options)
-
-
-@dataclass(slots=True)
-class MacroScope:
-    parent: MacroScope | None = None
-    publish_definitions: bool = False
-    bindings: dict[Symbol, MacroDefinition] = field(default_factory=dict)
-
-    def child(self, *, publish_definitions: bool = False) -> MacroScope:
-        return MacroScope(self, publish_definitions)
-
-    def define(self, name: Symbol, value: MacroDefinition) -> None:
-        self.bindings[name] = value
-
-    def lookup(self, name: Symbol) -> MacroDefinition | None:
-        if name in self.bindings:
-            return self.bindings[name]
-        if self.parent is not None:
-            return self.parent.lookup(name)
-        return None
 
 
 @dataclass(slots=True)

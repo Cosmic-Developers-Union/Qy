@@ -78,7 +78,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 | chain | `atom` `eq` `car` `cdr` `cons` |
 | binding | `define` `let` |
 | control | `cond` |
-| ordering/join | `pipeline` `parallel` `race` `all` |
+| ordering/join | `pipeline` `parallel` `all` `race` |
 | function | `defun` `lambda` `apply` |
 | macro | `macro` `quasiquote` `unquote` `unquote-splicing` `gensym` `capture` |
 | effect | `defeffect` `perform` `handle` `resume` |

@@ -2,9 +2,6 @@
 
 Stable pipeline APIs are centered around `Qy`, `macroexpand`, `lower`, `lower_mir`,
 `compile_mir_bytecode`, `compile_bytecode`, and `RegisterVirtualMachine`.
-
-Legacy compatibility exports from `qy.evaluator` remain available, but they are
-not the recommended extension surface for new work.
 """
 
 # coding: utf-8
@@ -49,14 +46,6 @@ from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import QyContinuation
 from qy.evaluator import ScopeOperator
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_async
-from qy.evaluator import evaluate_file
-from qy.evaluator import evaluate_file_async
-from qy.evaluator import evaluate_program
-from qy.evaluator import evaluate_program_async
-from qy.evaluator import evaluate_source
-from qy.evaluator import evaluate_source_async
 from qy.evaluator import standard_environment
 from qy.formatter import dump_form
 from qy.formatter import dump_program
@@ -226,18 +215,10 @@ __all__ = [
     "dump_lir",
     "dump_mir",
     "dump_program",
-    "evaluate",
-    "evaluate_async",
     "evaluate_bytecode",
     "evaluate_bytecode_async",
     "evaluate_bytecode_source",
     "evaluate_bytecode_source_async",
-    "evaluate_file",
-    "evaluate_file_async",
-    "evaluate_program",
-    "evaluate_program_async",
-    "evaluate_source",
-    "evaluate_source_async",
     "form_to_tuple",
     "format_form",
     "format_operator_docs",

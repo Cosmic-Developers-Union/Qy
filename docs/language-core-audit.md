@@ -13,17 +13,15 @@
 
 ---
 
-## B1. 多 backend 残留
+## B1. 多 backend 残留（已完成）
 
-**位置**：`qy/runtime.py`、`qy/ir_vm/`、`qy/evaluator.py`、`qy/__init__.py`、`tests/test_ir_vm.py`、`README.md`
+**位置**：`qy/runtime.py`、`qy/evaluator.py`、`qy/__init__.py`、`tests/test_register_vm_semantics.py`、`README.md`
 
-当前仓库仍保留 IR VM / evaluator 的兼容代码，但公开执行入口已经收口到 register VM：`Qy.evaluate_*`、`qy.evaluator.evaluate_*`、macro compile-time 执行和 benchmark 主路径都不再依赖 IR VM。`qy.ir_vm` 顶层 public execution API 已移除，剩余问题主要是目录级删除与内部兼容类型。
+`qy.ir_vm/` 已物理删除，`Qy(backend=...)` / `EvaluationBackend` 已删除，`Qy.evaluate_*`、macro compile-time 和 benchmark 主路径统一走 register VM。当前没有可选 backend。
 
 **处置方向**：
 
-- 删除或降级 `Qy.evaluate_ir*`、`qy.ir_vm.*` public API。
-- 继续缩减 `IRFunction` 等 IR VM 类型的公开表面。
-- 旧 IR VM 测试迁移或删除，不再作为新语义验收。
+- 保持 register VM 唯一执行器约束，禁止新增 backend 回归。
 
 ---
 
@@ -63,7 +61,7 @@
 
 **位置**：`qy/mir_lowering.py`、`qy/register_vm.py`
 
-`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr`、`CacheExpr`、`RuntimeMetaCallExpr` 已有 lowering 和 VM 路径，但它们仍与旧 operator dispatch、legacy runtime helpers 混合存在，尚未完全收口到“只走 register VM”的最终模型。
+`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr`、`CacheExpr` 已有 lowering 和 VM 路径。当前残留点主要是 legacy operator dispatch 与少量 runtime helper 的共存，而非 backend 分叉。
 
 **处置方向**：
 
@@ -85,16 +83,15 @@
 
 ---
 
-## B6. `RuntimeMetaCallExpr`
+## B6. `RuntimeMetaCallExpr`（已完成）
 
-**位置**：`qy/ir.py`、`qy/lowering.py`、`qy/ir_vm/`
+**位置**：`qy/ir.py`、`qy/lowering.py`、`qy/mir.py`、`qy/register_vm.py`
 
-`RuntimeMetaCallExpr` 把 macro raw form 传给 runtime 再展开，模糊 compile-time 与 runtime 边界。
+`RuntimeMetaCallExpr` 与 `RUNTIME_META_CALL` opcode 已删除。meta operator 仅允许在 macro expand 阶段执行，运行期调用会产出诊断并失败。
 
 **处置方向**：
 
-- macro 统一在 expand 阶段完成。
-- runtime eval 只能走显式 `eval` / `RuntimeEvalExpr` / VM opcode，不得复用 meta call。
+- 继续保持 compile-time / runtime 边界，不回引 runtime meta call。
 
 ---
 
@@ -128,11 +125,11 @@
 
 | 编号 | 偏差 | 优先级 | 状态 |
 | --- | --- | --- | --- |
-| B1 | 多 backend / 兼容 API 残留 | P0 | 已缓解（public API 已收口） |
+| B1 | 多 backend / 兼容 API 残留 | P0 | 已完成 |
 | B2 | `define` 查 parent，不能 shadow 外层 | P0 | 部分完成 |
 | B3 | 默认环境加载 host interop | P0 | 部分完成 |
 | B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 部分完成 |
 | B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入） |
-| B6 | `RuntimeMetaCallExpr` | P1 | 已缓解（RUNTIME_META_CALL opcode） |
+| B6 | `RuntimeMetaCallExpr` | P1 | 已完成（节点与 opcode 已删除） |
 | B7 | 遗留 operator dispatch | P1 | 待处理 |
 | B8 | Python codegen 绕过 MIR/LIR | P2 | 待处理 |

@@ -1,6 +1,7 @@
 from qy.ir import CallExpr
 from qy.ir import CondExpr
-from qy.ir import DefunExpr
+from qy.ir import DefineExpr
+from qy.ir import LambdaExpr
 from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import QuoteExpr
@@ -65,8 +66,9 @@ def test_tail_position_is_marked_inside_function_body():
 
     assert program.ok
     definition = program.body[0]
-    assert isinstance(definition, DefunExpr)
-    cond = definition.body[0]
+    assert isinstance(definition, DefineExpr)
+    assert isinstance(definition.value, LambdaExpr)
+    cond = definition.value.body[0]
     assert isinstance(cond, CondExpr)
     recursive_call = cond.clauses[1].result
     assert isinstance(recursive_call, CallExpr)

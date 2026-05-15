@@ -19,7 +19,6 @@ from qy.ir import CondClause
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
 from qy.ir import DefineExpr
-from qy.ir import DefunExpr
 from qy.ir import EffectHandler
 from qy.ir import FromImportExpr
 from qy.ir import HandleExpr
@@ -38,7 +37,6 @@ from qy.ir import QuoteExpr
 from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
-from qy.ir import RuntimeMetaCallExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
@@ -223,7 +221,11 @@ def _lower_form(
 
     operator_expr = _lower_form(operator, scope, context)
     if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
-        return RuntimeMetaCallExpr(operator_expr, form, get_span(form))
+        context.diagnostic(
+            f"meta operator {operator_expr.symbol.name!r} can only run during macro expansion",
+            form,
+        )
+        return UnresolvedSymbolExpr(operator_expr.symbol, get_span(form))
 
     args_as_data = _call_uses_non_eager_arguments(operator_expr)
     raw_args = _call_uses_raw_arguments(operator_expr)
@@ -467,7 +469,7 @@ def _lower_defun(
 ) -> IRExpr:
     if len(form) < 4:
         context.diagnostic("defun expects a name, parameter list, and body", form)
-        return DefunExpr(Symbol("<invalid>"), (), (), get_span(form))
+        return DefineExpr(Symbol("<invalid>"), LambdaExpr((), (), get_span(form)), get_span(form))
     _, name, params, *body = form
     name = _ensure_symbol(name, "defun name", context)
     param_symbols = _parameter_symbols(params, "defun", context)
@@ -477,10 +479,13 @@ def _lower_defun(
         context,
     )
     function_scope = _define_parameters(function_scope, param_symbols, context)
-    return DefunExpr(
+    return DefineExpr(
         name,
-        param_symbols,
-        _lower_body(tuple(body), function_scope, context, tail=True),
+        LambdaExpr(
+            param_symbols,
+            _lower_body(tuple(body), function_scope, context, tail=True),
+            get_span(form),
+        ),
         get_span(form),
     )
 

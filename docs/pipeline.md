@@ -16,7 +16,7 @@ source
   -> register VM
 ```
 
-`Qy.evaluate_source(...)` 目前仍保留为兼容入口，但 register VM 是唯一执行目标；IR VM / legacy evaluator 仅作为迁移待删除代码存在，不应继续扩展。
+`Qy.evaluate_source(...)` 与 `Qy.evaluate_bytecode(...)` 是当前稳定执行入口，统一以 register VM 为执行目标。
 
 ## 分层边界
 
@@ -53,10 +53,10 @@ source
 - `Qy.evaluate_source` / `Qy.evaluate_bytecode`
 - `RegisterVirtualMachine`
 
-删除对象（不应继续扩展）：
+已删除对象（禁止回归）：
 
 - `Qy.evaluate_ir` / `Qy.evaluate_ir_source`
-- `qy.ir_vm.*` public execution API
+- `qy.ir_vm/` 目录与 `qy.ir_vm.*` public execution API
 - `Qy(backend=...)` 与 `EvaluationBackend`
 - 直接从 `qy.evaluator` 引入运行时类型或 legacy evaluator helper
 

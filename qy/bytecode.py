@@ -53,7 +53,6 @@ Opcode = Literal[
     "RESUME",
     "RETURN",
     "RUNTIME_EVAL",
-    "RUNTIME_META_CALL",
     "STORE_LOCAL",
     "TAIL_CALL",
 ]

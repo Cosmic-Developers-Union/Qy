@@ -165,11 +165,6 @@ class RegisterVirtualMachine:
                 dest, form_reg = operands
                 form = frame.registers[_register(form_reg)]
                 frame.registers[_register(dest)] = await self._eval_form(form, frame.env)
-            case "RUNTIME_META_CALL":
-                dest, operator_symbol, raw_form = operands
-                frame.registers[_register(dest)] = await self._runtime_meta_call(
-                    _symbol(operator_symbol), _tuple(raw_form), frame.env, instruction.span
-                )
             case "PARALLEL_GATHER":
                 dest, *thunk_indices = operands
                 frame.registers[_register(dest)] = await self._parallel_gather(
@@ -370,29 +365,6 @@ class RegisterVirtualMachine:
         sub_vm = RegisterVirtualMachine(bytecode, env)
         result = await sub_vm.evaluate_program()
         return None if not result else result[-1]
-
-    async def _runtime_meta_call(
-        self,
-        operator_symbol: Symbol,
-        raw_form: tuple[object, ...],
-        env: Environment,
-        span: SourceSpan | None,
-    ) -> object:
-        from qy.errors import QyTypeError as _QyTypeError
-        from qy.evaluator import MetaOperator
-        from qy.macro import MacroDefinition
-
-        operator = env.resolve(operator_symbol)
-        if isinstance(operator, MetaOperator):
-            return await _await_if_needed(operator(raw_form, env))
-        if isinstance(operator, MacroDefinition):
-            expanded = await operator.expand(raw_form[1:])
-            return await self._eval_form(expanded, env)
-        raise _QyTypeError(
-            f"{operator_symbol.name!r} is not a runtime meta operator",
-            span=span,
-            metadata={"operator": operator},
-        )
 
     async def _parallel_gather(
         self,
