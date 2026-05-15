@@ -240,6 +240,8 @@ def _literal_type(value: object) -> TypeName:
         return "number"
     if value is None:
         return "none"
+    if isinstance(value, str):
+        return "string"
     if isinstance(value, tuple):
         return "tuple"
     if isinstance(value, list):

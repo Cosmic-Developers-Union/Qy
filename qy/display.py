@@ -22,6 +22,8 @@ def format_value(value: object) -> str:
         return "T"
     if isinstance(value, QyCons):
         return _format_cons(value)
+    if isinstance(value, str):
+        return value
     if isinstance(value, Symbol | tuple | int | float | bool) or value is None:
         try:
             return write_tuple(cast(TupleForm, value))

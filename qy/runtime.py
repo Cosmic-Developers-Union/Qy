@@ -11,6 +11,7 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_bytecode
 from qy.bytecode_compiler import compile_mir_bytecode
 from qy.environment import Environment
+from qy.environment import EnvironmentFrame
 from qy.environment import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
@@ -40,6 +41,10 @@ __all__ = ["Qy"]
 class Qy:
     def __init__(self, env: Environment | None = None) -> None:
         self.env = env or standard_environment()
+
+    @property
+    def pre_symbol_space_chain(self) -> tuple[EnvironmentFrame, ...]:
+        return self.env.pre_symbol_space_chain()
 
     def read(self, source: str) -> list[Form]:
         return read(source)

@@ -62,3 +62,9 @@
 - macro 只能在 expand 阶段改变 syntax datum；runtime 不能重新解释 macro。
 - 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
 - 新语义不得通过 legacy operator dispatch 扩展。
+
+## eq 语义
+
+- `eq` 对所有值使用 identity（Python `is`）语义：symbol 按名字相等视为同一 identity，chain / object 严格 identity，number 与 string 也按 identity，不做值相等。
+- `eq` 不是数值比较算子；数值相等请用 `=`（来自 `qy.num`），字符串相等请用专用算子。
+- 小整数在 CPython 实现中会 intern，因此 `(eq 0 0)` 等在现有实现中为真，但这是实现细节，不是语言契约。

@@ -19,35 +19,35 @@ def test_bare_symbols():
     ]
 
 
-def test_quoted_symbol_is_still_symbol():
+def test_quoted_string_is_str():
     assert read('abc "abc" "(not a list)" "hello world" ":size"') == [
         S("abc"),
-        S("abc"),
-        S("(not a list)"),
-        S("hello world"),
-        S(":size"),
+        "abc",
+        "(not a list)",
+        "hello world",
+        ":size",
     ]
 
 
-def test_quoted_symbol_decodes_escapes():
+def test_quoted_string_decodes_escapes():
     assert read(r'"hello\nworld" "quote: \"" "slash: \\"') == [
-        S("hello\nworld"),
-        S('quote: "'),
-        S("slash: \\"),
+        "hello\nworld",
+        'quote: "',
+        "slash: \\",
     ]
 
 
-def test_raw_quoted_symbol_preserves_escapes():
+def test_raw_quoted_string_preserves_escapes():
     assert read(r'r"\d+\s+" R"C:\path\to\file"') == [
-        S(r"\d+\s+"),
-        S(r"C:\path\to\file"),
+        r"\d+\s+",
+        r"C:\path\to\file",
     ]
 
 
-def test_multiline_symbols():
+def test_multiline_strings():
     assert read('"""hello\nworld""" r"""\\d+\\s+\nC:\\path"""') == [
-        S("hello\nworld"),
-        S("\\d+\\s+\nC:\\path"),
+        "hello\nworld",
+        "\\d+\\s+\nC:\\path",
     ]
 
 

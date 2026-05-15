@@ -39,6 +39,8 @@ def literal_type(value: object) -> TypeName:
         return "number"
     if value is None:
         return "none"
+    if isinstance(value, str):
+        return "string"
     if isinstance(value, Symbol):
         return "symbol"
     if isinstance(value, tuple):

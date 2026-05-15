@@ -44,6 +44,8 @@ def format_program(forms: Iterable[Form]) -> str:
 
 
 def format_form(form: Form, indent: int = 0) -> str:
+    if isinstance(form, str):
+        return write(form)
     if isinstance(form, Symbol):
         return write(form)
     if isinstance(form, DottedTuple):
@@ -79,6 +81,8 @@ def dump_program(forms: Iterable[Form]) -> str:
 
 def dump_form(form: Form, indent: int = 0) -> str:
     prefix = INDENT * indent
+    if isinstance(form, str):
+        return f"{prefix}{form!r}"
     if isinstance(form, Symbol):
         return f"{prefix}Symbol({form.name!r})"
     if isinstance(form, DottedTuple):
@@ -98,6 +102,8 @@ def dump_form(form: Form, indent: int = 0) -> str:
 
 
 def _format_inline(form: Form) -> str:
+    if isinstance(form, str):
+        return write(form)
     if isinstance(form, Symbol):
         return write(form)
     if isinstance(form, DottedTuple):

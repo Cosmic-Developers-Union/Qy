@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from collections.abc import Mapping
+from dataclasses import dataclass
 
 from qy.literals import resolve_default_literal
 from qy.operator_signature import OperatorSignature
@@ -15,9 +16,15 @@ from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
 
-__all__ = ["Environment", "standard_environment"]
+__all__ = ["Environment", "EnvironmentFrame", "standard_environment"]
 
 LiteralResolver = Callable[[Symbol], object]
+
+
+@dataclass(frozen=True, slots=True)
+class EnvironmentFrame:
+    bindings: dict[Symbol, object]
+    hidden_bindings: dict[Symbol, object]
 
 
 class Environment:
@@ -65,6 +72,12 @@ class Environment:
 
     def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
         return Environment(bindings, self)
+
+    def pre_symbol_space_chain(self) -> tuple[EnvironmentFrame, ...]:
+        frame = EnvironmentFrame(self.local_bindings(), self.hidden_bindings())
+        if self._parent is None:
+            return (frame,)
+        return (*self._parent.pre_symbol_space_chain(), frame)
 
     @property
     def literal_resolver(self) -> LiteralResolver:
@@ -226,6 +239,6 @@ class Environment:
 
 
 def standard_environment(*, literal_resolver: LiteralResolver | None = None) -> Environment:
-    from qy.stdlib import standard_bindings
+    from qy.stdlib import standard_profile_bindings
 
-    return Environment(standard_bindings(), literal_resolver=literal_resolver)
+    return Environment(standard_profile_bindings(), literal_resolver=literal_resolver)

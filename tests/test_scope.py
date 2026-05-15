@@ -87,6 +87,20 @@ def test_let_can_shadow_host_symbol_from_parent_scope():
     assert q.evaluate_source("(let ((+ 99)) +)") == 99
 
 
+def test_qy_exposes_pre_symbol_space_chain():
+    from qy.environment import Environment
+
+    env = Environment()
+    env.define(Symbol("x"), 1)
+    qy = Qy(env=env.child())
+
+    chain = qy.pre_symbol_space_chain
+
+    assert len(chain) == 2
+    assert chain[0].bindings[Symbol("x")] == 1
+    assert Symbol("x") not in chain[1].bindings
+
+
 def test_define_in_child_scope_can_shadow_parent_binding():
     q = Qy()
     q.evaluate_source("(define x 1)")

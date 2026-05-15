@@ -12,7 +12,7 @@ from qy.operators import MetaOperator
 from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.runtime_values import EffectDefinition
-from qy.stdlib import PRELUDE_MODULES
+from qy.stdlib import STANDARD_PROFILE_MODULES
 from qy.stdlib import load_module
 
 __all__ = [
@@ -49,7 +49,7 @@ _KIND_LABELS = {
 
 
 def collect_supported_operators(
-    modules: Iterable[str] = PRELUDE_MODULES,
+    modules: Iterable[str] = STANDARD_PROFILE_MODULES,
 ) -> tuple[OperatorModuleDoc, ...]:
     groups: list[OperatorModuleDoc] = []
     for module_name in modules:

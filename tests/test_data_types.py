@@ -20,13 +20,13 @@ def es(source: str) -> object:
 
 
 def test_tuple():
-    assert es('(tuple 1 "two" true)') == (1, S("two"), True)
+    assert es('(tuple 1 "two" true)') == (1, "two", True)
     assert es("(tuple '(a b))") == (S("a"), S("b"))
     assert es("(tuple? (tuple 'a 'b))")
 
 
 def test_list():
-    assert es('(list 1 "two" true)') == [1, S("two"), True]
+    assert es('(list 1 "two" true)') == [1, "two", True]
     assert es("(list '(a b))") == [S("a"), S("b")]
     assert not es("(list? '(a b))")
     assert es("(list? (list 1 2))")
@@ -34,8 +34,8 @@ def test_list():
 
 def test_dict():
     assert es('(dict "name" "Qy" "items" (list 1 2))') == {
-        S("name"): S("Qy"),
-        S("items"): [1, 2],
+        "name": "Qy",
+        "items": [1, 2],
     }
     assert es('(dict? (dict "name" "Qy"))')
     assert es("(dict '((name . Qy) (mode test)))") == {
@@ -45,7 +45,7 @@ def test_dict():
 
 
 def test_set():
-    assert es('(set "qy" "core" "qy")') == {S("qy"), S("core")}
+    assert es('(set "qy" "core" "qy")') == {"qy", "core"}
     assert es('(set? (set "qy"))')
     assert es("(set '(a b a))") == {S("a"), S("b")}
 
@@ -61,10 +61,10 @@ def test_len():
 
 
 def test_get():
-    assert es('(get (dict "name" "Qy") "name")') == S("Qy")
-    assert es('(get (list "a" "b") 1)') == S("b")
+    assert es('(get (dict "name" "Qy") "name")') == "Qy"
+    assert es('(get (list "a" "b") 1)') == "b"
     assert evaluate_source("(get '(a b c) 1)") == S("b")
-    assert es('(get (dict "name" "Qy") "missing" "fallback")') == S("fallback")
+    assert es('(get (dict "name" "Qy") "missing" "fallback")') == "fallback"
 
 
 def test_has():
@@ -77,4 +77,4 @@ def test_list_car_cdr_cons():
         es('(car (list "a" "b"))')
     with pytest.raises(QyTypeError):
         es('(cdr (list "a" "b" "c"))')
-    assert es('(cons \'a (list "b" "c"))') == QyChain(S("a"), [S("b"), S("c")])
+    assert es('(cons \'a (list "b" "c"))') == QyChain(S("a"), ["b", "c"])

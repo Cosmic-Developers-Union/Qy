@@ -143,7 +143,7 @@ async def test_assert_failure_raises_non_resumable_effect():
 
     error = exc_info.value
     assert error.effect == "assert-failed"
-    assert error.arg == S("missing title")
+    assert error.arg == "missing title"
     assert not error.resumable
     assert error.span is not None
 

@@ -1,5 +1,3 @@
-import pytest
-
 from qy.reader import Symbol
 from qy.reader import form_to_tuple
 from qy.reader import read_one_tuple
@@ -15,14 +13,14 @@ S = Symbol
 
 def test_code_to_tuple_exchange_form():
     assert read_tuple('(load "my docs") (+ 1 2)') == [
-        (S("load"), S("my docs")),
+        (S("load"), "my docs"),
         (S("+"), S("1"), S("2")),
     ]
     assert read_one_tuple('(let (("abc" 1)) abc "abc")') == (
         S("let"),
-        ((S("abc"), S("1")),),
+        (("abc", S("1")),),
         S("abc"),
-        S("abc"),
+        "abc",
     )
 
 
@@ -40,13 +38,15 @@ def test_write_qy_form():
     assert write(S("(not a list)")) == '"(not a list)"'
     assert write(S("hello\nworld")) == r'"hello\nworld"'
     assert write((S("+"), S("1"), S("2"))) == "(+ 1 2)"
+    assert write("hello") == '"hello"'
+    assert write("hello world") == '"hello world"'
 
 
 def test_write_tuple_exchange_form():
-    source = write_tuple((S("embed"), (S("load"), S("my docs")), S(":size"), 800))
+    source = write_tuple((S("embed"), (S("load"), "my docs"), S(":size"), 800))
 
     assert source == '(embed (load "my docs") :size 800)'
-    assert read_one_tuple(source) == (S("embed"), (S("load"), S("my docs")), S(":size"), S("800"))
+    assert read_one_tuple(source) == (S("embed"), (S("load"), "my docs"), S(":size"), S("800"))
 
 
 def test_write_programs():
@@ -58,8 +58,7 @@ def test_write_programs():
     assert read_tuple(write_tuple_program(tuple_forms)) == qy_forms
 
 
-def test_python_string_tuple_atom_is_literal_not_symbol():
-    with pytest.raises(TypeError):
-        tuple_to_form("abc")
-    with pytest.raises(TypeError):
-        write_tuple("abc")
+def test_string_literal_is_valid_form():
+    assert tuple_to_form("abc") == "abc"
+    assert write_tuple("abc") == '"abc"'
+    assert write_tuple("hello world") == '"hello world"'

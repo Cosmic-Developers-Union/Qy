@@ -20,8 +20,10 @@ def parse_from_import(expression: tuple[object, ...]) -> tuple[Symbol, tuple[Imp
     head, module, import_keyword, *items = expression
     if head != Symbol("from"):
         raise ValueError(f"import form must start with 'from', got {head!r}")
-    if not isinstance(module, Symbol):
-        raise ValueError(f"module name must be a symbol, got {module!r}")
+    if isinstance(module, str):
+        module = Symbol(module)
+    elif not isinstance(module, Symbol):
+        raise ValueError(f"module name must be a symbol or string path, got {module!r}")
     if import_keyword != Symbol("import"):
         raise ValueError("from expects the keyword 'import'")
     if not items:

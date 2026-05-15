@@ -35,7 +35,6 @@ _SYNTAX_FORM_NAMES = frozenset(
         "eval",
         "from",
         "handle",
-        "imports",
         "lambda",
         "let",
         "macro",

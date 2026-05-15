@@ -21,7 +21,7 @@ def test_print_and_echo():
         echo_result = evaluate_source('(echo "done")', env)
 
     assert result == 3
-    assert echo_result == S("done")
+    assert echo_result == "done"
     assert output.getvalue().splitlines() == ["hello 3", "done"]
     with pytest.raises(EvaluationError):
         evaluate(S("hello"), env)

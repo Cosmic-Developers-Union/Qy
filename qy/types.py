@@ -19,6 +19,7 @@ TypeName = Literal[
     "number",
     "operator",
     "set",
+    "string",
     "symbol",
     "tuple",
     "T",

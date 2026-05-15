@@ -94,7 +94,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 - `quote`：返回参数 syntax datum。
 - `atom`：判断是否非 chain/pair。
-- `eq`：遵循 Lisp eq 语义；symbol 按符号身份，chain/object 按 identity。
+- `eq`：遵循 Lisp eq 语义；symbol 按符号身份，chain / object / number / string 全部按 identity（`is`）。number 值相等、string 值相等、结构相等请使用专用算子（`=`、`str=`、`equal`）。
 - `car` / `cdr` / `cons`：核心 chain 操作。
 - `cond`：条件分支。
 - `pipeline`：begin/end；串行求值，返回最后一个表达式。

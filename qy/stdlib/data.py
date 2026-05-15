@@ -147,8 +147,6 @@ def _eq(left: object, right: object) -> bool:
         return left is None and right is None
     if isinstance(left, bool) or isinstance(right, bool):
         return left is right
-    if isinstance(left, int | float) and isinstance(right, int | float):
-        return left == right
     if isinstance(left, tuple) and isinstance(right, tuple):
         return len(left) == 0 and len(right) == 0
     return left is right

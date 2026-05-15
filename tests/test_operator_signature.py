@@ -8,6 +8,8 @@ from qy.operator_signature import EffectSpec
 from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.runtime import Qy
+from qy.stdlib import STANDARD_PROFILE_MODULES
+from qy.stdlib import standard_profile_bindings
 
 S = Symbol
 
@@ -51,6 +53,12 @@ def test_default_core_does_not_expose_python_container_helpers():
     for name in ("list", "tuple", "dict", "set"):
         with pytest.raises(EvaluationError):
             qy.env.resolve(S(name))
+
+
+def test_default_profile_matches_standard_profile_bindings():
+    qy = Qy()
+
+    assert set(qy.env.bindings()) == set(standard_profile_bindings(STANDARD_PROFILE_MODULES))
 
 
 def test_custom_operator_can_declare_signature():

@@ -14,7 +14,10 @@ from qy.reader import Symbol
 from qy.stdlib.module import StandardModule
 
 __all__ = [
+    "LANGUAGE_CORE_MODULES",
+    "OPTIONAL_STDLIB_MODULES",
     "PRELUDE_MODULES",
+    "STANDARD_PROFILE_MODULES",
     "StandardModule",
     "load_module",
     "load_module_async",
@@ -22,9 +25,13 @@ __all__ = [
     "register_module",
     "register_module_loader",
     "standard_bindings",
+    "standard_profile_bindings",
 ]
 
-PRELUDE_MODULES = ("qy.core", "qy.io")
+LANGUAGE_CORE_MODULES = ("qy.core",)
+STANDARD_PROFILE_MODULES = ("qy.core", "qy.io")
+OPTIONAL_STDLIB_MODULES = ("qy.str", "qy.py", "qy.testhost", "qy.legacy")
+PRELUDE_MODULES = STANDARD_PROFILE_MODULES
 type ModuleLoader = Callable[[], StandardModule]
 
 _MODULE_LOADERS: dict[str, ModuleLoader] = {}
@@ -63,11 +70,17 @@ async def load_module_async(name: str) -> StandardModule:
         raise KeyError(f"unknown module {name!r}") from e
 
 
-def standard_bindings(modules: Iterable[str] = PRELUDE_MODULES) -> dict[Symbol, object]:
+def standard_profile_bindings(
+    modules: Iterable[str] = STANDARD_PROFILE_MODULES,
+) -> dict[Symbol, object]:
     bindings: dict[Symbol, object] = {}
     for name in modules:
         bindings.update(load_module(name).exports)
     return bindings
+
+
+def standard_bindings(modules: Iterable[str] = STANDARD_PROFILE_MODULES) -> dict[Symbol, object]:
+    return standard_profile_bindings(modules)
 
 
 def _install_builtin_loaders() -> None:

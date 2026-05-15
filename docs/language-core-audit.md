@@ -9,6 +9,7 @@
 - `define` 只在当前 symbol-space 一次性绑定；允许 shadow 链上后续节点。
 - `pre-symbol-space-chain` 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都必须围绕同一个 `Qy` 实例工作。
 - `pre-symbol-space-chain` 是有序链，不是单个特殊空间；profile、字面量空间、stdlib 空间、宿主注入空间都应以链节点建模。
+- `Qy.pre_symbol_space_chain` 现已暴露为只读快照入口，便于观察实例起点链；fold 仍需继续按独立语义建模。
 - host value 是 runtime value，可以通过实例 `pre-symbol-space-chain`、显式注入或显式 import 进入 symbol-space-chain。
 - register VM 是唯一执行器；不保留可选 runtime backend。
 
@@ -54,6 +55,8 @@
 默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。剩余问题是 `pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界；analyzer/LSP 仍不能消费实例化配置。
 
 **偏差**：默认数字/字符串链段、默认是否预装算术等都可以是 standard profile 策略；但 profile 不能和语言核混写，Python host interop 也不应被误当成语言核心。analyzer/LSP 需要能读取当前 Qy 实例的完整初始链配置。
+
+`qy.stdlib.STANDARD_PROFILE_MODULES` 已作为默认 profile 的显式事实，由 `standard_environment()` 和 operator docs 共享；这只是边界命名的第一步，不代表 `qy.num` / `qy.str` / `qy.py` 已完成正式拆层。
 
 **处置方向**：
 

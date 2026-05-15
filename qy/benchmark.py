@@ -42,7 +42,6 @@ __all__ = [
 BenchmarkPhase = Literal[
     "source",
     "macroexpand",
-    "lower",
     "hir_lower",
     "mir_lower",
     "lir_lower",
@@ -231,7 +230,7 @@ def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float | None:
         return _elapsed(lambda: _run_macroexpand_iterations(qy.env, forms, case.iterations))
 
     expansion = macroexpand(forms, qy.env)
-    if phase in {"lower", "hir_lower"}:
+    if phase == "hir_lower":
         return _elapsed(lambda: _run_hir_lower_iterations(qy.env, expansion.forms, case.iterations))
 
     program = lower(expansion.forms, qy.env)

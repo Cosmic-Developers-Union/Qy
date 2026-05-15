@@ -19,7 +19,7 @@
     "mean_seconds": 0.08945756551111117,
     "median_seconds": 0.08945756551111117,
     "ops_per_second": 11237.20958474716,
-    "seconds_per_iteration": 8.899006398860365e-05
+    "seconds_per_iteration": 8.899006398860365e-5
   },
   {
     "case": "arithmetic",
@@ -41,18 +41,18 @@
     "mean_seconds": 0.012481812504120171,
     "median_seconds": 0.012481812504120171,
     "ops_per_second": 81454.82875985563,
-    "seconds_per_iteration": 1.2276743014808745e-05
+    "seconds_per_iteration": 1.2276743014808745e-5
   },
   {
     "case": "arithmetic",
-    "phase": "ir",
+    "phase": "lir_lower",
     "iterations": 1000,
     "repeat": 2,
     "best_seconds": 0.09060412098187953,
     "mean_seconds": 0.09089596799458377,
     "median_seconds": 0.09089596799458377,
     "ops_per_second": 11037.02556973094,
-    "seconds_per_iteration": 9.060412098187953e-05
+    "seconds_per_iteration": 9.060412098187953e-5
   },
   {
     "case": "arithmetic",
@@ -63,7 +63,7 @@
     "mean_seconds": 0.0170083959819749,
     "median_seconds": 0.0170083959819749,
     "ops_per_second": 59104.068673533424,
-    "seconds_per_iteration": 1.6919308982323856e-05
+    "seconds_per_iteration": 1.6919308982323856e-5
   },
   {
     "case": "arithmetic",
@@ -118,11 +118,11 @@
     "mean_seconds": 0.012151322996942326,
     "median_seconds": 0.012151322996942326,
     "ops_per_second": 66549.46183184502,
-    "seconds_per_iteration": 1.5026417531771586e-05
+    "seconds_per_iteration": 1.5026417531771586e-5
   },
   {
     "case": "nested-calls",
-    "phase": "ir",
+    "phase": "lir_lower",
     "iterations": 800,
     "repeat": 2,
     "best_seconds": 0.08532776602078229,
@@ -140,7 +140,7 @@
     "mean_seconds": 0.01565375050995499,
     "median_seconds": 0.01565375050995499,
     "ops_per_second": 51645.39306884989,
-    "seconds_per_iteration": 1.936281129019335e-05
+    "seconds_per_iteration": 1.936281129019335e-5
   },
   {
     "case": "nested-calls",
@@ -173,7 +173,7 @@
     "mean_seconds": 0.006942985521163791,
     "median_seconds": 0.006942985521163791,
     "ops_per_second": 11776.657475365657,
-    "seconds_per_iteration": 8.491373737342655e-05
+    "seconds_per_iteration": 8.491373737342655e-5
   },
   {
     "case": "tail-recursion",
@@ -195,11 +195,11 @@
     "mean_seconds": 0.0006059615116100758,
     "median_seconds": 0.0006059615116100758,
     "ops_per_second": 133774.33922331646,
-    "seconds_per_iteration": 7.475275197066367e-06
+    "seconds_per_iteration": 7.475275197066367e-6
   },
   {
     "case": "tail-recursion",
-    "phase": "ir",
+    "phase": "lir_lower",
     "iterations": 80,
     "repeat": 2,
     "best_seconds": 0.6254249960184097,
@@ -217,7 +217,7 @@
     "mean_seconds": 0.0007566889689769596,
     "median_seconds": 0.0007566889689769596,
     "ops_per_second": 105741.92363134563,
-    "seconds_per_iteration": 9.456987027078866e-06
+    "seconds_per_iteration": 9.456987027078866e-6
   },
   {
     "case": "tail-recursion",
@@ -272,18 +272,18 @@
     "mean_seconds": 0.005970356520265341,
     "median_seconds": 0.005970356520265341,
     "ops_per_second": 84196.53003756134,
-    "seconds_per_iteration": 1.1876974022015928e-05
+    "seconds_per_iteration": 1.1876974022015928e-5
   },
   {
     "case": "macro-call",
-    "phase": "ir",
+    "phase": "lir_lower",
     "iterations": 500,
     "repeat": 2,
     "best_seconds": 0.04829797398997471,
     "mean_seconds": 0.049085726495832205,
     "median_seconds": 0.049085726495832205,
     "ops_per_second": 10352.401119429685,
-    "seconds_per_iteration": 9.659594797994941e-05
+    "seconds_per_iteration": 9.659594797994941e-5
   },
   {
     "case": "macro-call",
@@ -294,7 +294,7 @@
     "mean_seconds": 0.007907338993391022,
     "median_seconds": 0.007907338993391022,
     "ops_per_second": 65171.22174741536,
-    "seconds_per_iteration": 1.5344195999205114e-05
+    "seconds_per_iteration": 1.5344195999205114e-5
   },
   {
     "case": "macro-call",
@@ -349,11 +349,11 @@
     "mean_seconds": 0.005248202010989189,
     "median_seconds": 0.005248202010989189,
     "ops_per_second": 57178.59108083071,
-    "seconds_per_iteration": 1.7489063320681453e-05
+    "seconds_per_iteration": 1.7489063320681453e-5
   },
   {
     "case": "effect-resume",
-    "phase": "ir",
+    "phase": "lir_lower",
     "iterations": 300,
     "repeat": 2,
     "best_seconds": 0.03168844600440934,
@@ -371,7 +371,7 @@
     "mean_seconds": 0.005636870977468789,
     "median_seconds": 0.005636870977468789,
     "ops_per_second": 53536.25725653449,
-    "seconds_per_iteration": 1.867892996718486e-05
+    "seconds_per_iteration": 1.867892996718486e-5
   },
   {
     "case": "effect-resume",
