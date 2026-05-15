@@ -110,14 +110,9 @@
 
 ## B8. Python codegen 绕过 MIR/LIR
 
-**位置**：`qy/python_codegen.py`
+**状态**：已处理（2026-05-16）
 
-`codegen_python` 直接从 HIR 生成 Python。它可以暂时作为 prototype，但不是主 pipeline。
-
-**处置方向**：
-
-- 标注 experimental。
-- 后续若保留 AOT backend，必须明确输入层级，避免重新解释 HIR 语义。
+`qy/python_codegen.py` 与 `qy py` CLI 子命令已删除，主仓执行路径仅保留 register VM pipeline。
 
 ---
 
@@ -132,4 +127,4 @@
 | B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入） |
 | B6 | `RuntimeMetaCallExpr` | P1 | 已完成（节点与 opcode 已删除） |
 | B7 | 遗留 operator dispatch | P1 | 待处理 |
-| B8 | Python codegen 绕过 MIR/LIR | P2 | 待处理 |
+| B8 | Python codegen 绕过 MIR/LIR | P2 | 已完成 |

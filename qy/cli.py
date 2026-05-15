@@ -38,7 +38,6 @@ CLI_COMMANDS = (
     "mir",
     "lir",
     "bytecode",
-    "py",
     "fmt",
     "ast",
     "check",
@@ -97,9 +96,18 @@ def create_app() -> Any:
     @app.command("run")
     def run_command(
         path: Annotated[Path, typer.Argument(help="Qy source file to evaluate.")],
+        args: Annotated[
+            list[str] | None,
+            typer.Argument(help="Arguments passed through to the Qy runtime program."),
+        ] = None,
     ) -> None:
         try:
-            typer.echo(format_value(Qy().evaluate_file(path)))
+            qy = Qy()
+            if args:
+                from qy.stdlib.testhost import set_cli_args
+
+                set_cli_args(qy.env, tuple(args))
+            typer.echo(format_value(qy.evaluate_file(path)))
         except QyError as e:
             typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from e
@@ -202,26 +210,6 @@ def create_app() -> Any:
             bytecode = qy.compile_mir_bytecode(mir)
             typer.echo(dump_bytecode(bytecode), nl=False)
             has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
-        if has_errors:
-            raise typer.Exit(1)
-
-    @app.command("py")
-    def py_command(
-        target: Annotated[
-            str,
-            typer.Argument(help="Qy source file to transpile to Python, or - for stdin."),
-        ],
-    ) -> None:
-        from qy.python_codegen import codegen_python
-
-        qy = Qy()
-        source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            typer.echo(codegen_python(program), nl=False)
         if has_errors:
             raise typer.Exit(1)
 

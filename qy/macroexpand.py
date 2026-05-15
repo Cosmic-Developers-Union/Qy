@@ -281,8 +281,6 @@ async def _macroexpand_form(
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
     if operator == Symbol("module"):
         return await _macroexpand_module_form(form, context, depth=depth)
-    if operator == Symbol("imports"):
-        return _macroexpand_imports_form(form, context)
     if operator == Symbol("lambda"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
     if operator == Symbol("defun"):
@@ -367,9 +365,6 @@ async def _macroexpand_module_form(
 
     body: list[object] = []
     for item in form[2:]:
-        if _is_special_form(item, "imports"):
-            body.append(_macroexpand_imports_form(cast(tuple[object, ...], item), body_context))
-            continue
         body.append(await _macroexpand_form(item, body_context, depth=depth))
 
     context.sync_from(body_context)
@@ -402,16 +397,6 @@ def _prepopulate_module_locals(body: tuple[object, ...], env: Environment) -> No
             env.define(item[1], EffectDefinition(item[1], resumable=True))
 
 
-def _macroexpand_imports_form(
-    form: tuple[object, ...],
-    context: MacroExpansionContext,
-) -> tuple[object, ...]:
-    for item in form[1:]:
-        if isinstance(item, tuple):
-            _import_macros_from_form(item, context)
-    return form
-
-
 def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
     if isinstance(form, tuple) and not isinstance(form, DottedTuple) and form:
         op = form[0]
@@ -442,7 +427,7 @@ def _expand_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
     ):
         spliced = head_form[1] if len(head_form) == 2 else head_form
         rest = _expand_quasiquote_tuple(tail, depth=depth)
-        return (Symbol("qy-append"), spliced, rest)
+        return (Symbol("append"), spliced, rest)
     head = _expand_quasiquote(head_form, depth=depth)
     rest = _expand_quasiquote_tuple(tail, depth=depth)
     return (Symbol("cons"), head, rest)

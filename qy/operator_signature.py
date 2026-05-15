@@ -10,6 +10,7 @@ from qy.types import TypeName
 
 __all__ = [
     "CORE_OPERATOR_SIGNATURES",
+    "STDLIB_OPERATOR_SIGNATURES",
     "ArgumentPolicy",
     "Arity",
     "EffectSpec",
@@ -52,6 +53,43 @@ class OperatorSignature:
 
 
 CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
+    "all": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
+    "apply": OperatorSignature("any", Arity(2, 2), ("eager", "eager"), tail_transparent=True),
+    "atom": OperatorSignature("bool", Arity(1, 1)),
+    "capture": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "car": OperatorSignature("any", Arity(1, 1)),
+    "cdr": OperatorSignature("any", Arity(1, 1)),
+    "cond": OperatorSignature("any", Arity(), ("raw",), tail_transparent=True),
+    "cons": OperatorSignature("chain", Arity(2, 2)),
+    "define": OperatorSignature("any", Arity(2, 2), ("binding", "eager")),
+    "defeffect": OperatorSignature("effect", Arity(1), ("binding", "raw")),
+    "defun": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
+    "eq": OperatorSignature("bool", Arity(2, 2)),
+    "from": OperatorSignature("none", Arity(3), ("raw",)),
+    "gensym": OperatorSignature("symbol", Arity(0, 1), ("raw",), compile_time=True),
+    "handle": OperatorSignature("any", Arity(2, 2), ("raw", "raw"), tail_transparent=True),
+    "lambda": OperatorSignature("function", Arity(2), ("raw", "body")),
+    "let": OperatorSignature("any", Arity(2), ("raw", "body"), tail_transparent=True),
+    "macro": OperatorSignature(
+        "operator",
+        Arity(3),
+        ("binding", "raw", "body"),
+        compile_time=True,
+    ),
+    "module": OperatorSignature("any", Arity(1), ("binding", "body")),
+    "parallel": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
+    "perform": OperatorSignature("any", Arity(2, 2), ("effect-name", "eager")),
+    "pipeline": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
+    "quasiquote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "quote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "race": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
+    "resume": OperatorSignature("any", Arity(2, 2)),
+    "unquote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "unquote-splicing": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+}
+
+
+STDLIB_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "*": OperatorSignature("number", Arity(), rest_type="number"),
     "+": OperatorSignature("number", Arity(), rest_type="number"),
     "-": OperatorSignature("number", Arity(1), rest_type="number"),
@@ -62,35 +100,29 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
         Arity(1, 2),
         effects=(EffectSpec("assert-failed", resumable=False),),
     ),
-    "atom": OperatorSignature("bool", Arity(1, 1)),
-    "car": OperatorSignature("any", Arity(1, 1)),
-    "cdr": OperatorSignature("any", Arity(1, 1)),
-    "cond": OperatorSignature("any", Arity(), ("raw",), tail_transparent=True),
-    "cons": OperatorSignature("chain", Arity(2, 2)),
-    "defeffect": OperatorSignature("effect", Arity(1), ("binding", "raw")),
-    "defun": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
-    "eq": OperatorSignature("bool", Arity(2, 2)),
     "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
-    "from": OperatorSignature("none", Arity(3), ("raw",)),
-    "handle": OperatorSignature("any", Arity(2, 2), ("raw", "raw"), tail_transparent=True),
     "is": OperatorSignature("bool", Arity(2, 2)),
-    "lambda": OperatorSignature("function", Arity(2), ("raw", "body")),
-    "let": OperatorSignature("any", Arity(2), ("raw", "body"), tail_transparent=True),
-    "macro": OperatorSignature(
-        "operator",
-        Arity(3),
-        ("binding", "raw", "body"),
-        compile_time=True,
+    "append": OperatorSignature("any", Arity(2, 2)),
+}
+
+
+LEGACY_COMPAT_SIGNATURES: dict[str, OperatorSignature] = {
+    "assert": OperatorSignature(
+        "any",
+        Arity(1, 2),
+        effects=(EffectSpec("assert-failed", resumable=False),),
     ),
-    "module": OperatorSignature("any", Arity(1), ("binding", "body")),
-    "perform": OperatorSignature("any", Arity(2, 2), ("effect-name", "eager")),
-    "quote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
-    "resume": OperatorSignature("any", Arity(2, 2)),
+    "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
+    "is": OperatorSignature("bool", Arity(2, 2)),
 }
 
 
 def lookup_operator_signature(name: str) -> OperatorSignature | None:
-    return CORE_OPERATOR_SIGNATURES.get(name)
+    if (signature := CORE_OPERATOR_SIGNATURES.get(name)) is not None:
+        return signature
+    if (signature := STDLIB_OPERATOR_SIGNATURES.get(name)) is not None:
+        return signature
+    return LEGACY_COMPAT_SIGNATURES.get(name)
 
 
 def format_arity_message(name: str, signature: OperatorSignature, actual: int) -> str:

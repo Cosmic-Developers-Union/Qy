@@ -66,13 +66,12 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
             assert isinstance(item, tuple)
             export_names.extend(_parse_export_items(tuple(item[1:])))
             continue
-        if _is_special_form(item, "imports"):
-            assert isinstance(item, tuple)
-            _populate_imported_bindings(tuple(item[1:]), env, locals_map)
-            continue
         if not isinstance(item, tuple) or not item:
             continue
         operator = item[0]
+        if operator == Symbol("from"):
+            _populate_imported_bindings((item,), env, locals_map)
+            continue
         if operator == Symbol("defun") and len(item) >= 3 and isinstance(item[1], Symbol):
             locals_map[item[1]] = UserFunction(item[1], _parameter_symbols(item[2]), (None,), env)
             continue

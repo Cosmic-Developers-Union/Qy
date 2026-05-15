@@ -194,6 +194,33 @@ def _cons(head: object, tail: object) -> object:
     return QyCons(head, tail)
 
 
+def _append(left: object, right: object) -> object:
+    left_items = _append_items(left)
+    right_items = _append_items(right)
+    combined = left_items + right_items
+    if isinstance(left, QyCons) or left is QY_EMPTY_LIST:
+        return list_to_qy_cons(combined)
+    if isinstance(right, QyCons) or right is QY_EMPTY_LIST:
+        return list_to_qy_cons(combined)
+    return combined
+
+
+def _append_items(value: object) -> tuple[object, ...]:
+    if isinstance(value, tuple):
+        return value
+    if isinstance(value, list):
+        return tuple(value)
+    if value is QY_EMPTY_LIST:
+        return ()
+    if isinstance(value, QyCons):
+        return _proper_chain_items(value, "append")
+    raise QyTypeError(
+        f"append expects tuple/list/chain inputs, got {value!r}",
+        span=get_span(value),
+        metadata={"value": value},
+    )
+
+
 def _chain(value: object) -> object:
     if value is QY_NIL or isinstance(value, QyCons):
         return value
@@ -390,6 +417,9 @@ def operators() -> dict[Symbol, object]:
         Symbol("car"): PureOperator("car", _car, "返回 chain 的第一个元素。"),
         Symbol("cdr"): PureOperator("cdr", _cdr, "返回 chain 除第一个元素外的剩余部分。"),
         Symbol("chain"): PureOperator("chain", _chain, "把 Python list/tuple 转换为 Qy chain。"),
+        Symbol("append"): PureOperator(
+            "append", _append, "拼接 tuple/list/chain，并在 chain 场景返回 chain。"
+        ),
         Symbol("cons"): PureOperator(
             "cons", _cons, "构造 chain cell；对 Python tuple/list 保持同类拼接。"
         ),

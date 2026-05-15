@@ -5,11 +5,9 @@ from __future__ import annotations
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
-from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
-from qy.reader import get_span
 from qy.stdlib.imports import parse_from_import
 from qy.stdlib.module import StandardModule
 from qy.symbol_utils import ensure_symbol
@@ -29,14 +27,6 @@ def _parse_export_names(items: tuple[object, ...]) -> list[Symbol]:
     return names
 
 
-async def _evaluate_module_import(form: object, env: Environment) -> None:
-    if not isinstance(form, tuple) or not form:
-        raise QyTypeError(f"module import must be a from form, got {form!r}", span=get_span(form))
-    if form[0] != Symbol("from"):
-        raise QyTypeError(f"module import must start with from, got {form!r}", span=get_span(form))
-    await evaluate_async(form, env)
-
-
 async def _module(args: tuple[object, ...], env: Environment) -> object:
     if not args:
         raise QyArityError("module expects a name and body")
@@ -54,11 +44,6 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
         if _is_special_form(form, "exports"):
             assert isinstance(form, tuple)
             export_names.extend(_parse_export_names(form[1:]))
-            continue
-        if _is_special_form(form, "imports"):
-            assert isinstance(form, tuple)
-            for import_form in form[1:]:
-                await _evaluate_module_import(import_form, module_env)
             continue
         await evaluate_async(form, module_env)
 

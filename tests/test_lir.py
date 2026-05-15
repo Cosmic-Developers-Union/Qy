@@ -180,3 +180,41 @@ def test_lir_and_mir_bytecode_compile_produce_same_result():
         assert lf.params == mf.params
         assert lf.register_count == mf.register_count
         assert lf.instructions == mf.instructions
+
+
+def test_lower_lir_compacts_sparse_register_layout():
+    from qy.mir import MIRBlock
+    from qy.mir import MIRFunction
+    from qy.mir import MIRInstruction
+    from qy.mir import MIRProgram
+    from qy.mir import MIRTerminator
+
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("layout"),
+                (),
+                8,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            MIRInstruction("LOAD_HOST", (5, 1)),
+                            MIRInstruction("MOVE", (7, 5)),
+                        ),
+                        MIRTerminator("RETURN", (7,)),
+                    ),
+                ),
+                0,
+            ),
+        )
+    )
+
+    lir = lower_lir(mir)
+
+    assert lir.ok
+    function = lir.functions[0]
+    assert function.register_count == 2
+    assert function.instructions[0].operands == (0, 1)
+    assert function.instructions[1].operands == (1, 0)
+    assert function.instructions[2].operands == (1,)

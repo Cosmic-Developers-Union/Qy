@@ -3,7 +3,7 @@
 本文件只保留当前工作面；历史批次写入 `report.md`。  
 最近一次基线验证：
 
-- `uv run python -m pytest -q`：356 passed
+- `uv run python -m pytest -q`：345 passed
 - `uv run ty check .`：passed
 - `uv run ruff check .`：passed
 
@@ -53,22 +53,22 @@
 
 ### 已确认语义漂移 / 工程缺口
 
-1. `define` 的 root scope 语义不一致：  
-   `lowering` / `analyzer` 对 `(define + 99)` 不报错，但 VM 执行会在当前 env 报同层重绑定。root program symbol-space、pre-symbol-space、runtime env 的关系尚未统一。
-2. pre-symbol-space 仍是 fallback resolver，不是显式模型：  
-   当前只惰性解析 `T` / `nil` / bool / number；字符串 spelling 仍未成为 runtime `string`；analyzer/LSP 也无法读取实例级配置。
+1. `define` 的 root scope 语义分裂已修复（2026-05-16）：  
+   `lowering` / `analyzer` / runtime 对 `(define + 99)` 已统一为同层重绑定错误；子空间（如 `let`）仍允许 shadow parent。
+2. pre-symbol-space 已显式建模（2026-05-16）：  
+   `Environment` 支持实例级 `literal_resolver`，并在 child 环境继承；`analyzer` / `lowering` / `runtime` 可读取同一实例环境事实。未完成项：字符串 spelling 仍未默认映射为 runtime `string`。
 3. 默认 core 与语言契约不一致：  
    `qy.core` 仍默认引入算术；文档却已把算术定义为非核心、需显式 stdlib/host 注入。
-4. quasiquote 仍未闭合：  
-   `unquote-splicing` 会生成未定义的 `qy-append`。
-5. `apply` 语义仍未闭合：  
-   `(apply + (quote (1 2)))` 目前把 syntax symbol 直接传给 runtime callable，而不是可工作的 runtime 参数序列。
-6. module surface 仍有双轨：  
-   文档列出 `module/from/import/exports`，实现里还存在 `imports` block 伪 form，`import` 也更像 `from` 内关键字而非独立 form。
-7. `LIR -> bytecode` 仍是结构复制：  
-   还没有真正承载 select / layout / rerank / fixup / peephole / debug injection 等低层工作。
-8. metadata / legacy 层仍未收口：  
-   `operator_signature.py` 仍把算术、`assert`、`eval` 等混在 core；`evaluator.py` 与 legacy operator classes 仍过重。
+4. quasiquote 收口已完成（2026-05-16）：  
+   `unquote-splicing` 现使用正式 `append` 语义，不再生成未定义 helper。
+5. `apply` 语义收口已完成（2026-05-16）：  
+   `(apply + (quote (1 2)))` 可按 runtime 参数序列工作，默认字面量 spelling 会在 apply 边界归一化。
+6. module surface 双轨已移除（2026-05-16）：  
+   `imports` block 已从语义路径移除，module 内统一使用 `from` form。
+7. `LIR -> bytecode` 部分收口（2026-05-16）：  
+   `LIR` 已新增 register layout 重写（虚拟寄存器压缩与布局归整），不再完全是 MIR 结构直拷贝。未完成项：effect frame layout / host-call ABI / block rerank / debug 注入仍待实现。
+8. metadata / legacy 层持续收口（2026-05-16）：  
+   `evaluator.py` 已删除一段不再走主 pipeline 的遗留 effect/assert 解释路径；`qy/` 内对 evaluator 的直接依赖已收敛到 `eval_runtime.py`。未完成项：legacy operator classes 仍作为兼容层存在。
 
 ## 3. P0: 先闭合语义
 
@@ -126,8 +126,8 @@
 ### P0-4. module surface 定稿
 
 - 决定 public surface：
-  - `import` 是独立 form，还是仅为 `from` 的结构关键字；
-  - `imports` block 是正式语法、surface sugar，还是历史残留。
+  - `import` 保持 `from` 结构关键字，不单独作为 form；
+  - `imports` block 视为历史残留并已移除出语义路径。
 - 只保留一种 public model；其余若保留，必须降为内部表示，不再出现在语言契约中。
 - 统一 module runtime export、macro export、source module 预扫描、analyzer、lowering、VM 的 define-once 规则。
 
@@ -164,7 +164,7 @@
 
 ### P1-3. 删除遗留层
 
-- `python_codegen.py` 删除或移出主仓库：当前目标只有 register VM。
+- `python_codegen.py` 已删除（2026-05-16）：当前目标只有 register VM。
 - `evaluator.py` 继续缩成兼容 facade，禁止新增语义；能迁出的全部迁出。
 - legacy `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 逐步降级为 host adapter，不再承载 core semantics。
 - `eval_runtime.py`、文件模块加载、旧 stdlib 路径逐步切到正式 pipeline。
@@ -227,7 +227,7 @@ qy test.qy tests/
   - Qy behavior test；
   - validation example。
 
-**完成标准**：至少一组核心语义验收由 Qy suite 自己完成，并纳入默认 CI；examples 回到“示例”，tests/qy 承担“验证”。
+**完成标准**：至少一组核心语义验收由 Qy suite 自己完成，并纳入默认 CI；examples 回到“示例”，tests/qy 承担“验证”。（已完成：`test.qy` + `tests/qy/` + `tests/test_qytest_runner.py`）
 
 ## 6. P2: 文档、示例、复杂度治理
 
@@ -269,10 +269,10 @@ qy test.qy tests/
 
 ## 7. 当前删除清单
 
-- 删除或迁出 `python_codegen.py`。
+- `python_codegen.py` 已删除。
 - 继续削减 `evaluator.py` 与 `eval_runtime.py` 的真实语义承担。
 - 清理 operator metadata 中不属于 core 的条目。
-- 清理 `imports` block、legacy async、旧 compatibility tests 中不再被 public language 接受的路径。
+- 继续清理 legacy async、旧 compatibility tests 中不再被 public language 接受的路径（`imports` block 已移除）。
 - 删除 examples 中只验证历史实现、无法说明目标语言契约的内容。
 
 ## 8. 批次工作要求

@@ -75,6 +75,7 @@ def _install_builtin_loaders() -> None:
     _MODULE_LOADERS.setdefault("qy.io", _load_io_module)
     _MODULE_LOADERS.setdefault("qy.str", _load_string_module)
     _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
+    _MODULE_LOADERS.setdefault("qy.testhost", _load_testhost_module)
     _MODULE_LOADERS.setdefault("qy.legacy", _load_legacy_module)
 
 
@@ -107,6 +108,12 @@ def _load_legacy_module() -> StandardModule:
     from qy.stdlib.effects import legacy_operators as effects_legacy
 
     return StandardModule("qy.legacy", {**control_legacy(), **effects_legacy()})
+
+
+def _load_testhost_module() -> StandardModule:
+    from qy.stdlib.testhost import module
+
+    return module()
 
 
 def _looks_like_file_module(name: str) -> bool:

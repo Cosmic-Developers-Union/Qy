@@ -660,22 +660,29 @@ def _raise_for_diagnostics(program: BytecodeProgram) -> None:
 
 
 def _sequence_to_args(value: object) -> tuple[object, ...]:
+    from qy.literals import default_literal_type
+    from qy.literals import try_default_literal
     from qy.values import QyCons
     from qy.values import QyEmptyChain
     from qy.values import QyEmptyList
 
+    def _normalize_arg(item: object) -> object:
+        if isinstance(item, Symbol) and default_literal_type(item) is not None:
+            return try_default_literal(item)
+        return item
+
     if isinstance(value, (list, tuple)):
-        return tuple(value)
+        return tuple(_normalize_arg(item) for item in value)
     if isinstance(value, QyEmptyChain | QyEmptyList):
         return ()
     if isinstance(value, QyCons):
         result: list[object] = []
         node: object = value
         while isinstance(node, QyCons):
-            result.append(node.head)
+            result.append(_normalize_arg(node.head))
             node = node.tail
         return tuple(result)
-    return (value,)
+    return (_normalize_arg(value),)
 
 
 def _function_stack_frame(

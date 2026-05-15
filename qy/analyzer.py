@@ -99,11 +99,25 @@ def analyze_source(source: str, env: Environment | None = None) -> Analysis:
 def analyze(forms: list[Form], env: Environment | None = None) -> Analysis:
     env = env or standard_environment()
     diagnostics: list[Diagnostic] = []
-    scope = _predeclare_callable_definitions(tuple(forms), _Scope())
+    scope = _predeclare_callable_definitions(tuple(forms), _scope_from_environment(env))
     for form in forms:
         _infer(form, env, scope, diagnostics)
         scope = _scope_after_form(form, env, scope)
     return Analysis(forms, diagnostics)
+
+
+def _scope_from_environment(env: Environment) -> _Scope:
+    scope = _Scope()
+    all_visible = {**env.bindings(), **env.hidden_bindings()}
+    for symbol, value in all_visible.items():
+        scope = scope.define(
+            symbol,
+            _value_type(value),
+            operator_kind=_operator_kind_for_value(value),
+            eager_arguments=_value_uses_eager_arguments(value),
+            signature=_value_signature(value),
+        )
+    return scope
 
 
 def type_check_source(source: str, env: Environment | None = None) -> list[Diagnostic]:
@@ -674,12 +688,6 @@ def _infer_module(
     module_scope = _predeclare_callable_definitions(tuple(body), scope)
     for expression in body:
         if _is_special_form(expression, "exports"):
-            continue
-        if _is_special_form(expression, "imports"):
-            assert isinstance(expression, tuple)
-            for import_form in expression[1:]:
-                if isinstance(import_form, tuple):
-                    _infer_from(import_form, env, diagnostics)
             continue
         _infer(expression, env, module_scope, diagnostics)
         module_scope = _scope_after_form(expression, env, module_scope)

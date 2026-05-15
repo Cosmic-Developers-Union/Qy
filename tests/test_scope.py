@@ -75,11 +75,16 @@ def test_duplicate_define_reports_error_at_lowering():
     assert any("'x' is already bound" in d.message for d in result.diagnostics)
 
 
-def test_define_can_shadow_host_symbol_from_parent_scope():
+def test_define_cannot_rebind_host_symbol_in_same_scope():
     from qy.lowering import lower_source
 
     result = lower_source("(define + 99)")
-    assert result.diagnostics == ()
+    assert any("'+' is already bound in this scope" in d.message for d in result.diagnostics)
+
+
+def test_let_can_shadow_host_symbol_from_parent_scope():
+    q = Qy()
+    assert q.evaluate_source("(let ((+ 99)) +)") == 99
 
 
 def test_define_in_child_scope_can_shadow_parent_binding():

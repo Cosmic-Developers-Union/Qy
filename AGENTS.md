@@ -36,7 +36,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/runtime.py`：`Qy` 主类 API，串联完整 pipeline。
 - `qy/analyzer.py`：静态分析、诊断、作用域和轻量类型检查。
 - `qy/stdlib/`：内置标准库操作符和模块导入支持；import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator。
-- `qy/cli.py`：Typer CLI，包括 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`py`、`fmt`、`check`、`typecheck`、`operators`、`lsp`。
+- `qy/cli.py`：Typer CLI，包括 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。

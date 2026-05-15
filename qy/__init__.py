@@ -89,8 +89,6 @@ from qy.operators import EffectOperator
 from qy.operators import MetaOperator
 from qy.operators import PureOperator
 from qy.operators import ScopeOperator
-from qy.python_codegen import CodegenError
-from qy.python_codegen import codegen_python
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
@@ -139,7 +137,6 @@ __all__ = [
     "BytecodeFunctionValue",
     "BytecodeProgram",
     "CallExpr",
-    "CodegenError",
     "ControlOperator",
     "Diagnostic",
     "DottedTuple",
@@ -204,7 +201,6 @@ __all__ = [
     "UnresolvedSymbolExpr",
     "analyze",
     "analyze_source",
-    "codegen_python",
     "collect_supported_operators",
     "compile_bytecode",
     "compile_lir_bytecode",

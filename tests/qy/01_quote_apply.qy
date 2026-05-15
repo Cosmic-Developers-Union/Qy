@@ -1,0 +1,1 @@
+(eq (apply + (quote (1 2 3))) 6)

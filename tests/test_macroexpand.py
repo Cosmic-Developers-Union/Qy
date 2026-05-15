@@ -254,7 +254,7 @@ def test_macroexpand_imports_exported_module_macros_without_runtime_binding_poll
         env.resolve(Symbol("const-answer"))
 
 
-def test_macroexpand_imports_module_macros_inside_module_imports_block():
+def test_macroexpand_imports_module_macros_inside_module_body_from_form():
     env = standard_environment()
     register_module(
         StandardModule(
@@ -274,8 +274,7 @@ def test_macroexpand_imports_module_macros_inside_module_imports_block():
     expansion = macroexpand_source(
         """
         (module consumer
-          (imports
-            (from test.macros.inner import const-answer))
+                    (from test.macros.inner import const-answer)
           (const-answer))
         """,
         env,

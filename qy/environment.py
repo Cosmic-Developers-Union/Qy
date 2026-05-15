@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
 
 from qy.literals import resolve_default_literal
 from qy.operator_signature import OperatorSignature
@@ -16,10 +15,9 @@ from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
 
-if TYPE_CHECKING:
-    pass
-
 __all__ = ["Environment", "standard_environment"]
+
+LiteralResolver = Callable[[Symbol], object]
 
 
 class Environment:
@@ -27,11 +25,16 @@ class Environment:
         self,
         bindings: Mapping[Symbol, object] | None = None,
         parent: Environment | None = None,
+        literal_resolver: LiteralResolver | None = None,
     ) -> None:
         self._bindings = dict(bindings or {})
         self._parent = parent
         self._cache: dict[object, object] = parent._cache if parent is not None else {}
         self._hidden: dict[Symbol, object] = {}
+        if parent is not None:
+            self._literal_resolver = parent._literal_resolver
+        else:
+            self._literal_resolver: LiteralResolver = literal_resolver or resolve_default_literal
 
     def resolve(self, symbol: Symbol) -> object:
         if symbol in self._bindings:
@@ -40,7 +43,7 @@ class Environment:
             return self._hidden[symbol]
         if self._parent is not None:
             return self._parent.resolve(symbol)
-        return resolve_default_literal(symbol)
+        return self._literal_resolver(symbol)
 
     def define(self, symbol: Symbol, value: object) -> object:
         self._bindings[symbol] = value
@@ -62,6 +65,10 @@ class Environment:
 
     def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
         return Environment(bindings, self)
+
+    @property
+    def literal_resolver(self) -> LiteralResolver:
+        return self._literal_resolver
 
     def bindings(self) -> dict[Symbol, object]:
         if self._parent is None:
@@ -218,7 +225,7 @@ class Environment:
         return self.register_meta(name, func, doc=doc, signature=signature)
 
 
-def standard_environment() -> Environment:
+def standard_environment(*, literal_resolver: LiteralResolver | None = None) -> Environment:
     from qy.stdlib import standard_bindings
 
-    return Environment(standard_bindings())
+    return Environment(standard_bindings(), literal_resolver=literal_resolver)

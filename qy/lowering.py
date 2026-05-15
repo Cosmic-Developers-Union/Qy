@@ -125,7 +125,7 @@ def lower_source(
 
 def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     context = LoweringContext.create(env)
-    scope = _scope_from_environment(context.env).child()
+    scope = _scope_from_environment(context.env)
     scope = _predeclare_callable_definitions(tuple(forms), scope, context)
     body: list[IRExpr] = []
     for index, form in enumerate(forms):
@@ -267,6 +267,12 @@ def _lower_symbol(
     if symbol_as_data:
         return LiteralExpr(symbol, "symbol", symbol.span, symbol)
 
+    try:
+        resolved = context.env.resolve(symbol)
+        return LiteralExpr(resolved, value_type(resolved), symbol.span, symbol)
+    except EvaluationError:
+        pass
+
     context.diagnostic(f"unresolved symbol {symbol.name!r}", symbol)
     return UnresolvedSymbolExpr(symbol, symbol.span)
 
@@ -338,7 +344,7 @@ def _build_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
     ):
         spliced = head_form[1] if len(head_form) == 2 else head_form
         rest = _build_quasiquote_tuple(tail_form, depth=depth)
-        return (Symbol("qy-append"), spliced, rest)
+        return (Symbol("append"), spliced, rest)
     head = _expand_quasiquote_form(head_form, depth=depth)
     rest = _build_quasiquote_tuple(tail_form, depth=depth)
     return (Symbol("cons"), head, rest)
@@ -535,13 +541,6 @@ def _lower_module(
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
-            continue
-        if _is_special_form(expression, "imports") and isinstance(expression, tuple):
-            for import_form in expression[1:]:
-                if isinstance(import_form, tuple):
-                    lowered = _lower_from(import_form, context)
-                    lowered_body.append(lowered)
-                    module_scope = _scope_after_form(import_form, lowered, module_scope, context)
             continue
         lowered = _lower_form(expression, module_scope, context)
         lowered_body.append(lowered)

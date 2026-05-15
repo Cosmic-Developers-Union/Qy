@@ -67,3 +67,12 @@ def test_car_cdr_cons():
     )
     assert evaluate_source("'()") is QY_EMPTY_LIST
     assert evaluate_source("'(abc . def)") == QyChain(S("abc"), S("def"))
+
+
+def test_apply_uses_runtime_literals_for_quoted_args():
+    assert evaluate_source("(apply + (quote (1 2 3)))") == 6
+
+
+def test_quasiquote_unquote_splicing_works_without_internal_helpers():
+    value = evaluate_source("(quasiquote (a (unquote-splicing (quote (b c))) d))")
+    assert value == list_to_qy_cons([S("a"), S("b"), S("c"), S("d")])

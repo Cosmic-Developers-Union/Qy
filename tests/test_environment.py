@@ -1,11 +1,14 @@
 import pytest
 
+from qy.analyzer import analyze_source
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
 from qy.evaluator import Environment
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
+from qy.literals import resolve_default_literal
+from qy.lowering import lower_source
 from qy.reader import Symbol
 
 S = Symbol
@@ -33,3 +36,39 @@ def test_unresolved_symbol_errors_include_code_span_and_qy_stack():
     assert error.span.column == 4
     assert error.frames
     assert "Qy stack:" in format_qy_error(error)
+
+
+def test_environment_can_use_custom_literal_resolver():
+    def resolver(symbol: Symbol) -> object:
+        if symbol == S("answer"):
+            return 42
+        return resolve_default_literal(symbol)
+
+    env = Environment(literal_resolver=resolver)
+    assert evaluate(S("answer"), env) == 42
+
+
+def test_child_environment_inherits_custom_literal_resolver():
+    def resolver(symbol: Symbol) -> object:
+        if symbol == S("v"):
+            return 7
+        return resolve_default_literal(symbol)
+
+    env = Environment(literal_resolver=resolver)
+    assert evaluate(S("v"), env.child()) == 7
+
+
+def test_analyzer_and_lowering_read_same_environment_literal_facts():
+    def resolver(symbol: Symbol) -> object:
+        if symbol == S("forty-two"):
+            return 42
+        return resolve_default_literal(symbol)
+
+    env = standard_environment(literal_resolver=resolver)
+
+    analysis = analyze_source("(+ forty-two 1)", env)
+    lowered = lower_source("(+ forty-two 1)", env)
+
+    assert not any(item.severity == "error" for item in analysis.diagnostics)
+    assert not any(item.severity == "error" for item in lowered.diagnostics)
+    assert evaluate_source("(+ forty-two 1)", env) == 43

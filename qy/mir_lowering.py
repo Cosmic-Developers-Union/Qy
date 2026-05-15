@@ -103,6 +103,9 @@ class _FunctionLowerer:
             last_register = lowered.register
             if collect_results and last_register is not None and not self.current.terminated:
                 self.emit("APPEND_RESULT", last_register, span=_span_of(expression))
+        if last_register is None and not self.current.terminated:
+            last_register = self.register()
+            self.emit("LOAD_HOST", last_register, None)
         return last_register
 
     def lower_expr(self, expression: IRExpr, *, tail: bool = False) -> _LoweredExpression:

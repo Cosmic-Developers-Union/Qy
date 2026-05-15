@@ -132,5 +132,6 @@ def test_duplicate_define_reports_same_scope_error():
     assert any("'x' is already bound in this scope" in item.message for item in diagnostics)
 
 
-def test_define_may_shadow_parent_binding():
-    assert type_check_source("(define + 99)") == []
+def test_define_cannot_rebind_host_symbol_in_same_scope():
+    diagnostics = type_check_source("(define + 99)")
+    assert any("'+' is already bound in this scope" in item.message for item in diagnostics)
