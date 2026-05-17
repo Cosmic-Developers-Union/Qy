@@ -114,7 +114,7 @@ async def _run_file(args: tuple[object, ...], env: Environment) -> object:
     path = Path(_as_text(path_value)).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
-    qy = Qy(env=env.child())
+    qy = Qy()
     return await qy.evaluate_file_async(path)
 
 

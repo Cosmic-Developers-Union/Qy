@@ -1,0 +1,5 @@
+(defeffect state)
+(eq (handle
+  (+ 1 (perform state 10))
+  ((state (v k) (resume k (* v 3)))))
+  31)
