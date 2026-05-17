@@ -2,4 +2,4 @@
   (quasiquote
     (let ((tmp (unquote a)))
       (unquote b))))
-(eq (swap-if 1 2) 2)
+(= (swap-if 1 2) 2)

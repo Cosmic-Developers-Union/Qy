@@ -19,6 +19,14 @@ def _py_eq(left: object, right: object) -> bool:
     return left == right
 
 
+def _num_eq(left: object, right: object) -> bool:
+    if isinstance(left, bool) or isinstance(right, bool):
+        return left is right
+    if isinstance(left, int | float) and isinstance(right, int | float):
+        return left == right
+    return left is right
+
+
 def _add(*args: object) -> int | float:
     return sum(_ensure_number(arg) for arg in args)
 
@@ -48,7 +56,8 @@ def _div(first: object, *rest: object) -> int | float:
 
 def operators() -> dict[Symbol, object]:
     return {
-        Symbol("=="): PureOperator("==", _py_eq, "按 Python == 语义比较两个值。"),
+        Symbol("="): PureOperator("=", _num_eq, "数值相等比较。"),
+        Symbol("=="): PureOperator("==", _py_eq, "按 Python == 语义比较两个值。（兼容层）"),
         Symbol("+"): PureOperator("+", _add, "数字求和。"),
         Symbol("-"): PureOperator("-", _sub, "数字相减；单参数时取负。"),
         Symbol("*"): PureOperator("*", _mul, "数字相乘。"),

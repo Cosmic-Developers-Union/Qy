@@ -41,7 +41,7 @@ def test_self_tail_recursive_function_uses_trampoline():
             (let ()
               (defun sum-to (n acc)
                 (cond
-                  ((eq n 0) acc)
+                  ((= n 0) acc)
                   (true (sum-to (- n 1) (+ acc n)))))
               (sum-to 300 0))
             """

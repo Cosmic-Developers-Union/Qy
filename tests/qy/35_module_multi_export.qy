@@ -3,4 +3,4 @@
   (defun mul35 (a b) (* a b))
   (exports add35 mul35))
 (from calc35 import add35 mul35)
-(eq (add35 (mul35 3 4) 2) 14)
+(= (add35 (mul35 3 4) 2) 14)

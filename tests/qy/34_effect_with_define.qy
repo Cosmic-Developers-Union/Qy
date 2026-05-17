@@ -1,6 +1,6 @@
 (defeffect e34)
 (define v34 10)
-(eq (handle
+(= (handle
   (perform e34 v34)
   ((e34 (v k) (resume k (+ v 5)))))
   15)

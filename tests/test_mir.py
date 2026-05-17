@@ -35,7 +35,7 @@ def test_mir_lowering_preserves_tail_call_as_terminator():
         """
         (defun sum-to (n acc)
           (cond
-            ((eq n 0) acc)
+            ((= n 0) acc)
             (true (sum-to (- n 1) (+ acc n)))))
         """
     )
@@ -127,7 +127,7 @@ def test_mir_dump_shows_tail_call_terminator():
         """
         (defun sum-to (n acc)
           (cond
-            ((eq n 0) acc)
+            ((= n 0) acc)
             (true (sum-to (- n 1) (+ acc n)))))
         """
     )

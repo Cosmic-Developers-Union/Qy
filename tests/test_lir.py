@@ -50,8 +50,8 @@ def test_lower_lir_no_mir_terminators_in_output():
             """
             (defun fib (n)
               (cond
-                ((eq n 0) 0)
-                ((eq n 1) 1)
+                ((= n 0) 0)
+                ((= n 1) 1)
                 (true (+ (fib (- n 1)) (fib (- n 2))))))
             (fib 5)
             """
@@ -140,7 +140,7 @@ def test_lir_pipeline_end_to_end_tail_recursion():
         """
         (defun count (n)
           (cond
-            ((eq n 0) 0)
+            ((= n 0) 0)
             (true (count (- n 1)))))
         (count 1000)
         """

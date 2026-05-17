@@ -1,0 +1,6 @@
+(macro swap (a b)
+  (let ((tmp (gensym)))
+    (quasiquote
+      (let ((tmp (unquote a)))
+        (unquote b)))))
+(= (swap 10 20) 20)

@@ -30,7 +30,7 @@ def test_vm_self_tail_recursion():
         (let ()
           (defun sum-to (n acc)
             (cond
-              ((eq n 0) acc)
+              ((= n 0) acc)
               (true (sum-to (- n 1) (+ acc n)))))
           (sum-to 2000 0))
         """
@@ -45,11 +45,11 @@ def test_vm_mutual_tail_recursion():
         (let ()
           (defun even (n)
             (cond
-              ((eq n 0) true)
+              ((= n 0) true)
               (true (odd (- n 1)))))
           (defun odd (n)
             (cond
-              ((eq n 0) false)
+              ((= n 0) false)
               (true (even (- n 1)))))
           (even 1501))
         """

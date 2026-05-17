@@ -1,1 +1,1 @@
-(let ((f (lambda (x) (* x 2)))) (eq (apply f (cons 7 nil)) 14))
+(let ((f (lambda (x) (* x 2)))) (= (apply f (cons 7 nil)) 14))

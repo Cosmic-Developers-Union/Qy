@@ -135,20 +135,6 @@ def _is(left: object, right: object) -> bool:
 
 
 def _eq(left: object, right: object) -> bool:
-    if left is QY_NIL or right is QY_NIL:
-        return left is QY_NIL and right is QY_NIL
-    if left is QY_T or right is QY_T:
-        return left is QY_T and right is QY_T
-    if isinstance(left, QyCons) or isinstance(right, QyCons):
-        return left is right
-    if isinstance(left, Symbol) or isinstance(right, Symbol):
-        return isinstance(left, Symbol) and isinstance(right, Symbol) and left.name == right.name
-    if left is None or right is None:
-        return left is None and right is None
-    if isinstance(left, bool) or isinstance(right, bool):
-        return left is right
-    if isinstance(left, tuple) and isinstance(right, tuple):
-        return len(left) == 0 and len(right) == 0
     return left is right
 
 

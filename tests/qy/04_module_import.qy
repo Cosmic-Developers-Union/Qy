@@ -1,2 +1,2 @@
 (from qy.str import str-upper as upper)
-(eq (upper (quote qy)) (quote QY))
+(== (upper (quote qy)) (quote QY))

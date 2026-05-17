@@ -329,7 +329,14 @@ class _FunctionLowerer:
             expression.body,
         )
         result = self.register()
-        self.emit("DEFINE_MODULE", result, expression.name, function_index, span=expression.span)
+        self.emit(
+            "DEFINE_MODULE",
+            result,
+            expression.name,
+            function_index,
+            expression.export_names,
+            span=expression.span,
+        )
         return _LoweredExpression(result)
 
     def lower_from_import(self, expression: FromImportExpr) -> _LoweredExpression:

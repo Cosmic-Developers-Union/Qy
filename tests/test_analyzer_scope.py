@@ -119,7 +119,7 @@ def test_recursive_function_scope_is_understood():
         type_check_source("""
     (defun countdown (n)
       (cond
-        ((eq n 0) 0)
+        ((= n 0) 0)
         (true (countdown (- n 1)))))
     """)
         == []

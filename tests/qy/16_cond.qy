@@ -1,1 +1,1 @@
-(eq (cond (true 1) (true 2)) 1)
+(= (cond (true 1) (true 2)) 1)

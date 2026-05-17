@@ -1,1 +1,1 @@
-(let ((x 10)) (eq ((lambda (y) (+ x y)) 5) 15))
+(let ((x 10)) (= ((lambda (y) (+ x y)) 5) 15))

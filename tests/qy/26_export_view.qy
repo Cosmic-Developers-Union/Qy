@@ -3,4 +3,4 @@
   (defun pub () 2)
   (exports pub))
 (from m import pub)
-(eq (pub) 2)
+(= (pub) 2)

@@ -42,4 +42,4 @@
         (failed (car (cdr result))))
     (pipeline
       (print qytest-summary passed= passed failed= failed)
-      (eq failed 0))))
+      (= failed 0))))

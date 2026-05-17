@@ -55,7 +55,7 @@ def test_register_vm_tail_recursion_uses_frame_replacement():
         (let ()
           (defun sum-to (n acc)
             (cond
-              ((eq n 0) acc)
+              ((= n 0) acc)
               (true (sum-to (- n 1) (+ acc n)))))
           (sum-to 2000 0))
         """

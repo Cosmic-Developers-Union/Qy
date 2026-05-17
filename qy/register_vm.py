@@ -205,9 +205,12 @@ class RegisterVirtualMachine:
                     cache_key, _int(thunk_idx), frame.env
                 )
             case "DEFINE_MODULE":
-                dest, module_name, function_index = operands
+                dest, module_name, function_index, export_names = operands
                 frame.registers[_register(dest)] = await self._define_module(
-                    _symbol(module_name), _int(function_index), frame.env
+                    _symbol(module_name),
+                    _int(function_index),
+                    frame.env,
+                    export_names=_symbols(export_names) if isinstance(export_names, tuple) else (),
                 )
             case "FROM_IMPORT":
                 module_name, specs = operands
@@ -461,7 +464,12 @@ class RegisterVirtualMachine:
         return result
 
     async def _define_module(
-        self, module_name: Symbol, function_index: int, env: Environment
+        self,
+        module_name: Symbol,
+        function_index: int,
+        env: Environment,
+        *,
+        export_names: tuple[Symbol, ...] = (),
     ) -> object:
         from qy.macro import MacroDefinition
         from qy.source_modules import cache_source_module
@@ -473,11 +481,22 @@ class RegisterVirtualMachine:
         baseline = set(module_env.local_bindings())
         body_fn = BytecodeFunctionValue(self.program.functions[function_index], module_env)
         await self._run_function(body_fn, ())
+
+        all_bindings = {
+            sym: value for sym, value in module_env.local_bindings().items() if sym not in baseline
+        }
+
+        if export_names:
+            selected: dict[Symbol, object] = {}
+            for name in export_names:
+                if name in all_bindings:
+                    selected[name] = all_bindings[name]
+        else:
+            selected = all_bindings
+
         runtime_exports: dict[Symbol, object] = {}
         macro_exports: dict[Symbol, object] = {}
-        for sym, value in module_env.local_bindings().items():
-            if sym in baseline:
-                continue
+        for sym, value in selected.items():
             if isinstance(value, MacroDefinition):
                 macro_exports[sym] = value
             else:

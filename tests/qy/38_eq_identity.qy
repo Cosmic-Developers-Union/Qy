@@ -1,0 +1,7 @@
+(module Pair
+  (exports make-pair pair-first pair-second)
+  (defun make-pair (a b) (cons a (cons b nil)))
+  (defun pair-first (p) (car p))
+  (defun pair-second (p) (car (cdr p))))
+(from Pair import make-pair pair-first pair-second)
+(= (pair-first (make-pair 1 2)) 1)

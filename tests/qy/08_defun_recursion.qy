@@ -1,5 +1,5 @@
 (defun fact (n)
   (cond
-    ((== n 0) 1)
+    ((= n 0) 1)
     (true (* n (fact (- n 1))))))
-(eq (fact 5) 120)
+(= (fact 5) 120)

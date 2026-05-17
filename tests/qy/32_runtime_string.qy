@@ -1,1 +1,1 @@
-(eq (len "abc") 3)
+(= (len "abc") 3)

@@ -1,2 +1,2 @@
 (from qy.num import - as my-minus)
-(eq (my-minus 10 3) 7)
+(= (my-minus 10 3) 7)

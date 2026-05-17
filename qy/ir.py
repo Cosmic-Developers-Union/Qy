@@ -254,6 +254,7 @@ class FromImportExpr:
 class ModuleExpr:
     name: Symbol
     body: tuple[IRExpr, ...]
+    export_names: tuple[Symbol, ...] = ()
     span: SourceSpan | None = None
     type_name: TypeName = "any"
 

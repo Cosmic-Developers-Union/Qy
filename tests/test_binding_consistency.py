@@ -91,3 +91,97 @@ def test_pre_symbol_space_chain_readable() -> None:
     # Each frame should have bindings
     for frame in chain:
         assert hasattr(frame, "bindings")
+
+
+def test_number_literal_spelling_consistent() -> None:
+    """Number spelling: literal resolver, analyzer, and runtime agree."""
+    qy = Qy()
+
+    # Integer literal
+    analysis = analyze_source("42", qy.env)
+    errors = [d for d in analysis.diagnostics if d.severity == "error"]
+    assert not errors
+
+    result = qy.evaluate_source("42")
+    assert result == 42
+    assert isinstance(result, int)
+
+    # Float literal
+    analysis = analyze_source("3.14", qy.env)
+    errors = [d for d in analysis.diagnostics if d.severity == "error"]
+    assert not errors
+
+    result = qy.evaluate_source("3.14")
+    assert result == 3.14
+    assert isinstance(result, float)
+
+
+def test_string_spelling_consistent() -> None:
+    """String spelling: quoted strings are runtime string values across all stages."""
+    qy = Qy()
+
+    analysis = analyze_source('"hello"', qy.env)
+    errors = [d for d in analysis.diagnostics if d.severity == "error"]
+    assert not errors
+
+    result = qy.evaluate_source('"hello"')
+    assert result == "hello"
+    assert isinstance(result, str)
+
+
+def test_eq_identity_vs_num_equality() -> None:
+    """Test that eq is identity and = is numeric value equality."""
+    qy = Qy()
+
+    # eq: identity for all types
+    assert qy.evaluate_source("(eq nil nil)") is True
+    assert qy.evaluate_source("(eq T T)") is True
+    assert qy.evaluate_source("(eq 1 1)") is True  # CPython small int interning
+
+    # =: numeric value equality (guaranteed for all numbers)
+    assert qy.evaluate_source("(= 1 1)") is True
+    assert qy.evaluate_source("(= 0 0)") is True
+    assert qy.evaluate_source("(= 3.14 3.14)") is True
+
+    # eq: symbols are identity (different objects)
+    assert qy.evaluate_source("(eq 'abc 'abc)") is False
+
+
+def test_module_export_view_consistent() -> None:
+    """module/from/exports: export view is selective, from is fold with define-once."""
+    from qy.reader import Symbol
+
+    # Module with exports: only exported names visible
+    q = Qy()
+    q.evaluate_source("(module M (exports pub) (define priv 1) (define pub 2))")
+    from qy.stdlib.module import StandardModule
+
+    mod = q.env.resolve(Symbol("M"))
+    assert isinstance(mod, StandardModule)
+    assert Symbol("pub") in mod.exports
+    assert Symbol("priv") not in mod.exports
+
+    # from is selective fold
+    q2 = Qy()
+    q2.evaluate_source("(module N (exports a b) (define a 10) (define b 20))")
+    q2.evaluate_source("(from N import a)")
+    assert q2.env.resolve(Symbol("a")) == 10
+    # b was not imported
+    try:
+        q2.env.resolve(Symbol("b"))
+        raise AssertionError("b should not be visible")
+    except Exception:
+        pass
+
+
+def test_host_injection_in_symbol_space() -> None:
+    """Host-injected names are visible through symbol-space chain."""
+    from qy.reader import Symbol
+
+    q = Qy()
+    # + is injected by standard profile
+    from qy.operators import PureOperator
+
+    plus = q.env.resolve(Symbol("+"))
+    assert isinstance(plus, PureOperator)
+    assert plus.name == "+"

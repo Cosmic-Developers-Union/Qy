@@ -1,2 +1,2 @@
 (defun add3 (a b c) (+ a b c))
-(eq (apply add3 (cons 1 (cons 2 (cons 3 nil)))) 6)
+(= (apply add3 (cons 1 (cons 2 (cons 3 nil)))) 6)

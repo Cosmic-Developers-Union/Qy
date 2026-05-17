@@ -1,1 +1,1 @@
-(eq (car (cons 1 nil)) 1)
+(= (car (cons 1 nil)) 1)

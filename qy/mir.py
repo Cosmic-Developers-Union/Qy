@@ -240,7 +240,7 @@ def _verify_instruction(
             _check_register_tuple(function, block_id, instruction.opcode, operands[2], diagnostics)
         case "DEFINE_MODULE":
             if not _check_operand_arity(
-                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
+                function, block_id, "instruction", instruction.opcode, operands, 4, diagnostics
             ):
                 return
             _check_register(function, block_id, operands[0], diagnostics)

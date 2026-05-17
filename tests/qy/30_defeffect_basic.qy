@@ -1,5 +1,5 @@
 (defeffect ping)
-(eq (handle
+(= (handle
   (perform ping 42)
   ((ping (v k) (resume k (+ v 8)))))
   50)

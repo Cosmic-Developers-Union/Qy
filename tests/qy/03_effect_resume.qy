@@ -1,5 +1,5 @@
 (defeffect ask)
-(eq (handle
+(= (handle
   (perform ask 7)
   ((ask (x k)
      (resume k (+ x 35)))))

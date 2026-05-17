@@ -534,18 +534,27 @@ def _lower_module(
 ) -> IRExpr:
     if len(form) < 2:
         context.diagnostic("module expects a name and body", form)
-        return ModuleExpr(Symbol("<invalid>"), (), get_span(form))
+        return ModuleExpr(Symbol("<invalid>"), (), (), get_span(form))
     _, name, *body = form
     name = _ensure_symbol(name, "module name", context)
+    export_names: list[Symbol] = []
     module_scope = _predeclare_callable_definitions(tuple(body), scope.child(), context)
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
+            if isinstance(expression, tuple):
+                for item in expression[1:]:
+                    if isinstance(item, Symbol):
+                        export_names.append(item)
+                    elif isinstance(item, tuple):
+                        for sub in item:
+                            if isinstance(sub, Symbol):
+                                export_names.append(sub)
             continue
         lowered = _lower_form(expression, module_scope, context)
         lowered_body.append(lowered)
         module_scope = _scope_after_form(expression, lowered, module_scope, context)
-    return ModuleExpr(name, tuple(lowered_body), get_span(form))
+    return ModuleExpr(name, tuple(lowered_body), tuple(export_names), get_span(form))
 
 
 def _lower_from(form: tuple[object, ...], context: LoweringContext) -> IRExpr:

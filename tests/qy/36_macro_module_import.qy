@@ -1,0 +1,6 @@
+(module M
+  (exports my-add)
+  (macro my-add (x y)
+    (quasiquote (+ (unquote x) (unquote y)))))
+(from M import my-add)
+(= (my-add 3 4) 7)

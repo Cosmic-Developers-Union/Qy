@@ -19,6 +19,7 @@ __all__ = [
     "lookup_operator_signature",
 ]
 
+
 ArgumentPolicy = Literal["eager", "raw", "body", "binding", "effect-name"]
 
 
@@ -94,6 +95,7 @@ STDLIB_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "+": OperatorSignature("number", Arity(), rest_type="number"),
     "-": OperatorSignature("number", Arity(1), rest_type="number"),
     "/": OperatorSignature("number", Arity(1), rest_type="number"),
+    "=": OperatorSignature("bool", Arity(2, 2)),
     "==": OperatorSignature("bool", Arity(2, 2)),
     "assert": OperatorSignature(
         "any",
@@ -106,23 +108,10 @@ STDLIB_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
 }
 
 
-LEGACY_COMPAT_SIGNATURES: dict[str, OperatorSignature] = {
-    "assert": OperatorSignature(
-        "any",
-        Arity(1, 2),
-        effects=(EffectSpec("assert-failed", resumable=False),),
-    ),
-    "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
-    "is": OperatorSignature("bool", Arity(2, 2)),
-}
-
-
 def lookup_operator_signature(name: str) -> OperatorSignature | None:
     if (signature := CORE_OPERATOR_SIGNATURES.get(name)) is not None:
         return signature
-    if (signature := STDLIB_OPERATOR_SIGNATURES.get(name)) is not None:
-        return signature
-    return LEGACY_COMPAT_SIGNATURES.get(name)
+    return STDLIB_OPERATOR_SIGNATURES.get(name)
 
 
 def format_arity_message(name: str, signature: OperatorSignature, actual: int) -> str:

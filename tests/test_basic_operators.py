@@ -26,12 +26,13 @@ def test_cond():
 
 
 def test_eq():
-    assert evaluate_source("(eq 'abc 'abc)")
-    assert not evaluate_source("(eq '(abc) '(abc))")
-    assert evaluate_source("(eq '() '())")
+    # eq is pure identity semantics
+    assert not evaluate_source("(eq 'abc 'abc)")  # different Symbol objects
+    assert not evaluate_source("(eq '(abc) '(abc))")  # different QyCons
+    assert evaluate_source("(eq '() '())")  # both are QY_NIL singleton
     assert not evaluate_source("(eq '() none)")
     assert not evaluate_source("(== '() none)")
-    assert evaluate_source("(eq nil '())")
+    assert evaluate_source("(eq nil '())")  # both are QY_NIL
     assert not evaluate_source("(eq none nil)")
     assert not evaluate_source("(eq T true)")
     assert not evaluate_source("(== T true)")

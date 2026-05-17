@@ -210,7 +210,7 @@ def _map_register_operands(
         case "CACHE_EVAL":
             return (map_register(operands[0]), operands[1], operands[2])
         case "DEFINE_MODULE":
-            return (map_register(operands[0]), operands[1], operands[2])
+            return (map_register(operands[0]), operands[1], operands[2], operands[3])
         case "PERFORM":
             return (map_register(operands[0]), operands[1], map_register(operands[2]))
         case "HANDLE":
