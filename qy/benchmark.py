@@ -124,6 +124,18 @@ DEFAULT_CASES: tuple[BenchmarkCase, ...] = (
         setup_source="(from qy.num import + as add)",
         iterations=500,
     ),
+    BenchmarkCase(
+        "effect-heavy",
+        "(handle (perform ask 1) ((ask (x k) (resume k x))))",
+        setup_source="(defeffect ask)",
+        iterations=200,
+    ),
+    BenchmarkCase(
+        "macro-heavy",
+        "(my-if true 1 2)",
+        setup_source="(macro my-if (c t e) (quasiquote (cond ((unquote c) (unquote t)) (true (unquote e)))))",
+        iterations=500,
+    ),
 )
 
 

@@ -218,3 +218,34 @@ def test_lower_lir_compacts_sparse_register_layout():
     assert function.instructions[0].operands == (0, 1)
     assert function.instructions[1].operands == (1, 0)
     assert function.instructions[2].operands == (1,)
+
+
+def test_peephole_removes_move_self_assignment():
+    """Peephole eliminates MOVE r, r (no-op)."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+
+    instructions = [
+        LIRInstruction("LOAD_HOST", (0, 1)),
+        LIRInstruction("MOVE", (0, 0)),  # self-assignment, should be removed
+        LIRInstruction("RETURN", (0,)),
+    ]
+
+    result = _peephole(instructions)
+    opcodes = [i.opcode for i in result]
+    assert opcodes == ["LOAD_HOST", "RETURN"]
+
+
+def test_peephole_keeps_move_different_registers():
+    """Peephole preserves MOVE between different registers."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+
+    instructions = [
+        LIRInstruction("LOAD_HOST", (0, 1)),
+        LIRInstruction("MOVE", (1, 0)),  # different registers, kept
+        LIRInstruction("RETURN", (1,)),
+    ]
+    result = _peephole(instructions)
+    opcodes = [i.opcode for i in result]
+    assert opcodes == ["LOAD_HOST", "MOVE", "RETURN"]

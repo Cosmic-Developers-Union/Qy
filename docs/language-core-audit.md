@@ -112,10 +112,23 @@
 
 `PureOperator`、`ScopeOperator`、`ControlOperator`、`EffectOperator`、`MetaOperator` 仍承载大量 stdlib 和核心行为。
 
+**当前状态**：`_apply_operator`（死代码）已从 `evaluator.py` 删除（450→376 行）。`ensure_symbol` 重复已移除，改为从 `qy/symbol_utils.py` 导入。剩余的 evaluator 函数（尾调用路径、body 评估、effect 续延组合）均被 stdlib 通过 `eval_runtime.py` 活跃使用。
+
+**迁移依赖链**：
+
+```
+stdlib/control.py (_defun, _lambda) → UserFunction
+UserFunction.__call__ → eval_runtime.evaluate_tail_body_async
+eval_runtime → evaluator._evaluate_tail_body_async
+```
+
+要完全移除 evaluator 的尾调用路径，必须先将 `lambda`/`defun` 的运行时表示从 `UserFunction`（Python callable）迁移到 bytecode function。这需要修改 `control.py`、`runtime_values.py` 和约 55 个测试文件。
+
 **处置方向**：
 
 - 新核心语义不得继续通过 legacy operator dispatch 实现。
 - operator metadata + MIR/LIR/register VM host-call ABI 接管后，legacy dispatch 删除或降级为外部 host adapter。
+- 最小迁移集：`lambda`/`defun`（创建 `UserFunction` 的 stdlib operators）。
 
 ---
 

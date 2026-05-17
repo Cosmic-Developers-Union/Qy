@@ -73,3 +73,30 @@ def test_custom_operator_can_declare_signature():
     assert isinstance(operator, PureOperator)
     assert operator.signature == signature
     assert qy.evaluate_source("(triple 14)") == 42
+
+
+def test_stdlib_signatures_subset_of_profile():
+    """STDLIB_OPERATOR_SIGNATURES keys must be available in default profile."""
+    from qy.operator_signature import STDLIB_OPERATOR_SIGNATURES
+
+    qy = Qy()
+    profile_keys = set(qy.env.bindings())
+    for name in STDLIB_OPERATOR_SIGNATURES:
+        assert Symbol(name) in profile_keys, (
+            f"stdlib signature {name!r} not in default profile bindings"
+        )
+
+
+def test_collect_supported_operators_covers_profile():
+    """collect_supported_operators lists all standard profile symbols."""
+    from qy.operator_docs import collect_supported_operators
+
+    qy = Qy()
+    supported_names: set[str] = set()
+    for group in collect_supported_operators():
+        for op in group.operators:
+            supported_names.add(op.name)
+    profile_names = {s.name for s in qy.env.bindings()}
+    assert supported_names.issubset(profile_names), (
+        f"supported operators not in profile: {supported_names - profile_names}"
+    )

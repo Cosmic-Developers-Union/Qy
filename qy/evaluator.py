@@ -223,14 +223,7 @@ async def _continue_body_after_resume(
     return await _evaluate_body_from(body, index, env)
 
 
-def ensure_symbol(value: object, context: str) -> Symbol:
-    if not isinstance(value, Symbol):
-        raise QyTypeError(
-            f"{context} must be a symbol, got {value!r}",
-            span=get_span(value),
-            metadata={"context": context, "value": value},
-        )
-    return value
+from qy.symbol_utils import ensure_symbol  # noqa: E402
 
 
 async def _evaluate_values(

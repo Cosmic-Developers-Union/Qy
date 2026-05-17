@@ -1,0 +1,5 @@
+(macro swap-if (a b)
+  (quasiquote
+    (let ((tmp (unquote a)))
+      (unquote b))))
+(eq (swap-if 1 2) 2)

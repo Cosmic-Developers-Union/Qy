@@ -1,0 +1,6 @@
+(module m
+  (defun secret () 1)
+  (defun pub () 2)
+  (exports pub))
+(from m import pub)
+(eq (pub) 2)
