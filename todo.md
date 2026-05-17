@@ -16,7 +16,7 @@
 - 唯一管线：`source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM`。
 - syntax datum 只有 `symbol` 与不可变 `chain`。
 - 语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。
-- runtime value 由 `number`、`string`、`object` 构成；host value 是一等 runtime value。
+- runtime value 是 Qy 语义对象，抽象上由 `number`、`string`、`object` 构成；`nil` / `t` 是 Qy 自身对象。Python value 只是宿主互操作对象，不能与 runtime value 混淆；host reference 是一等 runtime value。
 - symbol 求值沿 symbol-space-chain 查找；同一 symbol-space 不可重绑定。
 - `define` 只检查当前空间，可 shadow 链上后续空间；`let` 创建新空间，可绑定任意 symbol。
 - `pre-symbol-space-chain` 不是语言核目标，但它是标准实现起点；reader、analyzer、LSP、lowering、runtime 必须读取同一 `Qy` 实例事实。
@@ -32,6 +32,8 @@
   - `defeffect perform handle resume`
   - `module from import exports`
 - `pipeline` 串行；`parallel` 只表示“允许并行”且支持 effect；`all` 是 barrier continuation；`race` 是 first-resume-wins。
+- `cond` 只把 `nil` 视为 false；`truthy` 是 standard profile 的复杂判断算子，负责按自身规则返回 `t` / `nil`，不建立全局宿主值自动转换。
+- `read` 只产出 syntax datum；`eval` 把 syntax datum 变成 runtime value；`reify` 把 runtime value 在目标上下文中投回 syntax datum，默认只要求等价回环，不默认承诺 identity round-trip。
 - 默认 surface dialect 只提供静态可描述的 `'x`、quasiquote 内 `,x` / `,@x`；不实现 unrestricted reader macro。
 - register VM 是唯一 runtime backend；不得重新引入第二执行后端。
 - 新增 operator 前先判断能否用 Qy 本身实现；能自举的能力优先留在 Qy library。
@@ -75,9 +77,13 @@
 6. **已确认偏移**：raw AST 只能有 `symbol` / `chain`，但 `reader.Form` 已直接包含 `str`，quoted literal 也直接读成 Python `str`。这不是允许的 parser-level 例外，而是阶段职责错误。
 7. `quasiquote` 仍在 nested 路径展开出 `list` / `append`；默认 profile 没有 `list`，当前 `(quasiquote (quasiquote ...))` 已会因 unresolved `list` 失败。这说明 macro surface 仍依赖过时 stdlib 假设。
 8. `qy.core` 当前不只暴露 `atom/eq/car/cdr/cons`，还暴露 `chain/append/get/has?/is/len/type` 等非最小核心能力；同时 analyzer / semantics 仍把 Python `list/tuple/dict/set` 当命名类型处理。若这些只是 host object 细分，就不应继续漂成语言核类型面。
-9. 最新核心清单未再显式列出 `unquote-splicing`，但默认 surface dialect 仍需要 `,@`；其层级需要定死，不能继续靠实现惯性保留。
-10. `docs/language-core-audit.md` 对 B2 的完成状态与正文仍存在自相矛盾。
-11. exact shell 入口 `uv run qy ...` 仍未作为可靠验收面闭合。
+9. 标准实现仍缺少一个明确的 `io` runtime model；`echo` 目前只是孤立便利算子，无法承接后续 Python / Go 生态接入。
+10. `truthy` 已被确认需要存在，但其真值协议、host reference 适配边界、与 `if` 的关系还没有写成正式设计。
+11. 当前实现仍把 Python identity 泄漏进 `eq`，例如小整数 interning 会影响结果；Qy 还没有自己的 runtime identity / `id` 模型。
+12. `reify` 尚未建模；host reference 也还没有“显式实现或 perform effect”的协议。
+13. 自定义 operator 目前缺少正式声明协议；若作者不能补充 arity、参数策略、返回类型、effect 等元数据，analyzer / LSP 无法可靠理解它。
+14. `docs/language-core-audit.md` 对 B2 的完成状态与正文仍存在自相矛盾。
+15. exact shell 入口 `uv run qy ...` 仍未作为可靠验收面闭合。
 
 ## 2. 下一步顺序
 
@@ -119,11 +125,42 @@
   - arity、argument policy、return type、effect、tail transparency 只保留一个真源；
   - analyzer、lowering、CLI、runtime 读取同一模型。
 - 旧 `str-*` 停止扩张；围绕 runtime `string` 重新设计 `qy.str`。
-- 定死 `unquote-splicing` 的层级，并让 default surface dialect 与 operator 文档一致。
+- 让 default surface dialect、`unquote-splicing`、operator 文档三者保持一致。
+- 设计 Qy 自己的 `io` runtime model：
+  - 先定义 Qy 层的 `io` 能力边界，而不是让 Python file object 反向定义语言；
+  - 明确它位于哪一段 `pre-symbol-space-chain`；
+  - 明确 stdin / stdout / stderr、stream、file、buffer 等最小模型；
+  - 明确哪些能力属于 `io`，哪些应拆给 `fs` / process / network；
+  - 明确 `echo` 是否只是基于 `io` 的 Qy 级便利算子；
+  - Python / Go 等宿主只提供 adapter，后续生态接入复用同一 runtime model。
+- 正式设计 `truthy`：
+  - 保持 `cond` 只认 `nil`；
+  - `truthy` 自己决定复杂真值判断并返回 `t` / `nil`；
+  - 明确 `if` 等扩展控制算子是否以它为基础；
+  - 不引入全局 Python value 自动转换规则。
+- 闭合 runtime value / Python value 边界：
+  - 文档、类型系统、analyzer 不再把 Python value 直接当作 Qy 语义定义；
+  - Python / Go 仅提供实现或 adapter，host reference 才是进入 Qy runtime 的语义对象；
+  - 重新审计 `True` / `False` / `None`、`list` / `tuple` / `dict` / `set` 的文档和类型位置。
+- 设计 Qy runtime identity：
+  - `eq` 比较 Qy identity，不依赖 Python `id()` / `is`；
+  - 明确哪些 value 自带 runtime identity，host reference 如何获得稳定 identity；
+  - 若提供用户可见 `id`，其稳定范围只能由 Qy runtime 契约定义，不能泄漏宿主地址语义。
+- 设计 `reify`：
+  - 区分可求值表示、等价回环、identity 回环三种强度；
+  - 默认契约采用等价回环；
+  - identity 回环只能依赖 binding / handle / context；
+  - host reference 必须显式实现 reify 或 `perform` 对应 effect；
+  - `display` / `write` / `reify` / `eval` 不得混为一类。
+- 定义自定义 operator 的声明协议：
+  - 创建者必须能声明 arity、argument policy、argument types、return type、effects；
+  - 视需要声明 compile-time、runtime-meta、tail transparency 等属性；
+  - analyzer、LSP、CLI docs、runtime 统一读取同一份声明；
+  - 声明不完整的 operator 只能退化为低精度 `any` / unknown，而不能由工具链臆测。
 - 重新审计 `qy.core` 的实际 exports：
   - 核心 chain 面只允许 `atom/eq/car/cdr/cons`；
   - `chain/append/get/has?/is/len/type` 若保留，必须明确归入 profile / stdlib / compat；
-  - Python `list/tuple/dict/set` 若只是 host object refinements，不应继续伪装成语言层基本类型。
+  - Python `list/tuple/dict/set` 若只是 host adapter，不应继续伪装成语言层基本类型。
 
 **完成标准**：给定一个 profile，默认可见符号集合、CLI `operators`、静态分析、runtime 四方一致。
 

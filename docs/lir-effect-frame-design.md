@@ -35,8 +35,8 @@ class _EffectFrame:
 
 ### ABI
 
-- `SAVE_FRAME` 产出一个 host value（等价于当前 `_EffectFrame`），存入 dest_reg
-- `RESTORE_FRAME` 消费该 host value，恢复执行到 save 点的下一条指令
+- `SAVE_FRAME` 产出一个 VM-private host reference（等价于当前 `_EffectFrame`），存入 dest_reg
+- `RESTORE_FRAME` 消费该 host reference，恢复执行到 save 点的下一条指令
 - `PERFORM` 的 handler 接收 `SAVE_FRAME` 产出的 frame value 作为 continuation 的底层表示
 
 ### 编译时 lowering
