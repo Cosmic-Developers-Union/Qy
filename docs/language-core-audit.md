@@ -132,10 +132,10 @@
 | 编号 | 偏差 | 优先级 | 状态 |
 | --- | --- | --- | --- |
 | B1 | 多 backend / 兼容 API 残留 | P0 | 已完成 |
-| B2 | `define` 查 parent，不能 shadow 外层 | P0 | 部分完成 |
+| B2 | `define` 查 parent，不能 shadow 外层 | P0 | 已完成（fold 语义已落地） |
 | B3 | 默认环境加载 host interop | P0 | 部分完成 |
 | B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 部分完成 |
-| B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入） |
+| B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入）；`_apply_operator` 已删除 |
 | B6 | `RuntimeMetaCallExpr` | P1 | 已完成（节点与 opcode 已删除） |
 | B7 | 遗留 operator dispatch | P1 | 待处理 |
 | B8 | Python codegen 绕过 MIR/LIR | P2 | 已完成 |

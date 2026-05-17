@@ -118,6 +118,12 @@ DEFAULT_CASES: tuple[BenchmarkCase, ...] = (
         setup_source="(defeffect ask)",
         iterations=300,
     ),
+    BenchmarkCase(
+        "module-import",
+        "(add 1 2)",
+        setup_source="(from qy.num import + as add)",
+        iterations=500,
+    ),
 )
 
 
@@ -340,7 +346,6 @@ def main(argv: list[str] | None = None) -> None:
         choices=(
             "source",
             "macroexpand",
-            "lower",
             "hir_lower",
             "mir_lower",
             "lir_lower",

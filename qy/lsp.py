@@ -8,24 +8,40 @@ from pygls.lsp.server import LanguageServer
 from qy import __version__
 from qy.analyzer import Diagnostic
 from qy.analyzer import analyze_source
-from qy.environment import standard_environment
 from qy.formatter import format_source
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
+from qy.runtime import Qy
 
 SERVER_NAME = "qy-lsp"
+
+_SHARED_INSTANCE: Qy | None = None
+
+
+def _shared_instance() -> Qy:
+    global _SHARED_INSTANCE
+    if _SHARED_INSTANCE is None:
+        _SHARED_INSTANCE = Qy()
+    return _SHARED_INSTANCE
 
 
 class QyLanguageServer(LanguageServer):
     def __init__(self) -> None:
         super().__init__(SERVER_NAME, __version__, types.TextDocumentSyncKind.Incremental)
+        self.qy = _shared_instance()
 
 
-def diagnostics_for_source(source: str) -> list[types.Diagnostic]:
-    return [_diagnostic_to_lsp(diagnostic) for diagnostic in analyze_source(source).diagnostics]
+def diagnostics_for_source(source: str, *, qy: Qy | None = None) -> list[types.Diagnostic]:
+    runtime = qy or _shared_instance()
+    expansion = runtime.macroexpand_source(source)
+    diagnostics = list(expansion.diagnostics)
+    if not any(d.severity == "error" for d in diagnostics):
+        analysis = analyze_source(source, runtime.env)
+        diagnostics.extend(analysis.diagnostics)
+    return [_diagnostic_to_lsp(diagnostic) for diagnostic in diagnostics]
 
 
 _SIGNATURES = {
@@ -44,13 +60,14 @@ def completion_items(
     source: str | None = None,
     line: int | None = None,
     character: int | None = None,
+    *,
+    qy: Qy | None = None,
 ) -> list[types.CompletionItem]:
+    runtime = qy or _shared_instance()
     items: list[types.CompletionItem] = []
     prefix = _completion_prefix_at(source, line, character) if source is not None else ""
     items.extend(_snippet_completion_items())
-    for symbol, value in sorted(
-        standard_environment().bindings().items(), key=lambda item: item[0].name
-    ):
+    for symbol, value in sorted(runtime.env.bindings().items(), key=lambda item: item[0].name):
         kind = getattr(value, "kind", None)
         doc = getattr(value, "doc", None)
         items.append(
@@ -70,12 +87,19 @@ def completion_items(
     return items
 
 
-def hover_for_source(source: str, line: int, character: int) -> types.Hover | None:
+def hover_for_source(
+    source: str,
+    line: int,
+    character: int,
+    *,
+    qy: Qy | None = None,
+) -> types.Hover | None:
+    runtime = qy or _shared_instance()
     name = _symbol_name_at(source, line, character)
     if name is None:
         return None
     try:
-        value = standard_environment().resolve(Symbol(name))
+        value = runtime.env.resolve(Symbol(name))
     except Exception:
         return None
 
@@ -97,12 +121,12 @@ def create_server() -> QyLanguageServer:
 
     @server.feature(types.TEXT_DOCUMENT_DID_OPEN)
     def did_open(ls: QyLanguageServer, params: types.DidOpenTextDocumentParams) -> None:
-        _publish_diagnostics(ls, params.text_document.uri, params.text_document.text)
+        _publish_diagnostics(ls, params.text_document.uri, params.text_document.text, ls.qy)
 
     @server.feature(types.TEXT_DOCUMENT_DID_CHANGE)
     def did_change(ls: QyLanguageServer, params: types.DidChangeTextDocumentParams) -> None:
         document = ls.workspace.get_text_document(params.text_document.uri)
-        _publish_diagnostics(ls, document.uri, document.source)
+        _publish_diagnostics(ls, document.uri, document.source, ls.qy)
 
     @server.feature(types.TEXT_DOCUMENT_DID_CLOSE)
     def did_close(ls: QyLanguageServer, params: types.DidCloseTextDocumentParams) -> None:
@@ -125,6 +149,7 @@ def create_server() -> QyLanguageServer:
                 document.source,
                 params.position.line,
                 params.position.character,
+                qy=ls.qy,
             ),
         )
 
@@ -135,6 +160,7 @@ def create_server() -> QyLanguageServer:
             document.source,
             params.position.line,
             params.position.character,
+            qy=ls.qy,
         )
 
     @server.feature(types.TEXT_DOCUMENT_FORMATTING)
@@ -168,6 +194,7 @@ def create_server() -> QyLanguageServer:
             document.source,
             params.position.line,
             params.position.character,
+            qy=ls.qy,
         )
 
     return server
@@ -190,14 +217,17 @@ def signature_help_for_source(
     source: str,
     line: int,
     character: int,
+    *,
+    qy: Qy | None = None,
 ) -> types.SignatureHelp | None:
+    runtime = qy or _shared_instance()
     operator = _operator_before_position(source, line, character)
     if operator is None:
         return None
     label = _SIGNATURES.get(operator)
     if label is None:
         try:
-            value = standard_environment().resolve(Symbol(operator))
+            value = runtime.env.resolve(Symbol(operator))
         except Exception:
             return None
         doc = getattr(value, "doc", "")
@@ -221,11 +251,11 @@ def main() -> int:
     return 0
 
 
-def _publish_diagnostics(ls: QyLanguageServer, uri: str, source: str) -> None:
+def _publish_diagnostics(ls: QyLanguageServer, uri: str, source: str, qy: Qy) -> None:
     ls.text_document_publish_diagnostics(
         types.PublishDiagnosticsParams(
             uri=uri,
-            diagnostics=diagnostics_for_source(source),
+            diagnostics=diagnostics_for_source(source, qy=qy),
         )
     )
 

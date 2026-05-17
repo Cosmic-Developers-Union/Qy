@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections.abc import Iterable
 from collections.abc import Mapping
 from dataclasses import dataclass
 
@@ -72,6 +73,30 @@ class Environment:
 
     def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
         return Environment(bindings, self)
+
+    def fold_from(
+        self,
+        source: Mapping[Symbol, object],
+        names: Iterable[Symbol],
+    ) -> None:
+        """Fold selected bindings from *source* into this environment.
+
+        This is the formal fold operation: it absorbs visible bindings from an
+        external source (e.g. a module's export view) into the local
+        symbol-space, making them local members.  ``define_once`` semantics
+        apply — attempting to fold a name that already exists in the current
+        scope raises ``QyRuntimeError``, mirroring ``define`` behaviour.
+        """
+        from qy.errors import QyRuntimeError
+
+        for name in names:
+            if name in self._bindings:
+                raise QyRuntimeError(
+                    f"symbol {name.name!r} is already bound in this scope; use 'let' to shadow"
+                )
+            if name not in source:
+                raise QyRuntimeError(f"source has no export {name.name!r}")
+            self._bindings[name] = source[name]
 
     def pre_symbol_space_chain(self) -> tuple[EnvironmentFrame, ...]:
         frame = EnvironmentFrame(self.local_bindings(), self.hidden_bindings())

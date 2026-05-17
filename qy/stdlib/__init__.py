@@ -30,7 +30,7 @@ __all__ = [
 
 LANGUAGE_CORE_MODULES = ("qy.core",)
 STANDARD_PROFILE_MODULES = ("qy.core", "qy.io")
-OPTIONAL_STDLIB_MODULES = ("qy.str", "qy.py", "qy.testhost", "qy.legacy")
+OPTIONAL_STDLIB_MODULES = ("qy.num", "qy.str", "qy.py", "qy.testhost", "qy.legacy")
 PRELUDE_MODULES = STANDARD_PROFILE_MODULES
 type ModuleLoader = Callable[[], StandardModule]
 
@@ -86,6 +86,7 @@ def standard_bindings(modules: Iterable[str] = STANDARD_PROFILE_MODULES) -> dict
 def _install_builtin_loaders() -> None:
     _MODULE_LOADERS.setdefault("qy.core", _load_core_module)
     _MODULE_LOADERS.setdefault("qy.io", _load_io_module)
+    _MODULE_LOADERS.setdefault("qy.num", _load_num_module)
     _MODULE_LOADERS.setdefault("qy.str", _load_string_module)
     _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
     _MODULE_LOADERS.setdefault("qy.testhost", _load_testhost_module)
@@ -102,6 +103,12 @@ def _load_io_module() -> StandardModule:
     from qy.stdlib.io import module
 
     return module()
+
+
+def _load_num_module() -> StandardModule:
+    from qy.stdlib.arithmetic import operators as arithmetic_operators
+
+    return StandardModule("qy.num", arithmetic_operators())
 
 
 def _load_string_module() -> StandardModule:

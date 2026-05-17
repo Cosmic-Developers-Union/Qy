@@ -49,6 +49,7 @@ def _lower_function(function: MIRFunction) -> LIRFunction:
         _emit_terminator(block.terminator, instructions, patches)
 
     _patch_jumps(instructions, patches, block_offsets)
+    instructions = _peephole(instructions)
     instructions, register_count = _layout_registers(
         function.params,
         instructions,
@@ -86,6 +87,27 @@ def _emit_terminator(
             instructions.append(
                 LIRInstruction("RAISE_EFFECT", terminator.operands, terminator.span)
             )
+
+
+def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
+    """Remove obviously redundant instruction patterns.
+
+    Currently handles:
+    - MOVE r, r  (no-op self-assignment)
+    """
+    result = list(instructions)
+    changed = True
+    while changed:
+        changed = False
+        out: list[LIRInstruction] = []
+        for instruction in result:
+            # Eliminate MOVE r, r (no-op self-assignment)
+            if instruction.opcode == "MOVE" and instruction.operands[0] == instruction.operands[1]:
+                changed = True
+                continue
+            out.append(instruction)
+        result = out
+    return result
 
 
 def _patch_jumps(

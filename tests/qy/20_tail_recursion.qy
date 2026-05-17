@@ -1,0 +1,5 @@
+(defun sum-to (n acc)
+  (cond
+    ((== n 0) acc)
+    (true (sum-to (- n 1) (+ acc n)))))
+(== (sum-to 100 0) 5050)

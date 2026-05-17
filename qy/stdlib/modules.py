@@ -79,13 +79,19 @@ async def _from_import(args: tuple[object, ...], env: Environment) -> object:
         from qy.stdlib import load_module_async
 
         source_module = await load_module_async(module_name.name)
-        for spec in specs:
-            if spec.name in source_module.exports:
-                env.define_once(spec.alias, source_module.resolve(spec.name))
-            elif spec.name in source_module.macro_exports:
-                continue
-            else:
-                raise KeyError(f"module {module_name.name!r} has no export {spec.name.name!r}")
+        runtime_specs = [spec for spec in specs if spec.name in source_module.exports]
+        macro_only = all(spec.name in source_module.macro_exports for spec in specs)
+        if not runtime_specs and not macro_only:
+            missing = [spec.name.name for spec in specs]
+            raise KeyError(f"module {module_name.name!r} has no export {missing[0]!r}")
+        if runtime_specs:
+            alias_bindings: dict[Symbol, object] = {}
+            for spec in runtime_specs:
+                alias_bindings[spec.alias] = source_module.exports[spec.name]
+            env.fold_from(
+                alias_bindings,
+                [spec.alias for spec in runtime_specs],
+            )
     except (KeyError, ValueError) as e:
         raise EvaluationError(str(e)) from e
 
