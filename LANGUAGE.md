@@ -9,7 +9,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 ```
 
 - `source`：文本。
-- `raw AST`：reader 输出的原始 syntax datum，只负责字符到 `symbol` / `chain`。
+- `raw AST`：reader 输出的原始 syntax datum，只负责字符到 `symbol` / `chain`；不得提前引入 runtime value。
 - `surface dialect`：reader 后、macro expand 前的表层方言规约层；不属于语言内核语义。
 - `macro expand`：macro 展开，输入/输出仍是 syntax datum。
 - `HIR`：高层语义 IR，解析 binding、operator signature、effect signature、module/macro 语义。
@@ -21,6 +21,10 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 ## Data Model
 
 - Syntax datum 只有两类：`symbol` 与 `chain`。
+- 语法只有 S-expression；`form` 只是“一个 S-expression 单元”的叙述名：
+  - 原子 form 是 `symbol`
+  - 复合 form 是由 form 组成的 `chain`
+- `quote`、`define`、`lambda`、`perform` 等只是后续阶段对某些 chain 的语义解释，不是 AST 的额外种类。
 - `chain` 是不可变对象；`cons` / quasiquote / macro 改写必须构造新 chain，不能原地修改旧 chain。
 - Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
 - Runtime value 存在于 symbol-space/env 中，由 `number`、`string`、`object` 构成。
@@ -41,6 +45,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - reader 本身保留 raw symbol：`read_raw("'x")` 是 symbol spelling，而不是 quote form。
 - 默认 `read` / pipeline 会应用 default surface dialect。
 - `,x` / `,@x` 只在 `quasiquote` 上下文内展开；脱离 `quasiquote` 时保留普通 symbol。
+- `,@x` 仍属于默认 surface dialect 的支持范围；它最终对应 core built-in 还是默认 profile helper，需要在算子分层中单独定死。
 - 裸 `,` 与 `,@` 永远保留普通 symbol，因此 `(define , 10)`、`(, 1 2)`、`(1 ,x)` 在普通上下文中仍是合法独立结构。
 - `define`、`let`、`lambda`、`defun`、`macro` 等 binding/parameter 位置不做 surface dialect expansion，以保证这些 spelling 仍可被绑定。
 - surface dialect 规则必须可静态描述，供 analyzer、LSP、formatter、source map 与 expansion trace 使用。
@@ -74,19 +79,19 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 宏展开阶段操作 syntax datum；runtime lookup 不应污染 macro namespace。macro 的 definition-site binding、hygiene、capture 必须由 compile-time symbol-space 明确建模。
 
-## Core Operators
+## Core Built-ins
 
-| 类别 | 算子 |
-| --- | --- |
-| syntax | `quote` |
-| chain | `atom` `eq` `car` `cdr` `cons` |
-| binding | `define` `let` |
-| control | `cond` |
-| ordering/join | `pipeline` `parallel` `all` `race` |
-| function | `defun` `lambda` `apply` |
-| macro | `macro` `quasiquote` `unquote` `unquote-splicing` `gensym` `capture` |
-| effect | `defeffect` `perform` `handle` `resume` |
-| module | `module` `from` `import` `exports` |
+| 类别          | 算子                                              |
+| ------------- | ------------------------------------------------- |
+| syntax        | `quote`                                           |
+| chain         | `atom` `eq` `car` `cdr` `cons`                    |
+| binding       | `define` `let`                                    |
+| control       | `cond`                                            |
+| ordering/join | `pipeline` `parallel` `all` `race`                |
+| function      | `defun` `lambda` `apply`                          |
+| macro         | `macro` `quasiquote` `unquote` `gensym` `capture` |
+| effect        | `defeffect` `perform` `handle` `resume`           |
+| module        | `module` `from` `import` `exports`                |
 
 `+`、`-` 等算术纯算子不属于最小语言核；它们可以来自显式 stdlib、显式 host 注入，或由标准 profile 预装进 `pre-symbol-space-chain`。默认 profile 是否加载它们属于标准实现策略，不改变语言核边界。
 
@@ -103,7 +108,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `race`：first-resume wins；最先恢复 parent continuation 的分支决定结果。
 - `defun` / `lambda` / `apply`：函数定义、匿名函数、动态调用。`defun` 是 `(define name (lambda ...))` 的语义糖；服从不可重绑定规则，同一 symbol-space 不可重复 `defun` 同名函数。
 - `macro`：compile-time syntax datum -> syntax datum 改写。
-- `quasiquote` / `unquote` / `unquote-splicing`：宏构造 syntax datum 的配套机制；default surface dialect 支持 `,x` 与 `,@x` 拼写。
+- `quasiquote` / `unquote`：宏构造 syntax datum 的核心配套机制；默认 surface dialect 仍支持 `,@x`，其最终算子层级另行确认。
 - `gensym` / `capture`：hygiene 与 intentional capture 机制。
 - `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。`defeffect` 走 `define` 语义，同一 symbol-space 内不可重复声明同名 effect。
 - `pipeline`、`parallel`、`all`、`race` 是 HIR 独立节点（`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`），不是普通 `CallExpr`；lowering 必须特殊处理，不能通过 operator dispatch 求值。

@@ -14,7 +14,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 ## 重要目录和文件
 
-- `qy/reader.py`：基于 Lark 的 S-expression 读取器，生成 raw `Symbol`、tuple 等 syntax datum（Form），并提供 default surface dialect。
+- `qy/reader.py`：基于 Lark 的 S-expression 读取器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，并提供 default surface dialect。当前代码把部分 literal 提前物化，属于待修偏移，不得当作目标模型。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
 - `qy/mir.py`：MIR 数据结构，CFG / virtual register IR，含 effect opcode。
@@ -81,6 +81,7 @@ make bench-check
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
+- 语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 不得把 runtime value 提前塞进 raw AST。
 - 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation`、`qy.errors` import。库代码（stdlib 等）若需要评估函数应从 `qy.eval_runtime` 导入（P1-3 兼容门面）。
 - bytecode compiler 不允许重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - Qy 不保留可选 runtime backend；不得新增或维护 IR VM/evaluator backend 语义。公共执行入口必须走 register VM。

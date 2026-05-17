@@ -25,7 +25,7 @@ source
 | 层 | 输入 | 输出 | 产生 diagnostics | 是否依赖 Environment |
 | --- | --- | --- | --- | --- |
 | source | 文本文件 / stdin | 源码字符串 | 否 | 否 |
-| ast / reader | 源码字符串 | raw `list[Form]` syntax datum（`Symbol`、tuple、`DottedTuple`） | 是，reader syntax error | 否 |
+| ast / reader | 源码字符串 | raw syntax datum forest；每个 form 只能是 `symbol` 或不可变 `chain` | 是，reader syntax error | 否 |
 | surface dialect | raw `list[Form]` | default-dialect `list[Form]`，如 `'x`、quasiquote 内 `,x` / `,@x` | 否 | 否 |
 | expand / macroexpand | surface-dialect-expanded `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
 | HIR / lower | macroexpanded forms | `ProgramIR`（`CallExpr`、`LetExpr`、`HandleExpr`、`PipelineExpr` 等） | 是，未解析符号、arity、module import 等 | 是 |
@@ -36,6 +36,7 @@ source
 
 **跨层禁止规则**：
 
+- reader 只负责源码到 `symbol` / `chain`；不得把 number、string 或其他 runtime value 提前塞进 raw AST。
 - bytecode compiler 不能重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - MIR lowering 不能访问 Environment（不能查 runtime binding）。
 - HIR 之上（reader/surface dialect/macroexpand）不得引入 bytecode/VM 特定的 representation。

@@ -1,70 +1,92 @@
-# Qy Operator / Form Model
+# Qy Operators
 
-本文档只描述当前语言核。旧的 `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 是 legacy runtime dispatch 分类，不再作为语言设计分类继续扩展。
+Qy 采用 s-expression 作为语法，提供一套核心内建（core built-in）和标准内建（standard built-in）操作符，支持用户定义的库函数和宿主能力。
 
-## 核心原则
+Qy 支持 `受限read macro` 和 `macro` 两种方式的语法扩展，前者在 surface dialect 层面提供便利的语法糖，后者在 core built-in 层面提供强大的 compile-time syntax transformation 能力。
 
-- syntax datum 只有 `symbol` / `chain`。
-- `chain` 是不可变对象，任何构造/改写都必须产生新 chain。
-- symbol 求值沿当前 symbol-space-chain 查找。
-- `define` 只在当前 symbol-space 一次性绑定，可以 shadow 链上后续节点。
-- `pre-symbol-space-chain` 不是语言设计目标本身，但它是标准实现的实例起点；reader、analyzer、LSP、lowering、runtime 都围绕同一个 `Qy` 实例工作。
-- `pre-symbol-space-chain` 是有序链，不是单个特殊空间；profile、字面量空间、stdlib 空间、宿主注入空间都可以占据链上的明确位置。
-- host value/operator 是 runtime value，可以通过实例 `pre-symbol-space-chain`、显式注入或显式 import 进入 symbol-space-chain。
-- chain 只决定 lookup；fold 才会把可见 binding 吸收到当前 symbol-space，并使其成为本地 binding。
-- `from` 是受 `exports` 约束的选择性 fold，不是普通 lookup fallback。
-- register VM 是唯一执行器。
+## 受限 read macro
 
-## Surface Dialect
+- `'`: `quote` 的语法糖.
+- `\``: `quasiquote` 的语法糖.
+- `,`: `unquote` 的语法糖.
+- `,@`: `unquote-splicing` 的语法糖.
 
-核心语言不实现 unrestricted reader macro。默认 Qy surface dialect 在 reader 后、macroexpand 前做可枚举的符号拼写规约。
+## Lisp-like family operators
 
-| sugar | form                   |
-| ----- | ---------------------- |
-| `'x`  | `(quote x)`            |
-| `,x`  | `(unquote x)`          |
-| `,@x` | `(unquote-splicing x)` |
+- quote: 返回 syntax datum，不求值。
+- atom: 判断值是否为 atom, 即是否是非空 chain 或者 symbol。
+- eq: 测试两个atom是否相同。
+- car: 取 chain 的首项。
+- cdr: 取 chain 的余项。
+- cons: 构造新的不可变 chain。
+- cond: 条件分支。
 
-`,` 与 `,@` 裸符号保留为普通 symbol；`,x` / `,@x` 只在 `quasiquote` 上下文展开。binding/parameter 位置不做 surface dialect expansion。源码内用户自定义 reader macro 暂不进入核心。
+## Lisp-like Extensions, lisp-like 扩展算子
 
-## 核心 form
+- quasiquote: 构造 syntax datum；支持 unquote 和 unquote-splicing。
+- unquote: 在 quasiquote 中插入求值结果。
+- unquote-splicing: 在 quasiquote 中插入求值结果，并将结果作为 chain 的元素 splice 进来。
 
-| 类别 | form |
-| --- | --- |
-| syntax | `quote` |
-| chain | `atom` `eq` `car` `cdr` `cons` |
-| binding | `define` `let` |
-| control | `cond` |
-| ordering/join | `pipeline` `parallel` `all` `race` |
-| function | `defun` `lambda` `apply` |
-| macro | `macro` `quasiquote` `unquote` `unquote-splicing` `gensym` `capture` |
-| effect | `defeffect` `perform` `handle` `resume` |
-| module | `module` `from` `import` `exports` |
+## 代数效应 Algebraic Effects and Handlers family operators
 
-## 非核心能力
+- `defeffect`: 定义 effect；服从当前 symbol-space 的 define-once。
+- `perform`: 触发 effect，并捕获当前 continuation。
+- `handle`: 安装 effect handler。
+- `resume`: 恢复 continuation。
 
-这些能力可以存在于 stdlib、legacy module、host injection，或由标准 profile 预装，但不得因此成为语言核心：
+## Symbol-space family operators
 
-- arithmetic：`+` `-` `*` `/`
-- Python containers：`list` `tuple` `dict` `set`
-- string helpers：`str-*`
-- legacy async helpers：`spawn` `await`
-- Python interop：`py` / `py::*`
-- `component`：后续只能以库层组合算子回归
+- let: 构建新的局部 symbol-space；可绑定任意 symbol。
+- define: 在当前 symbol-space 构建一次性绑定，并保护当前空间内已绑定的 symbol。
+- module: 构造具名 symbol-space。
+- from: 从模块 export view 选择 binding，并 fold 到当前 symbol-space。
+- import: 指定从模块引入的名字或 alias。
+- exports: 定义模块可被外部 fold 的 export view。
 
-非核心算子的工作草案单独维护在 `docs/stdlib-operators.md`，不进入核心语言规范。
+## Function family operators
 
-## 实现约束
+- lambda: 构造匿名函数。
+- defun: 定义函数；语义上等价于 `define + lambda`，服从不可重绑定。
+- apply: 以运行时给出的参数序列调用函数。
 
-- 核心 form 必须 lowering 为 HIR 独立节点或明确的核心 call 语义，再进入 MIR/LIR/bytecode/register VM。
-- `pipeline`、`parallel`、`all`、`race` 不是普通 host operator。
-- `module` 是具名 symbol-space；`exports` 是可被外部 fold 的 view；`from` 把被选中的 export binding 纳入当前 symbol-space。
-- macro 只能在 expand 阶段改变 syntax datum；runtime 不能重新解释 macro。
-- 新增 operator 前先判断能否由 Qy 自身实现；能写成 Qy library 的能力，不要下沉成 host operator。
-- 新语义不得通过 legacy operator dispatch 扩展。
+## Macro family operators
 
-## eq 语义
+- `macro`: 定义 compile-time syntax transformer。
+- `capture`: 显式保留调用点 binding，跳过默认 hygiene rewrite。
+- `gensym`: 生成 hygienic symbol。
 
-- `eq` 对所有值使用 identity（Python `is`）语义：symbol 按名字相等视为同一 identity，chain / object 严格 identity，number 与 string 也按 identity，不做值相等。
-- `eq` 不是数值比较算子；数值相等请用 `=`（来自 `qy.num`），字符串相等请用专用算子。
-- 小整数在 CPython 实现中会 intern，因此 `(eq 0 0)` 等在现有实现中为真，但这是实现细节，不是语言契约。
+## Concurrency family operators
+
+- `parallel`: 标记一组表达式求值顺序无关，允许 VM 并行求值，但不要求并行；支持 effect。
+- `pipeline`: 串行求值，返回最后一个结果。
+- `race`: first-resume-wins；最先恢复 parent continuation 的分支获胜。
+- `all`: barrier continuation；全部分支完成后恢复 parent continuation。
+
+## 流程扩展算子, 由 standard profile 提供, 默认 build-in.
+
+- if: 条件分支；支持 `(if ... () elif ... () else ())。
+- for: 类似 Python 的 for 循环；支持 `(for var in iterable body)` 和 `(for (var1 var2 ...) in iterable body)` 两种形式。
+- while: 类似 Python 的 while 循环；支持 `(while condition body)` 形式。
+- defer: 注册一个 deferred effect handler；当当前 continuation 结束时，执行 handler body；支持 `(defer body)` 形式, 与`Go` 语言中的 defer 语义类似。
+
+## 类型扩展算子, 由 standard profile 提供, 默认 build-in.
+
+### 数值算子
+
+- `+`: 可由 standard profile 预装的数值加法；不是 core built-in。
+- `-`: 可由 standard profile 预装的数值减法；不是 core built-in。
+- `*`: 可由 standard profile 预装的数值乘法；不是 core built-in。
+- `/`: 可由 standard profile 预装的数值除法；不是 core built-in。
+
+### IO 算子
+
+- `echo`: 回显, 值为 `nil`, side-effect 是将参数输出到 stdout。
+
+### 数据结构算子
+
+- `chain`: 构造 chain 数据结构。
+
+## Stdlib Operators, 标准库算子, 非 core built-in.
+
+- `qy.num::*`: 数值库；承载 number equality、比较、派生数值操作。
+- `qy.str::*`: 字符串库；操作 runtime `string`，不操作 syntax `symbol`。
