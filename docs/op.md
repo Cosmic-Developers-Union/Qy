@@ -7,7 +7,9 @@ Qy 支持 `受限read macro` 和 `macro` 两种方式的语法扩展，前者在
 ## 类型系统
 
 - symbol: 符号, 唯一类型.
-- chain: 链表, 由 cons 构造, 以 nil 结尾。
+- chain: 链表, 由 cons 构造, 以 nil 结尾。空 `'()` 即 nil。
+- nil: 即是 nil, 也是空 chain `'()`，也是 false；非 nil 的 chain 即为 true。
+- t: 真值对象.
 
 ## Runtime value, 运行时值.
 
@@ -15,11 +17,11 @@ Qy 执行器的 runtime value, 由符号求值或者通过算子构造.
 
 ### 值类型
 
-- number: 数值, 默认由 int(无限精), float(IEEE 754 双精), complex(实部虚部均为 float), 无理数(分子分母均为 int) 四种类型构成。
+- number: 数值, 默认由 int(无限精), float(IEEE 754 双精), complex(实部虚部均为 float), 有理数(分子分母均为 int) 四种类型构成。
 - char: 字符。
 - string: 字符串。
 - true, false: 布尔值。
-- None: 空值。
+- None: 空值。(注意, nil 不是 None)
 
 ### 引用/容器类型
 
