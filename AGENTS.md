@@ -40,6 +40,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。
+- `docs/ir-design.md`：HIR / MIR / LIR 的独立职责、禁止事项与 verifier 要求。
 
 ## 常用命令
 
@@ -81,6 +82,11 @@ make bench-check
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
+- HIR、MIR、LIR 不是同一 IR 的三种格式：
+  - HIR 只保留高层语义 facts；
+  - MIR 只表达 CFG / virtual register / explicit control-effect flow；
+  - LIR 才负责 selection、layout、ABI、effect-frame、fixup、peephole、debug injection；
+  - 若一个变换无法归属到唯一一层，先修正边界再实现。
 - 语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 不得把 runtime value 提前塞进 raw AST。
 - 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation`、`qy.errors` import。库代码（stdlib 等）若需要评估函数应从 `qy.eval_runtime` 导入（P1-3 兼容门面）。
 - bytecode compiler 不允许重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。

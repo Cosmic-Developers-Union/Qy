@@ -28,18 +28,47 @@ source
 | ast / reader | 源码字符串 | raw syntax datum forest；每个 form 只能是 `symbol` 或不可变 `chain` | 是，reader syntax error | 否 |
 | surface dialect | raw `list[Form]` | default-dialect `list[Form]`，如 `'x`、quasiquote 内 `,x` / `,@x` | 否 | 否 |
 | expand / macroexpand | surface-dialect-expanded `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
-| HIR / lower | macroexpanded forms | `ProgramIR`（`CallExpr`、`LetExpr`、`HandleExpr`、`PipelineExpr` 等） | 是，未解析符号、arity、module import 等 | 是 |
-| MIR / lower_mir | `ProgramIR` | `MIRProgram`（CFG + virtual register） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
-| LIR / lower_lir | `MIRProgram` | `LIRProgram`（线性化低层 IR，register layout、effect frame layout、host-call lowering） | 是 | 否 |
+| HIR / lower | macroexpanded forms | 高层语义 IR（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
+| MIR / lower_mir | verified HIR | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
+| LIR / lower_lir | verified MIR | `LIRProgram`（线性低层 IR，selection/layout/ABI/effect-frame/fixup） | 是 | 否 |
 | bytecode | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
 | register VM | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期异常 | 是，执行时需要 runtime environment |
 
 **跨层禁止规则**：
 
 - reader 只负责源码到 `symbol` / `chain`；不得把 number、string 或其他 runtime value 提前塞进 raw AST。
+- runtime value 与 Python value 必须分离；跨宿主对象只能以 host reference / adapter 进入后续阶段。
 - bytecode compiler 不能重新理解 HIR/MIR 语义；语义 lowering 必须经由 LIR。
 - MIR lowering 不能访问 Environment（不能查 runtime binding）。
 - HIR 之上（reader/surface dialect/macroexpand）不得引入 bytecode/VM 特定的 representation。
+- HIR、MIR、LIR 的详细独立约束见 `docs/ir-design.md`；新 rewrite 必须先归属到唯一一层。
+
+## 阶段职责补充
+
+### HIR
+
+- 负责 resolved binding、operator declaration、effect declaration、module/fold、structured control；
+- 保留对 analyzer / LSP 有意义的高层事实；
+- 不允许 CFG、寄存器、bytecode、host ABI。
+
+### MIR
+
+- 把 HIR 结构化语义变成显式 CFG；
+- 使用 virtual register；
+- 显式表达 branch、tail call、effect flow、join；
+- 不访问 runtime `Environment`，不承担 physical layout。
+
+### LIR
+
+- 完成 instruction selection、layout、register/frame 分配、host-call ABI、effect frame lowering、jump fixup、peephole、debug injection；
+- 它是 VM-facing 但尚未最终编码的 IR；
+- 它不能只是 bytecode opcode 的别名层。
+
+### Bytecode
+
+- 只接收已经 verified 的 LIR；
+- 只做 encode / pack / relocate / attach tables；
+- 不再理解 binding、tail call、effect、module 等高层语义。
 
 ## 稳定 API 与删除对象
 

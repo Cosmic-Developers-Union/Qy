@@ -18,6 +18,8 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `bytecode`：register VM 指令序列，不重新理解 HIR/MIR 语义。
 - `register VM`：唯一执行器。Qy 不保留可选 runtime backend；旧 IR VM / evaluator 只能作为迁移期待删除代码存在，不能作为语义来源。
 
+HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负责 CFG 与 virtual register，LIR 才负责低层布局、ABI、effect frame、fixup 与 peephole；bytecode 只编码 verified LIR。详细约束见 `docs/ir-design.md`。
+
 ## Data Model
 
 - Syntax datum 只有两类：`symbol` 与 `chain`。
