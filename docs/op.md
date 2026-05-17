@@ -4,6 +4,40 @@ Qy 采用 s-expression 作为语法，提供一套核心内建（core built-in�
 
 Qy 支持 `受限read macro` 和 `macro` 两种方式的语法扩展，前者在 surface dialect 层面提供便利的语法糖，后者在 core built-in 层面提供强大的 compile-time syntax transformation 能力。
 
+## 类型系统
+
+- symbol: 符号, 唯一类型.
+- chain: 链表, 由 cons 构造, 以 nil 结尾。
+
+## Runtime value, 运行时值.
+
+Qy 执行器的 runtime value, 由符号求值或者通过算子构造.
+
+### 值类型
+
+- number: 数值, 默认由 int(无限精), float(IEEE 754 双精), complex(实部虚部均为 float), 无理数(分子分母均为 int) 四种类型构成。
+- char: 字符。
+- string: 字符串。
+- true, false: 布尔值。
+- None: 空值。
+
+### 引用/容器类型
+
+#### List-like family types, 列表类类型.
+
+- list: 可变列表, 等价于python中的 list。
+- tuple: 不可变列表, 等价于python中的 tuple。
+- set: 集合, 等价于python中的 set。
+- `list[...]`: 受限列表类型。这是为了优化和 mop 运行时监控而设计的类型.
+- `tuple[...]`: 受限元组类型。
+- `set[...]`: 受限集合类型。
+
+#### Dict-like family types, 字典类类型.
+
+- dict: 字典, 等价于python中的 dict。
+- struct: 结构体. 例如 Go 语言中的 struct, Rust 语言中的 struct, C 语言中的 struct 都属于 struct 类型。
+- object: 对象.
+
 ## 受限 read macro
 
 - `'`: `quote` 的语法糖.
@@ -14,8 +48,8 @@ Qy 支持 `受限read macro` 和 `macro` 两种方式的语法扩展，前者在
 ## Lisp-like family operators
 
 - quote: 返回 syntax datum，不求值。
-- atom: 判断值是否为 atom, 即是否是非空 chain 或者 symbol。
-- eq: 测试两个atom是否相同。
+- atom: 判断值是否为 atom, 即是否不是非空 chain 或者 symbol。
+- eq: 按 identity 比较两个值；不承担 number/string value equality 或结构相等。
 - car: 取 chain 的首项。
 - cdr: 取 chain 的余项。
 - cons: 构造新的不可变 chain。
@@ -88,5 +122,5 @@ Qy 支持 `受限read macro` 和 `macro` 两种方式的语法扩展，前者在
 
 ## Stdlib Operators, 标准库算子, 非 core built-in.
 
-- `qy.num::*`: 数值库；承载 number equality、比较、派生数值操作。
-- `qy.str::*`: 字符串库；操作 runtime `string`，不操作 syntax `symbol`。
+- `qy.num::*`: 数值库组；承载 number equality、比较、派生数值操作。
+- `qy.str::*`: 字符(串)组；操作 runtime `string`，不操作 syntax `symbol`。
