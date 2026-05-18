@@ -57,8 +57,9 @@ from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
 from qy.lir import dump_lir
 from qy.lir_lowering import lower_lir
-from qy.llvm_codegen import compile_to_llvm_text
-from qy.llvm_codegen import emit_llvm_module
+from qy.backend.llvm import compile_to_llvm_text
+from qy.backend.llvm import emit
+from qy.backend.llvm import link
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macro import MacroDefinition
