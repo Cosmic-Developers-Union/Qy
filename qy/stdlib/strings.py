@@ -99,16 +99,16 @@ def _str(value: object) -> Symbol:
     return _to_symbol(_to_text(value))
 
 
-def _str_predicate(value: object) -> bool:
-    return isinstance(value, Symbol | str)
+def _str_predicate(value: object) -> object:
+    return QY_T if isinstance(value, Symbol | str) else QY_NIL
 
 
 def _str_len(value: object) -> int:
     return len(_to_text(value))
 
 
-def _str_empty(value: object) -> bool:
-    return _to_text(value) == ""
+def _str_empty(value: object) -> object:
+    return QY_T if _to_text(value) == "" else QY_NIL
 
 
 def _str_concat(*values: object) -> Symbol:
@@ -148,13 +148,13 @@ def _str_replace(value: object, old: object, new: object) -> Symbol:
     return _to_symbol(_to_text(value).replace(_to_text(old), _to_text(new)))
 
 
-def _str_contains(value: object, needle: object) -> bool:
-    return _to_text(needle) in _to_text(value)
+def _str_contains(value: object, needle: object) -> object:
+    return QY_T if _to_text(needle) in _to_text(value) else QY_NIL
 
 
-def _str_starts_with(value: object, prefix: object) -> bool:
-    return _to_text(value).startswith(_to_text(prefix))
+def _str_starts_with(value: object, prefix: object) -> object:
+    return QY_T if _to_text(value).startswith(_to_text(prefix)) else QY_NIL
 
 
-def _str_ends_with(value: object, suffix: object) -> bool:
-    return _to_text(value).endswith(_to_text(suffix))
+def _str_ends_with(value: object, suffix: object) -> object:
+    return QY_T if _to_text(value).endswith(_to_text(suffix)) else QY_NIL

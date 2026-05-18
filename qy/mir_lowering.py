@@ -36,6 +36,7 @@ from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.mir import MIRBlock
 from qy.mir import MIRBlockId
+from qy.mir import MIRConstantPool
 from qy.mir import MIRFunction
 from qy.mir import MIRInstruction
 from qy.mir import MIROpcode
@@ -93,7 +94,7 @@ class _FunctionLowerer:
     ) -> MIRRegister | None:
         if not body:
             result = self.register()
-            self.emit("LOAD_HOST", result, None)
+            self.emit_load_const(result, None)
             return result
         last_register: MIRRegister | None = None
         for index, expression in enumerate(body):
@@ -105,17 +106,17 @@ class _FunctionLowerer:
                 self.emit("APPEND_RESULT", last_register, span=_span_of(expression))
         if last_register is None and not self.current.terminated:
             last_register = self.register()
-            self.emit("LOAD_HOST", last_register, None)
+            self.emit_load_const(last_register, None)
         return last_register
 
     def lower_expr(self, expression: IRExpr, *, tail: bool = False) -> _LoweredExpression:
         if isinstance(expression, LiteralExpr):
             register = self.register()
-            self.emit("LOAD_HOST", register, expression.value, span=expression.span)
+            self.emit_load_const(register, expression.value, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, QuoteExpr):
             register = self.register()
-            self.emit("LOAD_HOST", register, _quote_data(expression.form), span=expression.span)
+            self.emit_load_const(register, _quote_data(expression.form), span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, SymbolRefExpr | UnresolvedSymbolExpr):
             register = self.register()
@@ -235,14 +236,14 @@ class _FunctionLowerer:
 
         if tail:
             default = self.register()
-            self.emit("LOAD_HOST", default, None, span=expression.span)
+            self.emit_load_const(default, None, span=expression.span)
             self.terminate("RETURN", default, span=expression.span)
             return _LoweredExpression(None)
 
         assert result_register is not None
         assert end_block is not None
         default = self.register()
-        self.emit("LOAD_HOST", default, None, span=expression.span)
+        self.emit_load_const(default, None, span=expression.span)
         self.emit("MOVE", result_register, default, span=expression.span)
         self.terminate("JUMP", end_block.id, span=expression.span)
         self.switch_to(end_block)
@@ -292,7 +293,7 @@ class _FunctionLowerer:
             msg_reg = None
         if msg_reg is None:
             msg_reg = self.register()
-            self.emit("LOAD_HOST", msg_reg, Symbol("assertion failed"), span=expression.span)
+            self.emit_load_const(msg_reg, Symbol("assertion failed"), span=expression.span)
         if not self.current.terminated:
             self.terminate(
                 "RAISE_EFFECT",
@@ -414,7 +415,7 @@ class _FunctionLowerer:
     def lower_race(self, expression: RaceExpr, *, tail: bool) -> _LoweredExpression:
         if not expression.exprs:
             result = self.register()
-            self.emit("LOAD_HOST", result, None, span=expression.span)
+            self.emit_load_const(result, None, span=expression.span)
             return _LoweredExpression(result)
         thunk_indices: list[int] = []
         for expr in expression.exprs:
@@ -498,6 +499,16 @@ class _FunctionLowerer:
             return
         self.current.instructions.append(MIRInstruction(opcode, tuple(operands), span))
 
+    def emit_load_const(
+        self,
+        dest: MIRRegister,
+        value: object,
+        *,
+        span: SourceSpan | None = None,
+    ) -> None:
+        idx = self.owner.constants.intern(value)
+        self.emit("LOAD_CONST", dest, idx, span=span)
+
     def terminate(
         self,
         opcode: MIRTerminatorOpcode,
@@ -522,6 +533,7 @@ class _MIRLowerer:
     def __init__(self, diagnostics: tuple[Diagnostic, ...]) -> None:
         self.diagnostics = list(diagnostics)
         self.functions: list[MIRFunction | None] = []
+        self.constants = MIRConstantPool()
 
     def lower(self, program: ProgramIR) -> MIRProgram:
         main_index = self.reserve_function()
@@ -529,12 +541,13 @@ class _MIRLowerer:
         result = main.lower_body(program.body, collect_results=True)
         if result is None and not main.current.terminated:
             result = main.register()
-            main.emit("LOAD_HOST", result, None)
+            main.emit_load_const(result, None)
         if result is not None and not main.current.terminated:
             main.terminate("RETURN", result)
         self.functions[main_index] = main.finish()
         return MIRProgram(
             tuple(function for function in self.functions if function is not None),
+            self.constants,
             main_index,
             tuple(self.diagnostics),
         )

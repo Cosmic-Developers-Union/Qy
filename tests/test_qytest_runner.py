@@ -18,7 +18,7 @@ def test_qytest_runner_executes_qy_suite():
     assert result.exit_code == 0, result.output
     assert "qytest-summary" in result.output
     assert "failed= 0" in result.output
-    assert "true" in result.output
+    assert "T" in result.output
 
 
 def test_qytest_cli_entry_point():

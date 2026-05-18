@@ -9,7 +9,9 @@ from qy.lir import LIRFunction
 from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
 from qy.mir import MIRBlockId
+from qy.mir import MIRConstantPool
 from qy.mir import MIRFunction
+from qy.mir import MIRInstruction
 from qy.mir import MIRProgram
 from qy.mir import MIRTerminator
 from qy.mir import verify_mir
@@ -23,7 +25,7 @@ def lower_lir(program: MIRProgram) -> LIRProgram:
     if any(d.severity == "error" for d in diagnostics):
         return LIRProgram((), 0, diagnostics)
     return LIRProgram(
-        tuple(_lower_function(f) for f in program.functions),
+        tuple(_lower_function(f, program.constants) for f in program.functions),
         program.main,
         diagnostics,
     )
@@ -35,7 +37,7 @@ class _Patch:
     target_block: MIRBlockId
 
 
-def _lower_function(function: MIRFunction) -> LIRFunction:
+def _lower_function(function: MIRFunction, constants: MIRConstantPool) -> LIRFunction:
     instructions: list[LIRInstruction] = []
     block_offsets: dict[MIRBlockId, int] = {}
     patches: list[_Patch] = []
@@ -43,9 +45,8 @@ def _lower_function(function: MIRFunction) -> LIRFunction:
     for block in function.blocks:
         block_offsets[block.id] = len(instructions)
         for instruction in block.instructions:
-            instructions.append(
-                LIRInstruction(instruction.opcode, instruction.operands, instruction.span)
-            )
+            lowered = _lower_instruction(instruction, constants)
+            instructions.append(lowered)
         _emit_terminator(block.terminator, instructions, patches)
 
     _patch_jumps(instructions, patches, block_offsets)
@@ -61,6 +62,14 @@ def _lower_function(function: MIRFunction) -> LIRFunction:
         register_count,
         tuple(instructions),
     )
+
+
+def _lower_instruction(instruction: MIRInstruction, constants: MIRConstantPool) -> LIRInstruction:
+    if instruction.opcode == "LOAD_CONST":
+        dest, idx = instruction.operands
+        value = constants.get(idx)  # ty: ignore[invalid-argument-type]
+        return LIRInstruction("LOAD_HOST", (dest, value), instruction.span)
+    return LIRInstruction(instruction.opcode, instruction.operands, instruction.span)
 
 
 def _emit_terminator(
@@ -94,6 +103,8 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
 
     Currently handles:
     - MOVE r, r  (no-op self-assignment)
+    - LOAD_HOST r, None -> LOAD_NIL r  (use LIR-specific nil load)
+    - LOAD_HOST r, True -> LOAD_T r    (use LIR-specific T load, if value is Python True)
     """
     result = list(instructions)
     changed = True
@@ -104,6 +115,15 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
             # Eliminate MOVE r, r (no-op self-assignment)
             if instruction.opcode == "MOVE" and instruction.operands[0] == instruction.operands[1]:
                 changed = True
+                continue
+            # Strength-reduce LOAD_HOST None → LOAD_NIL
+            if (
+                instruction.opcode == "LOAD_HOST"
+                and len(instruction.operands) >= 2
+                and instruction.operands[1] is None
+            ):
+                changed = True
+                out.append(LIRInstruction("LOAD_NIL", (instruction.operands[0],), instruction.span))
                 continue
             out.append(instruction)
         result = out

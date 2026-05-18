@@ -40,6 +40,7 @@ class UserFunction:
     closure: Environment
 
     async def __call__(self, *args: object) -> object:
+        # legacy -- will be removed after UserFunction migration to register VM
         from qy.eval_runtime import evaluate_tail_body_async
 
         if len(args) != len(self.params):

@@ -1,7 +1,6 @@
 import pytest
 
 from qy import Qy
-from qy.evaluator import standard_environment
 from qy.reader import Symbol
 
 S = Symbol
@@ -48,17 +47,6 @@ def test_self_tail_recursive_function_uses_trampoline():
         )
         == 45150
     )
-
-
-def test_component_defines_callable_component():
-    from qy.stdlib import load_module
-
-    env = standard_environment()
-    for sym, val in load_module("qy.legacy").exports.items():
-        env.define(sym, val)
-    qy = Qy(env=env)
-    qy.evaluate_source("(component scale (x factor) (* x factor))")
-    assert qy.evaluate_source("(scale 7 6)") == 42
 
 
 def test_define_operator_binds_in_env():

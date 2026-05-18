@@ -17,15 +17,25 @@ from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
 
-__all__ = ["Environment", "EnvironmentFrame", "standard_environment"]
+__all__ = ["ChainFrame", "Environment", "standard_environment"]
 
 LiteralResolver = Callable[[Symbol], object]
 
 
 @dataclass(frozen=True, slots=True)
-class EnvironmentFrame:
-    bindings: dict[Symbol, object]
-    hidden_bindings: dict[Symbol, object]
+class ChainFrame:
+    """One node in the pre-symbol-space-chain.
+
+    Each frame represents a single layer in the environment chain, with
+    metadata describing its role (name), mutability (writable), and loading
+    strategy (lazy).  The *bindings* dict is a **read-only snapshot** of that
+    layer's local bindings at the time the frame was materialised.
+    """
+
+    name: str  # e.g. "writable-head", "core-profile", "stdlib"
+    bindings: dict[Symbol, object]  # read-only snapshot of local bindings
+    writable: bool  # whether ``define`` works here
+    lazy: bool  # whether this layer is lazily loaded
 
 
 class Environment:
@@ -34,6 +44,10 @@ class Environment:
         bindings: Mapping[Symbol, object] | None = None,
         parent: Environment | None = None,
         literal_resolver: LiteralResolver | None = None,
+        *,
+        name: str = "",
+        writable: bool = True,
+        lazy: bool = False,
     ) -> None:
         self._bindings = dict(bindings or {})
         self._parent = parent
@@ -43,6 +57,9 @@ class Environment:
             self._literal_resolver = parent._literal_resolver
         else:
             self._literal_resolver: LiteralResolver = literal_resolver or resolve_default_literal
+        self._name = name
+        self._writable = writable
+        self._lazy = lazy
 
     def resolve(self, symbol: Symbol) -> object:
         if symbol in self._bindings:
@@ -71,8 +88,15 @@ class Environment:
         self._hidden[symbol] = value
         return value
 
-    def child(self, bindings: Mapping[Symbol, object] | None = None) -> Environment:
-        return Environment(bindings, self)
+    def child(
+        self,
+        bindings: Mapping[Symbol, object] | None = None,
+        *,
+        name: str = "",
+        writable: bool = True,
+        lazy: bool = False,
+    ) -> Environment:
+        return Environment(bindings, self, name=name, writable=writable, lazy=lazy)
 
     def fold_from(
         self,
@@ -98,11 +122,34 @@ class Environment:
                 raise QyRuntimeError(f"source has no export {name.name!r}")
             self._bindings[name] = source[name]
 
-    def pre_symbol_space_chain(self) -> tuple[EnvironmentFrame, ...]:
-        frame = EnvironmentFrame(self.local_bindings(), self.hidden_bindings())
+    def pre_symbol_space_chain(self) -> tuple[ChainFrame, ...]:
+        """Return the pre-symbol-space-chain as a tuple of *ChainFrame* nodes.
+
+        The order is parent-first (root at index 0, self at the end), which
+        matches the lookup direction: a resolver walks from the innermost
+        frame outward.
+        """
+        frame = ChainFrame(
+            name=self._name or "<anonymous>",
+            bindings=dict(self._bindings),
+            writable=self._writable,
+            lazy=self._lazy,
+        )
         if self._parent is None:
             return (frame,)
         return (*self._parent.pre_symbol_space_chain(), frame)
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @property
+    def writable(self) -> bool:
+        return self._writable
+
+    @property
+    def lazy(self) -> bool:
+        return self._lazy
 
     @property
     def literal_resolver(self) -> LiteralResolver:
@@ -266,4 +313,14 @@ class Environment:
 def standard_environment(*, literal_resolver: LiteralResolver | None = None) -> Environment:
     from qy.stdlib import standard_profile_bindings
 
-    return Environment(standard_profile_bindings(), literal_resolver=literal_resolver)
+    # The chain is built bottom-up:
+    #   root (stdlib layer) <- writable-head (user definitions)
+    # The stdlib layer is non-writable so that accidental top-level
+    # ``define`` goes into the writable head above it.
+    stdlib_layer = Environment(
+        standard_profile_bindings(),
+        literal_resolver=literal_resolver,
+        name="stdlib",
+        writable=False,
+    )
+    return stdlib_layer.child(name="writable-head", writable=True)

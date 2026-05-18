@@ -9,6 +9,7 @@ from qy.eval_runtime import evaluate_async
 from qy.eval_runtime import evaluate_body_async
 from qy.operators import ControlOperator
 from qy.operators import MetaOperator
+from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.reader import DottedTuple
 from qy.reader import Symbol
@@ -16,11 +17,41 @@ from qy.reader import get_span
 from qy.runtime_values import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import list_to_qy_cons
 
 
 def _truthy(value: object) -> bool:
-    return value is not False and value is not None and value is not QY_NIL and value != ()
+    """nil-only truthiness: only QY_NIL is false.
+
+    This is the language-core truth model used by cond.
+    The standard-profile ``truthy`` operator provides complex truthiness.
+    """
+    return value is not QY_NIL
+
+
+def _complex_truthy(value: object) -> object:
+    """Standard-profile complex truthiness operator.
+
+    Returns QY_T for broadly-truthy values, QY_NIL for broadly-falsy values.
+    Handles Python host values (False, None, 0, "", empty containers)
+    alongside Qy values (QY_NIL, empty chain).
+    """
+    if value is QY_NIL:
+        return QY_NIL
+    if value is None:
+        return QY_NIL
+    if value is False:
+        return QY_NIL
+    if value == ():
+        return QY_NIL
+    if isinstance(value, int | float) and not isinstance(value, bool) and value == 0:
+        return QY_NIL
+    if isinstance(value, str) and value == "":
+        return QY_NIL
+    if isinstance(value, list | dict | set) and len(value) == 0:
+        return QY_NIL
+    return QY_T
 
 
 def _ensure_parameter_list(value: object, context: str) -> tuple[Symbol, ...]:
@@ -93,7 +124,7 @@ async def _cond(args: tuple[object, ...], env: Environment) -> object:
         condition, result = clause
         if _truthy(await evaluate_async(condition, env)):
             return await evaluate_async(result, env)
-    return None
+    return QY_NIL
 
 
 async def _let(args: tuple[object, ...], env: Environment) -> object:
@@ -175,6 +206,9 @@ def operators() -> dict[Symbol, object]:
         Symbol("let"): ScopeOperator("let", _let, "在词法局部作用域中求值 body。"),
         Symbol("macro"): MetaOperator("macro", _macro, "定义接收未求值 form 并展开的宏。"),
         Symbol("quote"): MetaOperator("quote", _quote, "返回一个表达式，不求值。"),
+        Symbol("truthy"): PureOperator(
+            "truthy", _complex_truthy, "标准 profile 复杂真值判断；返回 T 或 nil。"
+        ),
     }
 
 

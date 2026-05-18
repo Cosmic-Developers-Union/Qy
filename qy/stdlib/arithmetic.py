@@ -15,16 +15,22 @@ def _ensure_number(value: object) -> int | float:
     return value
 
 
-def _py_eq(left: object, right: object) -> bool:
-    return left == right
+def _py_eq(left: object, right: object) -> object:
+    from qy.values import QY_NIL
+    from qy.values import QY_T
+
+    return QY_T if left == right else QY_NIL
 
 
-def _num_eq(left: object, right: object) -> bool:
+def _num_eq(left: object, right: object) -> object:
+    from qy.values import QY_NIL
+    from qy.values import QY_T
+
     if isinstance(left, bool) or isinstance(right, bool):
-        return left is right
+        return QY_T if left is right else QY_NIL
     if isinstance(left, int | float) and isinstance(right, int | float):
-        return left == right
-    return left is right
+        return QY_T if left == right else QY_NIL
+    return QY_T if left is right else QY_NIL
 
 
 def _add(*args: object) -> int | float:

@@ -14,34 +14,35 @@ def test_quote():
 
 
 def test_atom():
-    assert evaluate_source("(atom 'abc)")
-    assert not evaluate_source("(atom '(abc def))")
-    assert not evaluate_source("(atom '(abc . def))")
-    assert evaluate_source("(atom '())")
+    assert evaluate_source("(atom 'abc)") is QY_T
+    assert evaluate_source("(atom '(abc def))") is QY_NIL
+    assert evaluate_source("(atom '(abc . def))") is QY_NIL
+    assert evaluate_source("(atom '())") is QY_T
 
 
 def test_cond():
     assert evaluate_source("(cond (0 'truthy))") == S("truthy")
+    # false is now QY_NIL (nil-only truth), so first clause is skipped
     assert evaluate_source("(cond (false 1) (true (+ 1 2)))") == 3
 
 
 def test_eq():
-    # eq is pure identity semantics
-    assert not evaluate_source("(eq 'abc 'abc)")  # different Symbol objects
-    assert not evaluate_source("(eq '(abc) '(abc))")  # different QyCons
-    assert evaluate_source("(eq '() '())")  # both are QY_NIL singleton
-    assert not evaluate_source("(eq '() none)")
-    assert not evaluate_source("(== '() none)")
-    assert evaluate_source("(eq nil '())")  # both are QY_NIL
-    assert not evaluate_source("(eq none nil)")
-    assert not evaluate_source("(eq T true)")
-    assert not evaluate_source("(== T true)")
+    # eq is pure identity semantics, returns QY_T/QY_NIL
+    assert evaluate_source("(eq 'abc 'abc)") is QY_NIL  # different Symbol objects
+    assert evaluate_source("(eq '(abc) '(abc))") is QY_NIL  # different QyCons
+    assert evaluate_source("(eq '() '())") is QY_T  # both are QY_NIL singleton
+    assert evaluate_source("(eq '() none)") is QY_NIL
+    assert evaluate_source("(== '() none)") is QY_NIL
+    assert evaluate_source("(eq nil '())") is QY_T  # both are QY_NIL
+    assert evaluate_source("(eq none nil)") is QY_NIL
+    assert evaluate_source("(eq T true)") is QY_T  # both resolve to QY_T
+    assert evaluate_source("(== T true)") is QY_T  # both resolve to QY_T
 
 
 def test_is():
-    assert evaluate_source("(== '(abc) '(abc))")
-    assert not evaluate_source("(is '(abc) '(abc))")
-    assert evaluate_source("(is '() '())")
+    assert evaluate_source("(== '(abc) '(abc))") is QY_T
+    assert evaluate_source("(is '(abc) '(abc))") is QY_NIL
+    assert evaluate_source("(is '() '())") is QY_T
 
 
 def test_literals():

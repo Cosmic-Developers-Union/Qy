@@ -9,6 +9,8 @@ from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.runtime import Qy
 from qy.stdlib.module import StandardModule
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import list_to_qy_cons
 
 _CLI_ARGS_CACHE_KEY = ("qy", "cli_args")
@@ -75,47 +77,52 @@ def _path_join(args: tuple[object, ...], env: Environment) -> Symbol:
     return Symbol(str(joined))
 
 
-def _is_file(args: tuple[object, ...], env: Environment) -> bool:
+def _is_file(args: tuple[object, ...], env: Environment) -> object:
     del env
     if len(args) != 1:
-        return False
+        return QY_NIL
     path_value = args[0]
     path = Path(_as_text(path_value)).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
-    return path.is_file()
+    return QY_T if path.is_file() else QY_NIL
 
 
-def _is_dir(args: tuple[object, ...], env: Environment) -> bool:
+def _is_dir(args: tuple[object, ...], env: Environment) -> object:
     del env
     if len(args) != 1:
-        return False
+        return QY_NIL
     path_value = args[0]
     path = Path(_as_text(path_value)).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
-    return path.is_dir()
+    return QY_T if path.is_dir() else QY_NIL
 
 
-def _is_qy_file(args: tuple[object, ...], env: Environment) -> bool:
+def _is_qy_file(args: tuple[object, ...], env: Environment) -> object:
     del env
     if len(args) != 1:
-        return False
+        return QY_NIL
     path = Path(_as_text(args[0])).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
-    return path.is_file() and path.suffix == ".qy"
+    return QY_T if (path.is_file() and path.suffix == ".qy") else QY_NIL
 
 
 async def _run_file(args: tuple[object, ...], env: Environment) -> object:
     if len(args) != 1:
-        return False
+        return QY_NIL
     path_value = args[0]
     path = Path(_as_text(path_value)).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
-    qy = Qy()
-    return await qy.evaluate_file_async(path)
+    try:
+        qy = Qy()
+        result = await qy.evaluate_file_async(path)
+        # Any non-nil result means the file ran successfully
+        return QY_T if result is not QY_NIL else QY_NIL
+    except Exception:
+        return QY_NIL
 
 
 def _as_text(value: object) -> str:

@@ -5,6 +5,8 @@ from qy.errors import QyTypeError
 from qy.evaluator import evaluate_source
 from qy.reader import Symbol
 from qy.stdlib import standard_bindings
+from qy.values import QY_NIL
+from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import list_to_qy_cons
 
@@ -20,16 +22,16 @@ def es(source: str) -> object:
 
 
 def test_tuple():
-    assert es('(tuple 1 "two" true)') == (1, "two", True)
+    assert es('(tuple 1 "two" true)') == (1, "two", QY_T)
     assert es("(tuple '(a b))") == (S("a"), S("b"))
-    assert es("(tuple? (tuple 'a 'b))")
+    assert es("(tuple? (tuple 'a 'b))") is QY_T
 
 
 def test_list():
-    assert es('(list 1 "two" true)') == [1, "two", True]
+    assert es('(list 1 "two" true)') == [1, "two", QY_T]
     assert es("(list '(a b))") == [S("a"), S("b")]
-    assert not es("(list? '(a b))")
-    assert es("(list? (list 1 2))")
+    assert es("(list? '(a b))") is QY_NIL
+    assert es("(list? (list 1 2))") is QY_T
 
 
 def test_dict():
@@ -37,7 +39,7 @@ def test_dict():
         "name": "Qy",
         "items": [1, 2],
     }
-    assert es('(dict? (dict "name" "Qy"))')
+    assert es('(dict? (dict "name" "Qy"))') is QY_T
     assert es("(dict '((name . Qy) (mode test)))") == {
         S("name"): S("Qy"),
         S("mode"): S("test"),
@@ -46,7 +48,7 @@ def test_dict():
 
 def test_set():
     assert es('(set "qy" "core" "qy")') == {"qy", "core"}
-    assert es('(set? (set "qy"))')
+    assert es('(set? (set "qy"))') is QY_T
     assert es("(set '(a b a))") == {S("a"), S("b")}
 
 
@@ -68,8 +70,8 @@ def test_get():
 
 
 def test_has():
-    assert es('(has? (set "core") "core")')
-    assert es('(has? (list "a" "b") 1)')
+    assert es('(has? (set "core") "core")') is QY_T
+    assert es('(has? (list "a" "b") 1)') is QY_T
 
 
 def test_list_car_cdr_cons():

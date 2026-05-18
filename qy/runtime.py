@@ -10,8 +10,8 @@ from qy.async_runtime import run_async
 from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_bytecode
 from qy.bytecode_compiler import compile_mir_bytecode
+from qy.environment import ChainFrame
 from qy.environment import Environment
-from qy.environment import EnvironmentFrame
 from qy.environment import standard_environment
 from qy.ir import ProgramIR
 from qy.lowering import lower
@@ -43,7 +43,7 @@ class Qy:
         self.env = env or standard_environment()
 
     @property
-    def pre_symbol_space_chain(self) -> tuple[EnvironmentFrame, ...]:
+    def pre_symbol_space_chain(self) -> tuple[ChainFrame, ...]:
         return self.env.pre_symbol_space_chain()
 
     def read(self, source: str) -> list[Form]:

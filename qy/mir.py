@@ -11,6 +11,7 @@ explicit for later bytecode lowering.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import field
 from typing import Literal
 
 from qy.diagnostics import Diagnostic
@@ -20,6 +21,7 @@ from qy.reader import Symbol
 __all__ = [
     "MIRBlock",
     "MIRBlockId",
+    "MIRConstantPool",
     "MIRFunction",
     "MIRInstruction",
     "MIROpcode",
@@ -48,6 +50,7 @@ MIROpcode = Literal[
     "EXIT_SCOPE",
     "FROM_IMPORT",
     "HANDLE",
+    "LOAD_CONST",
     "LOAD_HOST",
     "LOAD_ENV",
     "MAKE_FUNCTION",
@@ -62,6 +65,41 @@ MIROpcode = Literal[
 ]
 
 MIRTerminatorOpcode = Literal["BRANCH", "JUMP", "RAISE_EFFECT", "RETURN", "TAIL_CALL"]
+
+
+@dataclass(slots=True)
+class MIRConstantPool:
+    """Constant pool for MIR: stores Python objects referenced by index.
+
+    Same value always gets the same index (interning).  This makes MIR
+    serialisable and portable -- instructions reference constants by integer
+    index instead of embedding Python objects directly.
+    """
+
+    _values: list[object]
+    _index: dict[object, int]
+
+    def __init__(self) -> None:
+        self._values = []
+        self._index = {}
+
+    def intern(self, value: object) -> int:
+        """Insert *value* into the pool and return its index.
+
+        Each call always produces a fresh index — no deduplication.
+        This preserves identity semantics for values like Symbols.
+        """
+        idx = len(self._values)
+        self._values.append(value)
+        return idx
+
+    def get(self, index: int) -> object:
+        """Return the constant at *index*."""
+        return self._values[index]
+
+    @property
+    def values(self) -> tuple[object, ...]:
+        return tuple(self._values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +135,7 @@ class MIRFunction:
 @dataclass(frozen=True, slots=True)
 class MIRProgram:
     functions: tuple[MIRFunction, ...]
+    constants: MIRConstantPool = field(default_factory=MIRConstantPool)
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
 
@@ -119,10 +158,16 @@ def verify_mir(program: MIRProgram) -> tuple[Diagnostic, ...]:
 
 
 def dump_mir(program: MIRProgram) -> str:
-    sections = [
+    sections: list[str] = []
+    if program.constants.values:
+        constant_lines = ["constant pool:"]
+        for idx, value in enumerate(program.constants.values):
+            constant_lines.append(f"  #{idx}: {value!r}")
+        sections.append("\n".join(constant_lines))
+    sections.extend(
         _dump_mir_function(index, function, is_main=index == program.main)
         for index, function in enumerate(program.functions)
-    ]
+    )
     if program.diagnostics:
         diagnostics = ["diagnostics:"]
         diagnostics.extend(
@@ -308,6 +353,12 @@ def _verify_instruction(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
             ):
                 _check_register(function, block_id, operands[0], diagnostics)
+        case "LOAD_CONST":
+            if _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                _check_register(function, block_id, operands[0], diagnostics)
+                _check_int_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
         case "LOAD_ENV":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
@@ -623,6 +674,8 @@ def _format_instruction(instruction: MIRInstruction) -> str:
                 if isinstance(s, ImportSpec)
             )
             rendered = f"FROM_IMPORT {_format_operand(operands[0])} [{specs_str}]"
+        case "LOAD_CONST":
+            rendered = f"{_format_register(operands[0])} = LOAD_CONST #{operands[1]}"
         case "LOAD_HOST":
             rendered = f"{_format_register(operands[0])} = LOAD_HOST {_format_operand(operands[1])}"
         case "LOAD_ENV":

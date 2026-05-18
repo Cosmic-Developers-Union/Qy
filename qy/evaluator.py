@@ -1,4 +1,18 @@
 # coding: utf-8
+# Legacy evaluator module.
+#
+# This module is being phased out in favor of the register VM pipeline.
+# The remaining functions fall into two categories:
+#
+#   1. Public evaluation API (evaluate, evaluate_source, evaluate_program,
+#      evaluate_file, evaluate_body) -- used by tests.  These route through
+#      the full pipeline (macroexpand -> lower -> compile -> VM).
+#
+#   2. Internal helpers for body evaluation with effect support
+#      (_evaluate_body_from, _continue_body_after_resume, _compose_effect_continuation).
+#
+# DO NOT add new functionality here.  New code should use the register VM
+# pipeline directly or go through eval_runtime.py for compatibility.
 
 from __future__ import annotations
 
@@ -14,10 +28,8 @@ from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
-from qy.errors import QyError
 from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
-from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.macro import MacroDefinition
@@ -33,12 +45,11 @@ from qy.operators import ScopeOperator
 from qy.operators import SyntaxOperator
 from qy.reader import Form
 from qy.reader import Symbol
-from qy.reader import get_span
 from qy.reader import read
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import HostObjectRef
 from qy.runtime_values import UserFunction
-from qy.runtime_values import _TailCall
+from qy.symbol_utils import ensure_symbol
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
@@ -81,6 +92,9 @@ __all__ = [
     "run_async",
     "standard_environment",
 ]
+
+
+# -- Public evaluation API (legacy, used by tests) --------------------------
 
 
 def evaluate(expression: object, env: Environment | None = None) -> object:
@@ -136,6 +150,9 @@ async def evaluate_file_async(path: str | Path, env: Environment | None = None) 
     return results[-1]
 
 
+# -- Pipeline execution (macroexpand -> lower -> compile -> VM) -------------
+
+
 async def _evaluate_ir_forms_async(
     forms: list[Form],
     env: Environment | None = None,
@@ -177,6 +194,9 @@ async def _evaluate_ir_forms_async(
             span=SourceSpan(start_line=first.line, start_column=first.column),
         )
     return await RegisterVirtualMachine(bytecode, runtime_env).evaluate_program()
+
+
+# -- Body evaluation with effect support (legacy, used by stdlib) -----------
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
@@ -221,142 +241,6 @@ async def _continue_body_after_resume(
     if index >= len(body):
         return resumed
     return await _evaluate_body_from(body, index, env)
-
-
-from qy.symbol_utils import ensure_symbol  # noqa: E402
-
-
-async def _evaluate_values(
-    expressions: tuple[object, ...],
-    env: Environment,
-    then: Callable[[tuple[object, ...]], object],
-) -> object:
-    return await _evaluate_values_from(expressions, 0, (), env, then)
-
-
-async def _evaluate_values_from(
-    expressions: tuple[object, ...],
-    index: int,
-    values: tuple[object, ...],
-    env: Environment,
-    then: Callable[[tuple[object, ...]], object],
-) -> object:
-    if index >= len(expressions):
-        return await _await_if_needed(then(values))
-    try:
-        value = await evaluate_async(expressions[index], env)
-    except QyEffectSignal as e:
-        _compose_effect_continuation(
-            e,
-            lambda resumed: _evaluate_values_from(
-                expressions,
-                index + 1,
-                (*values, resumed),
-                env,
-                then,
-            ),
-        )
-        raise
-    return await _evaluate_values_from(expressions, index + 1, (*values, value), env, then)
-
-
-async def _evaluate_tail_body_async(
-    body: tuple[object, ...],
-    env: Environment,
-    function: UserFunction,
-) -> object:
-    if not body:
-        raise QyArityError("body must contain at least one expression")
-    for expression in body[:-1]:
-        await evaluate_async(expression, env)
-    return await _evaluate_tail_expression_async(body[-1], env, function)
-
-
-async def _evaluate_tail_expression_async(
-    expression: object,
-    env: Environment,
-    function: UserFunction,
-) -> object:
-    if _is_self_tail_call(expression, function, env):
-        assert isinstance(expression, tuple)
-        return await _evaluate_values(
-            tuple(expression[1:]),
-            env,
-            lambda arguments: _TailCall(function, arguments),
-        )
-    if isinstance(expression, tuple) and expression:
-        operator = expression[0]
-        args = tuple(expression[1:])
-        if operator == Symbol("cond"):
-            return await _evaluate_tail_cond_async(args, env, function)
-        if operator == Symbol("let"):
-            return await _evaluate_tail_let_async(args, env, function)
-    return await evaluate_async(expression, env)
-
-
-def _is_self_tail_call(expression: object, function: UserFunction, env: Environment) -> bool:
-    if not isinstance(expression, tuple) or not expression:
-        return False
-    operator = expression[0]
-    if not isinstance(operator, Symbol) or operator != function.name:
-        return False
-    try:
-        return env.resolve(operator) is function
-    except QyError:
-        return False
-
-
-async def _evaluate_tail_cond_async(
-    args: tuple[object, ...],
-    env: Environment,
-    function: UserFunction,
-) -> object:
-    for clause in args:
-        if not isinstance(clause, tuple) or len(clause) != 2:
-            raise QyTypeError(
-                f"cond clause must be a pair, got {clause!r}",
-                span=get_span(clause),
-                metadata={"clause": clause},
-            )
-        condition, result = clause
-        if _truthy(await evaluate_async(condition, env)):
-            return await _evaluate_tail_expression_async(result, env, function)
-    return None
-
-
-async def _evaluate_tail_let_async(
-    args: tuple[object, ...],
-    env: Environment,
-    function: UserFunction,
-) -> object:
-    if len(args) < 2:
-        raise QyArityError("let expects bindings and at least one body expression")
-
-    bindings, *body = args
-    if not isinstance(bindings, tuple):
-        raise QyTypeError(
-            f"let bindings must be a list, got {bindings!r}",
-            span=get_span(bindings),
-        )
-
-    local_env = env.child()
-    for binding in bindings:
-        if not isinstance(binding, tuple) or len(binding) != 2:
-            raise QyTypeError(
-                f"let binding must be a pair, got {binding!r}",
-                span=get_span(binding),
-            )
-        name, value_expression = binding
-        local_env.define(
-            ensure_symbol(name, "let binding name"),
-            await evaluate_async(value_expression, local_env),
-        )
-
-    return await _evaluate_tail_body_async(tuple(body), local_env, function)
-
-
-def _truthy(value: object) -> bool:
-    return value not in (False, None, ())
 
 
 def _compose_effect_continuation(

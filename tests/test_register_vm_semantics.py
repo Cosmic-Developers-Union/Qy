@@ -6,6 +6,7 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
+from qy.values import QY_NIL
 
 
 def test_vm_evaluates_core_calls_and_let():
@@ -55,7 +56,7 @@ def test_vm_mutual_tail_recursion():
         """
     )
 
-    assert result is False
+    assert result is QY_NIL
 
 
 def test_vm_runtime_errors_include_virtual_stack_frames():

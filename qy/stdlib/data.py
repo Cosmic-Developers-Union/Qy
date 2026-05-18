@@ -122,20 +122,22 @@ async def _evaluate_data_arg(expression: object, env: Environment) -> object:
         raise
 
 
-def _atom(value: object) -> bool:
+def _atom(value: object) -> object:
     if value is QY_EMPTY_LIST:
-        return True
+        return QY_T
     if isinstance(value, QyCons):
-        return False
-    return not isinstance(value, tuple) or len(value) == 0
+        return QY_NIL
+    if not isinstance(value, tuple) or len(value) == 0:
+        return QY_T
+    return QY_NIL
 
 
-def _is(left: object, right: object) -> bool:
-    return left is right
+def _is(left: object, right: object) -> object:
+    return QY_T if left is right else QY_NIL
 
 
-def _eq(left: object, right: object) -> bool:
-    return left is right
+def _eq(left: object, right: object) -> object:
+    return QY_T if left is right else QY_NIL
 
 
 def _type(value: object) -> Symbol:
@@ -271,20 +273,20 @@ def _set(*args: object) -> set[object]:
     return result
 
 
-def _tuple_predicate(value: object) -> bool:
-    return isinstance(value, tuple)
+def _tuple_predicate(value: object) -> object:
+    return QY_T if isinstance(value, tuple) else QY_NIL
 
 
-def _list_predicate(value: object) -> bool:
-    return isinstance(value, list)
+def _list_predicate(value: object) -> object:
+    return QY_T if isinstance(value, list) else QY_NIL
 
 
-def _dict_predicate(value: object) -> bool:
-    return isinstance(value, dict)
+def _dict_predicate(value: object) -> object:
+    return QY_T if isinstance(value, dict) else QY_NIL
 
 
-def _set_predicate(value: object) -> bool:
-    return isinstance(value, set)
+def _set_predicate(value: object) -> object:
+    return QY_T if isinstance(value, set) else QY_NIL
 
 
 def _len(value: object) -> int:
@@ -340,7 +342,7 @@ def _get(collection: object, key: object, *default_values: object) -> object:
     )
 
 
-def _has(*args: object) -> bool:
+def _has(*args: object) -> object:
     if len(args) != 2:
         raise QyArityError(
             f"has? expects exactly two arguments, got {len(args)}",
@@ -349,26 +351,26 @@ def _has(*args: object) -> bool:
     collection, key = args
     if isinstance(collection, dict):
         try:
-            return key in collection
+            return QY_T if key in collection else QY_NIL
         except TypeError:
-            return False
+            return QY_NIL
     if isinstance(collection, set):
         try:
-            return key in collection
+            return QY_T if key in collection else QY_NIL
         except TypeError:
-            return False
+            return QY_NIL
     if isinstance(collection, tuple | list):
         index = _ensure_index(key)
-        return -len(collection) <= index < len(collection)
+        return QY_T if -len(collection) <= index < len(collection) else QY_NIL
     if collection is QY_EMPTY_LIST:
-        return False
+        return QY_NIL
     if isinstance(collection, QyCons):
         index = _ensure_index(key)
         try:
             length = len(qy_cons_to_tuple(collection))
         except TypeError:
-            return False
-        return -length <= index < length
+            return QY_NIL
+        return QY_T if -length <= index < length else QY_NIL
     raise QyTypeError(
         f"has? expects a chain, tuple, list, dict, or set, got {collection!r}",
         span=get_span(collection),
@@ -420,8 +422,8 @@ def operators() -> dict[Symbol, object]:
         Symbol("is"): PureOperator("is", _is, "按 Python is 语义比较 identity。"),
         Symbol("len"): PureOperator("len", _len, "返回 collection 长度。"),
         Symbol("type"): PureOperator("type", _type, "返回值的类型名称。"),
-        Symbol("true"): True,
-        Symbol("false"): False,
+        Symbol("true"): QY_T,
+        Symbol("false"): QY_NIL,
         Symbol("T"): QY_T,
         Symbol("nil"): QY_NIL,
         Symbol("none"): None,

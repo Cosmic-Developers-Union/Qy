@@ -167,3 +167,5 @@ node_modules/
 
 todo.review.md
 report.md
+
+.claude/worktrees

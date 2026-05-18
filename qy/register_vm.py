@@ -718,7 +718,12 @@ def _function_stack_frame(
 
 
 def _truthy(value: object) -> bool:
-    return value is not False and value is not None and value is not QY_NIL and value != ()
+    """nil-only truthiness: only QY_NIL is false.
+
+    This is the language-core truth model used by cond/JUMP_IF_FALSE.
+    The standard-profile ``truthy`` operator provides complex truthiness.
+    """
+    return value is not QY_NIL
 
 
 def _make_identity_continuation(effect_name: str, resumable: bool) -> QyContinuation:

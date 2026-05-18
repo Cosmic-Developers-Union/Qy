@@ -28,6 +28,7 @@ __all__ = [
     "SpannedTuple",
     "Symbol",
     "TupleForm",
+    "expand_surface_dialect",
     "form_to_tuple",
     "get_span",
     "read",
@@ -236,8 +237,23 @@ def read_raw(source: str, *, source_name: str | None = None) -> list[Form]:
         raise ReaderSyntaxError(str(e)) from e
 
 
+def expand_surface_dialect(forms: list[Form]) -> list[Form]:
+    """Expand surface dialect syntax in a list of raw forms.
+
+    Transforms reader sugar into canonical forms:
+    - ``'x`` (prefix quote symbol) -> ``(quote x)``
+    - ``'x`` (leading-quote symbol) -> ``(quote x)``
+    - ``,x`` inside quasiquote -> ``(unquote x)``
+    - ``,@x`` inside quasiquote -> ``(unquote-splicing x)``
+
+    This is a pure function: it does not parse source, only transforms
+    already-parsed raw forms produced by ``read_raw()``.
+    """
+    return _expand_surface_program(forms)
+
+
 def read(source: str, *, source_name: str | None = None) -> list[Form]:
-    return _expand_surface_program(read_raw(source, source_name=source_name))
+    return expand_surface_dialect(read_raw(source, source_name=source_name))
 
 
 def read_one(source: str, *, source_name: str | None = None) -> Form:
@@ -489,6 +505,10 @@ def write(form: Form) -> str:
         head = " ".join(write(item) for item in form)
         return f"({head} . {write(cast(Form, form.tail))})"
     if isinstance(form, tuple):
+        if _is_surface_quote(form):
+            return "'" + write(form[1])
+        if _is_surface_quasiquote(form):
+            return "`" + write(form[1])
         return f"({' '.join(write(item) for item in form)})"
     raise TypeError(f"expected qy form, got {type(form).__name__}")
 
@@ -565,6 +585,16 @@ def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan |
     if line is None and column is None:
         return None
     return SourceSpan(None, line, column, line, column)
+
+
+def _is_surface_quote(form: tuple[Form, ...]) -> bool:
+    """Check if a tuple form is ``(quote x)`` — a surface dialect quote."""
+    return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quote"
+
+
+def _is_surface_quasiquote(form: tuple[Form, ...]) -> bool:
+    """Check if a tuple form is ``(quasiquote x)`` — a surface dialect quasiquote."""
+    return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quasiquote"
 
 
 def _encode_symbol(name: str) -> str:

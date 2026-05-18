@@ -23,9 +23,9 @@ def try_default_literal(symbol: Symbol) -> object:
     if symbol.name == "nil":
         return QY_NIL
     if symbol.name == "true":
-        return True
+        return QY_T
     if symbol.name == "false":
-        return False
+        return QY_NIL
     if symbol.name == "none":
         return None
     try:
@@ -64,4 +64,3 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
         return "number"
     if value is None:
         return "none"
-    return "any"

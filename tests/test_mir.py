@@ -285,10 +285,11 @@ def test_mir_dump_shows_raise_effect_for_assert():
 
 def test_bytecode_vm_assert_passes_when_condition_is_true():
     from qy.register_vm import evaluate_bytecode_source
+    from qy.values import QY_T
 
     result = evaluate_bytecode_source("(assert true)")
 
-    assert result is True
+    assert result is QY_T
 
 
 def test_bytecode_vm_assert_raises_effect_signal_when_condition_is_false():

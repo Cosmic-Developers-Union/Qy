@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 from qy.bytecode import BytecodeFunction
 from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
+from qy.bytecode import Opcode
 from qy.ir import ProgramIR
+from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
 from qy.lir_lowering import lower_lir
 from qy.mir import MIRProgram
@@ -23,6 +27,44 @@ def compile_mir_bytecode(program: MIRProgram) -> BytecodeProgram:
     return compile_lir_bytecode(lir)
 
 
+def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
+    """Map LIR opcodes to bytecode opcodes.
+
+    LIR-specific opcodes are lowered to their bytecode equivalents:
+    - LOAD_NIL -> LOAD_HOST with QY_NIL value
+    - LOAD_T   -> LOAD_HOST with QY_T value
+    - BRANCH_NIL -> JUMP_IF_FALSE (same semantics now that truth is nil-only)
+    """
+    if opcode == "LOAD_NIL":
+        return "LOAD_HOST"
+    if opcode == "LOAD_T":
+        return "LOAD_HOST"
+    if opcode == "BRANCH_NIL":
+        return "JUMP_IF_FALSE"
+    return cast(Opcode, opcode)
+
+
+def _lir_to_bytecode_operands(opcode: str, operands: tuple[object, ...]) -> tuple[object, ...]:
+    """Adjust operands when mapping LIR opcodes to bytecode opcodes."""
+    if opcode == "LOAD_NIL":
+        # LOAD_NIL r -> LOAD_HOST r, QY_NIL
+        from qy.values import QY_NIL
+
+        return (operands[0], QY_NIL)
+    if opcode == "LOAD_T":
+        # LOAD_T r -> LOAD_HOST r, QY_T
+        from qy.values import QY_T
+
+        return (operands[0], QY_T)
+    return operands
+
+
+def _encode_instruction(instruction: LIRInstruction) -> Instruction:
+    opcode = _lir_to_bytecode_opcode(instruction.opcode)
+    operands = _lir_to_bytecode_operands(instruction.opcode, instruction.operands)
+    return Instruction(opcode, operands, instruction.span)
+
+
 def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
@@ -32,7 +74,7 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
                 f.name,
                 f.params,
                 f.register_count,
-                tuple(Instruction(i.opcode, i.operands, i.span) for i in f.instructions),
+                tuple(_encode_instruction(i) for i in f.instructions),
             )
             for f in program.functions
         ),

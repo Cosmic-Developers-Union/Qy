@@ -228,11 +228,8 @@ def _lower_form(
         return UnresolvedSymbolExpr(operator_expr.symbol, get_span(form))
 
     args_as_data = _call_uses_non_eager_arguments(operator_expr)
-    raw_args = _call_uses_raw_arguments(operator_expr)
-    lowered_args = (
-        tuple(_lower_raw_form_as_data(arg) for arg in args)
-        if raw_args
-        else tuple(_lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args)
+    lowered_args = tuple(
+        _lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args
     )
     return CallExpr(
         operator_expr,
@@ -240,7 +237,6 @@ def _lower_form(
         get_span(form),
         _infer_call_type(operator, tuple(lowered_args), operator_expr, context, form),
         tail,
-        args,
     )
 
 
@@ -275,12 +271,6 @@ def _lower_symbol(
 
     context.diagnostic(f"unresolved symbol {symbol.name!r}", symbol)
     return UnresolvedSymbolExpr(symbol, symbol.span)
-
-
-def _lower_raw_form_as_data(form: object) -> IRExpr:
-    if isinstance(form, Symbol):
-        return LiteralExpr(form, "symbol", form.span, form)
-    return LiteralExpr(form, literal_type(form), get_span(form))
 
 
 def _lower_quote(
@@ -828,14 +818,6 @@ def _call_uses_non_eager_arguments(operator: IRExpr) -> bool:
         isinstance(operator, SymbolRefExpr)
         and operator.binding.type_name == "operator"
         and not operator.binding.eager_arguments
-    )
-
-
-def _call_uses_raw_arguments(operator: IRExpr) -> bool:
-    return (
-        isinstance(operator, SymbolRefExpr)
-        and operator.binding.type_name == "operator"
-        and operator.symbol.name == "component"
     )
 
 

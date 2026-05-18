@@ -33,20 +33,6 @@ def test_register_vm_defun_can_be_called_across_steps():
     assert qy.evaluate_source("(square 12)") == 144
 
 
-def test_register_vm_component_can_be_called_across_steps():
-    from qy.evaluator import standard_environment
-    from qy.stdlib import load_module
-
-    env = standard_environment()
-    for sym, val in load_module("qy.legacy").exports.items():
-        env.define(sym, val)
-    qy = Qy(env=env)
-
-    qy.evaluate_source("(component scale (x factor) (* x factor))")
-
-    assert qy.evaluate_source("(scale 7 6)") == 42
-
-
 def test_register_vm_tail_recursion_uses_frame_replacement():
     qy = Qy()
 

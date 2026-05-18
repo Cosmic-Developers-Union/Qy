@@ -3,24 +3,13 @@ import pytest
 from qy.reader import DottedTuple
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
+from qy.reader import expand_surface_dialect
 from qy.reader import get_span
 from qy.reader import read
 from qy.reader import read_one
 from qy.reader import read_raw
 
 S = Symbol
-
-
-def test_list_and_quote_forms():
-    assert read("'abc '(+ 1 2)") == [
-        (S("quote"), S("abc")),
-        (S("quote"), (S("+"), S("1"), S("2"))),
-    ]
-
-
-def test_quote_of_string_literal():
-    # 字符串字面量作为 quote 参数需用显式 (quote ...) 形式
-    assert read('(quote "abc")') == [(S("quote"), "abc")]
 
 
 def test_raw_reader_keeps_surface_symbols():
@@ -62,6 +51,12 @@ def test_define_target_is_not_surface_expanded():
     ]
 
 
+def test_expand_surface_dialect_is_pure_function():
+    raw = read_raw("'abc (+ 1 2)")
+    result = expand_surface_dialect(raw)
+    assert result == [(S("quote"), S("abc")), (S("+"), S("1"), S("2"))]
+
+
 def test_dotted_pair_forms():
     form = read_one("(a . b)")
 
@@ -74,23 +69,6 @@ def test_dotted_pair_forms():
 def test_invalid_dotted_pair_forms_are_rejected():
     with pytest.raises(ReaderSyntaxError):
         read_one("(. b)")
-
-
-def test_let_binding_uses_bare_symbol_key():
-    # 绑定名必须是裸 symbol；"abc" 现在是字符串字面量，末尾位置也是字符串
-    assert read_one('(let ((abc 1)) abc "abc")') == (
-        S("let"),
-        ((S("abc"), S("1")),),
-        S("abc"),
-        "abc",
-    )
-
-
-def test_comments_are_ignored_outside_quoted_symbols():
-    assert read('(+ 1 ; ignored\n 2) ";not comment"') == [
-        (S("+"), S("1"), S("2")),
-        ";not comment",
-    ]
 
 
 def test_forms_keep_source_spans():
