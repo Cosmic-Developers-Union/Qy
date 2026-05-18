@@ -1,0 +1,10 @@
+; eq: value equality for immutable atoms, identity for reference types
+(= (eq 1 1) T)
+(= (eq 1000 1000) T)
+(= (eq "hello" "hello") T)
+(= (eq nil nil) T)
+(= (eq T T) T)
+(= (eq 1 2) nil)
+(= (eq "a" "b") nil)
+; different types
+(= (eq 1 "1") nil)

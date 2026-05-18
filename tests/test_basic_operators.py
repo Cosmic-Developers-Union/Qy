@@ -27,8 +27,8 @@ def test_cond():
 
 
 def test_eq():
-    # eq is pure identity semantics, returns QY_T/QY_NIL
-    assert evaluate_source("(eq 'abc 'abc)") is QY_NIL  # different Symbol objects
+    # eq: value equality for atoms (symbol/number/string), identity for chains
+    assert evaluate_source("(eq 'abc 'abc)") is QY_T  # same symbol name -> equal
     assert evaluate_source("(eq '(abc) '(abc))") is QY_NIL  # different QyCons
     assert evaluate_source("(eq '() '())") is QY_T  # both are QY_NIL singleton
     assert evaluate_source("(eq '() none)") is QY_NIL

@@ -1,0 +1,5 @@
+; reify: runtime value -> syntax datum
+(eq (reify nil) 'nil)
+(eq (reify T) 'T)
+(eq (reify 42) '42)
+(eq (reify "hello") 'hello)

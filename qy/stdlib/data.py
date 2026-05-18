@@ -137,7 +137,40 @@ def _is(left: object, right: object) -> object:
 
 
 def _eq(left: object, right: object) -> object:
+    # Value equality for immutable atoms; identity for reference types (chains, host objects)
+    if type(left) is not type(right):
+        return QY_NIL
+    if isinstance(left, int | float | str | bool | Symbol):
+        return QY_T if left == right else QY_NIL
     return QY_T if left is right else QY_NIL
+
+
+def _reify(value: object) -> object:
+    """Convert a runtime value to a syntax datum (Symbol or SpannedTuple)."""
+    if value is QY_NIL:
+        return Symbol("nil")
+    if value is QY_T:
+        return Symbol("T")
+    if value is None:
+        return Symbol("none")
+    if isinstance(value, Symbol):
+        return value
+    if isinstance(value, int | float):
+        return Symbol(str(value))
+    if isinstance(value, str):
+        return Symbol(value)
+    if isinstance(value, QyCons):
+        from qy.reader import SpannedTuple
+
+        items: list[object] = []
+        node: object = value
+        while isinstance(node, QyCons):
+            items.append(_reify(node.head))
+            node = node.tail
+        if node is QY_NIL:
+            return SpannedTuple(items)
+        return SpannedTuple([*items, Symbol("."), _reify(node)])
+    return Symbol(repr(value))
 
 
 def _type(value: object) -> Symbol:
@@ -409,7 +442,10 @@ def operators() -> dict[Symbol, object]:
         Symbol("cons"): PureOperator(
             "cons", _cons, "构造 chain cell；对 Python tuple/list 保持同类拼接。"
         ),
-        Symbol("eq"): PureOperator("eq", _eq, "Lisp 风格 eq；chain 按 identity 比较。"),
+        Symbol("eq"): PureOperator(
+            "eq", _eq, "Lisp 风格 eq；atom 按值比较，chain 按 identity 比较。"
+        ),
+        Symbol("reify"): PureOperator("reify", _reify, "将 runtime 值转为 syntax datum。"),
         Symbol("get"): PureOperator(
             "get", _get, "从 chain/tuple/list/dict 获取项。", _evaluate_lookup_args
         ),

@@ -213,6 +213,8 @@ def _map_register_operands(
     match opcode:
         case "LOAD_NIL" | "LOAD_T":
             return (map_register(operands[0]),)
+        case "LOAD_INT" | "LOAD_FLOAT" | "LOAD_STR":
+            return (map_register(operands[0]), operands[1])
         case "LOAD_HOST" | "LOAD_ENV":
             return (map_register(operands[0]), operands[1])
         case "MOVE":

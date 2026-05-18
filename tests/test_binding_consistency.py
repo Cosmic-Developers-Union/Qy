@@ -130,24 +130,23 @@ def test_string_spelling_consistent() -> None:
 
 
 def test_eq_identity_vs_num_equality() -> None:
-    """Test that eq is identity and = is numeric value equality."""
-    from qy.values import QY_NIL
+    """Test that eq uses value equality for atoms and = is numeric value equality."""
     from qy.values import QY_T
 
     qy = Qy()
 
-    # eq: identity for all types, returns QY_T/QY_NIL
+    # eq: value equality for atoms, identity for chains
     assert qy.evaluate_source("(eq nil nil)") is QY_T
     assert qy.evaluate_source("(eq T T)") is QY_T
-    assert qy.evaluate_source("(eq 1 1)") is QY_T  # CPython small int interning
+    assert qy.evaluate_source("(eq 1 1)") is QY_T  # value equality for ints
 
     # =: numeric value equality, returns QY_T/QY_NIL
     assert qy.evaluate_source("(= 1 1)") is QY_T
     assert qy.evaluate_source("(= 0 0)") is QY_T
     assert qy.evaluate_source("(= 3.14 3.14)") is QY_T
 
-    # eq: symbols are identity (different objects)
-    assert qy.evaluate_source("(eq 'abc 'abc)") is QY_NIL
+    # eq: symbols use value equality (same name = equal)
+    assert qy.evaluate_source("(eq 'abc 'abc)") is QY_T  # same name -> equal
 
 
 def test_module_export_view_consistent() -> None:
