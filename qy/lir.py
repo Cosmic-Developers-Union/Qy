@@ -119,7 +119,79 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                         severity="warning",
                     )
                 )
+            # Check register operands are in range [0, register_count)
+            for operand in _register_operands_of(inst.opcode, inst.operands):
+                if not isinstance(operand, int):
+                    continue
+                if operand < 0 or operand >= func.register_count:
+                    diagnostics.append(
+                        Diagnostic(
+                            f"LIR function {func.name.name} uses out-of-range register r{operand} "
+                            f"(register_count={func.register_count})",
+                            severity="error",
+                        )
+                    )
+            # Check jump targets are in range
+            if inst.opcode in ("JUMP", "JUMP_IF_FALSE") and len(inst.operands) >= 1:
+                target = inst.operands[-1]
+                if isinstance(target, int):
+                    if target < 0 or target >= len(func.instructions):
+                        diagnostics.append(
+                            Diagnostic(
+                                f"LIR function {func.name.name} has jump to out-of-range target {target}",
+                                severity="error",
+                            )
+                        )
     return tuple(diagnostics)
+
+
+def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[object]:
+    """Extract register operands from an instruction based on its opcode."""
+    match opcode:
+        case "LOAD_HOST" | "LOAD_NIL" | "LOAD_T" | "LOAD_ENV" | "RETURN" | "APPEND_RESULT":
+            return [operands[0]] if operands else []
+        case "MOVE":
+            return list(operands) if len(operands) >= 2 else []
+        case "DEFINE_ONCE":
+            return [operands[1]] if len(operands) >= 2 else []
+        case "MAKE_FUNCTION" | "MAKE_MACRO":
+            return [operands[0]] if operands else []
+        case "CALL":
+            regs = [operands[0], operands[1]] if len(operands) >= 2 else []
+            if len(operands) >= 3 and isinstance(operands[2], tuple):
+                regs.extend(operands[2])
+            return regs
+        case "TAIL_CALL":
+            regs = [operands[0]] if operands else []
+            if len(operands) >= 2 and isinstance(operands[1], tuple):
+                regs.extend(operands[1])
+            return regs
+        case "BUILD_TUPLE":
+            return list(operands)
+        case "APPLY" | "RUNTIME_EVAL" | "RESUME":
+            return list(operands)
+        case "JUMP_IF_FALSE":
+            return [operands[0]] if operands else []
+        case "PERFORM":
+            return (
+                [operands[0], operands[2]]
+                if len(operands) >= 3
+                else [operands[0]]
+                if operands
+                else []
+            )
+        case "HANDLE":
+            return [operands[0]] if operands else []
+        case "RAISE_EFFECT":
+            return [operands[1]] if len(operands) >= 2 else []
+        case "CACHE_EVAL":
+            return [operands[0]] if operands else []
+        case "DEFINE_MODULE":
+            return [operands[0]] if operands else []
+        case "PARALLEL_GATHER" | "ALL_GATHER" | "RACE_FIRST":
+            return [operands[0]] if operands else []
+        case _:
+            return []
 
 
 def dump_lir(program: LIRProgram) -> str:

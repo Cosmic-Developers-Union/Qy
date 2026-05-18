@@ -24,6 +24,7 @@ from qy.reader import get_span
 from qy.runtime_values import UserFunction
 from qy.runtime_values import _TailCall
 from qy.symbol_utils import ensure_symbol
+from qy.values import QY_NIL
 
 __all__ = [
     "evaluate_async",
@@ -115,7 +116,7 @@ async def _evaluate_tail_cond_async(
         condition, result = clause
         if _truthy(await evaluate_async(condition, env)):
             return await _evaluate_tail_expression_async(result, env, function)
-    return None
+    return QY_NIL
 
 
 async def _evaluate_tail_let_async(
@@ -150,7 +151,7 @@ async def _evaluate_tail_let_async(
 
 
 def _truthy(value: object) -> bool:
-    return value is not None and value is not False
+    return value is not QY_NIL
 
 
 # -- Effect-aware value evaluation helpers (used by TCO above) --

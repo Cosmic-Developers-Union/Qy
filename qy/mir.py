@@ -214,6 +214,10 @@ def _verify_function(function: MIRFunction, diagnostics: list[Diagnostic]) -> No
 
         _verify_terminator(function, block.id, block_ids, block.terminator, diagnostics)
 
+    # Phase H4: additional structural verifiers
+    _verify_reachability(function, block_ids, diagnostics)
+    _verify_def_use(function, diagnostics)
+
 
 def _verify_instruction(
     function: MIRFunction,
@@ -483,6 +487,289 @@ def _verify_terminator(
             diagnostics.append(
                 Diagnostic(
                     f"function {function.name.name!r} block bb{block_id} uses unknown terminator opcode {terminator.opcode!r}"
+                )
+            )
+
+
+# ---------------------------------------------------------------------------
+# Phase H4: additional structural verifiers
+# ---------------------------------------------------------------------------
+
+_DEFINE_OPCODES: frozenset[str] = frozenset(
+    {
+        "LOAD_HOST",
+        "LOAD_CONST",
+        "LOAD_ENV",
+        "MOVE",
+        "CALL",
+        "MAKE_FUNCTION",
+        "MAKE_MACRO",
+        "BUILD_TUPLE",
+        "APPLY",
+        "RUNTIME_EVAL",
+        "CACHE_EVAL",
+        "DEFINE_MODULE",
+        "HANDLE",
+        "PERFORM",
+        "RESUME",
+        "ALL_GATHER",
+        "PARALLEL_GATHER",
+        "RACE_FIRST",
+    }
+)
+
+
+def _verify_reachability(
+    function: MIRFunction,
+    block_ids: set[MIRBlockId],
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Check that all blocks are reachable from the entry block (BFS)."""
+    if function.entry not in block_ids:
+        return  # already reported as a missing entry block
+
+    # Build adjacency from terminators
+    block_by_id: dict[MIRBlockId, MIRBlock] = {b.id: b for b in function.blocks}
+
+    visited: set[MIRBlockId] = set()
+    queue: list[MIRBlockId] = [function.entry]
+
+    while queue:
+        current = queue.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        block = block_by_id.get(current)
+        if block is None or block.terminator is None:
+            continue
+        for target in _terminator_targets(block.terminator):
+            if target not in visited:
+                queue.append(target)
+
+    for block in function.blocks:
+        if block.id not in visited:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block.id} is unreachable from entry",
+                    severity="warning",
+                )
+            )
+
+
+def _terminator_targets(terminator: MIRTerminator) -> list[MIRBlockId]:
+    """Extract block target IDs from a terminator."""
+    operands = terminator.operands
+    match terminator.opcode:
+        case "JUMP":
+            if operands and isinstance(operands[0], int):
+                return [operands[0]]
+        case "BRANCH":
+            targets: list[MIRBlockId] = []
+            if len(operands) >= 2 and isinstance(operands[1], int):
+                targets.append(operands[1])
+            if len(operands) >= 3 and isinstance(operands[2], int):
+                targets.append(operands[2])
+            return targets
+        case "RETURN" | "TAIL_CALL" | "RAISE_EFFECT":
+            return []
+        case _:
+            pass
+    return []
+
+
+def _verify_def_use(
+    function: MIRFunction,
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Per-block def-use check: warn if a register is used before definition."""
+    # Parameter registers r0..r{len(params)-1} are pre-defined at entry.
+    param_count = len(function.params) if isinstance(function.params, tuple) else 0
+    param_defined: set[MIRRegister] = set(range(param_count))
+
+    for block in function.blocks:
+        defined: set[MIRRegister] = set(param_defined)
+
+        for instruction in block.instructions:
+            # Collect uses *before* the definition of this instruction
+            _check_uses(function, block.id, instruction, defined, diagnostics)
+
+            # Now record the definition (if any)
+            if instruction.opcode in _DEFINE_OPCODES and instruction.operands:
+                dst = instruction.operands[0]
+                if isinstance(dst, int):
+                    defined.add(dst)
+
+        # Also check the terminator for uses (terminators never define registers)
+        if block.terminator is not None:
+            _check_terminator_uses(function, block.id, block.terminator, defined, diagnostics)
+
+
+def _add_reg(uses: set[MIRRegister], operands: tuple[object, ...], index: int) -> None:
+    """Add operand at *index* to *uses* if it is an int (register id)."""
+    if index < len(operands):
+        val = operands[index]
+        if isinstance(val, int):
+            uses.add(val)
+
+
+def _add_reg_tuple(uses: set[MIRRegister], operands: tuple[object, ...], index: int) -> None:
+    """Add all int items from a tuple operand at *index* to *uses*."""
+    if index < len(operands):
+        val = operands[index]
+        if isinstance(val, tuple):
+            for item in val:
+                if isinstance(item, int):
+                    uses.add(item)
+
+
+def _collect_register_uses(
+    opcode: str, operands: tuple[object, ...], skip_first: bool
+) -> set[MIRRegister]:
+    """Extract register references from operands.
+
+    If *skip_first* is True, the first operand is assumed to be a definition
+    destination and is excluded.
+
+    We must be careful to only treat *actual register operands* as uses.
+    Many instructions have non-register operands (constant pool indices,
+    function indices, symbols, bools, etc.) that happen to be ints.
+    """
+    uses: set[MIRRegister] = set()
+
+    match opcode:
+        case "MOVE":
+            # (dst, src_reg)
+            _add_reg(uses, operands, 1)
+        case "MAKE_FUNCTION":
+            # (dst, fn_idx) — no register uses beyond dst
+            pass
+        case "MAKE_MACRO":
+            # (dst, name, param_tuple, body_tuple) — no register uses beyond dst
+            pass
+        case "LOAD_CONST":
+            # (dst, const_idx) — no register uses beyond dst
+            pass
+        case "LOAD_HOST":
+            # (dst, host_thing) — no register uses beyond dst
+            pass
+        case "LOAD_ENV":
+            # (dst, symbol) — no register uses beyond dst
+            pass
+        case "CACHE_EVAL":
+            # (dst, ..., fn_idx) — no register uses beyond dst
+            pass
+        case "DEFINE_MODULE":
+            # (dst, name_symbol, fn_idx, ...) — no register uses beyond dst
+            pass
+        case "HANDLE":
+            # (dst, fn_idx, handler_specs) — no register uses beyond dst
+            pass
+        case "PERFORM":
+            # (dst, effect_sym, arg_reg)
+            _add_reg(uses, operands, 2)
+        case "RESUME":
+            # (dst, cont_reg, val_reg)
+            _add_reg(uses, operands, 1)
+            _add_reg(uses, operands, 2)
+        case "CALL":
+            # (dst, fn_reg, args_tuple)
+            _add_reg(uses, operands, 1)
+            _add_reg_tuple(uses, operands, 2)
+        case "APPLY":
+            # (dst, fn_reg, args_reg)
+            _add_reg(uses, operands, 1)
+            _add_reg(uses, operands, 2)
+        case "RUNTIME_EVAL":
+            # (dst, src_reg)
+            _add_reg(uses, operands, 1)
+        case "BUILD_TUPLE":
+            # (dst, reg1, reg2, ...) — all operands after dst are registers
+            for i in range(1, len(operands)):
+                _add_reg(uses, operands, i)
+        case "ALL_GATHER" | "PARALLEL_GATHER" | "RACE_FIRST":
+            # (dst, fn_idx, ...) — no register uses beyond dst
+            pass
+        case "APPEND_RESULT":
+            # (reg) — uses the register (does NOT define)
+            _add_reg(uses, operands, 0)
+        case "STORE_LOCAL" | "DEFINE_ONCE":
+            # (symbol, reg)
+            _add_reg(uses, operands, 1)
+        case "DEFEFFECT":
+            # (sym, bool) — no registers
+            pass
+        case "FROM_IMPORT":
+            # (sym, specs) — no registers
+            pass
+        case "ENTER_SCOPE" | "EXIT_SCOPE":
+            pass
+        # Terminators
+        case "JUMP":
+            # (block_id) — no registers
+            pass
+        case "BRANCH":
+            # (cond_reg, true_bb, false_bb)
+            _add_reg(uses, operands, 0)
+        case "RETURN":
+            # (reg_or_none)
+            if operands and operands[0] is not None:
+                _add_reg(uses, operands, 0)
+        case "TAIL_CALL":
+            # (fn_reg, args_tuple)
+            _add_reg(uses, operands, 0)
+            _add_reg_tuple(uses, operands, 1)
+        case "RAISE_EFFECT":
+            # (sym, reg, bool)
+            _add_reg(uses, operands, 1)
+        case _:
+            # Unknown opcode — conservative scan of non-first operands
+            start = 1 if skip_first else 0
+            for operand in operands[start:]:
+                if isinstance(operand, int):
+                    uses.add(operand)
+                elif isinstance(operand, tuple):
+                    for item in operand:
+                        if isinstance(item, int):
+                            uses.add(item)
+    return uses
+
+
+def _check_uses(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    instruction: MIRInstruction,
+    defined: set[MIRRegister],
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Warn about registers read by *instruction* that are not yet defined."""
+    is_def = instruction.opcode in _DEFINE_OPCODES
+    uses = _collect_register_uses(instruction.opcode, instruction.operands, skip_first=is_def)
+
+    for reg in sorted(uses):
+        if reg not in defined:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block_id} uses register r{reg} before definition",
+                    severity="warning",
+                )
+            )
+
+
+def _check_terminator_uses(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    terminator: MIRTerminator,
+    defined: set[MIRRegister],
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Warn about registers read by the terminator that are not yet defined."""
+    uses = _collect_register_uses(terminator.opcode, terminator.operands, skip_first=False)
+    for reg in sorted(uses):
+        if reg not in defined:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block_id} uses register r{reg} before definition",
+                    severity="warning",
                 )
             )
 

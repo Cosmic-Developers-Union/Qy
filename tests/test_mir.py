@@ -308,7 +308,9 @@ def test_mir_verify_accepts_raise_effect_terminator():
     mir = lower_mir(lower_source("(assert true)"))
     diagnostics = verify_mir(mir)
 
-    assert diagnostics == ()
+    # No errors; warnings from def-use analysis are acceptable
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert errors == []
 
 
 def test_mir_lowering_runtime_eval_emits_runtime_eval_instruction():
@@ -436,3 +438,221 @@ def test_bytecode_vm_resume_continues_computation():
     )
 
     assert result == 16
+
+
+# ---------------------------------------------------------------------------
+# Phase H4: MIR verifier enhancement tests
+# ---------------------------------------------------------------------------
+
+
+def test_verify_mir_detects_unreachable_block():
+    """An unreachable block (no path from entry) should produce a warning."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_unreachable"),
+                (),
+                2,
+                (
+                    # bb0: entry — jumps to itself (loop), no path to bb1
+                    MIRBlock(0, (), MIRTerminator("JUMP", (0,))),
+                    # bb1: unreachable — returns r0
+                    MIRBlock(1, (), MIRTerminator("RETURN", (0,))),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert any("block bb1 is unreachable from entry" in d.message for d in warnings), (
+        f"Expected unreachable-block warning, got: {[d.message for d in warnings]}"
+    )
+
+
+def test_verify_mir_all_blocks_reachable_no_warning():
+    """When all blocks are reachable, no unreachable warning should appear."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_reachable"),
+                (),
+                2,
+                (
+                    # bb0: entry — branch to bb0 or bb1
+                    MIRBlock(
+                        0,
+                        (MIRInstruction("LOAD_CONST", (0, 0), None),),
+                        MIRTerminator("BRANCH", (0, 0, 1)),
+                    ),
+                    # bb1: return r0
+                    MIRBlock(1, (), MIRTerminator("RETURN", (0,))),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert not any("unreachable" in d.message for d in warnings), (
+        f"Unexpected unreachable warning: {[d.message for d in warnings]}"
+    )
+
+
+def test_verify_mir_detects_undefined_register():
+    """Using a register before it is defined in a block should produce a warning."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_undef_reg"),
+                (),
+                3,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            # r1 = LOAD_CONST 0  (defines r1)
+                            MIRInstruction("LOAD_CONST", (1, 0), None),
+                            # MOVE r0, r2  — r2 is never defined in this block
+                            MIRInstruction("MOVE", (0, 2), None),
+                        ),
+                        MIRTerminator("RETURN", (0,)),
+                    ),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert any("uses register r2 before definition" in d.message for d in warnings), (
+        f"Expected undef-register warning, got: {[d.message for d in warnings]}"
+    )
+
+
+def test_verify_mir_param_registers_considered_defined():
+    """Parameter registers (r0, r1, ...) should be treated as pre-defined."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_params"),
+                (Symbol("x"), Symbol("y")),
+                2,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            # MOVE r0, r1 — both are params, should be fine
+                            MIRInstruction("MOVE", (0, 1), None),
+                        ),
+                        MIRTerminator("RETURN", (0,)),
+                    ),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert not any("before definition" in d.message for d in warnings), (
+        f"Unexpected undef warning for param registers: {[d.message for d in warnings]}"
+    )
+
+
+def test_verify_mir_tail_call_structure_valid():
+    """TAIL_CALL as terminator with 2 operands (register, tuple) should be accepted."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_tc"),
+                (Symbol("x"),),
+                2,
+                (
+                    MIRBlock(
+                        0,
+                        (MIRInstruction("LOAD_CONST", (1, 0), None),),
+                        MIRTerminator("TAIL_CALL", (0, (1,))),
+                    ),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert not any("TAIL_CALL" in d.message for d in errors), (
+        f"Unexpected TAIL_CALL errors: {[d.message for d in errors]}"
+    )
+
+
+def test_verify_mir_detects_undefined_register_in_terminator():
+    """A terminator that uses an undefined register should also produce a warning."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_term_undef"),
+                (),
+                3,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            # Only define r0
+                            MIRInstruction("LOAD_CONST", (0, 0), None),
+                        ),
+                        # RETURN r2 — r2 never defined
+                        MIRTerminator("RETURN", (2,)),
+                    ),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert any("uses register r2 before definition" in d.message for d in warnings), (
+        f"Expected undef-register warning in terminator, got: {[d.message for d in warnings]}"
+    )
+
+
+def test_verify_mir_def_use_does_not_flag_append_result_as_definition():
+    """APPEND_RESULT uses a register but does NOT define one; verify no false positives."""
+    mir = MIRProgram(
+        (
+            MIRFunction(
+                Symbol("test_append"),
+                (),
+                2,
+                (
+                    MIRBlock(
+                        0,
+                        (
+                            MIRInstruction("LOAD_CONST", (0, 42), None),
+                            MIRInstruction("APPEND_RESULT", (0,), None),
+                        ),
+                        MIRTerminator("RETURN", (None,)),
+                    ),
+                ),
+                entry=0,
+            ),
+        )
+    )
+
+    diagnostics = verify_mir(mir)
+
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert not any("before definition" in d.message for d in warnings), (
+        f"Unexpected false positive from APPEND_RESULT: {[d.message for d in warnings]}"
+    )

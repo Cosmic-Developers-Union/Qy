@@ -104,8 +104,14 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
     Currently handles:
     - MOVE r, r  (no-op self-assignment)
     - LOAD_HOST r, None -> LOAD_NIL r  (use LIR-specific nil load)
-    - LOAD_HOST r, True -> LOAD_T r    (use LIR-specific T load, if value is Python True)
+    - LOAD_HOST r, QY_T -> LOAD_T r    (use LIR-specific T load)
+
+    NOTE: JUMP-to-next elimination is NOT safe here because jumps have
+    already been patched to absolute indices.  Removing a JUMP shifts all
+    subsequent indices but does not update other jump targets.
     """
+    from qy.values import QY_T
+
     result = list(instructions)
     changed = True
     while changed:
@@ -124,6 +130,15 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
             ):
                 changed = True
                 out.append(LIRInstruction("LOAD_NIL", (instruction.operands[0],), instruction.span))
+                continue
+            # Strength-reduce LOAD_HOST QY_T → LOAD_T
+            if (
+                instruction.opcode == "LOAD_HOST"
+                and len(instruction.operands) >= 2
+                and instruction.operands[1] is QY_T
+            ):
+                changed = True
+                out.append(LIRInstruction("LOAD_T", (instruction.operands[0],), instruction.span))
                 continue
             out.append(instruction)
         result = out
@@ -196,6 +211,8 @@ def _map_register_operands(
     map_register: Callable[[object], object],
 ) -> tuple[object, ...]:
     match opcode:
+        case "LOAD_NIL" | "LOAD_T":
+            return (map_register(operands[0]),)
         case "LOAD_HOST" | "LOAD_ENV":
             return (map_register(operands[0]), operands[1])
         case "MOVE":

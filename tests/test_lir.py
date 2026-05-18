@@ -249,3 +249,191 @@ def test_peephole_keeps_move_different_registers():
     result = _peephole(instructions)
     opcodes = [i.opcode for i in result]
     assert opcodes == ["LOAD_HOST", "MOVE", "RETURN"]
+
+
+def test_peephole_strength_reduces_nil():
+    """Peephole converts LOAD_HOST r, None → LOAD_NIL r."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+
+    instructions = [LIRInstruction("LOAD_HOST", (0, None))]
+    result = _peephole(instructions)
+    assert len(result) == 1
+    assert result[0].opcode == "LOAD_NIL"
+    assert result[0].operands == (0,)
+
+
+def test_peephole_strength_reduces_t():
+    """Peephole converts LOAD_HOST r, QY_T → LOAD_T r."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+    from qy.values import QY_T
+
+    instructions = [LIRInstruction("LOAD_HOST", (0, QY_T))]
+    result = _peephole(instructions)
+    assert len(result) == 1
+    assert result[0].opcode == "LOAD_T"
+    assert result[0].operands == (0,)
+
+
+def test_peephole_keeps_jump_to_next_instruction():
+    """Keep JUMP-to-next since jumps are pre-patched to absolute indices."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+
+    instructions = [
+        LIRInstruction("LOAD_HOST", (0, 1)),
+        LIRInstruction("JUMP", (2,)),  # JUMP to index 2 (next instruction) — kept
+        LIRInstruction("RETURN", (0,)),
+    ]
+    result = _peephole(instructions)
+    opcodes = [i.opcode for i in result]
+    assert opcodes == ["LOAD_HOST", "JUMP", "RETURN"]
+
+
+def test_peephole_keeps_jump_to_non_next():
+    """Peephole keeps JUMP when target is not the next instruction."""
+    from qy.lir import LIRInstruction
+    from qy.lir_lowering import _peephole
+
+    instructions = [
+        LIRInstruction("LOAD_HOST", (0, 1)),
+        LIRInstruction("JUMP", (0,)),  # JUMP to index 0 (backwards) → kept
+        LIRInstruction("RETURN", (0,)),
+    ]
+    result = _peephole(instructions)
+    opcodes = [i.opcode for i in result]
+    assert opcodes == ["LOAD_HOST", "JUMP", "RETURN"]
+
+
+def test_verify_lir_catches_out_of_range_register():
+    """Verifier reports error for register operand >= register_count."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("bad"),
+                (),
+                2,  # register_count=2, so only r0 and r1 are valid
+                (
+                    LIRInstruction("LOAD_HOST", (5, 42)),  # r5 is out of range
+                    LIRInstruction("RETURN", (5,)),
+                ),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert len(errors) >= 1
+    assert any("out-of-range register" in d.message for d in errors)
+    assert any("r5" in d.message for d in errors)
+    assert any("register_count=2" in d.message for d in errors)
+
+
+def test_verify_lir_catches_out_of_range_jump():
+    """Verifier reports error for jump target >= instruction count."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("badjump"),
+                (),
+                1,
+                (
+                    LIRInstruction("LOAD_HOST", (0, 1)),
+                    LIRInstruction("JUMP", (99,)),  # target 99 is out of range
+                ),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert len(errors) >= 1
+    assert any("jump to out-of-range target 99" in d.message for d in errors)
+
+
+def test_verify_lir_passes_valid_program():
+    """Verifier returns no errors for a well-formed program."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("good"),
+                (),
+                2,
+                (
+                    LIRInstruction("LOAD_HOST", (0, 1)),
+                    LIRInstruction("LOAD_HOST", (1, 2)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert len(errors) == 0
+
+
+def test_lir_load_nil_and_load_t_in_pipeline():
+    """End-to-end: LOAD_NIL/LOAD_T opcodes appear in LIR output for nil/t values."""
+    from qy.lir_lowering import lower_lir
+
+    source = "(cond (true 1) (true 2))"
+    mir = lower_mir(lower_source(source))
+    lir = lower_lir(mir)
+
+    assert lir.ok
+    main = lir.functions[lir.main]
+    opcodes = [inst.opcode for inst in main.instructions]
+    # The cond lowering produces LOAD_HOST QY_T for true predicates,
+    # and LOAD_HOST QY_NIL for false branches; peephole should convert these.
+    # LOAD_NIL may appear when nil values are loaded, LOAD_T when QY_T is loaded.
+    # At minimum LOAD_NIL should appear since cond emits nil for non-taken branches.
+    assert "LOAD_NIL" in opcodes or "LOAD_T" in opcodes, (
+        f"Expected LOAD_NIL or LOAD_T in opcodes, got {opcodes}"
+    )
+
+
+def test_lir_peephole_load_t_compiles_to_bytecode():
+    """LOAD_T in LIR compiles correctly to LOAD_HOST with QY_T in bytecode."""
+    from qy.bytecode_compiler import compile_lir_bytecode
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.values import QY_T
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("test_t"),
+                (),
+                1,
+                (
+                    LIRInstruction("LOAD_T", (0,)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        0,
+    )
+    bytecode = compile_lir_bytecode(program)
+    assert bytecode.ok
+    main = bytecode.functions[0]
+    # LOAD_T should map to LOAD_HOST with QY_T
+    assert main.instructions[0].opcode == "LOAD_HOST"
+    assert main.instructions[0].operands[1] is QY_T
