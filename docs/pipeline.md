@@ -30,7 +30,7 @@ source
 | expand / macroexpand | surface-dialect-expanded `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
 | HIR / lower | macroexpanded forms | 高层语义 IR（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
 | MIR / lower_mir | verified HIR | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
-| LIR / lower_lir | verified MIR | `LIRProgram`（线性低层 IR，selection/layout/ABI/effect-frame/fixup） | 是 | 否 |
+| LIR / lower_lir | verified MIR | `LIRProgram`（Qy abstract machine IR，显式 virtual stack / continuation / handler / ss-chain transition / lookup / slot / ABI / fixup） | 是 | 否 |
 | bytecode | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
 | register VM | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期异常 | 是，执行时需要 runtime environment |
 
@@ -60,8 +60,10 @@ source
 
 ### LIR
 
-- 完成 instruction selection、layout、register/frame 分配、host-call ABI、effect frame lowering、jump fixup、peephole、debug injection；
-- 它是 VM-facing 但尚未最终编码的 IR；
+- 完成 instruction selection、layout、register/frame 分配、host-call ABI、jump fixup、peephole、debug injection；
+- 它是 VM-facing 但尚未最终编码的 Qy abstract machine IR；
+- 它必须显式建模 virtual stack frame、continuation frame、handler frame / effect marker、symbol-space-chain enter / leave / copy / restore、lookup operation、binding slot read / complete / pending effort；
+- `handle` / `perform` / `resume` 到 LIR 边界后不应再作为语言级指令存在，只能表现为 frame、continuation、ss-chain transition 与 CFG jump；
 - 它不能只是 bytecode opcode 的别名层。
 
 ### Bytecode

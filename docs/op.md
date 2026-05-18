@@ -17,7 +17,8 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 
 ### 值类型
 
-- number: 数值, 默认由 int(无限精), float(IEEE 754 双精), complex(实部虚部均为 float), 有理数(分子分母均为 int) 四种类型构成。
+- number: 数值 family，不是单一类型；默认至少包含 `int`（任意精度）、`int32`、`int64`、`float`（IEEE 754 双精）、`float32`、`complex`（实部虚部均为 `float`）、`rational`（分子分母均为 `int`）等 concrete value type。
+- Qy 不做隐式数值转换；同属 number family 不代表可以混算。若算子签名没有声明某个 concrete type 组合，例如 `(+ int32 int64)`，则该操作默认进入 unsupported-operation effect / error 路径，而不是自动提升。
 - char: 字符。
 - string: 字符串。
 
@@ -27,6 +28,11 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 - Python profile 可以显式暴露 `True`、`False`、`None` 等 Python value reference；它们不是 Qy 的 `t` / `nil`。
 
 ### 引用/容器类型
+
+#### Low-level object family types, 底层对象族.
+
+- array: 连续内存段；可以是通用 `array[Value]`，也可以是专门化 `array[int32]` / `array[int64]`，后两者具有不同布局。
+- hash-map: 哈希映射对象族；是后续 `dict` / `object` 等抽象可依赖的底层结构，hash/equality 规则由 Qy 自己声明，不借用 Python `dict` 语义。
 
 #### List-like family types, 列表类类型.
 
@@ -39,7 +45,7 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 
 #### Dict-like family types, 字典类类型.
 
-- dict: 字典。
+- dict: 基于 `hash-map` 语义构造的字典。
 - struct: 结构体. 例如 Go 语言中的 struct, Rust 语言中的 struct, C 语言中的 struct 都属于 struct 类型。
 - object: 对象.
 
@@ -75,14 +81,14 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 ## 代数效应 Algebraic Effects and Handlers family operators
 
 - `defeffect`: 定义 effect；服从当前 symbol-space 的 define-once。
-- `perform`: 触发 effect，并捕获当前 continuation。
-- `handle`: 安装 effect handler。
-- `resume`: 恢复 continuation。
+- `handle`: 在 virtual stack 上安装 handler frame / effect marker，并记录对应 symbol-space-chain。
+- `perform`: 触发 effect；沿 virtual stack 跳出并查找 handler，离开 frame 时显式切换/退出 symbol-space-chain，捕获 delimited continuation。
+- `resume`: 复制 captured continuation 与必要 symbol-space-chain 状态，注入 resume 值并继续执行；该语义支持 multi-shot continuation。
 
 ## Symbol-space family operators
 
 - let: 构建新的局部 symbol-space；可绑定任意 symbol。
-- define: 在当前 symbol-space 构建一次性绑定，并保护当前空间内已绑定的 symbol。
+- define: 在当前 symbol-space 构建一次性 binding，并保护当前空间内已绑定的 symbol；binding 可在分析/编译期提升为稳定 slot，但 RHS 求值不提升，仍按运行时顺序完成。
 - module: 构造具名 symbol-space。
 - from: 从模块 export view 选择 binding，并 fold 到当前 symbol-space。
 - import: 指定从模块引入的名字或 alias。

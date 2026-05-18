@@ -16,7 +16,7 @@ macroexpanded syntax datum
 
 - HIR 负责**高层语义**；
 - MIR 负责**控制流与虚拟寄存器**；
-- LIR 负责**低层布局与 VM-facing lowering**；
+- LIR 负责**Qy abstract machine lowering**；
 - bytecode 只负责**最终编码与执行输入**。
 
 ## 1.1 层间约束
@@ -110,15 +110,24 @@ HIR 是 **高层语义 IR**。
 
 ### BindingRef
 
-HIR 中的 resolved symbol 不应只保存裸名字，应逐步迁到：
+HIR 中的 resolved symbol 不应只保存裸名字，应逐步迁到稳定 binding address。这里必须区分：
+
+- syntax symbol：源码 / datum 层的符号拼写；
+- binding address / slot：某个 symbol-space 中的稳定地址；
+- runtime value：binding 完成后的值。
+
+BindingRef 至少包含：
 
 - stable binding id；
 - symbol；
 - binding source；
 - owner symbol-space；
+- slot state fact（declared / pending / completed 的静态近似）；
 - resolved type；
 - operator declaration ref；
 - optional constant value ref。
+
+`define` 只提升 binding，不提升 RHS 求值。HIR 必须能表达“当前 symbol-space 已经拥有该 binding，但该 binding 在运行到对应 `define` RHS 前可能仍是 pending value”。这不是 unresolved symbol，也不是提前求值。
 
 ### OperatorRef
 
@@ -153,6 +162,8 @@ module import / export 应明确：
 - module import/export facts 完整；
 - tail-position 标记只出现在允许位置；
 - syntax payload 只出现在允许节点；
+- direct definition hoist 后同层 binding 无重复；
+- pending binding read 拥有明确 effort / diagnostic policy；
 - node type/effect facts 与 operator declaration 不矛盾。
 
 ## 2.7 HIR pass
@@ -229,6 +240,9 @@ MIR 是 **控制流与虚拟寄存器 IR**。
 - parallel / all / race；
 - constant ref；
 - binding ref；
+- binding slot read / complete；
+- pending-binding edge / effort；
+- symbol-space-chain transition；
 - source debug metadata。
 
 ## 3.4 MIR 必须禁止
@@ -249,11 +263,13 @@ MIR 是 **控制流与虚拟寄存器 IR**。
 - tail call 必须是 terminator，不是普通 instruction；
 - branch 必须显式列出 true / false successor；
 - effect control flow 必须逐步显式化：
-  - handler region；
+  - handler region / marker；
   - perform edge；
   - resume edge；
   - non-resumable exit；
+  - symbol-space-chain transition；
 - `parallel` / `all` / `race` 的 join 规则必须在 MIR 中可解释，而不是留到 VM 猜测。
+- MIR 可以保留 `handle` 作为 effect region / marker 的语义边界，但必须让 perform/resume 的控制边可见；到 LIR 边界时，语言级 `handle` / `perform` / `resume` 必须被消除。
 
 ## 3.6 虚拟寄存器要求
 
@@ -324,11 +340,16 @@ MIR 是 **控制流与虚拟寄存器 IR**。
 
 ## 4.1 定位
 
-LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
+LIR 是 **Qy abstract machine IR**：低层、VM-facing、尚未最终编码，但已经把 Qy 语言执行机制完全显式化。
 
 它回答：
 
-- 如何把 MIR 变成 register VM 容易执行的线性程序？
+- virtual stack 如何表示？
+- continuation frame 如何捕获、复制、恢复？
+- handler frame / effect marker 如何布局？
+- symbol-space-chain 如何 enter / leave / copy / restore？
+- binding slot 如何 lookup / read / complete / report pending？
+- MIR 的 effect edge 如何变成 CFG jump + ss-chain transition？
 - 物理寄存器 / frame / continuation / host ABI 怎么布局？
 - 哪些 fixup、peephole、debug 注入应该在编码前完成？
 
@@ -338,6 +359,20 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 - macro 是什么；
 - HIR structured semantics 是什么；
 - bytecode 的最终二进制或序列化格式是什么。
+
+简述：
+
+```text
+MIR 描述程序控制流；
+LIR 描述 Qy 抽象机器如何执行这些控制流。
+```
+
+当前实现允许两个 LIR dialect：
+
+- `compat`：迁移期 LIR，仍可携带部分旧 bytecode-like opcode，用于保持现有 register VM pipeline 可运行；
+- `abstract-machine`：目标 LIR，禁止语言级 `handle` / `perform` / `resume` 留壳，必须显式表达 frame、continuation、handler、ss-chain、lookup、slot operation。
+
+新语义只能向 `abstract-machine` dialect 收口；`compat` 只能减少，不能扩张。
 
 ## 4.2 输入 / 输出
 
@@ -357,8 +392,15 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 - physical register 或 frame slot；
 - calling convention；
 - frame layout；
-- effect frame layout；
-- continuation layout；
+- virtual stack frame；
+- continuation frame；
+- handler frame / effect marker；
+- continuation capture / copy / restore；
+- symbol-space-chain enter / leave / copy / restore；
+- lookup operation；
+- binding slot read / complete / pending effort；
+- CFG space transition；
+- effect dispatch / unwind 的低层控制流；
 - host-call ABI；
 - jump target / relocation；
 - constant pool ref；
@@ -370,7 +412,8 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 
 - HIR node；
 - MIR block semantic 依赖；
-- source symbol lookup；
+- source-level name lookup（LIR 只能保留已 lower 的 symbol-space lookup operation）；
+- 语言级 `handle` / `perform` / `resume` 留壳；
 - `Environment`；
 - compile-time semantics；
 - bytecode compiler 回头再决定高层语义；
@@ -384,12 +427,15 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 2. block scheduling / layout；
 3. register allocation / compaction；
 4. call ABI lowering；
-5. effect frame lowering；
-6. continuation layout；
-7. jump fixup；
-8. peephole；
-9. debug / trace injection；
-10. verification。
+5. virtual stack lowering；
+6. effect / handler frame lowering；
+7. continuation capture / copy / restore lowering；
+8. symbol-space-chain transition lowering；
+9. lookup / slot operation lowering；
+10. jump fixup；
+11. peephole；
+12. debug / trace injection；
+13. verification。
 
 ## 4.6 LIR 与 bytecode 的关系
 
@@ -414,6 +460,11 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 - call ABI；
 - continuation layout；
 - effect frame save / restore 配对；
+- handler frame push / pop 配对；
+- continuation capture / resume 布局；
+- ss-chain enter / leave / restore 配对；
+- lookup / slot operand 合法；
+- no remaining language-level handle / perform / resume；
 - relocation target；
 - constant pool reference；
 - debug metadata；
@@ -426,6 +477,7 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 - LIR 能独立解释低层执行布局；
 - bytecode compiler 只编码，不做 semantic lowering；
 - effect frame 不再只靠 VM 中的 Python `_EffectFrame`；
+- continuation frame、handler frame、ss-chain transition、lookup operation 已全部显式；
 - register allocation / host ABI / debug injection 都能说清属于 LIR；
 - 若未来 register VM 升级，优先只改 LIR / bytecode / VM，不回改 HIR / MIR。
 
@@ -435,11 +487,11 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 
 | 问题 | HIR | MIR | LIR |
 | --- | --- | --- | --- |
-| 关注点 | 高层语义 | 控制流 / 虚拟寄存器 | 低层布局 / VM-facing lowering |
+| 关注点 | 高层语义 | 控制流 / 虚拟寄存器 | Qy 抽象机器 / VM-facing lowering |
 | 形状 | 结构化树 | CFG | 线性指令 |
 | 知道 binding | 是 | 只保留 ref | 否，只保留已降级引用 |
 | 知道 operator signature | 是 | 只保留结果 | 否 |
-| 知道 effect declaration | 是 | 显式 effect flow | frame / continuation layout |
+| 知道 effect declaration | 是 | 显式 effect flow / region | handler frame / continuation frame / ss-chain transition |
 | 知道 source syntax | 仅必要 payload | 否 | 否 |
 | 知道 Environment | 否（只用实例事实） | 否 | 否 |
 | 知道 virtual register | 否 | 是 | 经过分配后不再是 virtual |
@@ -475,7 +527,8 @@ LIR 是 **低层、VM-facing、尚未最终编码的 IR**。
 - 直接复用 bytecode opcode；
 - 只有 jump patch、register compaction、极小 peephole；
 - 没有独立 opcode vocabulary；
-- 没有 effect frame lowering；
+- 没有 virtual stack / handler frame / continuation frame lowering；
+- 没有 ss-chain transition / lookup operation 显式建模；
 - 没有 host ABI lowering；
 - 没有独立 verifier。
 

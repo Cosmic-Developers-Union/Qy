@@ -217,6 +217,10 @@ def _map_register_operands(
             return (map_register(operands[0]), operands[1])
         case "LOAD_HOST" | "LOAD_ENV":
             return (map_register(operands[0]), operands[1])
+        case "SS_LOOKUP" | "SLOT_READ" | "SLOT_PENDING_EFFORT":
+            return (map_register(operands[0]), *operands[1:])
+        case "SLOT_COMPLETE":
+            return (operands[0], map_register(operands[1]))
         case "MOVE":
             return (map_register(operands[0]), map_register(operands[1]))
         case "DEFINE_ONCE":
@@ -258,5 +262,21 @@ def _map_register_operands(
             return (map_register(operands[0]), operands[1])
         case "RAISE_EFFECT":
             return (operands[0], map_register(operands[1]), operands[2])
+        case "CONT_CAPTURE":
+            live_registers = _operand_tuple(operands[3]) if len(operands) >= 4 else ()
+            return (
+                map_register(operands[0]),
+                operands[1],
+                operands[2],
+                tuple(map_register(item) for item in live_registers),
+            )
+        case "CONT_COPY":
+            return (map_register(operands[0]), map_register(operands[1]))
+        case "CONT_RESTORE":
+            return (map_register(operands[0]),)
+        case "CONT_INJECT":
+            return (map_register(operands[0]), map_register(operands[1]))
+        case "EFFECT_UNWIND" | "EFFECT_DISPATCH":
+            return tuple(map_register(item) for item in operands)
         case _:
             return operands

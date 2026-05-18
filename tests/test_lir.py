@@ -536,3 +536,123 @@ def test_verify_lir_branch_nil_target_checked():
     diagnostics = verify_lir(program)
     errors = [d for d in diagnostics if d.severity == "error"]
     assert any("jump to out-of-range target 99" in d.message for d in errors)
+
+
+def test_lir_models_abstract_machine_layouts_in_dump():
+    from qy.lir import LIRBindingAddr
+    from qy.lir import LIRBindingSlot
+    from qy.lir import LIRContinuationLayout
+    from qy.lir import LIRFrameLayout
+    from qy.lir import LIRFunction
+    from qy.lir import LIRHandlerLayout
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import LIRSymbolMeta
+    from qy.lir import LIRSymbolSpaceLayout
+    from qy.lir import verify_lir
+
+    symbol = Symbol("x")
+    address = LIRBindingAddr(0, 0)
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("model"),
+                (),
+                1,
+                (
+                    LIRInstruction("SLOT_READ", (0, address)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+                frame_layout=LIRFrameLayout(
+                    "function",
+                    "model",
+                    1,
+                    local_slot_count=1,
+                    ss_chain=(0,),
+                ),
+                symbol_spaces=(
+                    LIRSymbolSpaceLayout(
+                        0,
+                        "local",
+                        slots=(LIRBindingSlot(address, symbol, "pending", 0),),
+                        metadata=(LIRSymbolMeta(symbol, flags=("local",)),),
+                    ),
+                ),
+                continuations=(
+                    LIRContinuationLayout(
+                        0,
+                        resume_target=1,
+                        saved_registers=(0,),
+                        saved_spaces=(0,),
+                    ),
+                ),
+                handlers=(LIRHandlerLayout(0, effects=(Symbol("ask"),), handler_target=1),),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    diagnostics = verify_lir(program)
+    rendered = dump_lir(program)
+
+    assert not [d for d in diagnostics if d.severity == "error"]
+    assert "dialect: abstract-machine" in rendered
+    assert "frame: function model regs=1 slots=1 ss=(0)" in rendered
+    assert "space: s0 local slots=[x@slot0:pending]" in rendered
+    assert "continuation: k0 target=1 spaces=(0) regs=(0) multi-shot" in rendered
+    assert "handler: h0 effects=[ask] target=1 ss=()" in rendered
+    assert "SLOT_READ 0, s0.slot0" in rendered
+
+
+def test_verify_lir_rejects_language_effect_opcodes_in_abstract_machine_dialect():
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("bad_effect"),
+                (),
+                1,
+                (
+                    LIRInstruction("PERFORM", (0, Symbol("ask"), 0)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    diagnostics = verify_lir(program)
+
+    assert any("language-level effect opcode PERFORM" in d.message for d in diagnostics)
+
+
+def test_compile_lir_bytecode_rejects_abstract_machine_lir():
+    from qy.bytecode_compiler import compile_lir_bytecode
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("abstract"),
+                (),
+                1,
+                (
+                    LIRInstruction("LOAD_NIL", (0,)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    bytecode = compile_lir_bytecode(program)
+
+    assert not bytecode.ok
+    assert bytecode.functions == ()
+    assert any("only supports compat LIR" in diagnostic.message for diagnostic in bytecode.diagnostics)

@@ -13,12 +13,12 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `surface dialect`：reader 后、macro expand 前的表层方言规约层；不属于语言内核语义。
 - `macro expand`：macro 展开，输入/输出仍是 syntax datum。
 - `HIR`：高层语义 IR，解析 binding、operator signature、effect signature、module/macro 语义。
-- `MIR`：CFG / virtual register IR，表达控制流、tail call、effect control flow。
-- `LIR`：低层 register VM IR，完成 register layout、opcode lowering、host-call lowering、effect frame lowering。
+- `MIR`：CFG / virtual register IR，表达控制流、tail call、effect region / edge。
+- `LIR`：Qy abstract machine IR，显式建模 virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation，再 lower 到 register VM 可编码形态。
 - `bytecode`：register VM 指令序列，不重新理解 HIR/MIR 语义。
 - `register VM`：唯一执行器。Qy 不保留可选 runtime backend；旧 IR VM / evaluator 只能作为迁移期待删除代码存在，不能作为语义来源。
 
-HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负责 CFG 与 virtual register，LIR 才负责低层布局、ABI、effect frame、fixup 与 peephole；bytecode 只编码 verified LIR。详细约束见 `docs/ir-design.md`。
+HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负责 CFG 与 virtual register，LIR 负责把 Qy 抽象机器的执行机制完全显式化，包括 frame、continuation、handler、symbol-space transition、lookup、slot、ABI、fixup 与 peephole；bytecode 只编码 verified LIR。详细约束见 `docs/ir-design.md`。
 
 ## Data Model
 
@@ -29,7 +29,9 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `quote`、`define`、`lambda`、`perform` 等只是后续阶段对某些 chain 的语义解释，不是 AST 的额外种类。
 - `chain` 是不可变对象；`cons` / quasiquote / macro 改写必须构造新 chain，不能原地修改旧 chain。
 - Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
-- Runtime value 存在于 symbol-space/env 中；抽象上由 `number`、`string`、`object` 构成，`number` 与 `string` 是特殊 object。
+- Runtime value 存在于 symbol-space/env 中；抽象上由 `number`、`string`、`object` 构成，`number` 与 `string` 是特殊 object。`number` 是 family，不是单一类型；例如 `int`（任意精度）、`int32`、`int64`、`float`、`float32`、`complex`、`rational` 都是彼此独立的 concrete value type。
+- `array` 是连续内存段 object family；它既可承载通用 `Value` cell，也可承载 `int32` 这类 concrete value type 的专门化连续段。`hash-map` 是哈希映射 object family。它们是更高层 `list` / `tuple` / `dict` / `struct` / `object` 可依赖的底层值形状，不等同于这些上层抽象本身。
+- Qy 不做隐式数值转换；数值算子只有在自身声明支持某个 concrete type 组合时才有定义。例如 `(+ int32 int64)` 不会自动提升，默认进入 unsupported-operation effect / error 路径。
 - `nil` 与 `t` 是 Qy 自身对象。
 - Runtime value 是 Qy 语义对象，Python value 只是当前实现或宿主互操作对象；两者不得混淆。一个 host reference 可以指向 Python、Go 或其他宿主对象，但宿主对象的本地表示不是 Qy 语义本体。
 - Python profile 可以显式暴露 `True`、`False`、`None` 等 Python value reference；它们不等同于 `t` / `nil`。
@@ -58,8 +60,18 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 ## Symbol Space
 
 - Qy 没有 `setq`。
-- `define` 在当前 symbol-space 构建一次性绑定；只检查当前 symbol-space 是否已有该 symbol，不检查 parent。
+- symbol spelling / syntax datum、绑定地址、runtime value 必须分离建模：
+  - syntax symbol 是源码与 datum 层面的符号拼写；
+  - binding address / slot 是某个 symbol-space 中的稳定地址；
+  - value 是该 binding 完成后的 runtime value。
+- symbol-space 语义上是 `symbol -> binding slot` 的映射，而不是可随意重写的变量表。lookup 返回 binding，读取 binding 才得到 value。
+- binding slot 是 once-complete 存储单元：它可以先被当前 symbol-space 声明并获得稳定地址，随后按求值顺序完成为一个 value；完成后不可被同层重新完成。
+- symbol-space 应保留冷元数据层 / meta-space，例如声明位置、导出标记、operator metadata、hygiene / capture 信息、debug 信息。热路径读取 value 时不应被这些 metadata 污染。
+- `define` 在当前 symbol-space 构建一次性 binding；只检查当前 symbol-space 是否已有该 symbol，不检查 parent。
 - `define` 会保护当前 symbol-space 内已绑定的 symbol，但可以 shadow 链上后续 symbol-space 中的任意 symbol，包括核心算子名、stdlib 名、预置字面量名、宿主注入名。
+- `define` 的 binding 创建属于分析/编译期的 symbol-space layout 工作；RHS 求值不提升，仍按 `pipeline` / 当前 body 的运行时顺序执行。
+- 读取已声明但 RHS 尚未运行或尚未完成的 binding，不是未解析 symbol，也不是隐式提前求值；它产生 pending-binding / incomplete-value effort，由 effect/diagnostic/runtime policy 处理。
+- 因此 `(pipeline (echo x) (define x (op ...)))` 在 binding 层面合法，`x` 可在 HIR 中解析到稳定 slot；但运行到 `(echo x)` 时如果 `x` 尚未完成，应进入 pending-value effort，而不是提前执行 `(op ...)`。
 - **pre-symbol-space-chain** 不是语言设计目标本身，但它是标准实现的起点。一个 `Qy` 实例先给出自己的初始 symbol-space-chain；reader、analyzer、LSP、lowering、runtime 都必须围绕这个同一实例工作。
 - `pre-symbol-space-chain` 不是单个特殊空间，而是一段有序链。标准 profile、项目注入、字面量空间、stdlib 空间都可以是链上的不同节点；它们的相对位置决定 lookup 与 shadow 结果。
 - 默认实现可以在链上放入传统符号空间，例如让数字 spelling `1` 解析为 runtime `number(1)`；这样的空间可以是惰性的，不需要真的注册全部数字 symbol。
@@ -70,16 +82,17 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `module` root 可以在构造时 fold profile chain；这样被吸收的名字不再只是“外层可见”，而是 module root 已有的本地 binding。
 - `module`、函数调用 frame、macro 定义环境都按 symbol-space 模型理解，只是生命周期、导出规则和 compile-time/runtime 可见性不同。
 - 外部宿主可以通过注入 symbol-space 来注入 object(host reference) 与 operator。
-- 因为 symbol 不可在同一 symbol-space 内重绑定，HIR 可以把确定的 symbol ref 解析为稳定 binding/value；这是后续优化基础。
+- 因为 symbol 不可在同一 symbol-space 内重绑定，HIR 可以把确定的 symbol ref 解析为稳定 binding address；这是后续优化基础。是否已经得到完成 value 是运行时 slot 状态，不应反过来影响 binding identity。
 
 ## Lookup
 
 求值一个 symbol 时：
 
-1. 在当前 symbol-space 链中查找 binding。
-2. 找到则返回对应 runtime value。
-3. 若局部 frame 已查尽，则继续沿该 `Qy` 实例提供的 `pre-symbol-space-chain` 顺序查找。默认 profile 可以在链上放入数字、字符串、stdlib 或项目自定义空间。
-4. 仍无法解析则是 unresolved symbol error。
+1. 在当前 symbol-space-chain 中查找 binding slot。
+2. 找到 completed binding 则返回对应 runtime value。
+3. 找到 pending / incomplete binding 则产生 pending-binding effort。
+4. 若局部 frame 已查尽，则继续沿该 `Qy` 实例提供的 `pre-symbol-space-chain` 顺序查找。默认 profile 可以在链上放入数字、字符串、stdlib 或项目自定义空间。
+5. 仍无法解析则是 unresolved symbol error。
 
 宏展开阶段操作 syntax datum；runtime lookup 不应污染 macro namespace。macro 的 definition-site binding、hygiene、capture 必须由 compile-time symbol-space 明确建模。
 
@@ -105,7 +118,7 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 | effect | `defeffect` `perform` `handle` `resume` |
 | module | `module` `from` `import` `exports` |
 
-`+`、`-` 等算术纯算子不属于最小语言核；它们可以来自显式 stdlib、显式 host 注入，或由标准 profile 预装进 `pre-symbol-space-chain`。默认 profile 是否加载它们属于标准实现策略，不改变语言核边界。
+`+`、`-` 等算术纯算子不属于最小语言核；它们可以来自显式 stdlib、显式 host 注入，或由标准 profile 预装进 `pre-symbol-space-chain`。默认 profile 是否加载它们属于标准实现策略，不改变语言核边界。数值算子的签名必须声明支持的 concrete value type 组合，不允许靠隐式 promotion 补洞。
 
 标准 profile 可以提供比语言核更便利的判断算子，例如 `truthy`。`cond` 的核心条件语义只把 `nil` 视为 false；`truthy` 负责按自身规则解释更复杂的广义真值，并返回 `t` / `nil`。这类复杂判断属于显式算子语义，不是全局宿主值自动转换规则。
 
@@ -136,6 +149,8 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 
 Qy 不使用 `spawn` / `await` 作为核心算子。
 
+- Qy 的求值模型运行在 virtual stack 上；每个执行 frame 携带当前 symbol-space-chain。
+- symbol lookup 是对当前 frame 的 symbol-space-chain 做 lookup；effect 不是独立异常系统，而是对 virtual stack 与 symbol-space-chain 的受控跳转、捕获、复制和恢复。
 - 并发结构由 `parallel` 表达。
 - 顺序结构由 `pipeline` 表达。
 - 挂起点由 `perform` 表达。
@@ -145,7 +160,10 @@ Qy 不使用 `spawn` / `await` 作为核心算子。
 
 `parallel` 只表示“允许并行”，不要求实现必须并行。没有并行能力的 VM 可以串行执行 `parallel`，但程序不能依赖其子表达式的 observable effect 顺序；需要固定顺序时使用 `pipeline`。
 
-`perform` 捕获当前 continuation 并交给最近的动态 handler。handler 可以立即 `resume`，也可以保存 continuation 并在 host callback、queue 或其他调度逻辑中稍后 `resume`。
+- `handle` 在 virtual stack 上添加 effect marker / handler frame，并记录 handler 所在的 symbol-space-chain。
+- `perform` 让当前流程从 perform 点跳出，沿动态 virtual stack 查找可处理该 effect 的 handler；离开每个 frame 时必须显式切换/退出对应 symbol-space-chain，并捕获从 perform 点到 handler marker 的 delimited continuation。
+- `resume` 复制 captured continuation 与必要的 symbol-space-chain 状态，进入恢复用的 ss-chain，把 resume 参数注入为 `perform` 的结果，然后继续执行。该 copy 语义使 multi-shot continuation 成为语义上可表达的默认能力；one-shot continuation 只能作为后续优化策略。
+- LIR 之后不应再保留语言级 `handle` / `perform` / `resume` 语义；它们必须被 lower 为 continuation frame、handler frame、ss-chain transition、lookup/slot operation 与 CFG jump。
 
 ## Architecture Rules
 

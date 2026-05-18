@@ -11,6 +11,9 @@ from qy.analyzer import Diagnostic
 from qy.analyzer import analyze
 from qy.analyzer import analyze_source
 from qy.analyzer import type_check_source
+from qy.backend.llvm import compile_to_llvm_text
+from qy.backend.llvm import emit
+from qy.backend.llvm import link
 from qy.bytecode import BytecodeFunction
 from qy.bytecode import BytecodeFunctionValue
 from qy.bytecode import BytecodeProgram
@@ -52,14 +55,18 @@ from qy.ir import ProgramIR
 from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.ir import dump_ir
+from qy.lir import LIRBindingAddr
+from qy.lir import LIRBindingSlot
+from qy.lir import LIRContinuationLayout
+from qy.lir import LIRFrameLayout
 from qy.lir import LIRFunction
+from qy.lir import LIRHandlerLayout
 from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
+from qy.lir import LIRSymbolMeta
+from qy.lir import LIRSymbolSpaceLayout
 from qy.lir import dump_lir
 from qy.lir_lowering import lower_lir
-from qy.backend.llvm import compile_to_llvm_text
-from qy.backend.llvm import emit
-from qy.backend.llvm import link
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macro import MacroDefinition
@@ -151,9 +158,16 @@ __all__ = [
     "Form",
     "HostObjectRef",
     "Instruction",
+    "LIRBindingAddr",
+    "LIRBindingSlot",
+    "LIRContinuationLayout",
+    "LIRFrameLayout",
     "LIRFunction",
+    "LIRHandlerLayout",
     "LIRInstruction",
     "LIRProgram",
+    "LIRSymbolMeta",
+    "LIRSymbolSpaceLayout",
     "LiteralExpr",
     "MIRBlock",
     "MIRFunction",
@@ -215,6 +229,7 @@ __all__ = [
     "dump_lir",
     "dump_mir",
     "dump_program",
+    "emit",
     "emit_llvm_module",
     "evaluate_bytecode",
     "evaluate_bytecode_async",
@@ -227,6 +242,7 @@ __all__ = [
     "format_qy_error",
     "format_source",
     "format_value",
+    "link",
     "lower",
     "lower_lir",
     "lower_mir",

@@ -85,7 +85,7 @@ make bench-check
 - HIR、MIR、LIR 不是同一 IR 的三种格式：
   - HIR 只保留高层语义 facts；
   - MIR 只表达 CFG / virtual register / explicit control-effect flow；
-  - LIR 才负责 selection、layout、ABI、effect-frame、fixup、peephole、debug injection；
+  - LIR 是 Qy abstract machine IR，负责 selection、layout、ABI、virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation、fixup、peephole、debug injection；
   - 若一个变换无法归属到唯一一层，先修正边界再实现。
 - 语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 不得把 runtime value 提前塞进 raw AST。
 - 新代码不得从 `qy.evaluator` import runtime 类型；应从 `qy.environment`、`qy.operators`、`qy.runtime_values`、`qy.continuation`、`qy.errors` import。库代码（stdlib 等）若需要评估函数应从 `qy.eval_runtime` 导入（P1-3 兼容门面）。

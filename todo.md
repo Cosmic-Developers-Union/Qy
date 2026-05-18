@@ -76,10 +76,23 @@ source
 ## 1.3 Lookup 与 symbol-space
 
 - 求值 symbol 时，沿 symbol-space-chain 顺序查找。
+- 必须区分：
+  - syntax symbol / datum symbol；
+  - SymbolId / spelling identity；
+  - binding address / slot；
+  - completed runtime value。
+- symbol-space 语义上是 `symbol -> binding slot`，lookup 返回 slot，读取 slot 才得到 value。
+- binding slot 是 once-complete：可先由当前 symbol-space 声明并获得稳定地址，再按运行时求值顺序完成为 value；完成后不可同层再次完成。
+- symbol-space 需要冷元数据层 / meta-space，保存 declaration span、export、operator metadata、hygiene/capture、debug 信息；value 热路径不应依赖 metadata record。
 - `define`：
   - 只检查当前 symbol-space；
   - 构造一次性绑定；
   - 可以 shadow 后续链节点中的任意 symbol。
+- `define` 只提升 binding，不提升 RHS 求值：
+  - 分析/编译期扫描当前 lexical symbol-space 的直接定义；
+  - 提前分配 binding slot，使 HIR 可解析前向引用；
+  - RHS 仍按 `pipeline` / body 顺序运行；
+  - 读取尚未完成的 slot 进入 pending-binding / incomplete-value effort。
 - `let`：
   - 新建局部 symbol-space；
   - 可以绑定任意 symbol。
@@ -186,9 +199,11 @@ source
 15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；
 16. `quasiquote` nested 路径仍依赖过时 `list/append` 假设；
 17. LIR 目前仍与 bytecode opcode 基本同构；
-18. effect frame 仍主要由 VM 中的 Python 对象承担；
-19. legacy `UserFunction` 仍让尾调用部分依赖旧 evaluator；
-20. docs 中仍有少量旧说法需要持续清理。
+18. LIR 尚未显式建模 virtual stack、continuation frame、handler frame、ss-chain transition、lookup operation、binding slot operation；
+19. effect frame 仍主要由 VM 中的 Python 对象承担；
+20. pending-binding / incomplete-value effort 尚未实现；
+21. legacy `UserFunction` 仍让尾调用部分依赖旧 evaluator；
+22. docs 中仍有少量旧说法需要持续清理。
 
 ---
 
@@ -310,8 +325,15 @@ source
   - `number`
   - `string`
   - `chain`
+  - `array`
+  - `hash-map`
   - `object`
   - `host reference`
+- 固定 `number` 是 family、不是单一类型：
+  - `int` 是任意精度整数；
+  - `int32` / `int64` 是独立 concrete value type；
+  - `float` / `float32` / `complex` / `rational` 也各自独立；
+  - number family 内不做隐式 promotion，混合 concrete type 运算默认走 unsupported-operation effect / error；
 - 明确 Python `int/str/list/...` 只是实现或 adapter；
 - 决定：
   - `number` / `string` 是否拥有 Qy wrapper；
@@ -397,12 +419,56 @@ source
   - 是否会被 root fold；
 - reader、analyzer、LSP、lowering、runtime 读取同一个实例事实。
 
-### D2. define / shadow / fold
+### D2. symbol-space / binding slot / meta-space
+
+- 新增或重构正式 symbol-space 模型：
+  - `SymbolId` / spelling identity；
+  - `BindingAddr`；
+  - `BindingSlot`；
+  - `SymbolMeta`；
+  - `SymbolSpace`；
+  - `SymbolSpaceChain`。
+- `SymbolSpace` 提供：
+  - local lookup index；
+  - slot storage；
+  - metadata side table；
+  - parent/chain linkage；
+  - fold/import/export view；
+  - debug/introspection dump。
+- `BindingSlot` 至少表达：
+  - declared；
+  - computing / pending；
+  - completed；
+  - failed / poisoned（若 pending effort 未被处理或 RHS 失败）；
+  - once-complete enforcement。
+- 读取 pending slot 的行为必须走统一 pending-binding / incomplete-value effort，不得在 analyzer、lowering、VM 各自写错误分支。
+- 明确 slot copy policy：
+  - function closure 捕获；
+  - module export；
+  - continuation copy；
+  - parallel branch；
+  - host reference。
+- 完成标准：
+  - HIR resolved symbol 不再只是裸 `Symbol`；
+  - VM 热路径可直接按 binding addr / slot 读；
+  - metadata 可独立 dump，不污染 value layout。
+
+### D3. define / shadow / fold
 
 - 固定 root define 规则；
 - 明确：
   - `(define 1 10)` 在默认 profile 下为何成功或失败；
   - 在 empty local symbol-space 中为何能 shadow；
+- 固定 direct-definition hoist：
+  - 每个 lexical symbol-space 进入前扫描直接 `define` / `defun` / `defeffect` / `macro`；
+  - 同层重复定义在分析期诊断；
+  - 只提升 binding slot；
+  - 不提升 RHS 求值；
+  - body 运行时顺序保持不变。
+- 明确嵌套定义规则：
+  - `cond` / `handle` / `parallel` / function body 内的定义只属于自身 lexical body；
+  - 不允许 path-dependent define 穿透到外层 symbol-space；
+  - 如未来需要动态 define，必须作为新算子重新设计，不得复用 `define`。
 - 把 module root 初始化、profile bootstrap、`from` 全部表达成 fold；
 - fold 只吸收 export view，不复制 namespace 背后的隐含 fallback；
 - 冲突规则统一：
@@ -410,7 +476,7 @@ source
   - parent / later chain -> 可 shadow；
   - alias 冲突 -> 按当前层 define-once。
 
-### D3. module
+### D4. module
 
 - `module` = 具名 symbol-space；
 - `exports` = export view；
@@ -428,7 +494,7 @@ source
   - re-export；
   - repeated import；的规则。
 
-### D4. profile
+### D5. profile
 
 - 固定分层：
   - core built-in；
@@ -441,7 +507,7 @@ source
 - `qy.py` 继续保持显式 opt-in；
 - CLI `operators`、analyzer、LSP、runtime 使用同一 profile 描述。
 
-### D5. 完成标准
+### D6. 完成标准
 
 - 同一 `Qy` 实例下，lookup / analyzer / LSP / runtime 全部一致；
 - module / from / profile bootstrap 只剩一套 fold primitive；
@@ -579,6 +645,9 @@ source
 ### G2. HIR 必须表达
 
 - resolved binding；
+- stable binding address / slot ref；
+- direct-definition hoist 之后的 symbol-space layout；
+- pending binding read 的 effort fact；
 - symbol-space 语义；
 - operator declaration / signature；
 - structured control；
@@ -605,6 +674,9 @@ source
 ### G4. HIR 需要补齐
 
 - `BindingId` / stable binding reference；
+- `BindingSlotRef` / `SymbolSpaceRef`；
+- direct definition scan pass；
+- pending-binding read node 或 effect fact；
 - profile-aware resolved symbol info；
 - runtime identity-independent literal representation；
 - effect signature facts；
@@ -650,6 +722,11 @@ source
 - scope entry / exit；
 - call；
 - effect perform / handle / resume；
+- handler region / marker；
+- continuation edge；
+- symbol-space-chain transition edge；
+- binding slot read / complete；
+- pending-binding effort edge；
 - ordering/join semantics；
 - module / fold operation；
 - constant / binding references；
@@ -669,7 +746,11 @@ source
 
 - 真正的 constant reference / pool model，替代 `LOAD_HOST` 直接塞 Python object；
 - explicit effect edges / handler regions；
+- perform unwind edge；
 - resume continuation 结构；
+- ss-chain transition node / edge；
+- binding slot op；
+- pending-binding effort lowering；
 - scope lifetime model；
 - call convention abstract form；
 - def-use verifier；
@@ -698,7 +779,11 @@ source
 
 ### I1. LIR 定位
 
-- LIR 是 **低层、VM-facing、但尚未编码的 IR**；
+- LIR 是 **Qy abstract machine IR**：低层、VM-facing、但尚未编码；
+- 当前实现需要显式区分两个 dialect：
+  - `compat`：迁移期保持现有 bytecode pipeline 可运行；
+  - `abstract-machine`：目标 LIR，显式建模 virtual stack、continuation、handler、ss-chain、lookup、slot；
+- `compat` 只能作为删除对象，不能继续承接新语义；
 - 它必须独立于：
   - HIR；
   - MIR tree / CFG 结构；
@@ -711,8 +796,15 @@ source
 - scheduled / linearized block order；
 - physical register layout 或明确 frame slot layout；
 - calling convention；
-- effect frame layout；
-- continuation layout；
+- virtual stack frame；
+- continuation frame；
+- handler frame / effect marker；
+- continuation capture / copy / restore；
+- symbol-space-chain enter / leave / copy / restore；
+- lookup operation；
+- binding slot read / complete / pending effort；
+- CFG space transition；
+- effect dispatch / unwind；
 - host-call ABI lowering；
 - relocatable jump target / fixup；
 - debug span / trace injection；
@@ -726,6 +818,7 @@ source
 - MIR block semantic 依赖；
 - Environment；
 - source-level binding lookup；
+- 语言级 `handle` / `perform` / `resume` 留壳；
 - bytecode compiler 再次做高层决策；
 - 与 bytecode opcode 一比一绑定到无法重写的程度。
 
@@ -735,7 +828,13 @@ source
 - selection pass；
 - block layout / rerank；
 - register allocation / compaction；
-- effect frame lowering；
+- virtual stack frame lowering；
+- handler frame lowering；
+- continuation frame lowering；
+- continuation copy / resume lowering；
+- ss-chain transition lowering；
+- lookup / slot operation lowering；
+- effect unwind lowering；
 - host ABI lowering；
 - jump fixup；
 - peephole；
@@ -748,7 +847,9 @@ source
 ### I5. LIR 完成标准
 
 - `LIR -> bytecode` 只剩 encode / pack / relocate；
+- `handle` / `perform` / `resume` 不再作为 LIR 语言级 opcode 存在；
 - effect frame 不再主要依赖 VM Python closure；
+- continuation、handler、ss-chain、lookup、slot 全部在 LIR dump 中可见；
 - host-call ABI 已在 LIR 层明确；
 - 所有低层 rewrite 都能说清属于哪一个 LIR pass；
 - LIR 可以为了不同 register VM 版本调整，而不需要回改 HIR / MIR。
@@ -805,11 +906,17 @@ source
 
 - 真 register execution；
 - Qy runtime identity；
+- virtual stack execution model；
+- frame-carried symbol-space-chain；
+- binding slot direct read / complete；
+- pending-binding effort dispatch；
 - frame layout；
 - function call；
 - tail call；
 - continuation；
 - effect frame；
+- handler frame；
+- ss-chain transition；
 - `pipeline` / `parallel` / `all` / `race`；
 - module / fold runtime operations；
 - host-call ABI；
@@ -822,6 +929,8 @@ source
 
 - `_truthy` 改为 `nil` only；
 - `_EffectFrame` 从 Python runtime detail 下沉到 LIR/bytecode model；
+- `handle` / `perform` / `resume` 从 Python exception/closure 风格迁到 bytecode-visible virtual stack + ss-chain operation；
+- `Environment.resolve` 热路径迁到 binding addr / slot read；
 - host-call compatibility 缩到 adapter 层；
 - `parallel` / `all` / `race` 的 continuation 与取消规则固定；
 - mutual recursion TCO；
@@ -886,6 +995,8 @@ source
 ### M2. number
 
 - 决定 number runtime model；
+- 将 `qy/sem` 的 concrete number type 同步到 analyzer、LIR、libqy、LLVM ABI；
+- 每个数值算子必须声明 concrete type signature；不得把 family membership 当成自动转换许可；
 - 完成 `qy.num`：
   - host primitive；
   - Qy library；
@@ -932,6 +1043,17 @@ source
 
 ### M5. containers / object / struct
 
+- 先固定底层值族：
+  - `array` 是连续内存段，可取通用 `Value` cell 布局或 concrete value type 专门化布局；
+  - `hash-map` 是 Qy 自有 hash/equality 规则下的映射结构；
+- 再决定上层：
+  - `list`
+  - `tuple`
+  - `set`
+  - `dict`
+  - `struct`
+  - `object`
+- 上层容器可以依赖 `array` / `hash-map`，但不得把底层值族和用户可见抽象混成一个概念；
 - 决定 list / tuple / set / dict / struct / object 的 Qy 语义；
 - 若它们只是 host adapter，不得伪装成语言基本类型；
 - 若它们是正式 runtime family，必须：
@@ -1234,40 +1356,46 @@ source → raw AST → surface dialect → macro expand → HIR → MIR → LIR
                                                           └──→ LLVM IR  → native binary  (新增)
 ```
 
-LIR 是两条路径的分叉点。LIR 已有的 opcode vocabulary 是 LLVM codegen 的直接输入，不需要改 MIR 或 bytecode。
+LIR 是两条路径的分叉点，但 LLVM backend 不能依赖当前过渡期“近似 bytecode opcode”的 LIR。必须先完成 Phase I 的 Qy abstract machine LIR：virtual stack、continuation frame、handler frame、ss-chain transition、lookup、slot operation 全部显式后，LLVM codegen 才能把 verified LIR 当作稳定输入。
 
 **设计约束**：
 
-- LLVM backend 是并行第二条路径，不是替换；
+- LLVM backend 是并行验证路径，不是替换 register VM；
 - 现有 `qy run` / `qy bytecode` / `qytest` 继续工作；
 - 新增 `qy llvm` / `qy llvm --obj` / `qy llvm --exe`；
 - 两套路径共享 LIR 作为输入，LIR verifier 保护两条路径；
-- 冻结文件（`mir.py` / `mir_lowering.py` / `register_vm.py`）不受影响。
+- LLVM backend 必须消费新的 Qy abstract machine LIR，不得绕过 LIR 重新解释 HIR/MIR；
+- 当前旧 LLVM 草案中的 `PERFORM` / `HANDLE` / `RESUME` 直接 runtime-call 映射只能作为历史 notes，不得作为实现计划。
 
 ## 5½.2 Qy Value → LLVM IR 类型映射
 
-采用 **tagged pointer / discriminated union** 方案。最小可行子集只需 8 种 layout：
+采用 **tagged pointer / discriminated union** 方案。最小可行子集必须跟 `qy/sem` value model 对齐，而不是直接复用 Python 旧 runtime。早期子集可以先覆盖：
 
 ```llvm
 %qy_value = type { i8 tag, [7 x i8] payload }   ; 64-bit tagged union
 ```
 
-| tag | 表示         | LLVM payload layout                       |
-| --- | ------------ | ----------------------------------------- |
-| 0   | `nil`        | 全零                                      |
-| 1   | `T`          | 全零                                      |
-| 2   | integer      | i64                                       |
-| 3   | cons cell    | `{ %qy_value*, %qy_value* }`              |
-| 4   | function     | `{ i64 arity, %env*, i64 fn_idx }`        |
-| 5   | effect frame | `{ i64 pc, %env*, i64* saved_registers }` |
-| 6   | host ref     | `{ i8* ptr, i64 type_id }`                |
-| 7   | string       | `{ i8* cstr, i64 len }`                   |
+| tag | 表示 | 备注 |
+| --- | --- | --- |
+| 0 | `nil` | Qy singleton |
+| 1 | `t` | Qy singleton |
+| 2 | `int64` | 机器整数；不等于任意精度 `int` |
+| 3 | `int` | 任意精度整数，payload 指向 runtime object |
+| 4 | `chain` | immutable chain cell |
+| 5 | `string` | Qy runtime string |
+| 6 | `function` | bytecode/native function ref + closure/ss-chain |
+| 7 | `host reference` | 显式 adapter object |
+| 8 | `array` | 连续内存段 |
+| 9 | `hash-map` | Qy hash/equality 规则 |
+| 10 | `continuation frame` | LIR 显式 continuation layout |
+| 11 | `handler frame` | LIR 显式 handler/effect marker layout |
+| 12 | `symbol-space frame` | LIR 显式 ss-chain frame/layout |
 
 设计理由：
 
 - tagged union 方案在 C 和 LLVM 中都自然；
-- effect frame 与当前 `_EffectFrame` Python dataclass 字段一一对应；
-- `perform` / `resume` 在 LLVM IR 层是显式 struct 构造 / 解构，无 Python async closure 依赖；
+- value layout 必须与 Qy 语义对象对齐，不与 Python dataclass 对齐；
+- `perform` / `resume` 在 LLVM IR 层不是高层 runtime call，而是由 LIR 已经显式化的 continuation / handler / ss-chain operation 翻译而来；
 - 未来扩层只需新增 tag。
 
 ## 5½.3 最小 C Runtime（MQR）
@@ -1312,11 +1440,12 @@ void mqr_print(qy_value v);
 void mqr_println(qy_value v);
 qy_value mqr_read(void);
 
-// Effect frame
-qy_value mqr_save_frame(uint64_t pc, void* env, uint64_t* regs, size_t nregs);
-qy_value mqr_resume(qy_value frame, qy_value val);
-qy_value mqr_perform(const char* effect_name, qy_value arg);
-qy_value mqr_handle(int64_t fn_idx, qy_value body);
+// Abstract machine frames; exact API waits for Phase I LIR.
+qy_value mqr_make_continuation_frame(/* layout decided by LIR */);
+qy_value mqr_copy_continuation(qy_value frame);
+qy_value mqr_make_handler_frame(/* layout decided by LIR */);
+qy_value mqr_enter_ss_chain(qy_value ss_frame);
+qy_value mqr_restore_ss_chain(qy_value ss_frame);
 
 // Memory / GC
 void* mqr_alloc(size_t size);
@@ -1335,25 +1464,21 @@ int64_t mqr_main(int64_t argc, char** argv);
 
 ### 5½.4.1 指令映射
 
-| LIR opcode          | LLVM IR 对应                                        |
-| ------------------- | --------------------------------------------------- |
-| `LOAD_NIL`          | `qy_nil()`                                          |
-| `LOAD_T`            | `qy_T()`                                            |
-| `LOAD_HOST` (i64)   | `qy_int(i64 val)`                                   |
-| `LOAD_HOST` (float) | `bitcast float→qy_value`                            |
-| `LOAD_HOST` (str)   | `mqr_make_string(i8* cstr, i64 len)`                |
-| `MOVE`              | `%.reg = load / store`                              |
-| `CALL`              | `call @qy_fn(i64 argc, %qy_value* argv, %env* env)` |
-| `TAIL_CALL`         | `musttail call … ret`                               |
-| `RETURN`            | `ret %qy_value`                                     |
-| `JUMP_IF_FALSE`     | `br i1 (icmp ne (and %.val, 0xFF), 0), label %…`    |
-| `JUMP`              | `br label %…`                                       |
-| `BUILD_TUPLE`       | `mqr_cons …`                                        |
-| `PARALLEL_GATHER`   | `pthread` spawn 或 `llvm.coroutine`                 |
-| `PERFORM`           | `call @mqr_perform(i8* effect_name, %qy_value arg)` |
-| `HANDLE`            | `call @mqr_handle(i64 fn_idx, …)`                   |
-| `DEFINE_ONCE`       | `call @mqr_define_once(i8* name, %qy_value)`        |
-| `DEFINE_MODULE`     | `call @mqr_define_module(i8* name, …)`              |
+旧表中 `PERFORM` / `HANDLE` / `DEFINE_ONCE` 这类语言级 opcode 不能进入最终 LIR → LLVM 计划。新的映射表应在 Phase I 完成后重写，至少按这些类别组织：
+
+| LIR 类别 | LLVM IR 对应 |
+| --- | --- |
+| value load | Qy value constructor / constant pool load |
+| move / copy | register or stack slot load-store |
+| branch / jump | LLVM basic block branch |
+| call / tail call | ABI-lowered native call / musttail |
+| slot read / complete | direct slot load-store + once-complete guard |
+| pending-binding effort | branch to LIR-lowered effect dispatch path |
+| ss-chain enter / leave / restore | explicit frame pointer / chain pointer operation |
+| continuation capture / copy / restore | explicit frame record construction/copy |
+| handler frame push / pop | explicit handler marker frame operation |
+| effect unwind / dispatch | CFG jump sequence generated from LIR, not source-level `perform` |
+| parallel/all/race join | task/join frame operation decided by LIR |
 
 ### 5½.4.2 函数映射约定
 
@@ -1416,19 +1541,20 @@ Phase Q1: C Runtime 骨架
 
 Phase Q2: LIR → LLVM IR 翻译器（整数子集）
   → qy/llvm_codegen.py（emit LLVM IR 文本）
+  → 前置：Phase I 的 Qy abstract machine LIR 已完成最小 value/slot/branch 子集
   → 验证：uv run qy llvm --ll examples/hello.qy → 输出 .ll
   → llc runtime/mqr.o program.ll -o program.o
   → clang runtime/mqr.o program.o -o program
   → ./program 对比 qy run FILE 输出
 
 Phase Q3: 完善 value layout（cons cell、closure）
-  → tag 3/4 映射 → mqr_cons / mqr_car / mqr_cdr 实现
-  → closure pass-through（env 参数）
-  → 验证：qy llvm --exe tests/qy/03_effect_resume.qy → 运行结果一致
+  → chain / function / ss-chain frame 映射
+  → closure 捕获 binding slot / ss-chain ref，不捕获 Python env
+  → 验证：qy llvm --exe core closure/chain qytest 子集 → 运行结果一致
 
-Phase Q4: Effect frame / perform / handle
-  → mqr_save_frame / mqr_resume 实现
-  → PERFORM 编译为 call @mqr_perform
+Phase Q4: continuation / handler / ss-chain
+  → 从 LIR 显式 continuation frame、handler frame、ss-chain transition 翻译到 LLVM IR
+  → 不允许把 source-level PERFORM/HANDLE/RESUME 直接编译为 runtime call
   → 验证：qy llvm --exe tests/qy/29_nested_effects.qy → 运行结果一致
 
 Phase Q5: 字符串、I/O、parallel
@@ -1445,8 +1571,8 @@ Phase Q6: GC / 优化
 ## 5½.7 完成标准
 
 - Phase Q2 结束：整数子集 qytest 全部通过，LLVM 编译结果与 register VM 一致
-- Phase Q3 结束：cons cell / closure 支持，语言核心子集完整
-- Phase Q4 结束：effect/perform/handle 在 LLVM backend 下正常工作
+- Phase Q3 结束：chain / closure / ss-chain ref 支持，语言核心子集完整
+- Phase Q4 结束：continuation / handler / ss-chain operation 在 LLVM backend 下正常工作，且无语言级 PERFORM/HANDLE opcode 残留
 - Phase Q5 结束：I/O 和并行能力在 LLVM backend 下正常工作
 - Phase Q6 结束：可测量 benchmark，确认 LLVM backend 性能收益
 
