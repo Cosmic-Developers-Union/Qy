@@ -57,6 +57,8 @@ from qy.lir import LIRInstruction
 from qy.lir import LIRProgram
 from qy.lir import dump_lir
 from qy.lir_lowering import lower_lir
+from qy.llvm_codegen import compile_to_llvm_text
+from qy.llvm_codegen import emit_llvm_module
 from qy.lowering import lower
 from qy.lowering import lower_source
 from qy.macro import MacroDefinition
@@ -205,12 +207,14 @@ __all__ = [
     "compile_bytecode",
     "compile_lir_bytecode",
     "compile_mir_bytecode",
+    "compile_to_llvm_text",
     "dump_bytecode",
     "dump_form",
     "dump_ir",
     "dump_lir",
     "dump_mir",
     "dump_program",
+    "emit_llvm_module",
     "evaluate_bytecode",
     "evaluate_bytecode_async",
     "evaluate_bytecode_source",

@@ -1209,14 +1209,246 @@ source
 11. VM effect frame / TCO；
 12. legacy 删除；
 13. stdlib / io / fs 扩张；
-14. 性能优化与 portability。
+14. LLVM backend（Phase Q）**（新增，与 8–13 并行推进）**；
+15. 性能优化与 portability。
 
 原因：
 
 - syntax 与 runtime model 不稳，后续 IR 会反复返工；
 - symbol-space 不稳，analyzer / LSP / module / macro 都会漂；
 - HIR 不稳，MIR/LIR 细化会建立在旧语义上；
-- LIR 不独立，bytecode 与 VM 会继续吞掉本应属于 lowering 的职责。
+- LIR 不独立，bytecode 与 VM 会继续吞掉本应属于 lowering 的职责；
+- **LLVM backend 依赖 LIR 独立（LIR 不独立则 LLVM IR 无稳定输入），但与 legacy 删除、stdlib 扩张、VM 完善并行推进，互不阻塞。**
+
+---
+
+# 5½. LLVM Backend 完整设计
+
+## 5½.1 架构定位
+
+在现有管线旁边新增一条并行路径：
+
+```text
+source → raw AST → surface dialect → macro expand → HIR → MIR → LIR
+                                                          ├──→ bytecode → register VM  (已有)
+                                                          └──→ LLVM IR  → native binary  (新增)
+```
+
+LIR 是两条路径的分叉点。LIR 已有的 opcode vocabulary 是 LLVM codegen 的直接输入，不需要改 MIR 或 bytecode。
+
+**设计约束**：
+
+- LLVM backend 是并行第二条路径，不是替换；
+- 现有 `qy run` / `qy bytecode` / `qytest` 继续工作；
+- 新增 `qy llvm` / `qy llvm --obj` / `qy llvm --exe`；
+- 两套路径共享 LIR 作为输入，LIR verifier 保护两条路径；
+- 冻结文件（`mir.py` / `mir_lowering.py` / `register_vm.py`）不受影响。
+
+## 5½.2 Qy Value → LLVM IR 类型映射
+
+采用 **tagged pointer / discriminated union** 方案。最小可行子集只需 8 种 layout：
+
+```llvm
+%qy_value = type { i8 tag, [7 x i8] payload }   ; 64-bit tagged union
+```
+
+| tag | 表示         | LLVM payload layout                       |
+| --- | ------------ | ----------------------------------------- |
+| 0   | `nil`        | 全零                                      |
+| 1   | `T`          | 全零                                      |
+| 2   | integer      | i64                                       |
+| 3   | cons cell    | `{ %qy_value*, %qy_value* }`              |
+| 4   | function     | `{ i64 arity, %env*, i64 fn_idx }`        |
+| 5   | effect frame | `{ i64 pc, %env*, i64* saved_registers }` |
+| 6   | host ref     | `{ i8* ptr, i64 type_id }`                |
+| 7   | string       | `{ i8* cstr, i64 len }`                   |
+
+设计理由：
+
+- tagged union 方案在 C 和 LLVM 中都自然；
+- effect frame 与当前 `_EffectFrame` Python dataclass 字段一一对应；
+- `perform` / `resume` 在 LLVM IR 层是显式 struct 构造 / 解构，无 Python async closure 依赖；
+- 未来扩层只需新增 tag。
+
+## 5½.3 最小 C Runtime（MQR）
+
+新建 `runtime/mqr.h` + `runtime/mqr.c`（约 100–150 行）。
+
+核心 API（Phase 2 最少只需 6 个函数）：
+
+```c
+typedef struct { uint8_t tag; uint64_t payload; } qy_value;
+
+// Tag accessors
+static inline int qy_is_nil(qy_value v)   { return v.tag == 0; }
+static inline int qy_is_T(qy_value v)     { return v.tag == 1; }
+static inline int qy_is_int(qy_value v)   { return v.tag == 2; }
+static inline int qy_is_cons(qy_value v)  { return v.tag == 3; }
+
+// Constructors
+qy_value qy_nil(void);          // tag=0, payload=0
+qy_value qy_T(void);            // tag=1, payload=0
+qy_value qy_int(int64_t n);     // tag=2, payload=n
+
+// Arithmetic
+int64_t  mqr_add(int64_t a, int64_t b);
+int64_t  mqr_sub(int64_t a, int64_t b);
+int64_t  mqr_mul(int64_t a, int64_t b);
+int64_t  mqr_div(int64_t a, int64_t b);   // div-by-zero → effect
+int64_t  mqr_mod(int64_t a, int64_t b);
+
+// Comparison
+qy_value mqr_eq(qy_value a, qy_value b);   // returns QY_T or QY_NIL
+qy_value mqr_lt(qy_value a, qy_value b);
+qy_value mqr_gt(qy_value a, qy_value b);
+
+// Cons cell
+qy_value mqr_cons(qy_value car, qy_value cdr);
+qy_value mqr_car(qy_value c);
+qy_value mqr_cdr(qy_value c);
+
+// I/O
+void mqr_print(qy_value v);
+void mqr_println(qy_value v);
+qy_value mqr_read(void);
+
+// Effect frame
+qy_value mqr_save_frame(uint64_t pc, void* env, uint64_t* regs, size_t nregs);
+qy_value mqr_resume(qy_value frame, qy_value val);
+qy_value mqr_perform(const char* effect_name, qy_value arg);
+qy_value mqr_handle(int64_t fn_idx, qy_value body);
+
+// Memory / GC
+void* mqr_alloc(size_t size);
+void  mqr_gc(void);
+
+// String
+qy_value mqr_make_string(const char* cstr, int64_t len);
+
+// C runtime entry point
+int64_t mqr_main(int64_t argc, char** argv);
+```
+
+## 5½.4 LIR → LLVM IR 翻译层
+
+新建 `qy/llvm_codegen.py`（约 300 行）。
+
+### 5½.4.1 指令映射
+
+| LIR opcode          | LLVM IR 对应                                        |
+| ------------------- | --------------------------------------------------- |
+| `LOAD_NIL`          | `qy_nil()`                                          |
+| `LOAD_T`            | `qy_T()`                                            |
+| `LOAD_HOST` (i64)   | `qy_int(i64 val)`                                   |
+| `LOAD_HOST` (float) | `bitcast float→qy_value`                            |
+| `LOAD_HOST` (str)   | `mqr_make_string(i8* cstr, i64 len)`                |
+| `MOVE`              | `%.reg = load / store`                              |
+| `CALL`              | `call @qy_fn(i64 argc, %qy_value* argv, %env* env)` |
+| `TAIL_CALL`         | `musttail call … ret`                               |
+| `RETURN`            | `ret %qy_value`                                     |
+| `JUMP_IF_FALSE`     | `br i1 (icmp ne (and %.val, 0xFF), 0), label %…`    |
+| `JUMP`              | `br label %…`                                       |
+| `BUILD_TUPLE`       | `mqr_cons …`                                        |
+| `PARALLEL_GATHER`   | `pthread` spawn 或 `llvm.coroutine`                 |
+| `PERFORM`           | `call @mqr_perform(i8* effect_name, %qy_value arg)` |
+| `HANDLE`            | `call @mqr_handle(i64 fn_idx, …)`                   |
+| `DEFINE_ONCE`       | `call @mqr_define_once(i8* name, %qy_value)`        |
+| `DEFINE_MODULE`     | `call @mqr_define_module(i8* name, …)`              |
+
+### 5½.4.2 函数映射约定
+
+每个 `LIRFunction` 编译为 LLVM 函数：
+
+```llvm
+; 约定：所有 Qy 函数接受 (i64 argc, %qy_value* argv, %qy_env* env)
+define %qy_value @qy.fn.{name}(i64 %argc, %qy_value* %argv, %qy_env* %env) {
+entry:
+  ; 参数映射：r0 = argv[0], r1 = argv[1], ... (由 caller 保证 argc 正确)
+  %.r0 = load %qy_value, %qy_value* %argv
+  ; ... function body ...
+  ret %qy_value %.result
+}
+```
+
+### 5½.4.3 llvmlite 集成
+
+第一版用纯字符串模板生成 `.ll`，避免 llvmlite 版本绑定。第二版可迁移到 llvmlite 的 `ir.Builder`。
+
+```python
+# qy/llvm_codegen.py 核心结构
+def emit_llvm_module(lir_program: LIRProgram, mqr_dir: str) -> str:
+    """返回 LLVM IR .ll 文本（用于 qy llvm --ll）。"""
+
+def compile_to_llvm_text(lir_program: LIRProgram, mqr_dir: str) -> str:
+    """返回 LLVM IR .ll 文本（用于 qy llvm --ll）。"""
+
+def compile_to_object(lir_program: LIRProgram, mqr_dir: str,
+                      output_path: str, *, llc_path: str = "llc") -> None:
+    """AOT 编译为 .o 文件（用于 qy llvm --obj）。"""
+
+def compile_to_executable(lir_program: LIRProgram, mqr_dir: str,
+                          output_path: str, *,
+                          cc_path: str = "clang") -> None:
+    """编译 + 链接为可执行文件（用于 qy llvm --exe）。"""
+```
+
+## 5½.5 CLI 集成
+
+在 `qy/cli.py` 新增 `llvm` 子命令：
+
+```bash
+qy llvm FILE                  # 生成 LLVM IR 文本到 stdout
+qy llvm --ll FILE            # 同上，显式 .ll 输出
+qy llvm --obj FILE [-o OUT]  # 生成 .o 目标文件
+qy llvm --exe FILE [-o OUT]  # 编译链接为可执行文件（默认 ./a.out）
+qy llvm --run FILE           # 生成 + 立即运行（默认 ./tmp_qy_out）
+```
+
+若系统无 `clang`/`ld`，`--exe` 需显式指定 LLVM toolchain 路径（`--llc`, `--ld`）。
+
+## 5½.6 实现顺序
+
+```
+Phase Q1: C Runtime 骨架
+  → runtime/mqr.h + runtime/mqr.c
+  → 验证：gcc -c runtime/mqr.c -o runtime/mqr.o && echo OK
+  → 无任何 Python 依赖，纯 C 编译验证
+
+Phase Q2: LIR → LLVM IR 翻译器（整数子集）
+  → qy/llvm_codegen.py（emit LLVM IR 文本）
+  → 验证：uv run qy llvm --ll examples/hello.qy → 输出 .ll
+  → llc runtime/mqr.o program.ll -o program.o
+  → clang runtime/mqr.o program.o -o program
+  → ./program 对比 qy run FILE 输出
+
+Phase Q3: 完善 value layout（cons cell、closure）
+  → tag 3/4 映射 → mqr_cons / mqr_car / mqr_cdr 实现
+  → closure pass-through（env 参数）
+  → 验证：qy llvm --exe tests/qy/03_effect_resume.qy → 运行结果一致
+
+Phase Q4: Effect frame / perform / handle
+  → mqr_save_frame / mqr_resume 实现
+  → PERFORM 编译为 call @mqr_perform
+  → 验证：qy llvm --exe tests/qy/29_nested_effects.qy → 运行结果一致
+
+Phase Q5: 字符串、I/O、parallel
+  → mqr_make_string / mqr_print / mqr_read 实现
+  → PARALLEL_GATHER 用 pthread
+  → 验证：qy llvm --exe tests/qy/27_all_barrier.qy → 运行结果一致
+
+Phase Q6: GC / 优化
+  → stop-and-copy GC（~50 行）
+  → 寄存器分配器优化（线性扫描）
+  → 验证：benchmark 对比 bytecode/register VM vs native
+```
+
+## 5½.7 完成标准
+
+- Phase Q2 结束：整数子集 qytest 全部通过，LLVM 编译结果与 register VM 一致
+- Phase Q3 结束：cons cell / closure 支持，语言核心子集完整
+- Phase Q4 结束：effect/perform/handle 在 LLVM backend 下正常工作
+- Phase Q5 结束：I/O 和并行能力在 LLVM backend 下正常工作
+- Phase Q6 结束：可测量 benchmark，确认 LLVM backend 性能收益
 
 ---
 

@@ -38,6 +38,7 @@ CLI_COMMANDS = (
     "mir",
     "lir",
     "bytecode",
+    "llvm",
     "fmt",
     "ast",
     "check",
@@ -210,6 +211,32 @@ def create_app() -> Any:
             bytecode = qy.compile_mir_bytecode(mir)
             typer.echo(dump_bytecode(bytecode), nl=False)
             has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
+        if has_errors:
+            raise typer.Exit(1)
+
+    @app.command("llvm")
+    def llvm_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to compile to LLVM IR, or - to read from stdin."),
+        ],
+    ) -> None:
+        from qy.llvm_codegen import emit_llvm_module
+
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            mir = qy.lower_mir(program)
+            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+            lir = lower_lir(mir)
+            has_errors = _print_debug_diagnostics(source_name, lir.diagnostics) or has_errors
+            if lir.ok:
+                ll_text = emit_llvm_module(lir)
+                typer.echo(ll_text, nl=False)
         if has_errors:
             raise typer.Exit(1)
 
