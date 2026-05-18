@@ -26,6 +26,12 @@ def test_cond():
     assert evaluate_source("(cond (false 1) (true (+ 1 2)))") == 3
 
 
+def test_truthy():
+    assert evaluate_source("(truthy 1)") is QY_T
+    assert evaluate_source("(truthy none)") is QY_NIL
+    assert evaluate_source("(truthy '())") is QY_NIL
+
+
 def test_eq():
     # eq: value equality for atoms (symbol/number/string), identity for chains
     assert evaluate_source("(eq 'abc 'abc)") is QY_T  # same symbol name -> equal

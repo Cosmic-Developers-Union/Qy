@@ -87,6 +87,16 @@ def test_stdlib_signatures_subset_of_profile():
         )
 
 
+def test_truthy_has_standard_profile_signature():
+    from qy.operator_signature import lookup_operator_signature
+
+    signature = lookup_operator_signature("truthy")
+
+    assert signature is not None
+    assert signature.return_type == "bool"
+    assert signature.arity == Arity(1, 1)
+
+
 def test_collect_supported_operators_covers_profile():
     """collect_supported_operators lists all standard profile symbols."""
     from qy.operator_docs import collect_supported_operators

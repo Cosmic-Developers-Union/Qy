@@ -104,6 +104,7 @@ STDLIB_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     ),
     "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
     "is": OperatorSignature("bool", Arity(2, 2)),
+    "truthy": OperatorSignature("bool", Arity(1, 1)),
     "append": OperatorSignature("any", Arity(2, 2)),
 }
 

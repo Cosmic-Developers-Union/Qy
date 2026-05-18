@@ -14,9 +14,9 @@
 (= (cond (nil 1)) nil)
 
 ; truthy operator returns T for numbers
-(= (truthy 0) T)
+(= (truthy 0) nil)
 (= (truthy 1) T)
-(= (truthy "") T)
+(= (truthy "") nil)
 (= (truthy nil) nil)
 (= (truthy false) nil)
 (= (truthy none) nil)

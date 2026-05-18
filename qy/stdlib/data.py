@@ -4,11 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from qy.environment import Environment
-from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.eval_runtime import evaluate_async
 from qy.operators import PureOperator
 from qy.reader import Symbol
 from qy.reader import get_span
@@ -99,27 +96,6 @@ def _dict_entry_pair(entry: object) -> tuple[object, object]:
             metadata={"entry": entry},
         )
     return items[0], items[1]
-
-
-async def _evaluate_data_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
-    return tuple([await _evaluate_data_arg(arg, env) for arg in args])
-
-
-async def _evaluate_lookup_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
-    if not args:
-        return ()
-    collection = await evaluate_async(args[0], env)
-    rest = tuple([await _evaluate_data_arg(arg, env) for arg in args[1:]])
-    return (collection, *rest)
-
-
-async def _evaluate_data_arg(expression: object, env: Environment) -> object:
-    try:
-        return await evaluate_async(expression, env)
-    except EvaluationError:
-        if isinstance(expression, Symbol):
-            return expression
-        raise
 
 
 def _atom(value: object) -> object:
@@ -413,19 +389,13 @@ def _has(*args: object) -> object:
 
 def python_container_operators() -> dict[Symbol, object]:
     return {
-        Symbol("dict"): PureOperator(
-            "dict", _dict, "把 key/value 参数转换为 Python dict。", _evaluate_data_args
-        ),
+        Symbol("dict"): PureOperator("dict", _dict, "把 key/value 参数转换为 Python dict。"),
         Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
-        Symbol("list"): PureOperator(
-            "list", _list, "把参数转换为 Python list。", _evaluate_data_args
-        ),
+        Symbol("list"): PureOperator("list", _list, "把参数转换为 Python list。"),
         Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
-        Symbol("set"): PureOperator("set", _set, "把参数转换为 Python set。", _evaluate_data_args),
+        Symbol("set"): PureOperator("set", _set, "把参数转换为 Python set。"),
         Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
-        Symbol("tuple"): PureOperator(
-            "tuple", _tuple, "把参数转换为 Python tuple。", _evaluate_data_args
-        ),
+        Symbol("tuple"): PureOperator("tuple", _tuple, "把参数转换为 Python tuple。"),
         Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
     }
 
@@ -446,15 +416,8 @@ def operators() -> dict[Symbol, object]:
             "eq", _eq, "Lisp 风格 eq；atom 按值比较，chain 按 identity 比较。"
         ),
         Symbol("reify"): PureOperator("reify", _reify, "将 runtime 值转为 syntax datum。"),
-        Symbol("get"): PureOperator(
-            "get", _get, "从 chain/tuple/list/dict 获取项。", _evaluate_lookup_args
-        ),
-        Symbol("has?"): PureOperator(
-            "has?",
-            _has,
-            "判断 collection 是否包含 key、index 或成员。",
-            _evaluate_lookup_args,
-        ),
+        Symbol("get"): PureOperator("get", _get, "从 chain/tuple/list/dict 获取项。"),
+        Symbol("has?"): PureOperator("has?", _has, "判断 collection 是否包含 key、index 或成员。"),
         Symbol("is"): PureOperator("is", _is, "按 Python is 语义比较 identity。"),
         Symbol("len"): PureOperator("len", _len, "返回 collection 长度。"),
         Symbol("type"): PureOperator("type", _type, "返回值的类型名称。"),
