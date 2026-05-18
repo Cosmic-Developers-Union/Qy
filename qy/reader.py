@@ -78,7 +78,7 @@ class DottedTuple(tuple):
         return value
 
 
-type Form = Symbol | str | tuple["Form", ...]
+type Form = Symbol | tuple["Form", ...]
 type TupleAtom = Symbol | str | int | float | bool | bytes | None
 type TupleForm = TupleAtom | tuple["TupleForm", ...]
 
@@ -162,27 +162,29 @@ class _ReaderTransformer(lark.Transformer):
         del meta
         return Symbol(str(token), self._token_span(token))
 
-    def quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+    def quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
         span = self._token_span(token)
-        return _decode_quoted_symbol(str(token), span)
+        return Symbol(str(token), span)
 
-    def raw_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+    def raw_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
-        return str(token)[2:-1]
+        span = self._token_span(token)
+        return Symbol(str(token), span)
 
     def tagged_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
         del meta
         return self._tagged_literal(token)
 
-    def multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+    def multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
         span = self._token_span(token)
-        return _decode_quoted_symbol(str(token), span)
+        return Symbol(str(token), span)
 
-    def raw_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> str:
+    def raw_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Symbol:
         del meta
-        return str(token)[4:-3]
+        span = self._token_span(token)
+        return Symbol(str(token), span)
 
     def tagged_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
         del meta
@@ -197,7 +199,7 @@ class _ReaderTransformer(lark.Transformer):
                 SpannedTuple(
                     (
                         Symbol("quote", span),
-                        Symbol(_decode_quoted_symbol(literal, span), span),
+                        Symbol(literal, span),
                     ),
                     span,
                 ),
@@ -471,9 +473,9 @@ def read_one_tuple(source: str) -> TupleForm:
 
 
 def form_to_tuple(form: Form) -> TupleForm:
-    if isinstance(form, str):
-        return form
     if isinstance(form, Symbol):
+        if _is_string_symbol(form.name):
+            return _decode_string_symbol(form)
         return form
     if isinstance(form, DottedTuple):
         return (
@@ -488,7 +490,7 @@ def form_to_tuple(form: Form) -> TupleForm:
 
 def tuple_to_form(form: TupleForm) -> Form:
     if isinstance(form, str):
-        return form
+        return Symbol(json.dumps(form, ensure_ascii=False))
     if isinstance(form, Symbol):
         return form
     if isinstance(form, tuple):
@@ -497,9 +499,9 @@ def tuple_to_form(form: TupleForm) -> Form:
 
 
 def write(form: Form) -> str:
-    if isinstance(form, str):
-        return json.dumps(form, ensure_ascii=False)
     if isinstance(form, Symbol):
+        if _is_string_symbol(form.name):
+            return form.name
         return _encode_symbol(form.name)
     if isinstance(form, DottedTuple):
         head = " ".join(write(item) for item in form)
@@ -554,6 +556,14 @@ def _decode_quoted_symbol(token: str, span: SourceSpan | None = None) -> str:
     if not isinstance(value, str):
         raise ReaderSyntaxError(f"expected quoted symbol, got {token}", span=span)
     return value
+
+
+def _is_string_symbol(name: str) -> bool:
+    return name.startswith('"') or name.startswith('r"')
+
+
+def _decode_string_symbol(symbol: Symbol) -> str:
+    return cast(str, ast.literal_eval(symbol.name))
 
 
 def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[str, str]:

@@ -46,6 +46,8 @@ from qy.mir import MIRTerminator
 from qy.mir import MIRTerminatorOpcode
 from qy.reader import DottedTuple
 from qy.reader import Symbol
+from qy.reader import _decode_string_symbol
+from qy.reader import _is_string_symbol
 from qy.values import list_to_qy_cons
 
 __all__ = ["lower_mir"]
@@ -580,6 +582,8 @@ def _span_of(expression: object) -> SourceSpan | None:
 
 
 def _quote_data(value: object) -> object:
+    if isinstance(value, Symbol) and _is_string_symbol(value.name):
+        return _decode_string_symbol(value)
     if isinstance(value, DottedTuple):
         return list_to_qy_cons((_quote_data(item) for item in value), _quote_data(value.tail))
     if isinstance(value, tuple):

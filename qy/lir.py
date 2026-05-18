@@ -103,14 +103,55 @@ class LIRProgram:
         return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
 
 
+_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT"})
+
+# BRANCH_NIL also jumps but its target is the last operand, same as JUMP_IF_FALSE.
+_JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
+
+
 def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
-    """Basic structural verification of LIR program."""
+    """Structural verification of LIR program.
+
+    Checks:
+    - Every function ends with a terminator (RETURN / TAIL_CALL / RAISE_EFFECT).
+    - No non-terminator instructions follow a terminator.
+    - LOAD_HOST None should be LOAD_NIL (peephole missed).
+    - Register operands are within [0, register_count).
+    - Jump targets are within the instruction list.
+    """
     diagnostics: list[Diagnostic] = []
     for func in program.functions:
         if not func.instructions and func.name.name not in ("<lambda>",):
             diagnostics.append(
                 Diagnostic(f"LIR function {func.name.name} has no instructions", severity="warning")
             )
+            continue
+
+        # Check terminator placement
+        saw_terminator = False
+        for idx, inst in enumerate(func.instructions):
+            if saw_terminator:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {func.name.name} has unreachable instruction "
+                        f"{inst.opcode} at {idx} after terminator",
+                        severity="warning",
+                    )
+                )
+                break
+            if inst.opcode in _TERMINATORS:
+                saw_terminator = True
+
+        if not saw_terminator:
+            last_opcode = func.instructions[-1].opcode
+            diagnostics.append(
+                Diagnostic(
+                    f"LIR function {func.name.name} does not end with a terminator "
+                    f"(last instruction: {last_opcode})",
+                    severity="error",
+                )
+            )
+
         for idx, inst in enumerate(func.instructions):
             if inst.opcode == "LOAD_HOST" and len(inst.operands) >= 2 and inst.operands[1] is None:
                 diagnostics.append(
@@ -132,7 +173,7 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                         )
                     )
             # Check jump targets are in range
-            if inst.opcode in ("JUMP", "JUMP_IF_FALSE") and len(inst.operands) >= 1:
+            if inst.opcode in _JUMP_OPCODES and len(inst.operands) >= 1:
                 target = inst.operands[-1]
                 if isinstance(target, int):
                     if target < 0 or target >= len(func.instructions):

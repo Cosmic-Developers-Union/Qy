@@ -17,7 +17,25 @@ __all__ = [
 _MISSING = object()
 
 
+def _is_string_literal(name: str) -> bool:
+    return name.startswith('"') or name.startswith('r"')
+
+
+def _decode_string_literal(name: str) -> object:
+    import ast
+
+    try:
+        value = ast.literal_eval(name)
+    except (SyntaxError, ValueError):
+        return _MISSING
+    if not isinstance(value, str):
+        return _MISSING
+    return value
+
+
 def try_default_literal(symbol: Symbol) -> object:
+    if _is_string_literal(symbol.name):
+        return _decode_string_literal(symbol.name)
     if symbol.name == "T":
         return QY_T
     if symbol.name == "nil":
@@ -51,6 +69,8 @@ def resolve_default_literal(symbol: Symbol) -> object:
 
 
 def default_literal_type(symbol: Symbol) -> TypeName | None:
+    if _is_string_literal(symbol.name):
+        return "string"
     value = try_default_literal(symbol)
     if value is _MISSING:
         return None

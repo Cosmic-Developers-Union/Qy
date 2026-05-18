@@ -16,7 +16,7 @@ def test_format_source_uses_quote_sugar():
 
 
 def test_format_source_normalizes_tagged_literals():
-    assert format_source('t"hello"') == "(t 'hello)\n"
+    assert format_source('t"hello"') == '(t \'"hello")\n'
 
 
 def test_format_source_preserves_dotted_pairs():

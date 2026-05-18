@@ -38,8 +38,8 @@ def test_write_qy_form():
     assert write(S("(not a list)")) == '"(not a list)"'
     assert write(S("hello\nworld")) == r'"hello\nworld"'
     assert write((S("+"), S("1"), S("2"))) == "(+ 1 2)"
-    assert write("hello") == '"hello"'
-    assert write("hello world") == '"hello world"'
+    assert write(S('"hello"')) == '"hello"'
+    assert write(S('"hello world"')) == '"hello world"'
 
 
 def test_write_tuple_exchange_form():
@@ -58,7 +58,6 @@ def test_write_programs():
     assert read_tuple(write_tuple_program(tuple_forms)) == qy_forms
 
 
-def test_string_literal_is_valid_form():
-    assert tuple_to_form("abc") == "abc"
+def test_string_literal_round_trips_through_tuple():
     assert write_tuple("abc") == '"abc"'
     assert write_tuple("hello world") == '"hello world"'

@@ -19,44 +19,44 @@ def test_bare_symbols():
     ]
 
 
-def test_quoted_string_is_str():
+def test_quoted_string_is_string_symbol():
     assert read('abc "abc" "(not a list)" "hello world" ":size"') == [
         S("abc"),
-        "abc",
-        "(not a list)",
-        "hello world",
-        ":size",
+        S('"abc"'),
+        S('"(not a list)"'),
+        S('"hello world"'),
+        S('":size"'),
     ]
 
 
-def test_quoted_string_decodes_escapes():
+def test_quoted_string_preserves_raw_escapes():
     assert read(r'"hello\nworld" "quote: \"" "slash: \\"') == [
-        "hello\nworld",
-        'quote: "',
-        "slash: \\",
+        S(r'"hello\nworld"'),
+        S(r'"quote: \""'),
+        S(r'"slash: \\"'),
     ]
 
 
-def test_raw_quoted_string_preserves_escapes():
+def test_raw_quoted_string_keeps_raw_prefix():
     assert read(r'r"\d+\s+" R"C:\path\to\file"') == [
-        r"\d+\s+",
-        r"C:\path\to\file",
+        S(r'r"\d+\s+"'),
+        S(r'R"C:\path\to\file"'),
     ]
 
 
 def test_multiline_strings():
     assert read('"""hello\nworld""" r"""\\d+\\s+\nC:\\path"""') == [
-        "hello\nworld",
-        "\\d+\\s+\nC:\\path",
+        S('"""hello\nworld"""'),
+        S('r"""\\d+\\s+\nC:\\path"""'),
     ]
 
 
 def test_tagged_literals_expand_to_tagged_quote_calls():
     assert read('t"hello {name}" sql"""select *\nfrom docs"""') == [
-        (S("t"), (S("quote"), S("hello {name}"))),
-        (S("sql"), (S("quote"), S("select *\nfrom docs"))),
+        (S("t"), (S("quote"), S('"hello {name}"'))),
+        (S("sql"), (S("quote"), S('"""select *\nfrom docs"""'))),
     ]
 
 
-def test_tagged_literals_decode_escapes():
-    assert read(r't"hello\n{name}"') == [(S("t"), (S("quote"), S("hello\n{name}")))]
+def test_tagged_literals_keep_raw_escapes():
+    assert read(r't"hello\n{name}"') == [(S("t"), (S("quote"), S(r'"hello\n{name}"')))]

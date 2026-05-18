@@ -8,6 +8,7 @@ from qy.diagnostics import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
+from qy.literals import default_literal_type
 from qy.macro import MacroDefinition
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
@@ -218,6 +219,9 @@ def _infer_symbol(
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
+    literal_name = default_literal_type(symbol)
+    if literal_name is not None:
+        return literal_name
     if (binding := scope.lookup(symbol)) is not None:
         return binding.type_name
     try:

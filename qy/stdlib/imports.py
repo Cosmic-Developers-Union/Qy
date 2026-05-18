@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from dataclasses import dataclass
 
 from qy.reader import Symbol
@@ -13,6 +14,12 @@ class ImportSpec:
     alias: Symbol
 
 
+def _decode_string_module(symbol: Symbol) -> Symbol:
+    if symbol.name.startswith('"') or symbol.name.startswith('r"'):
+        return Symbol(ast.literal_eval(symbol.name), symbol.span)
+    return symbol
+
+
 def parse_from_import(expression: tuple[object, ...]) -> tuple[Symbol, tuple[ImportSpec, ...]]:
     if len(expression) < 4:
         raise ValueError("from expects: (from module import name [as alias] ...)")
@@ -20,10 +27,9 @@ def parse_from_import(expression: tuple[object, ...]) -> tuple[Symbol, tuple[Imp
     head, module, import_keyword, *items = expression
     if head != Symbol("from"):
         raise ValueError(f"import form must start with 'from', got {head!r}")
-    if isinstance(module, str):
-        module = Symbol(module)
-    elif not isinstance(module, Symbol):
+    if not isinstance(module, Symbol):
         raise ValueError(f"module name must be a symbol or string path, got {module!r}")
+    module = _decode_string_module(module)
     if import_keyword != Symbol("import"):
         raise ValueError("from expects the keyword 'import'")
     if not items:

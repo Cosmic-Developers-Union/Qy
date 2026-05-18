@@ -437,3 +437,102 @@ def test_lir_peephole_load_t_compiles_to_bytecode():
     # LOAD_T should map to LOAD_HOST with QY_T
     assert main.instructions[0].opcode == "LOAD_HOST"
     assert main.instructions[0].operands[1] is QY_T
+
+
+def test_verify_lir_catches_missing_terminator():
+    """Verifier reports error when function does not end with a terminator."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("no_return"),
+                (),
+                1,
+                (LIRInstruction("LOAD_HOST", (0, 42)),),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert len(errors) >= 1
+    assert any("does not end with a terminator" in d.message for d in errors)
+
+
+def test_verify_lir_catches_unreachable_after_terminator():
+    """Verifier warns about instructions after a terminator."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("dead_code"),
+                (),
+                1,
+                (
+                    LIRInstruction("LOAD_HOST", (0, 1)),
+                    LIRInstruction("RETURN", (0,)),
+                    LIRInstruction("LOAD_HOST", (0, 2)),  # unreachable
+                ),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    warnings = [d for d in diagnostics if d.severity == "warning"]
+    assert any("unreachable instruction" in d.message for d in warnings)
+
+
+def test_verify_lir_accepts_terminators():
+    """Verifier accepts RETURN, TAIL_CALL, and RAISE_EFFECT as terminators."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    # RETURN
+    p1 = LIRProgram(
+        (LIRFunction(Symbol("f1"), (), 1, (LIRInstruction("RETURN", (0,)),)),),
+        0,
+    )
+    assert not any(d.severity == "error" for d in verify_lir(p1))
+
+    # TAIL_CALL
+    p2 = LIRProgram(
+        (LIRFunction(Symbol("f2"), (), 1, (LIRInstruction("TAIL_CALL", (0, ())),)),),
+        0,
+    )
+    assert not any(d.severity == "error" for d in verify_lir(p2))
+
+
+def test_verify_lir_branch_nil_target_checked():
+    """Verifier checks BRANCH_NIL jump targets."""
+    from qy.lir import LIRFunction
+    from qy.lir import LIRInstruction
+    from qy.lir import LIRProgram
+    from qy.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("bad_branch_nil"),
+                (),
+                1,
+                (
+                    LIRInstruction("BRANCH_NIL", (0, 99)),  # out of range
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        0,
+    )
+    diagnostics = verify_lir(program)
+    errors = [d for d in diagnostics if d.severity == "error"]
+    assert any("jump to out-of-range target 99" in d.message for d in errors)
