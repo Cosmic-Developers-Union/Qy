@@ -177,3 +177,18 @@ llvm-examples: | $(LLVM_DIR)
 
 clean-llvm:
 	rm -rf $(LLVM_DIR) runtime/*.o runtime/libmqr.a
+
+## Dev Container
+dc-up:
+	https_proxy=http://127.0.0.1:1080 devcontainer up --remove-existing-container --workspace-folder . --log-level trace --skip-post-create
+dc-stop:
+	docker stop $$(docker ps -q --filter label=devcontainer.local_folder=$$(pwd))
+dc-rm:
+	docker rm $$(docker ps -a -q --filter label=devcontainer.local_folder=$$(pwd))
+dc-enter:
+	devcontainer exec --workspace-folder . -- zsh
+dc-reup:
+	$(MAKE) dc-stop
+	$(MAKE) dc-up
+dc-build:
+	https_proxy=http://127.0.0.1:1080 devcontainer build
