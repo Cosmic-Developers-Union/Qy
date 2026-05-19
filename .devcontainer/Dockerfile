@@ -1,66 +1,33 @@
-FROM ubuntu:24.04
+FROM node:24 AS node
+FROM oven/bun:1 AS bun
+FROM ghcr.io/astral-sh/uv:latest AS uv
+FROM mcr.microsoft.com/devcontainers/cpp:ubuntu-24.04
 
-ARG USERNAME=ubuntu
-ARG USER_UID=1000
-ARG USER_GID=${USER_UID}
+COPY --from=uv /uv /uvx /usr/local/bin/
+COPY --from=node /usr/local/ /usr/local/
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bunx /usr/local/bin/
 
-ENV DEBIAN_FRONTEND=noninteractive
-ENV LANG=en_US.UTF-8
-ENV LC_ALL=en_US.UTF-8
-ENV PATH=/home/${USERNAME}/.local/bin:${PATH}
+# use apt-cacher-ng
+RUN cat <<EOF > /etc/apt/apt.conf.d/01proxy
+Acquire::http::Proxy "http://192.168.49.12:3142";
+Acquire::https::Proxy "http://192.168.49.12:3142";
+EOF
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+     apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    curl \
+    wget \
+    unzip \
+    ninja-build \
+    llvm clang lld
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-COPY --from=oven/bun:1 /usr/local/bin/bun /usr/local/bin/bun
-
-#RUN set -eux; \
-#    apt-get update; \
-#    apt-get install -y --no-install-recommends \
-#        bash-completion \
-#        binutils \
-#        build-essential \
-#        ca-certificates \
-#        clang \
-#        clangd \
-#        clang-format \
-#        clang-tidy \
-#        cmake \
-#        curl \
-#        gdb \
-#        git \
-#        gnupg \
-#        lcov \
-#        lld \
-#        lldb \
-#        llvm \
-#        llvm-dev \
-#        llvm-runtime \
-#        locales \
-#        make \
-#        ninja-build \
-#        pkg-config \
-#        python-is-python3 \
-#        python3 \
-#        python3-dev \
-#        python3-pip \
-#        python3-venv \
-#        sudo \
-#        unzip \
-#        xz-utils \
-#        zip \
-#        zsh; \
-#    if ! getent group "${USERNAME}" >/dev/null; then \
-#        groupadd --gid "${USER_GID}" "${USERNAME}"; \
-#    fi; \
-#    if ! id -u "${USERNAME}" >/dev/null 2>&1; then \
-#        useradd --uid "${USER_UID}" --gid "${USERNAME}" --create-home --shell /usr/bin/zsh "${USERNAME}"; \
-#    fi; \
-#    usermod --shell /usr/bin/zsh "${USERNAME}"; \
-#    echo "${USERNAME} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${USERNAME}"; \
-#    chmod 0440 "/etc/sudoers.d/${USERNAME}"; \
-#    locale-gen en_US.UTF-8; \
-#    ln -sf /usr/local/bin/bun /usr/local/bin/bunx; \
-#    chown -R "${USERNAME}:${USERNAME}" "/home/${USERNAME}"; \
-#    apt-get clean; \
-#    rm -rf /var/lib/apt/lists/*
-
-USER ${USERNAME}
+# RUN npm install -g bun --registry=http://192.168.49.12:4873 \
+RUN cat <<EOF > $HOME/.bunfig.toml
+[install]
+registry = "http://192.168.49.12:4873"
+EOF
+RUN --mount=type=cache,target=$HOME/.bun,sharing=locked \
+  bun add -g @anthropic-ai/claude-code
