@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING
 from typing import Literal
 from typing import cast
 
+from qy.core.syntax import car
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.errors import EvaluationError as QyResolutionError
 from qy.literals import default_literal_type
@@ -65,6 +70,20 @@ def _tuple_like(original: tuple[object, ...], values: list[object]) -> tuple[obj
     return tuple(values)
 
 
+def _chain_form_to_tuple(value: object) -> tuple[object, ...]:
+    """Recursively convert Chain to tuple for hygiene processing."""
+    if is_chain(value):
+        return tuple(_chain_form_to_tuple(item) for item in chain_to_list(value))
+    return value
+
+
+def _tuple_to_chain_form(value: object) -> object:
+    """Recursively convert tuple back to Chain after hygiene processing."""
+    if isinstance(value, tuple):
+        return list_to_chain([_tuple_to_chain_form(item) for item in value])
+    return value
+
+
 def apply_hygiene(
     value: object,
     macro: MacroDefinition,
@@ -96,6 +115,9 @@ def _collect_form_ids(value: object, result: set[int]) -> None:
         return
     if isinstance(value, tuple):
         for item in value:
+            _collect_form_ids(item, result)
+    elif is_chain(value):
+        for item in chain_to_list(value):
             _collect_form_ids(item, result)
 
 
@@ -139,6 +161,22 @@ def _rewrite_hygienic_form(
                     for item in value
                 ],
             )
+        if is_chain(value):
+            return list_to_chain(
+                [
+                    _rewrite_hygienic_form(
+                        item,
+                        macro,
+                        context,
+                        call_site_ids,
+                        renamed_locals,
+                        renames,
+                        rename_seen,
+                        captured=True,
+                    )
+                    for item in chain_to_list(value)
+                ]
+            )
         return value
     if isinstance(value, Symbol):
         if value.name in renamed_locals:
@@ -156,6 +194,111 @@ def _rewrite_hygienic_form(
             "definition-site",
         )
         return Symbol(alias.name, value.span)
+
+    # Handle Chain forms
+    if is_chain(value):
+        if is_nil(value):
+            return value
+        operator = car(value)
+
+        # Special forms that should not be rewritten
+        if operator == Symbol("quote"):
+            return value
+        if operator in {Symbol("quasiquote"), Symbol("unquote"), Symbol("unquote-splicing")}:
+            return value
+
+        # Convert to list for processing
+        items = chain_to_list(value)
+
+        # Handle special forms that need custom rewriting
+        # Convert Chain to tuple, process, then convert back
+        if operator == Symbol("define") and len(items) >= 3:
+            # Convert bindings to tuple if they are Chain
+            as_tuple = _chain_form_to_tuple(value)
+            rewritten = _rewrite_hygienic_define(
+                as_tuple,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+            )
+            return _tuple_to_chain_form(rewritten)
+
+        if operator == Symbol("let") and len(items) >= 2:
+            as_tuple = _chain_form_to_tuple(value)
+            rewritten = _rewrite_hygienic_let(
+                as_tuple,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+            )
+            return _tuple_to_chain_form(rewritten)
+
+        if operator == Symbol("lambda") and len(items) >= 2:
+            as_tuple = _chain_form_to_tuple(value)
+            rewritten = _rewrite_hygienic_callable(
+                as_tuple,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+                params_index=1,
+                body_start=2,
+            )
+            return _tuple_to_chain_form(rewritten)
+
+        if operator == Symbol("defun") and len(items) >= 3:
+            as_tuple = _chain_form_to_tuple(value)
+            rewritten = _rewrite_hygienic_callable(
+                as_tuple,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+                params_index=2,
+                body_start=3,
+            )
+            return _tuple_to_chain_form(rewritten)
+
+        if operator == Symbol("handle") and len(items) == 3:
+            as_tuple = _chain_form_to_tuple(value)
+            rewritten = _rewrite_hygienic_handle(
+                as_tuple,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+            )
+            return _tuple_to_chain_form(rewritten)
+
+        # Default: rewrite all items
+        return list_to_chain(
+            [
+                _rewrite_hygienic_form(
+                    item,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                    captured=False,
+                )
+                for item in items
+            ]
+        )
+
     if not isinstance(value, tuple):
         return value
     if not value:

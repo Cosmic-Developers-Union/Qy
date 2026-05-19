@@ -5,17 +5,20 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.core.syntax import car as chain_car
+from qy.core.syntax import cdr as chain_cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import cons as chain_cons
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.operators import PureOperator
 from qy.reader import Symbol
 from qy.reader import get_span
-from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import QyCons
-from qy.values import list_to_qy_cons
-from qy.values import qy_cons_to_tuple
 
 
 def _ensure_tuple(value: object) -> tuple[object, ...]:
@@ -51,13 +54,13 @@ def _ensure_index(value: object) -> int:
 
 
 def _is_qy_chain(value: object) -> bool:
-    return value is QY_EMPTY_LIST or isinstance(value, QyCons)
+    return is_nil(value) or is_chain(value)
 
 
 def _proper_chain_items(value: object, context: str) -> tuple[object, ...]:
     try:
-        return qy_cons_to_tuple(value)
-    except TypeError as e:
+        return tuple(chain_to_list(value))
+    except (TypeError, ValueError) as e:
         raise QyTypeError(f"{context} expects a proper Qy chain", cause=e) from e
 
 
@@ -78,9 +81,11 @@ def _dict_from_chain(value: object) -> dict[object, object]:
 
 
 def _dict_entry_pair(entry: object) -> tuple[object, object]:
-    if isinstance(entry, QyCons):
-        if entry.tail is not QY_EMPTY_LIST and not isinstance(entry.tail, QyCons):
-            return entry.head, entry.tail
+    if is_chain(entry):
+        tail = chain_cdr(entry)
+        if not is_nil(tail) and not is_chain(tail):
+            # Improper list: (key . value)
+            return chain_car(entry), tail
         items = _proper_chain_items(entry, "dict entry")
     elif isinstance(entry, tuple | list):
         items = tuple(entry)
@@ -100,9 +105,9 @@ def _dict_entry_pair(entry: object) -> tuple[object, object]:
 
 
 def _atom(value: object) -> object:
-    if value is QY_EMPTY_LIST:
+    if is_nil(value):
         return QY_T
-    if isinstance(value, QyCons):
+    if is_chain(value):
         return QY_NIL
     if not isinstance(value, tuple) or len(value) == 0:
         return QY_T
@@ -124,7 +129,7 @@ def _eq(left: object, right: object) -> object:
 
 
 def _reify(value: object) -> object:
-    """Convert a runtime value to a syntax datum (Symbol or SpannedTuple)."""
+    """Convert a runtime value to a syntax datum (Symbol or Chain)."""
     if value is QY_NIL:
         return Symbol("nil")
     if value is QY_T:
@@ -137,17 +142,16 @@ def _reify(value: object) -> object:
         return Symbol(str(value))
     if isinstance(value, str):
         return Symbol(value)
-    if isinstance(value, QyCons):
-        from qy.reader import SpannedTuple
-
+    if is_chain(value):
         items: list[object] = []
         node: object = value
-        while isinstance(node, QyCons):
-            items.append(_reify(node.head))
-            node = node.tail
-        if node is QY_NIL:
-            return SpannedTuple(items)
-        return SpannedTuple([*items, Symbol("."), _reify(node)])
+        while is_chain(node):
+            items.append(_reify(chain_car(node)))
+            node = chain_cdr(node)
+        if is_nil(node):
+            return list_to_chain(items)
+        # Improper list
+        return list_to_chain([*items, Symbol("."), _reify(node)])
     return Symbol(repr(value))
 
 
@@ -156,7 +160,7 @@ def _type(value: object) -> Symbol:
         return Symbol("nil")
     if value is QY_T:
         return Symbol("T")
-    if isinstance(value, QyCons):
+    if is_chain(value):
         return Symbol("chain")
     if isinstance(value, Symbol):
         return Symbol("symbol")
@@ -164,10 +168,10 @@ def _type(value: object) -> Symbol:
 
 
 def _car(value: object) -> object:
-    if value is QY_NIL:
+    if is_nil(value):
         return QY_NIL
-    if isinstance(value, QyCons):
-        return value.head
+    if is_chain(value):
+        return chain_car(value)
     raise QyTypeError(
         f"car expects a chain, got {value!r}",
         span=get_span(value),
@@ -176,10 +180,10 @@ def _car(value: object) -> object:
 
 
 def _cdr(value: object) -> object:
-    if value is QY_NIL:
+    if is_nil(value):
         return QY_NIL
-    if isinstance(value, QyCons):
-        return value.tail
+    if is_chain(value):
+        return chain_cdr(value)
     raise QyTypeError(
         f"cdr expects a chain, got {value!r}",
         span=get_span(value),
@@ -188,17 +192,17 @@ def _cdr(value: object) -> object:
 
 
 def _cons(head: object, tail: object) -> object:
-    return QyCons(head, tail)
+    return chain_cons(head, tail)
 
 
 def _append(left: object, right: object) -> object:
     left_items = _append_items(left)
     right_items = _append_items(right)
     combined = left_items + right_items
-    if isinstance(left, QyCons) or left is QY_EMPTY_LIST:
-        return list_to_qy_cons(combined)
-    if isinstance(right, QyCons) or right is QY_EMPTY_LIST:
-        return list_to_qy_cons(combined)
+    if is_chain(left) or is_nil(left):
+        return list_to_chain(combined)
+    if is_chain(right) or is_nil(right):
+        return list_to_chain(combined)
     return combined
 
 
@@ -207,9 +211,9 @@ def _append_items(value: object) -> tuple[object, ...]:
         return value
     if isinstance(value, list):
         return tuple(value)
-    if value is QY_EMPTY_LIST:
+    if is_nil(value):
         return ()
-    if isinstance(value, QyCons):
+    if is_chain(value):
         return _proper_chain_items(value, "append")
     raise QyTypeError(
         f"append expects tuple/list/chain inputs, got {value!r}",
@@ -219,10 +223,10 @@ def _append_items(value: object) -> tuple[object, ...]:
 
 
 def _chain(value: object) -> object:
-    if value is QY_NIL or isinstance(value, QyCons):
+    if is_nil(value) or is_chain(value):
         return value
     if isinstance(value, list | tuple):
-        return list_to_qy_cons(value)
+        return list_to_chain(value)
     raise QyTypeError(
         f"chain expects a Python list or tuple, got {value!r}",
         span=get_span(value),
@@ -303,12 +307,12 @@ def _set_predicate(value: object) -> object:
 def _len(value: object) -> int:
     if isinstance(value, Symbol):
         return len(value.name)
-    if value is QY_EMPTY_LIST:
+    if is_nil(value):
         return 0
-    if isinstance(value, QyCons):
+    if is_chain(value):
         try:
-            return len(qy_cons_to_tuple(value))
-        except TypeError as e:
+            return len(chain_to_list(value))
+        except (TypeError, ValueError) as e:
             raise QyTypeError("len expects a proper Qy chain", cause=e) from e
     if isinstance(value, str | tuple | list | dict | set):
         return len(value)
@@ -338,13 +342,13 @@ def _get(collection: object, key: object, *default_values: object) -> object:
             return collection[index]
         except IndexError:
             return default
-    if collection is QY_EMPTY_LIST:
+    if is_nil(collection):
         return default
-    if isinstance(collection, QyCons):
+    if is_chain(collection):
         index = _ensure_index(key)
         try:
-            return qy_cons_to_tuple(collection)[index]
-        except (IndexError, TypeError):
+            return chain_to_list(collection)[index]
+        except (IndexError, TypeError, ValueError):
             return default
     raise QyTypeError(
         f"get expects a chain, tuple, list, or dict, got {collection!r}",
@@ -373,13 +377,13 @@ def _has(*args: object) -> object:
     if isinstance(collection, tuple | list):
         index = _ensure_index(key)
         return QY_T if -len(collection) <= index < len(collection) else QY_NIL
-    if collection is QY_EMPTY_LIST:
+    if is_nil(collection):
         return QY_NIL
-    if isinstance(collection, QyCons):
+    if is_chain(collection):
         index = _ensure_index(key)
         try:
-            length = len(qy_cons_to_tuple(collection))
-        except TypeError:
+            length = len(chain_to_list(collection))
+        except (TypeError, ValueError):
             return QY_NIL
         return QY_T if -length <= index < length else QY_NIL
     raise QyTypeError(

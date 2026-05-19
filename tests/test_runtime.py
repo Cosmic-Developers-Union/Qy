@@ -73,13 +73,18 @@ def test_qy_instance_exposes_pipeline_helpers():
 
     assert expansion.ok
     expanded = expansion.forms[1]
-    assert isinstance(expanded, tuple)
-    assert isinstance(expanded[0], Symbol)
-    assert expanded[1:] == (S("21"), S("21"))
+    from qy.core.syntax import Chain
+    from qy.core.syntax import car
+    from qy.core.syntax import cdr
+    from qy.core.syntax import chain_to_list
+    assert isinstance(expanded, Chain)
+    assert isinstance(car(expanded), Symbol)
+    rest = chain_to_list(cdr(expanded))
+    assert rest == [S("21"), S("21")]
     assert len(expansion.traces) == 1
     assert expansion.traces[0].renames[0].original == S("+")
     assert expansion.traces[0].renames[0].kind == "definition-site"
-    assert expanded[0].name == expansion.traces[0].renames[0].rewritten.name
+    assert car(expanded).name == expansion.traces[0].renames[0].rewritten.name
 
     program = qy.lower(expansion.forms)
     mir = qy.lower_mir(program)

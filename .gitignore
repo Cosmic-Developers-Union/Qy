@@ -358,4 +358,7 @@ todo.review.md
 report.md
 
 .claude/worktrees
+.claude/*.local.json
+
 bunfig.toml
+reports

@@ -1,3 +1,4 @@
+from qy.core.syntax import is_chain
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
@@ -50,9 +51,10 @@ def test_quote_lowers_to_raw_ast_boundary():
     assert program.ok
     quote = program.body[0]
     assert isinstance(quote, QuoteExpr)
-    assert isinstance(quote.form, tuple)
-    assert isinstance(quote.form[0], Symbol)
-    assert quote.form[0].name == "+"
+    assert is_chain(quote.form)
+    items = list(quote.form)
+    assert isinstance(items[0], Symbol)
+    assert items[0].name == "+"
 
 
 def test_tail_position_is_marked_inside_function_body():

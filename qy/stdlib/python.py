@@ -207,11 +207,47 @@ async def _await_py_result(value: object) -> object:
     return value
 
 
+class _ChainWrapperMeta(type):
+    """Metaclass to make _ChainWrapper report its name as 'QyChain'."""
+
+    @property
+    def __name__(cls) -> str:
+        return "QyChain"
+
+
+class _ChainWrapper(metaclass=_ChainWrapperMeta):
+    """Wrapper for AST Chain that makes it iterable in Python while preserving type."""
+
+    def __init__(self, chain: object, env: Environment) -> None:
+        from qy.core.syntax import chain_to_list
+
+        self.chain = chain
+        self._items = chain_to_list(chain)
+        self._env = env
+
+    def __iter__(self):
+
+        # Convert symbols to Python values when iterating
+        for item in self._items:
+            yield _qy_to_python(item, self._env)
+
+    def __repr__(self) -> str:
+        return f"QyChain({self.chain!r})"
+
+
 def _qy_to_python(value: object, env: Environment) -> object:
+    from qy.core.syntax import Chain
+    from qy.core.syntax import is_chain
+
     if isinstance(value, HostObjectRef):
         return value.value
     if value is QY_NIL or value is QY_T:
         return value
+    # Handle AST Chain (from quote) - keep as Chain but convert elements
+    if isinstance(value, Chain) or is_chain(value):
+        # Return a wrapper that makes Chain iterable in Python
+        return _ChainWrapper(value, env)
+    # Handle runtime QyCons
     if isinstance(value, QyCons):
         return map_qy_cons(value, lambda item: _qy_to_python(item, env))
     if _is_qy_callable(value):

@@ -3,6 +3,12 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
@@ -12,14 +18,58 @@ from qy.operators import ControlOperator
 from qy.operators import MetaOperator
 from qy.operators import PureOperator
 from qy.operators import ScopeOperator
-from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.runtime_values import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import list_to_qy_cons
+
+
+def _to_list(form: object) -> list[object]:
+    """将 Chain 或 tuple 转换为 Python list。."""
+    if is_chain(form):
+        return chain_to_list(form)
+    if isinstance(form, tuple):
+        return list(form)
+    return []
+
+
+def _get_args(form: object) -> list[object]:
+    """获取 form 的参数（除第一个元素外的所有元素）。."""
+    if is_chain(form):
+        if is_nil(form):
+            return []
+        rest = cdr(form)
+        if is_nil(rest):
+            return []
+        if is_chain(rest):
+            return chain_to_list(rest)
+        # improper list
+        return [rest]
+    if isinstance(form, tuple):
+        return list(form[1:])
+    return []
+
+
+def _form_length(form: object) -> int:
+    """获取 form 的长度。."""
+    if is_chain(form):
+        if is_nil(form):
+            return 0
+        try:
+            return len(form)
+        except ValueError:
+            # improper list
+            count = 0
+            current = form
+            while is_chain(current):
+                count += 1
+                current = cdr(current)
+            return count + 1
+    if isinstance(form, tuple):
+        return len(form)
+    return 0
 
 
 def _truthy(value: object) -> bool:
@@ -56,9 +106,12 @@ def _complex_truthy(value: object) -> object:
 
 
 def _ensure_parameter_list(value: object, context: str) -> tuple[Symbol, ...]:
+    if is_chain(value):
+        params = chain_to_list(value)
+        return tuple(_ensure_symbol_parameter(param, context) for param in params)
     if not isinstance(value, tuple):
         raise QyTypeError(
-            f"{context} parameters must be a tuple of symbols, got {value!r}",
+            f"{context} parameters must be a list of symbols, got {value!r}",
             span=get_span(value),
         )
     return tuple(_ensure_symbol_parameter(param, context) for param in value)
@@ -73,24 +126,33 @@ def _ensure_symbol_parameter(value: object, context: str) -> Symbol:
     return value
 
 
-def _quote(expression: tuple[object, ...], env: Environment) -> object:
+def _quote(expression: object, env: Environment) -> object:
     del env
-    args = expression[1:]
+    args = _get_args(expression)
     if len(args) != 1:
         raise QyArityError("quote expects exactly one argument", span=get_span(expression))
     return _quote_data(args[0])
 
 
 def _quote_data(value: object) -> object:
-    if isinstance(value, DottedTuple):
-        return list_to_qy_cons((_quote_data(item) for item in value), _quote_data(value.tail))
+    if is_chain(value):
+        result_items = []
+        current = value
+        while is_chain(current):
+            result_items.append(_quote_data(car(current)))
+            current = cdr(current)
+
+        if not is_nil(current):
+            # Improper list
+            return list_to_chain(result_items, tail=_quote_data(current))
+        return list_to_chain(result_items)
     if isinstance(value, tuple):
-        return list_to_qy_cons(_quote_data(item) for item in value)
+        return list_to_chain(_quote_data(item) for item in value)
     return value
 
 
-async def _eval(expression: tuple[object, ...], env: Environment) -> object:
-    args = expression[1:]
+async def _eval(expression: object, env: Environment) -> object:
+    args = _get_args(expression)
     if len(args) != 1:
         raise QyArityError(
             f"eval expects exactly one argument, got {len(args)}",
@@ -101,52 +163,79 @@ async def _eval(expression: tuple[object, ...], env: Environment) -> object:
     return await evaluate_async(form, env)
 
 
-def _macro(expression: tuple[object, ...], env: Environment) -> object:
-    if len(expression) < 4:
+def _macro(expression: object, env: Environment) -> object:
+    length = _form_length(expression)
+    if length < 4:
         raise QyArityError(
             "macro expects a name, parameter list, and body", span=get_span(expression)
         )
 
-    _, name, params, *body = expression
+    args = _get_args(expression)
+    name = args[0]
+    params = args[1]
+    # body = args[2:]  # not used
     ensure_symbol(name, "macro name")
     _ensure_parameter_list(params, "macro")
-    del body, env
+    del env
     return None
 
 
-async def _cond(args: tuple[object, ...], env: Environment) -> object:
-    for clause in args:
-        if not isinstance(clause, tuple) or len(clause) != 2:
+async def _cond(args: object, env: Environment) -> object:
+    clauses = _to_list(args)
+    for clause in clauses:
+        clause_list = None
+        if is_chain(clause):
+            try:
+                clause_list = chain_to_list(clause)
+            except ValueError:
+                pass
+        elif isinstance(clause, tuple):
+            clause_list = list(clause)
+
+        if clause_list is None or len(clause_list) != 2:
             raise QyTypeError(
                 f"cond clause must be a pair, got {clause!r}",
                 span=get_span(clause),
                 metadata={"clause": clause},
             )
-        condition, result = clause
+        condition, result = clause_list
         if _truthy(await evaluate_async(condition, env)):
             return await evaluate_async(result, env)
     return QY_NIL
 
 
-async def _let(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) < 2:
+async def _let(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) < 2:
         raise QyArityError("let expects bindings and at least one body expression")
 
-    bindings, *body = args
-    if not isinstance(bindings, tuple):
+    bindings = args_list[0]
+    body = args_list[1:]
+
+    if not (is_chain(bindings) or isinstance(bindings, tuple)):
         raise QyTypeError(
             f"let bindings must be a list, got {bindings!r}",
             span=get_span(bindings),
         )
 
+    bindings_list = _to_list(bindings)
     local_env = env.child()
-    for binding in bindings:
-        if not isinstance(binding, tuple) or len(binding) != 2:
+    for binding in bindings_list:
+        binding_list = None
+        if is_chain(binding):
+            try:
+                binding_list = chain_to_list(binding)
+            except ValueError:
+                pass
+        elif isinstance(binding, tuple):
+            binding_list = list(binding)
+
+        if binding_list is None or len(binding_list) != 2:
             raise QyTypeError(
                 f"let binding must be a pair, got {binding!r}",
                 span=get_span(binding),
             )
-        name, expression = binding
+        name, expression = binding_list
         local_env.define(
             ensure_symbol(name, "let binding name"),
             await evaluate_async(expression, local_env),
@@ -155,40 +244,49 @@ async def _let(args: tuple[object, ...], env: Environment) -> object:
     return await evaluate_body_async(tuple(body), local_env)
 
 
-def _lambda(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) < 2:
+def _lambda(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) < 2:
         raise QyArityError("lambda expects a parameter list and body")
 
-    params, *body = args
+    params = args_list[0]
+    body = args_list[1:]
     param_symbols = _ensure_parameter_list(params, "lambda")
     return UserFunction(Symbol("<lambda>"), param_symbols, tuple(body), env)
 
 
-async def _define(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) != 2:
+async def _define(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) != 2:
         raise QyArityError("define expects a name and a value")
-    name_form, value_form = args
+    name_form, value_form = args_list
     name = ensure_symbol(name_form, "define name")
     value = await evaluate_async(value_form, env)
     return env.define_once(name, value)
 
 
-def _defun(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) < 3:
+def _defun(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) < 3:
         raise QyArityError("defun expects a name, parameter list, and body")
 
-    name, params, *body = args
+    name = args_list[0]
+    params = args_list[1]
+    body = args_list[2:]
     name = ensure_symbol(name, "defun name")
     param_symbols = _ensure_parameter_list(params, "defun")
     function = UserFunction(name, param_symbols, tuple(body), env)
     return env.define(name, function)
 
 
-def _component(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) < 3:
+def _component(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) < 3:
         raise QyArityError("component expects a name, parameter list, and body")
 
-    name, params, *body = args
+    name = args_list[0]
+    params = args_list[1]
+    body = args_list[2:]
     name = ensure_symbol(name, "component name")
     param_symbols = _ensure_parameter_list(params, "component")
     component = UserFunction(name, param_symbols, tuple(body), env)

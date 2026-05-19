@@ -6,6 +6,8 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
 from qy.reader import Symbol
 
 
@@ -21,11 +23,21 @@ def _decode_string_module(symbol: Symbol) -> Symbol:
     return symbol
 
 
-def parse_from_import(expression: tuple[object, ...]) -> tuple[Symbol, tuple[ImportSpec, ...]]:
-    if len(expression) < 4:
+def parse_from_import(expression: object) -> tuple[Symbol, tuple[ImportSpec, ...]]:
+    # 转换为 list 以统一处理
+    if is_chain(expression):
+        if is_nil(expression):
+            raise ValueError("from expects: (from module import name [as alias] ...)")
+        items = list(expression)
+    elif isinstance(expression, tuple):
+        items = list(expression)
+    else:
         raise ValueError("from expects: (from module import name [as alias] ...)")
 
-    head, module, import_keyword, *items = expression
+    if len(items) < 4:
+        raise ValueError("from expects: (from module import name [as alias] ...)")
+
+    head, module, import_keyword, *rest_items = items
     if head != Symbol("from"):
         raise ValueError(f"import form must start with 'from', got {head!r}")
     if not isinstance(module, Symbol):
@@ -33,19 +45,25 @@ def parse_from_import(expression: tuple[object, ...]) -> tuple[Symbol, tuple[Imp
     module = _decode_string_module(module)
     if import_keyword != Symbol("import"):
         raise ValueError("from expects the keyword 'import'")
-    if not items:
+    if not rest_items:
         raise ValueError("from import expects at least one imported name")
 
-    return module, _parse_import_items(tuple(items))
+    return module, _parse_import_items(rest_items)
 
 
-def _parse_import_items(items: tuple[object, ...]) -> tuple[ImportSpec, ...]:
+def _parse_import_items(items: list[object]) -> tuple[ImportSpec, ...]:
     specs: list[ImportSpec] = []
     index = 0
     while index < len(items):
         item = items[index]
+        # 处理嵌套的 Chain 或 tuple
+        if is_chain(item):
+            if not is_nil(item):
+                specs.extend(_parse_import_items(list(item)))
+            index += 1
+            continue
         if isinstance(item, tuple):
-            specs.extend(_parse_import_items(item))
+            specs.extend(_parse_import_items(list(item)))
             index += 1
             continue
         if not isinstance(item, Symbol):

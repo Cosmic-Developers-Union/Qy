@@ -11,6 +11,14 @@ from typing import cast
 from qy.async_runtime import run_async
 from qy.compile_time import compile_time_binding_names
 from qy.compile_time import compile_time_environment
+from qy.core.syntax import Chain
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import cons
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
+from qy.core.syntax import nil
 from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -56,6 +64,102 @@ MacroEffectPolicy = Literal["deny", "allow"]
 _MAX_MACRO_EXPANSION_DEPTH = 100
 _MACRO_NAMESPACE_CACHE_KEY = ("qy", "macro_namespace")
 _MODULE_MACRO_NAMESPACE_CACHE_KEY = ("qy", "module_macro_namespace")
+
+
+# ============================================================================
+# Chain/Tuple 统一操作辅助函数
+# ============================================================================
+
+
+def _is_list_form(form: object) -> bool:
+    """检查 form 是否为 list 形式（Chain 或 tuple）。."""
+    if is_chain(form):
+        return not is_nil(form)
+    return isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0
+
+
+def _get_operator(form: object) -> object | None:
+    """获取 list form 的 operator（第一个元素）。."""
+    if is_chain(form) and not is_nil(form):
+        return car(form)
+    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
+        return form[0]
+    return None
+
+
+def _get_args(form: object) -> tuple[object, ...]:
+    """获取 list form 的参数（除第一个元素外的所有元素）。."""
+    if is_chain(form) and not is_nil(form):
+        rest = cdr(form)
+        if is_nil(rest):
+            return ()
+        if is_chain(rest):
+            return tuple(rest)
+        # improper list
+        return (rest,)
+    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
+        return form[1:]
+    return ()
+
+
+def _form_length(form: object) -> int:
+    """获取 list form 的长度。."""
+    if is_chain(form):
+        if is_nil(form):
+            return 0
+        try:
+            return len(form)
+        except ValueError:
+            # improper list
+            count = 0
+            current = form
+            while is_chain(current):
+                count += 1
+                current = cdr(current)
+            return count + 1
+    if isinstance(form, tuple):
+        return len(form)
+    return 0
+
+
+def _form_to_list(form: object) -> list[object]:
+    """将 list form 转换为 Python list。."""
+    if is_chain(form):
+        if is_nil(form):
+            return []
+        try:
+            return list(form)
+        except ValueError:
+            # improper list - 展开所有元素
+            result = []
+            current = form
+            while is_chain(current):
+                result.append(car(current))
+                current = cdr(current)
+            if not is_nil(current):
+                result.append(current)
+            return result
+    if isinstance(form, tuple):
+        return list(form)
+    return []
+
+
+def _list_to_form(items: list[object], original: object) -> object:
+    """将 Python list 转换回 form，保持原始类型和 span。."""
+    span = get_span(original)
+    if is_chain(original) or (not isinstance(original, tuple)):
+        # 如果原始是 Chain 或非 tuple，返回 Chain
+        return list_to_chain(items, span=span)
+    # 保持 tuple 类型
+    return _tuple_like(cast(tuple, original), items)
+
+
+def _slice_form(form: object, start: int, end: int | None = None) -> list[object]:
+    """切片 list form，返回 Python list。."""
+    items = _form_to_list(form)
+    if end is None:
+        return items[start:]
+    return items[start:end]
 
 
 @dataclass(frozen=True, slots=True)
@@ -257,11 +361,14 @@ async def _macroexpand_form(
             f"macro expansion exceeded {context.options.max_depth} nested expansions",
             span=get_span(form),
         )
-    if not isinstance(form, tuple) or isinstance(form, DottedTuple) or not form:
+
+    # 不是 list form，直接返回
+    if not _is_list_form(form):
         return form
 
-    operator = form[0]
-    args = tuple(form[1:])
+    operator = _get_operator(form)
+    args = _get_args(form)
+
     if operator == Symbol("quote"):
         return form
     if operator == Symbol("quasiquote"):
@@ -316,89 +423,123 @@ async def _macroexpand_form(
             finally:
                 context.active_expansions.pop()
 
-    return _tuple_like(
-        form,
-        [await _macroexpand_form(item, context, depth=depth) for item in form],
-    )
+    # 递归展开所有子元素
+    items = _form_to_list(form)
+    expanded_items = [await _macroexpand_form(item, context, depth=depth) for item in items]
+    return _list_to_form(expanded_items, form)
 
 
 async def _macroexpand_body_form(
-    form: tuple[object, ...],
+    form: object,
     context: MacroExpansionContext,
     *,
     depth: int,
     body_start: int,
-) -> tuple[object, ...]:
-    if len(form) <= body_start:
-        return _tuple_like(
-            form,
-            [await _macroexpand_form(item, context, depth=depth) for item in form],
-        )
-    prefix = [await _macroexpand_form(item, context, depth=depth) for item in form[:body_start]]
+) -> object:
+    form_len = _form_length(form)
+    if form_len <= body_start:
+        items = _form_to_list(form)
+        expanded_items = [await _macroexpand_form(item, context, depth=depth) for item in items]
+        return _list_to_form(expanded_items, form)
+
+    prefix_items = _slice_form(form, 0, body_start)
+    prefix = [await _macroexpand_form(item, context, depth=depth) for item in prefix_items]
+
     body_context = context.child_scope()
+    body_items = _slice_form(form, body_start)
     body = []
-    for item in form[body_start:]:
+    for item in body_items:
         body.append(await _macroexpand_form(item, body_context, depth=depth))
     context.sync_from(body_context)
-    return _tuple_like(form, [*prefix, *body])
+    return _list_to_form([*prefix, *body], form)
 
 
 async def _macroexpand_module_form(
-    form: tuple[object, ...],
+    form: object,
     context: MacroExpansionContext,
     *,
     depth: int,
-) -> tuple[object, ...]:
-    if len(form) <= 2:
-        return _tuple_like(
-            form,
-            [await _macroexpand_form(item, context, depth=depth) for item in form],
-        )
+) -> object:
+    form_len = _form_length(form)
+    if form_len <= 2:
+        items = _form_to_list(form)
+        expanded_items = [await _macroexpand_form(item, context, depth=depth) for item in items]
+        return _list_to_form(expanded_items, form)
 
-    prefix = [await _macroexpand_form(item, context, depth=depth) for item in form[:2]]
+    prefix_items = _slice_form(form, 0, 2)
+    prefix = [await _macroexpand_form(item, context, depth=depth) for item in prefix_items]
 
     # Build a module-local env pre-populated with compile-time placeholder bindings for
     # defun/defeffect forms in the module body.  This lets macros defined later
     # in the same module body capture those symbols in their definition-site closure.
     module_env = context.env.child()
-    _prepopulate_module_locals(form[2:], module_env)
+    body_items = _slice_form(form, 2)
+    _prepopulate_module_locals(body_items, module_env)
     body_context = context.child_scope_with_env(module_env)
 
     body: list[object] = []
-    for item in form[2:]:
+    for item in body_items:
         body.append(await _macroexpand_form(item, body_context, depth=depth))
 
     context.sync_from(body_context)
     module_name = prefix[1]
     if isinstance(module_name, Symbol):
-        exported_macros = _exported_module_macros(form[2:], body_context)
+        exported_macros = _exported_module_macros(body_items, body_context)
         context.define_module_macros(module_name, exported_macros)
-    return _tuple_like(form, [*prefix, *body])
+    return _list_to_form([*prefix, *body], form)
 
 
-def _prepopulate_module_locals(body: tuple[object, ...], env: Environment) -> None:
+def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
     from qy.runtime_values import EffectDefinition
     from qy.runtime_values import UserFunction
 
     for item in body:
-        if not isinstance(item, tuple) or not item:
+        if not _is_list_form(item):
             continue
-        operator = item[0]
-        if operator == Symbol("defun") and len(item) >= 3 and isinstance(item[1], Symbol):
-            name = item[1]
-            params_form = item[2] if len(item) > 2 else ()
-            params = tuple(
-                p
-                for p in (params_form if isinstance(params_form, tuple) else ())
-                if isinstance(p, Symbol)
-            )
-            body_forms = tuple(item[3:])
-            env.define(name, UserFunction(name, params, body_forms, env))
-        elif operator == Symbol("defeffect") and len(item) >= 2 and isinstance(item[1], Symbol):
-            env.define(item[1], EffectDefinition(item[1], resumable=True))
+        operator = _get_operator(item)
+        if operator == Symbol("defun"):
+            items = _form_to_list(item)
+            if len(items) >= 3 and isinstance(items[1], Symbol):
+                name = items[1]
+                params_form = items[2] if len(items) > 2 else ()
+                # 提取参数列表
+                if _is_list_form(params_form) or is_nil(params_form):
+                    params_items = _form_to_list(params_form) if _is_list_form(params_form) else []
+                    params = tuple(p for p in params_items if isinstance(p, Symbol))
+                else:
+                    params = ()
+                body_forms = tuple(items[3:])
+                env.define(name, UserFunction(name, params, body_forms, env))
+        elif operator == Symbol("defeffect"):
+            items = _form_to_list(item)
+            if len(items) >= 2 and isinstance(items[1], Symbol):
+                env.define(items[1], EffectDefinition(items[1], resumable=True))
 
 
 def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
+    # 处理 Chain
+    if is_chain(form) and not is_nil(form):
+        op = car(form)
+        if op == Symbol("unquote"):
+            if depth == 0:
+                rest = cdr(form)
+                if is_chain(rest) and not is_nil(rest) and is_nil(cdr(rest)):
+                    return car(rest)
+                return form
+            rest = cdr(form)
+            if is_chain(rest) and not is_nil(rest):
+                inner = _expand_quasiquote(car(rest), depth=depth - 1)
+                return list_to_chain([Symbol("list"), Symbol("unquote"), inner], span=get_span(form))
+            return form
+        if op == Symbol("quasiquote"):
+            rest = cdr(form)
+            if is_chain(rest) and not is_nil(rest):
+                inner = _expand_quasiquote(car(rest), depth=depth + 1)
+                return list_to_chain([Symbol("list"), Symbol("quasiquote"), inner], span=get_span(form))
+            return form
+        return _expand_quasiquote_chain(form, depth=depth)
+
+    # 处理 tuple（兼容旧代码）
     if isinstance(form, tuple) and not isinstance(form, DottedTuple) and form:
         op = form[0]
         if op == Symbol("unquote"):
@@ -412,6 +553,34 @@ def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
     if isinstance(form, DottedTuple):
         return (Symbol("quote"), form)
     return (Symbol("quote"), form)
+
+
+def _expand_quasiquote_chain(form: Chain, *, depth: int) -> object:
+    """展开 Chain 形式的 quasiquote。."""
+    if is_nil(form):
+        return list_to_chain([Symbol("quote"), nil], span=get_span(form))
+
+    head_form = car(form)
+    tail = cdr(form)
+
+    # 检查 unquote-splicing
+    if (
+        is_chain(head_form)
+        and not is_nil(head_form)
+        and car(head_form) == Symbol("unquote-splicing")
+        and depth == 0
+    ):
+        rest_of_head = cdr(head_form)
+        if is_chain(rest_of_head) and not is_nil(rest_of_head):
+            spliced = car(rest_of_head)
+        else:
+            spliced = head_form
+        rest = _expand_quasiquote_chain(tail, depth=depth) if is_chain(tail) else list_to_chain([Symbol("quote"), tail])
+        return list_to_chain([Symbol("append"), spliced, rest], span=get_span(form))
+
+    head = _expand_quasiquote(head_form, depth=depth)
+    rest = _expand_quasiquote_chain(tail, depth=depth) if is_chain(tail) else list_to_chain([Symbol("quote"), tail])
+    return list_to_chain([Symbol("cons"), head, rest], span=get_span(form))
 
 
 def _expand_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
@@ -465,19 +634,24 @@ async def _expand_macro(
     return apply_hygiene(_normalize_macro_result(expanded), macro, args, context)
 
 
-def _define_macro(form: tuple[object, ...], context: MacroExpansionContext) -> None:
-    if len(form) < 4:
+def _define_macro(form: object, context: MacroExpansionContext) -> None:
+    items = _form_to_list(form)
+    if len(items) < 4:
         raise QyArityError("macro expects a name, parameter list, and body", span=get_span(form))
-    _, name, params, *body = form
+    _, name, params, *body = items
     if not isinstance(name, Symbol):
         raise QyTypeError(f"macro name must be a symbol, got {name!r}", span=get_span(name))
-    if not isinstance(params, tuple):
+
+    # 处理参数列表
+    if not (_is_list_form(params) or is_nil(params)):
         raise QyTypeError(
             f"macro parameters must be a list, got {params!r}",
             span=get_span(params),
         )
+
+    param_items = _form_to_list(params) if _is_list_form(params) else []
     param_symbols = []
-    for param in params:
+    for param in param_items:
         if not isinstance(param, Symbol):
             raise QyTypeError(
                 f"macro parameter must be a symbol, got {param!r}",
@@ -508,6 +682,13 @@ def _normalize_macro_result(value: object) -> object:
         return CapturedForm(_normalize_macro_result(value.value))
     if isinstance(value, QyCons):
         return tuple(_normalize_macro_result(item) for item in qy_cons_to_tuple(value))
+    if is_chain(value):
+        # 递归规范化 Chain 的元素
+        if is_nil(value):
+            return value
+        normalized_head = _normalize_macro_result(car(value))
+        normalized_tail = _normalize_macro_result(cdr(value))
+        return cons(normalized_head, normalized_tail, span=get_span(value))
     if isinstance(value, tuple):
         return _tuple_like(value, [_normalize_macro_result(item) for item in value])
     return value
@@ -529,7 +710,7 @@ def _module_macro_namespace(env: Environment) -> dict[str, dict[Symbol, MacroDef
     return cast(dict[str, dict[Symbol, MacroDefinition]], value)
 
 
-def _import_macros_from_form(form: tuple[object, ...], context: MacroExpansionContext) -> None:
+def _import_macros_from_form(form: object, context: MacroExpansionContext) -> None:
     try:
         module_name, specs = parse_from_import(form)
     except ValueError as e:
@@ -565,7 +746,7 @@ def _resolve_module_macros(
 
 
 def _exported_module_macros(
-    body: tuple[object, ...],
+    body: list[object],
     context: MacroExpansionContext,
 ) -> dict[Symbol, MacroDefinition]:
     local_bindings = context.scope.bindings or {}
@@ -581,27 +762,28 @@ def _exported_module_macros(
     }
 
 
-def _parse_export_names(forms: tuple[object, ...]) -> tuple[Symbol, ...]:
+def _parse_export_names(forms: list[object]) -> tuple[Symbol, ...]:
     names: list[Symbol] = []
     for form in forms:
         if _is_special_form(form, "exports"):
-            assert isinstance(form, tuple)
-            names.extend(_parse_export_items(tuple(form[1:])))
+            items = _form_to_list(form)
+            if len(items) > 1:
+                names.extend(_parse_export_items(items[1:]))
     return tuple(names)
 
 
-def _parse_export_items(items: tuple[object, ...]) -> list[Symbol]:
+def _parse_export_items(items: list[object]) -> list[Symbol]:
     names: list[Symbol] = []
     for item in items:
-        if isinstance(item, tuple):
-            names.extend(_parse_export_items(item))
+        if _is_list_form(item):
+            names.extend(_parse_export_items(_form_to_list(item)))
         elif isinstance(item, Symbol):
             names.append(item)
     return names
 
 
 def _is_special_form(form: object, name: str) -> bool:
-    return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+    return _is_list_form(form) and _get_operator(form) == Symbol(name)
 
 
 def _line_of(form: object) -> int | None:

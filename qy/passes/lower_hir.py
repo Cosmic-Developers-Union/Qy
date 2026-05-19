@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from typing import cast
 
 from qy.core import TypeName
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -43,6 +48,7 @@ from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
+from qy.macro import CapturedForm
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message
 from qy.reader import DottedTuple
@@ -162,11 +168,90 @@ def _lower_form(
     tail: bool = False,
     symbol_as_data: bool = False,
 ) -> IRExpr:
+    # Handle CapturedForm - unwrap and lower the captured value
+    if isinstance(form, CapturedForm):
+        return _lower_form(form.value, scope, context, tail=tail, symbol_as_data=symbol_as_data)
+
     if isinstance(form, Symbol):
         return _lower_symbol(form, scope, context, symbol_as_data=symbol_as_data)
     if isinstance(form, DottedTuple):
         context.diagnostic("dotted form cannot be evaluated as a call", form)
         return LiteralExpr(form, "unknown", get_span(form))
+
+    # 支持 Chain
+    if is_chain(form):
+        operator = car(form)
+        args_chain = cdr(form)
+        args = chain_to_list(args_chain) if not is_nil(args_chain) else []
+
+        if isinstance(operator, Symbol):
+            match operator.name:
+                case "quote":
+                    return _lower_quote(tuple(args), context, form)
+                case "quasiquote":
+                    return _lower_quasiquote(tuple(args), scope, context, form, tail=tail)
+                case "eval":
+                    return _lower_eval(tuple(args), scope, context, form)
+                case "macro":
+                    return _lower_macro(form, scope, context)
+                case "cond":
+                    return _lower_cond(tuple(args), scope, context, form, tail=tail)
+                case "let":
+                    return _lower_let(tuple(args), scope, context, form, tail=tail)
+                case "lambda":
+                    return _lower_lambda(tuple(args), scope, context, form)
+                case "defun":
+                    return _lower_defun(form, scope, context)
+                case "defeffect":
+                    return _lower_defeffect(form, context)
+                case "module":
+                    return _lower_module(form, scope, context)
+                case "from":
+                    return _lower_from(form, context)
+                case "perform":
+                    return _lower_perform(tuple(args), scope, context, form)
+                case "handle":
+                    return _lower_handle(tuple(args), scope, context, form, tail=tail)
+                case "resume":
+                    return _lower_resume(tuple(args), scope, context, form)
+                case "assert":
+                    return _lower_assert(tuple(args), scope, context, form)
+                case "define":
+                    return _lower_define(form, scope, context)
+                case "pipeline":
+                    return _lower_pipeline(tuple(args), scope, context, form, tail=tail)
+                case "parallel":
+                    return _lower_parallel(tuple(args), scope, context, form)
+                case "all":
+                    return _lower_all(tuple(args), scope, context, form)
+                case "race":
+                    return _lower_race(tuple(args), scope, context, form)
+                case "apply":
+                    return _lower_apply(tuple(args), scope, context, form)
+                case "cache":
+                    return _lower_cache(tuple(args), scope, context, form)
+
+        operator_expr = _lower_form(operator, scope, context)
+        if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
+            context.diagnostic(
+                f"meta operator {operator_expr.symbol.name!r} can only run during macro expansion",
+                form,
+            )
+            return UnresolvedSymbolExpr(operator_expr.symbol, get_span(form))
+
+        args_as_data = _call_uses_non_eager_arguments(operator_expr)
+        lowered_args = tuple(
+            _lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args
+        )
+        return CallExpr(
+            operator_expr,
+            lowered_args,
+            get_span(form),
+            _infer_call_type(operator, tuple(lowered_args), operator_expr, context, form),
+            tail,
+        )
+
+    # 支持 tuple（向后兼容）
     if not isinstance(form, tuple):
         return LiteralExpr(form, literal_type(form), get_span(form))
     if not form:
@@ -242,6 +327,34 @@ def _lower_form(
     )
 
 
+def _form_to_list(form: object) -> list[object]:
+    """将 form（Chain 或 tuple）转换为 list。."""
+    if is_chain(form):
+        return chain_to_list(form)
+    if isinstance(form, tuple):
+        return list(form)
+    return []
+
+
+def _get_form_item(form: object, index: int) -> object | None:
+    """获取 form 的第 index 个元素。."""
+    if is_chain(form):
+        items = chain_to_list(form)
+        return items[index] if index < len(items) else None
+    if isinstance(form, tuple):
+        return form[index] if index < len(form) else None
+    return None
+
+
+def _form_length(form: object) -> int:
+    """获取 form 的长度。."""
+    if is_chain(form):
+        return len(chain_to_list(form))
+    if isinstance(form, tuple):
+        return len(form)
+    return 0
+
+
 def _lower_symbol(
     symbol: Symbol,
     scope: Scope,
@@ -302,6 +415,26 @@ def _lower_quasiquote(
 def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
     from qy.reader import DottedTuple as _DottedTuple
 
+    # 支持 Chain
+    if is_chain(form):
+        items = chain_to_list(form)
+        if items:
+            op = items[0]
+            if isinstance(op, Symbol) and op.name == "unquote":
+                if depth == 0:
+                    return items[1] if len(items) == 2 else form
+                return (
+                    Symbol("list"),
+                    Symbol("unquote"),
+                    _expand_quasiquote_form(items[1], depth=depth - 1),
+                )
+            if isinstance(op, Symbol) and op.name == "quasiquote":
+                inner = _expand_quasiquote_form(items[1] if len(items) == 2 else form, depth=depth + 1)
+                return (Symbol("list"), Symbol("quasiquote"), inner)
+            return _build_quasiquote_tuple(tuple(items), depth=depth)
+        return (Symbol("quote"), form)
+
+    # 支持 tuple
     if isinstance(form, tuple) and not isinstance(form, _DottedTuple) and form:
         op = form[0]
         if isinstance(op, Symbol) and op.name == "unquote":
@@ -326,17 +459,25 @@ def _build_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
         return (Symbol("quote"), ())
     head_form = form[0]
     tail_form = form[1:]
+
+    # 检查 head_form 是否是 unquote-splicing
+    head_items = None
+    if is_chain(head_form):
+        head_items = chain_to_list(head_form)
+    elif isinstance(head_form, tuple) and not isinstance(head_form, _DottedTuple):
+        head_items = list(head_form)
+
     if (
-        isinstance(head_form, tuple)
-        and not isinstance(head_form, _DottedTuple)
-        and head_form
-        and isinstance(head_form[0], Symbol)
-        and head_form[0].name == "unquote-splicing"
+        head_items
+        and head_items
+        and isinstance(head_items[0], Symbol)
+        and head_items[0].name == "unquote-splicing"
         and depth == 0
     ):
-        spliced = head_form[1] if len(head_form) == 2 else head_form
+        spliced = head_items[1] if len(head_items) == 2 else head_form
         rest = _build_quasiquote_tuple(tail_form, depth=depth)
         return (Symbol("append"), spliced, rest)
+
     head = _expand_quasiquote_form(head_form, depth=depth)
     rest = _build_quasiquote_tuple(tail_form, depth=depth)
     return (Symbol("cons"), head, rest)
@@ -357,14 +498,15 @@ def _lower_eval(
 
 
 def _lower_macro(
-    form: tuple[object, ...],
+    form: object,
     scope: Scope,
     context: LoweringContext,
 ) -> IRExpr:
-    if len(form) < 4:
+    items = _form_to_list(form)
+    if len(items) < 4:
         context.diagnostic("macro expects a name, parameter list, and body", form)
         return MacroExpr(Symbol("<invalid>"), (), (), (), get_span(form))
-    _, name, params, *body = form
+    _, name, params, *body = items
     name = _ensure_symbol(name, "macro name", context)
     param_symbols = _parameter_symbols(params, "macro", context)
     macro_scope = _define_parameters(scope.child(), param_symbols, context)
@@ -386,18 +528,19 @@ def _lower_cond(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
     *,
     tail: bool,
 ) -> IRExpr:
     clauses: list[CondClause] = []
     result_type: TypeName = "none"
     for clause in args:
-        if not isinstance(clause, tuple) or len(clause) != 2:
+        clause_items = _form_to_list(clause)
+        if len(clause_items) != 2:
             context.diagnostic(f"cond clause must be a pair, got {clause!r}", clause)
             continue
-        condition = _lower_form(clause[0], scope, context)
-        result = _lower_form(clause[1], scope, context, tail=tail)
+        condition = _lower_form(clause_items[0], scope, context)
+        result = _lower_form(clause_items[1], scope, context, tail=tail)
         result_type = _type_of(result)
         clauses.append(CondClause(condition, result))
     return CondExpr(tuple(clauses), get_span(form), result_type)
@@ -407,7 +550,7 @@ def _lower_let(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
     *,
     tail: bool,
 ) -> IRExpr:
@@ -415,19 +558,23 @@ def _lower_let(
         context.diagnostic("let expects bindings and at least one body expression", form)
         return LetExpr((), (), get_span(form), "unknown")
     bindings_form, *body = args
-    if not isinstance(bindings_form, tuple):
+
+    # 接受 Chain、tuple 或 nil 作为绑定列表
+    if not (is_chain(bindings_form) or isinstance(bindings_form, tuple) or is_nil(bindings_form)):
         context.diagnostic(f"let bindings must be a list, got {bindings_form!r}", bindings_form)
         return LetExpr(
             (), _lower_body(tuple(body), scope.child(), context, tail=tail), get_span(form)
         )
 
+    bindings_list = _form_to_list(bindings_form) if not is_nil(bindings_form) else []
     local_scope = scope.child()
     bindings: list[LetBinding] = []
-    for binding_form in bindings_form:
-        if not isinstance(binding_form, tuple) or len(binding_form) != 2:
+    for binding_form in bindings_list:
+        binding_items = _form_to_list(binding_form)
+        if len(binding_items) != 2:
             context.diagnostic(f"let binding must be a pair, got {binding_form!r}", binding_form)
             continue
-        name, value_form = binding_form
+        name, value_form = binding_items[0], binding_items[1]
         name = _ensure_symbol(name, "let binding name", context)
         value = _lower_form(value_form, local_scope, context)
         bindings.append(LetBinding(name, value))
@@ -461,14 +608,15 @@ def _lower_lambda(
 
 
 def _lower_defun(
-    form: tuple[object, ...],
+    form: object,
     scope: Scope,
     context: LoweringContext,
 ) -> IRExpr:
-    if len(form) < 4:
+    items = _form_to_list(form)
+    if len(items) < 4:
         context.diagnostic("defun expects a name, parameter list, and body", form)
         return DefineExpr(Symbol("<invalid>"), LambdaExpr((), (), get_span(form)), get_span(form))
-    _, name, params, *body = form
+    _, name, params, *body = items
     name = _ensure_symbol(name, "defun name", context)
     param_symbols = _parameter_symbols(params, "defun", context)
     function_scope = _define_local(
@@ -488,15 +636,16 @@ def _lower_defun(
     )
 
 
-def _lower_defeffect(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
-    if len(form) < 2:
+def _lower_defeffect(form: object, context: LoweringContext) -> IRExpr:
+    items = _form_to_list(form)
+    if len(items) < 2:
         context.diagnostic("defeffect expects an effect name", form)
         return DefineExpr(
             Symbol("<invalid>"),
             DefeffectExpr(Symbol("<invalid>"), True, get_span(form)),
             get_span(form),
         )
-    _, name, *options = form
+    _, name, *options = items
     name = _ensure_symbol(name, "defeffect name", context)
     resumable = True
     if options:
@@ -520,28 +669,30 @@ def _lower_defeffect(form: tuple[object, ...], context: LoweringContext) -> IREx
 
 
 def _lower_module(
-    form: tuple[object, ...],
+    form: object,
     scope: Scope,
     context: LoweringContext,
 ) -> IRExpr:
-    if len(form) < 2:
+    items = _form_to_list(form)
+    if len(items) < 2:
         context.diagnostic("module expects a name and body", form)
         return ModuleExpr(Symbol("<invalid>"), (), (), get_span(form))
-    _, name, *body = form
+    _, name, *body = items
     name = _ensure_symbol(name, "module name", context)
     export_names: list[Symbol] = []
     module_scope = _predeclare_callable_definitions(tuple(body), scope.child(), context)
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
-            if isinstance(expression, tuple):
-                for item in expression[1:]:
-                    if isinstance(item, Symbol):
-                        export_names.append(item)
-                    elif isinstance(item, tuple):
-                        for sub in item:
-                            if isinstance(sub, Symbol):
-                                export_names.append(sub)
+            expr_items = _form_to_list(expression)
+            for item in expr_items[1:]:
+                if isinstance(item, Symbol):
+                    export_names.append(item)
+                else:
+                    sub_items = _form_to_list(item)
+                    for sub in sub_items:
+                        if isinstance(sub, Symbol):
+                            export_names.append(sub)
             continue
         lowered = _lower_form(expression, module_scope, context)
         lowered_body.append(lowered)
@@ -595,7 +746,7 @@ def _lower_handle(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
     *,
     tail: bool,
 ) -> IRExpr:
@@ -605,17 +756,22 @@ def _lower_handle(
     expression, handlers_form = args
     lowered_expression = _lower_form(expression, scope, context, tail=tail)
     handlers: list[EffectHandler] = []
-    if not isinstance(handlers_form, tuple):
+
+    # 接受 Chain、tuple 或 nil 作为 handler 列表
+    if not (is_chain(handlers_form) or isinstance(handlers_form, tuple) or is_nil(handlers_form)):
         context.diagnostic(f"handle clauses must be a list, got {handlers_form!r}", handlers_form)
         return HandleExpr(lowered_expression, (), get_span(form), _type_of(lowered_expression))
+
+    handlers_list = _form_to_list(handlers_form) if not is_nil(handlers_form) else []
     result_type = _type_of(lowered_expression)
-    for clause in handlers_form:
-        if not isinstance(clause, tuple) or len(clause) < 3:
+    for clause in handlers_list:
+        clause_items = _form_to_list(clause)
+        if len(clause_items) < 3:
             context.diagnostic(
                 f"handle clause must be (effect (arg k) body...), got {clause!r}", clause
             )
             continue
-        effect, params, *body = clause
+        effect, params, *body = clause_items
         effect = _ensure_symbol(effect, "handle effect name", context)
         if not _effect_is_declared(effect, scope, context):
             context.diagnostic(
@@ -699,26 +855,31 @@ def _scope_after_form(
     context: LoweringContext,
 ) -> Scope:
     del expr
-    if not isinstance(form, tuple) or not form:
+    items = _form_to_list(form)
+    if len(items) < 2:
         return scope
-    if len(form) >= 2 and form[0] == Symbol("defun") and isinstance(form[1], Symbol):
-        if scope.has_local(form[1]):
+
+    operator = items[0]
+    name = items[1]
+
+    if operator == Symbol("defun") and isinstance(name, Symbol):
+        if scope.has_local(name):
             return scope
-        return _define_local(scope, Binding(form[1], "local", "function"), context)
-    if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
-        return _define_local(scope, Binding(form[1], "local", "any"), context)
-    if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
-        return _define_local(scope, Binding(form[1], "local", "effect"), context)
-    if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
+        return _define_local(scope, Binding(name, "local", "function"), context)
+    if operator == Symbol("define") and isinstance(name, Symbol):
+        return _define_local(scope, Binding(name, "local", "any"), context)
+    if operator == Symbol("defeffect") and isinstance(name, Symbol):
+        return _define_local(scope, Binding(name, "local", "effect"), context)
+    if operator == Symbol("macro") and isinstance(name, Symbol):
         return _define_local(
             scope,
-            Binding(form[1], "local", "operator", "meta", eager_arguments=False),
+            Binding(name, "local", "operator", "meta", eager_arguments=False),
             context,
         )
-    if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
+    if operator == Symbol("module") and isinstance(name, Symbol):
         remember_source_module(form, context.env)
-        return _define_local(scope, Binding(form[1], "local", "any"), context)
-    if form[0] != Symbol("from"):
+        return _define_local(scope, Binding(name, "local", "any"), context)
+    if operator != Symbol("from"):
         return scope
 
     try:
@@ -757,11 +918,12 @@ def _predeclare_callable_definitions(
 ) -> Scope:
     next_scope = scope
     for expression in body:
-        if not isinstance(expression, tuple) or len(expression) < 2:
+        items = _form_to_list(expression)
+        if len(items) < 2:
             continue
-        if expression[0] != Symbol("defun"):
+        if items[0] != Symbol("defun"):
             continue
-        name = expression[1]
+        name = items[1]
         if isinstance(name, Symbol):
             next_scope = _define_local(next_scope, Binding(name, "local", "function"), context)
     return next_scope
@@ -787,11 +949,15 @@ def _parameter_symbols(
     context_name: str,
     context: LoweringContext,
 ) -> tuple[Symbol, ...]:
-    if not isinstance(params, tuple):
+    # 接受 Chain、tuple 或 nil 作为参数列表
+    if is_chain(params) or isinstance(params, tuple) or is_nil(params):
+        params_list = _form_to_list(params) if not is_nil(params) else []
+    else:
         context.diagnostic(f"{context_name} parameters must be a list, got {params!r}", params)
         return ()
+
     result: list[Symbol] = []
-    for param in params:
+    for param in params_list:
         if not isinstance(param, Symbol):
             context.diagnostic(f"{context_name} parameter must be a symbol, got {param!r}", param)
             continue
@@ -897,16 +1063,20 @@ def _body_type(body: tuple[IRExpr, ...]) -> TypeName:
 
 
 def _is_special_form(form: object, name: str) -> bool:
+    if is_chain(form):
+        items = chain_to_list(form)
+        return len(items) > 0 and items[0] == Symbol(name)
     return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
 
 
-def _lower_define(form: tuple[object, ...], scope: Scope, context: LoweringContext) -> IRExpr:
-    if len(form) < 3:
+def _lower_define(form: object, scope: Scope, context: LoweringContext) -> IRExpr:
+    items = _form_to_list(form)
+    if len(items) < 3:
         context.diagnostic("define expects a name and a value", form)
         return DefineExpr(
             Symbol("<invalid>"), LiteralExpr(None, "none", get_span(form)), get_span(form)
         )
-    _, name_form, value_form = form[0], form[1], form[2]
+    _, name_form, value_form = items[0], items[1], items[2]
     name = _ensure_symbol(name_form, "define name", context)
     value = _lower_form(value_form, scope, context)
     return DefineExpr(name, value, get_span(form))

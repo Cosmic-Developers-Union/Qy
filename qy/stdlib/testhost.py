@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
@@ -12,7 +13,6 @@ from qy.runtime import Qy
 from qy.stdlib.module import StandardModule
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import list_to_qy_cons
 
 _CLI_ARGS_CACHE_KEY = ("qy", "cli_args")
 
@@ -42,31 +42,31 @@ def set_cli_args(env: Environment, args: tuple[str, ...]) -> None:
 
 def _cli_args(args: tuple[object, ...], env: Environment) -> object:
     if args:
-        return list_to_qy_cons(())
+        return list_to_chain(())
     try:
         cached_args = env.cache_lookup(_CLI_ARGS_CACHE_KEY)
     except KeyError:
         cached_args = ()
     if not isinstance(cached_args, tuple):
-        return list_to_qy_cons(())
+        return list_to_chain(())
     normalized = tuple(item for item in cached_args if isinstance(item, str))
-    return list_to_qy_cons(Symbol(item) for item in normalized)
+    return list_to_chain(Symbol(item) for item in normalized)
 
 
 def _list_dir(args: tuple[object, ...], env: Environment) -> object:
     del env
     if len(args) != 1:
-        return list_to_qy_cons(())
+        return list_to_chain(())
     path_value = args[0]
     path = Path(_as_text(path_value)).expanduser()
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
     if not path.is_dir():
-        return list_to_qy_cons(())
+        return list_to_chain(())
     entries = tuple(
         Symbol(item.name) for item in sorted(path.iterdir(), key=lambda item: item.name)
     )
-    return list_to_qy_cons(entries)
+    return list_to_chain(entries)
 
 
 def _path_join(args: tuple[object, ...], env: Environment) -> Symbol:

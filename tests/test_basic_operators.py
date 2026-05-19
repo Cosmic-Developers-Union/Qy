@@ -1,10 +1,10 @@
+from qy.core.syntax import Chain
+from qy.core.syntax import list_to_chain
 from qy.evaluator import evaluate_source
 from qy.reader import Symbol
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import QyChain
-from qy.values import list_to_qy_cons
 
 S = Symbol
 
@@ -69,12 +69,12 @@ def test_car_cdr_cons():
     assert evaluate_source("(car nil)") is QY_NIL
     assert evaluate_source("(cdr nil)") is QY_NIL
     assert evaluate_source("(car '(abc def))") == S("abc")
-    assert evaluate_source("(cdr '(abc def ghi))") == list_to_qy_cons([S("def"), S("ghi")])
-    assert evaluate_source("(cons 'abc '(def ghi))") == list_to_qy_cons(
+    assert evaluate_source("(cdr '(abc def ghi))") == list_to_chain([S("def"), S("ghi")])
+    assert evaluate_source("(cons 'abc '(def ghi))") == list_to_chain(
         [S("abc"), S("def"), S("ghi")]
     )
     assert evaluate_source("'()") is QY_EMPTY_LIST
-    assert evaluate_source("'(abc . def)") == QyChain(S("abc"), S("def"))
+    assert evaluate_source("'(abc . def)") == Chain(S("abc"), S("def"))
 
 
 def test_apply_uses_runtime_literals_for_quoted_args():
@@ -83,4 +83,4 @@ def test_apply_uses_runtime_literals_for_quoted_args():
 
 def test_quasiquote_unquote_splicing_works_without_internal_helpers():
     value = evaluate_source("(quasiquote (a (unquote-splicing (quote (b c))) d))")
-    assert value == list_to_qy_cons([S("a"), S("b"), S("c"), S("d")])
+    assert value == list_to_chain([S("a"), S("b"), S("c"), S("d")])

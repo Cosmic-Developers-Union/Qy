@@ -1,5 +1,6 @@
 import pytest
 
+from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.errors import QyTypeError
 from qy.evaluator import evaluate_source
@@ -7,8 +8,6 @@ from qy.reader import Symbol
 from qy.stdlib import standard_bindings
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import QyChain
-from qy.values import list_to_qy_cons
 
 S = Symbol
 
@@ -53,8 +52,8 @@ def test_set():
 
 
 def test_chain():
-    assert es("(chain (list 'a 'b))") == list_to_qy_cons([S("a"), S("b")])
-    assert es("(chain (tuple 'a 'b))") == list_to_qy_cons([S("a"), S("b")])
+    assert es("(chain (list 'a 'b))") == list_to_chain([S("a"), S("b")])
+    assert es("(chain (tuple 'a 'b))") == list_to_chain([S("a"), S("b")])
 
 
 def test_len():
@@ -79,4 +78,11 @@ def test_list_car_cdr_cons():
         es('(car (list "a" "b"))')
     with pytest.raises(QyTypeError):
         es('(cdr (list "a" "b" "c"))')
-    assert es('(cons \'a (list "b" "c"))') == QyChain(S("a"), ["b", "c"])
+    # cons 现在返回 Chain
+    result = es('(cons \'a (list "b" "c"))')
+    from qy.core.syntax import car
+    from qy.core.syntax import cdr
+    from qy.core.syntax import is_chain
+    assert is_chain(result)
+    assert car(result) == S("a")
+    assert cdr(result) == ["b", "c"]

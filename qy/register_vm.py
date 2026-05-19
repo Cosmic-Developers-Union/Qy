@@ -372,6 +372,7 @@ class RegisterVirtualMachine:
     async def _eval_form(self, form: object, env: Environment) -> object:
         from typing import cast
 
+        from qy.core.syntax import Chain
         from qy.ir import ProgramIR
         from qy.passes.lower_hir import lower
         from qy.reader import Form
@@ -381,7 +382,7 @@ class RegisterVirtualMachine:
 
         if isinstance(form, QyCons):
             form = qy_cons_to_tuple(form)
-        if not isinstance(form, _Symbol | tuple):
+        if not isinstance(form, _Symbol | tuple | Chain):
             return form
         program_ir = lower([cast(Form, form)], env)
         bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
@@ -680,6 +681,9 @@ def _raise_for_diagnostics(program: BytecodeProgram) -> None:
 
 
 def _sequence_to_args(value: object) -> tuple[object, ...]:
+    from qy.core.syntax import Chain
+    from qy.core.syntax import chain_to_list
+    from qy.core.syntax import is_chain
     from qy.literals import default_literal_type
     from qy.literals import try_default_literal
     from qy.values import QyCons
@@ -695,6 +699,11 @@ def _sequence_to_args(value: object) -> tuple[object, ...]:
         return tuple(_normalize_arg(item) for item in value)
     if isinstance(value, QyEmptyChain | QyEmptyList):
         return ()
+    # Handle AST Chain (from quote)
+    if isinstance(value, Chain) or is_chain(value):
+        items = chain_to_list(value)
+        return tuple(_normalize_arg(item) for item in items)
+    # Handle runtime QyCons
     if isinstance(value, QyCons):
         result: list[object] = []
         node: object = value

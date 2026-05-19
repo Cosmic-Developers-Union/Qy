@@ -6,6 +6,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.eval_runtime import evaluate_async
@@ -14,11 +16,8 @@ from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple
 from qy.stdlib.module import StandardModule
-from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
 from qy.values import QY_T
-from qy.values import QyCons
-from qy.values import iter_qy_list
 
 
 def module() -> StandardModule:
@@ -61,6 +60,9 @@ async def _evaluate_text_args(args: tuple[object, ...], env: Environment) -> tup
 
 
 async def _evaluate_text_arg(expression: object, env: Environment) -> object:
+    # 如果是 Chain 或 nil，直接返回（通常来自 quote）
+    if is_chain(expression) or is_nil(expression):
+        return expression
     try:
         return await evaluate_async(expression, env)
     except EvaluationError:
@@ -134,9 +136,11 @@ def _str_split(value: object, separator: object = None) -> tuple[Symbol, ...]:
 
 
 def _str_join(separator: object, values: object) -> Symbol:
-    if values is QY_EMPTY_LIST or isinstance(values, QyCons):
+    if is_nil(values) or is_chain(values):
+        from qy.core.syntax import chain_to_list
+
         return _to_symbol(
-            _to_text(separator).join(_to_text(value) for value in iter_qy_list(values))
+            _to_text(separator).join(_to_text(value) for value in chain_to_list(values))
         )
     if not isinstance(values, tuple | list):
         raise EvaluationError(

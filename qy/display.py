@@ -16,12 +16,18 @@ __all__ = ["format_value"]
 
 
 def format_value(value: object) -> str:
+    from qy.core.syntax import Chain
+    from qy.core.syntax import is_chain
+
     if value is QY_NIL:
         return "nil"
     if value is QY_T:
         return "T"
     if isinstance(value, QyCons):
         return _format_cons(value)
+    # Handle AST Chain
+    if isinstance(value, Chain) or is_chain(value):
+        return _format_chain(value)
     if isinstance(value, str):
         return value
     if isinstance(value, Symbol | tuple | int | float | bool) or value is None:
@@ -47,5 +53,21 @@ def _format_cons(value: QyCons) -> str:
         parts.append(format_value(current.head))
         current = current.tail
     if current is QY_EMPTY_LIST:
+        return f"({' '.join(parts)})"
+    return f"({' '.join(parts)} . {format_value(current)})"
+
+
+def _format_chain(value: object) -> str:
+    from qy.core.syntax import car
+    from qy.core.syntax import cdr
+    from qy.core.syntax import is_chain
+    from qy.core.syntax import is_nil
+
+    parts: list[str] = []
+    current: object = value
+    while is_chain(current):
+        parts.append(format_value(car(current)))
+        current = cdr(current)
+    if is_nil(current):
         return f"({' '.join(parts)})"
     return f"({' '.join(parts)} . {format_value(current)})"

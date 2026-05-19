@@ -1,7 +1,13 @@
+from qy.core.syntax import list_to_chain
 from qy.reader import Symbol
 from qy.reader import read
 
 S = Symbol
+
+
+def L(*items, span=None):
+    """测试辅助：构造 Chain."""
+    return list_to_chain(list(items), span=span)
 
 
 def test_bare_symbols():
@@ -53,10 +59,10 @@ def test_multiline_strings():
 
 def test_tagged_literals_expand_to_tagged_quote_calls():
     assert read('t"hello {name}" sql"""select *\nfrom docs"""') == [
-        (S("t"), (S("quote"), S('"hello {name}"'))),
-        (S("sql"), (S("quote"), S('"""select *\nfrom docs"""'))),
+        L(S("t"), L(S("quote"), S('"hello {name}"'))),
+        L(S("sql"), L(S("quote"), S('"""select *\nfrom docs"""'))),
     ]
 
 
 def test_tagged_literals_keep_raw_escapes():
-    assert read(r't"hello\n{name}"') == [(S("t"), (S("quote"), S(r'"hello\n{name}"')))]
+    assert read(r't"hello\n{name}"') == [L(S("t"), L(S("quote"), S(r'"hello\n{name}"')))]

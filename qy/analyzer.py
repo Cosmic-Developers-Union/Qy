@@ -7,6 +7,12 @@ from dataclasses import dataclass
 
 from qy.core import OperatorKind
 from qy.core import TypeName
+from qy.core.syntax import Chain
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -20,7 +26,6 @@ from qy.operators import EffectOperator
 from qy.operators import MetaOperator
 from qy.operators import PureOperator
 from qy.operators import ScopeOperator
-from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
@@ -131,16 +136,22 @@ def _infer(
 ) -> TypeName:
     if isinstance(form, Symbol):
         return _infer_symbol(form, env, scope, diagnostics)
-    if not isinstance(form, tuple):
+    if not is_chain(form):
         return _literal_type(form)
-    if isinstance(form, DottedTuple):
-        diagnostics.append(Diagnostic("dotted form cannot be evaluated as a call"))
-        return "unknown"
-    if not form:
-        return "tuple"
 
-    operator = form[0]
-    args = tuple(form[1:])
+    # Empty chain
+    if is_nil(form):
+        return "chain"
+
+    operator = car(form)
+    args_chain = cdr(form)
+    # Convert args to tuple for compatibility with existing code
+    try:
+        args = tuple(args_chain) if is_chain(args_chain) else () if is_nil(args_chain) else (args_chain,)
+    except ValueError:
+        # Improper list
+        diagnostics.append(Diagnostic("improper list cannot be evaluated as a call"))
+        return "unknown"
 
     if isinstance(operator, Symbol):
         match operator.name:
@@ -237,7 +248,7 @@ def _literal_type(value: object) -> TypeName:
         return "nil"
     if value is QY_T:
         return "T"
-    if isinstance(value, QyCons):
+    if isinstance(value, (QyCons, Chain)):
         return "chain"
     if isinstance(value, bool):
         return "bool"
@@ -406,10 +417,18 @@ def _infer_cond(
 ) -> TypeName:
     result_type: TypeName = "none"
     for clause in args:
-        if not isinstance(clause, tuple) or len(clause) != 2:
+        if not is_chain(clause):
             diagnostics.append(Diagnostic(f"cond clause must be a pair, got {clause!r}"))
             continue
-        condition, result = clause
+        try:
+            clause_list = list(clause)
+            if len(clause_list) != 2:
+                diagnostics.append(Diagnostic(f"cond clause must be a pair, got {clause!r}"))
+                continue
+            condition, result = clause_list
+        except ValueError:
+            diagnostics.append(Diagnostic(f"cond clause must be a proper list, got {clause!r}"))
+            continue
         _infer(condition, env, scope, diagnostics)
         result_type = _infer(result, env, scope, diagnostics)
     return result_type
@@ -514,21 +533,33 @@ def _infer_let(
         return "unknown"
 
     bindings, *body = args
-    if not isinstance(bindings, tuple):
+    if not is_chain(bindings) and not is_nil(bindings):
         diagnostics.append(Diagnostic(f"let bindings must be a list, got {bindings!r}"))
         return "unknown"
 
     local_scope = scope
-    for binding in bindings:
-        if not isinstance(binding, tuple) or len(binding) != 2:
-            diagnostics.append(Diagnostic(f"let binding must be a pair, got {binding!r}"))
-            continue
-        name, expression = binding
-        _infer(expression, env, local_scope, diagnostics)
-        if isinstance(name, Symbol):
-            local_scope = local_scope.define(name)
-        else:
-            diagnostics.append(Diagnostic(f"let binding name must be a symbol, got {name!r}"))
+    try:
+        for binding in bindings if is_chain(bindings) else []:
+            if not is_chain(binding):
+                diagnostics.append(Diagnostic(f"let binding must be a pair, got {binding!r}"))
+                continue
+            try:
+                binding_list = list(binding)
+                if len(binding_list) != 2:
+                    diagnostics.append(Diagnostic(f"let binding must be a pair, got {binding!r}"))
+                    continue
+                name, expression = binding_list
+            except ValueError:
+                diagnostics.append(Diagnostic(f"let binding must be a proper list, got {binding!r}"))
+                continue
+            _infer(expression, env, local_scope, diagnostics)
+            if isinstance(name, Symbol):
+                local_scope = local_scope.define(name)
+            else:
+                diagnostics.append(Diagnostic(f"let binding name must be a symbol, got {name!r}"))
+    except ValueError:
+        diagnostics.append(Diagnostic(f"let bindings must be a proper list, got {bindings!r}"))
+        return "unknown"
 
     return _infer_body(tuple(body), env, local_scope, diagnostics)
 
@@ -550,43 +581,68 @@ def _infer_lambda(
 
 
 def _infer_defun(
-    form: tuple[object, ...],
+    form: object,
     env: Environment,
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if len(form) < 4:
-        diagnostics.append(Diagnostic("defun expects a name, parameter list, and body"))
+    if not is_chain(form):
+        diagnostics.append(Diagnostic("defun form must be a list"))
         return "unknown"
 
-    _, name, params, *body = form
+    try:
+        form_list = list(form)
+        if len(form_list) < 4:
+            diagnostics.append(Diagnostic("defun expects a name, parameter list, and body"))
+            return "unknown"
+
+        _, name, params, *body = form_list
+    except ValueError:
+        diagnostics.append(Diagnostic("defun form must be a proper list"))
+        return "unknown"
+
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"defun name must be a symbol, got {name!r}"))
-    if not isinstance(params, tuple):
+    if not (is_chain(params) or isinstance(params, tuple) or is_nil(params)):
         diagnostics.append(Diagnostic(f"defun parameters must be a list, got {params!r}"))
         return "function"
 
     function_scope = scope
     if isinstance(name, Symbol):
         function_scope = function_scope.define(name, "function")
-    for param in params:
-        if isinstance(param, Symbol):
-            function_scope = function_scope.define(param)
-        else:
-            diagnostics.append(Diagnostic(f"defun parameter must be a symbol, got {param!r}"))
+
+    try:
+        params_list = chain_to_list(params) if is_chain(params) else (list(params) if isinstance(params, tuple) else [])
+        for param in params_list:
+            if isinstance(param, Symbol):
+                function_scope = function_scope.define(param)
+            else:
+                diagnostics.append(Diagnostic(f"defun parameter must be a symbol, got {param!r}"))
+    except ValueError:
+        diagnostics.append(Diagnostic(f"defun parameters must be a proper list, got {params!r}"))
 
     _infer_body(tuple(body), env, function_scope, diagnostics)
     return "function"
 
 
 def _infer_defeffect(
-    form: tuple[object, ...],
+    form: object,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if len(form) < 2:
-        diagnostics.append(Diagnostic("defeffect expects an effect name"))
+    if not is_chain(form):
+        diagnostics.append(Diagnostic("defeffect form must be a list"))
         return "unknown"
-    _, name, *options = form
+
+    try:
+        form_list = list(form)
+        if len(form_list) < 2:
+            diagnostics.append(Diagnostic("defeffect expects an effect name"))
+            return "unknown"
+        _, name, *options = form_list
+    except ValueError:
+        diagnostics.append(Diagnostic("defeffect form must be a proper list"))
+        return "unknown"
+
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"defeffect name must be a symbol, got {name!r}"))
     if options and (
@@ -599,16 +655,26 @@ def _infer_defeffect(
 
 
 def _infer_macro(
-    form: tuple[object, ...],
+    form: object,
     env: Environment,
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if len(form) < 4:
-        diagnostics.append(Diagnostic("macro expects a name, parameter list, and body"))
+    if not is_chain(form):
+        diagnostics.append(Diagnostic("macro form must be a list"))
         return "unknown"
 
-    _, name, params, *body = form
+    try:
+        form_list = list(form)
+        if len(form_list) < 4:
+            diagnostics.append(Diagnostic("macro expects a name, parameter list, and body"))
+            return "unknown"
+
+        _, name, params, *body = form_list
+    except ValueError:
+        diagnostics.append(Diagnostic("macro form must be a proper list"))
+        return "unknown"
+
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"macro name must be a symbol, got {name!r}"))
     macro_scope = scope
@@ -654,41 +720,69 @@ def _infer_handle(
         return "unknown"
     expr, handler_form = args
     result_type = _infer(expr, env, scope, diagnostics)
-    if not isinstance(handler_form, tuple):
+    if not is_chain(handler_form) and not is_nil(handler_form):
         diagnostics.append(Diagnostic(f"handle clauses must be a list, got {handler_form!r}"))
         return result_type
-    for clause in handler_form:
-        if not isinstance(clause, tuple) or len(clause) < 3:
-            diagnostics.append(
-                Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
-            )
-            continue
-        effect, params, *body = clause
-        if isinstance(effect, Symbol):
-            if not _effect_is_declared(effect, env, scope):
+
+    try:
+        for clause in handler_form if is_chain(handler_form) else []:
+            if not is_chain(clause):
                 diagnostics.append(
-                    Diagnostic(
-                        f"effect {effect.name!r} is not declared; add defeffect before handle"
-                    )
+                    Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
                 )
-        else:
-            diagnostics.append(Diagnostic(f"handle effect name must be a symbol, got {effect!r}"))
-        handler_scope = _scope_with_parameters(params, scope, diagnostics, "handle")
-        result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
+                continue
+            try:
+                clause_list = list(clause)
+                if len(clause_list) < 3:
+                    diagnostics.append(
+                        Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
+                    )
+                    continue
+                effect, params, *body = clause_list
+            except ValueError:
+                diagnostics.append(
+                    Diagnostic(f"handle clause must be a proper list, got {clause!r}")
+                )
+                continue
+
+            if isinstance(effect, Symbol):
+                if not _effect_is_declared(effect, env, scope):
+                    diagnostics.append(
+                        Diagnostic(
+                            f"effect {effect.name!r} is not declared; add defeffect before handle"
+                        )
+                    )
+            else:
+                diagnostics.append(Diagnostic(f"handle effect name must be a symbol, got {effect!r}"))
+            handler_scope = _scope_with_parameters(params, scope, diagnostics, "handle")
+            result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
+    except ValueError:
+        diagnostics.append(Diagnostic(f"handle clauses must be a proper list, got {handler_form!r}"))
+
     return result_type
 
 
 def _infer_module(
-    form: tuple[object, ...],
+    form: object,
     env: Environment,
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if len(form) < 2:
-        diagnostics.append(Diagnostic("module expects a name and body"))
+    if not is_chain(form):
+        diagnostics.append(Diagnostic("module form must be a list"))
         return "unknown"
 
-    _, name, *body = form
+    try:
+        form_list = list(form)
+        if len(form_list) < 2:
+            diagnostics.append(Diagnostic("module expects a name and body"))
+            return "unknown"
+
+        _, name, *body = form_list
+    except ValueError:
+        diagnostics.append(Diagnostic("module form must be a proper list"))
+        return "unknown"
+
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"module name must be a symbol, got {name!r}"))
 
@@ -719,30 +813,38 @@ def _infer_body(
 
 
 def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
-    if not isinstance(form, tuple) or not form:
+    if not is_chain(form):
         return scope
-    if len(form) >= 2 and form[0] == Symbol("defun") and isinstance(form[1], Symbol):
-        if scope.has_local(form[1]):
+
+    try:
+        form_list = list(form)
+        if not form_list:
             return scope
-        return scope.define(form[1], "function")
-    if len(form) >= 2 and form[0] == Symbol("define") and isinstance(form[1], Symbol):
-        if scope.has_local(form[1]):
+    except ValueError:
+        return scope
+
+    if len(form_list) >= 2 and form_list[0] == Symbol("defun") and isinstance(form_list[1], Symbol):
+        if scope.has_local(form_list[1]):
             return scope
-        return scope.define(form[1], "any")
-    if len(form) >= 2 and form[0] == Symbol("defeffect") and isinstance(form[1], Symbol):
-        if scope.has_local(form[1]):
+        return scope.define(form_list[1], "function")
+    if len(form_list) >= 2 and form_list[0] == Symbol("define") and isinstance(form_list[1], Symbol):
+        if scope.has_local(form_list[1]):
             return scope
-        return scope.define(form[1], "effect")
-    if len(form) >= 2 and form[0] == Symbol("macro") and isinstance(form[1], Symbol):
-        if scope.has_local(form[1]):
+        return scope.define(form_list[1], "any")
+    if len(form_list) >= 2 and form_list[0] == Symbol("defeffect") and isinstance(form_list[1], Symbol):
+        if scope.has_local(form_list[1]):
             return scope
-        return scope.define(form[1], "operator", operator_kind="meta", eager_arguments=False)
-    if len(form) >= 2 and form[0] == Symbol("module") and isinstance(form[1], Symbol):
+        return scope.define(form_list[1], "effect")
+    if len(form_list) >= 2 and form_list[0] == Symbol("macro") and isinstance(form_list[1], Symbol):
+        if scope.has_local(form_list[1]):
+            return scope
+        return scope.define(form_list[1], "operator", operator_kind="meta", eager_arguments=False)
+    if len(form_list) >= 2 and form_list[0] == Symbol("module") and isinstance(form_list[1], Symbol):
         remember_source_module(form, env)
-        if scope.has_local(form[1]):
+        if scope.has_local(form_list[1]):
             return scope
-        return scope.define(form[1])
-    if form[0] != Symbol("from"):
+        return scope.define(form_list[1])
+    if form_list[0] != Symbol("from"):
         return scope
 
     try:
@@ -799,11 +901,14 @@ def _scope_with_parameters(
     diagnostics: list[Diagnostic],
     context: str,
 ) -> _Scope:
-    if not isinstance(params, tuple):
+    # 接受 Chain、tuple 或 nil 作为参数列表
+    if not (is_chain(params) or isinstance(params, tuple) or is_nil(params)):
         diagnostics.append(Diagnostic(f"{context} parameters must be a list, got {params!r}"))
         return scope
+
+    params_list = chain_to_list(params) if is_chain(params) else (list(params) if isinstance(params, tuple) else [])
     next_scope = scope
-    for param in params:
+    for param in params_list:
         if isinstance(param, Symbol):
             next_scope = next_scope.define(param)
         else:
@@ -816,15 +921,25 @@ def _is_special_form(form: object, name: str) -> bool:
 
 
 def _infer_define(
-    form: tuple[object, ...],
+    form: Chain | tuple[object, ...],
     env: Environment,
     scope: _Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
-    if len(form) < 3:
+    # 将 Chain 转换为 list 以便访问元素
+    if is_chain(form):
+        try:
+            items = chain_to_list(form)
+        except ValueError:
+            diagnostics.append(Diagnostic("improper list in define"))
+            return "unknown"
+    else:
+        items = list(form)
+
+    if len(items) < 3:
         diagnostics.append(Diagnostic("define expects a name and a value"))
         return "unknown"
-    _, name, value = form[0], form[1], form[2]
+    _, name, value = items[0], items[1], items[2]
     if not isinstance(name, Symbol):
         diagnostics.append(Diagnostic(f"define name must be a symbol, got {name!r}"))
     elif scope.has_local(name):
