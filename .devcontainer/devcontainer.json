@@ -1,27 +1,18 @@
 {
   "name": "QyLang",
-  "build": {
-    "context": "..",
-    "dockerfile": "Dockerfile",
-    "args": {
-      "APT_CACHE_PROXY": "http://host.docker.internal:3142",
-      "BUN_REGISTRY": "http://host.docker.internal:4873"
-    }
-  },
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "devcontainer",
   "workspaceFolder": "/workspaces/Qy",
-  "mounts": [
-    "source=qy-devcontainer-venv,target=${containerWorkspaceFolder}/.venv,type=volume",
-    "source=qy-devcontainer-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
-    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
-  ],
+  "postCreateCommand": ["bun install", "uv sync --all-extras"],
   "init": true,
-  "remoteUser": "vscode",
+  "remoteUser": "ge",
   "updateRemoteUserUID": true,
   "containerEnv": {
     "UV_LINK_MODE": "copy"
   },
   "remoteEnv": {
-    "SHELL": "/usr/bin/zsh"
+    "SHELL": "/usr/bin/zsh",
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
   },
   "features": {
     "ghcr.io/devcontainers/features/git:1": {}

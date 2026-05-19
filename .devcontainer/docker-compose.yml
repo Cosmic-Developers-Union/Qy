@@ -1,0 +1,15 @@
+services:
+  devcontainer:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+      extra_hosts:
+        - "host.docker.internal:host-gateway"
+      args:
+        - APT_CACHE_PROXY=http://host.docker.internal:3142
+        - BUN_REGISTRY=http://host.docker.internal:4873
+    volumes:
+      - ..:/workspaces/Qy:cached
+      - ${HOME}/.claude:/home/ge/.claude:cached
+      - ${HOME}/.claude.json:/home/ge/.claude.json:cached
+    command: sleep infinity
