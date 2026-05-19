@@ -350,6 +350,8 @@ dist
 .yarn/install-state.gz
 .pnp.*
 
+!qy/build
+
 .vscode
 
 todo.review.md

@@ -26,10 +26,12 @@ qy/
     mir/             # CFG + virtual register IR
     lir/             # Qy abstract-machine IR
   passes/            # lowering / verification / rewrite passes
-  vm/                # bytecode / register VM / stack / debug / VM emit
   backend/
     llvm/            # optional LLVM validation backend
-    vm/              # VM backend adapters, not a second runtime backend
+    vm/              # VM target：spec + bytecode emit, not a second runtime backend
+      spec/          # VM 规格：opcode/ABI/state/effect/bytecode contract
+  vm/                # Python VM implementation：machine/frame/state/scheduler/host
+    instance/        # VM 运行实例：machine/frame/state/scheduler/host adapter
   std/               # standard profile and standard library target package
   tools/
     check/           # analyzer / type checker
@@ -60,8 +62,11 @@ qy/
 - `ir/mir`: 只表达 CFG、virtual register、显式 control/effect flow。
 - `ir/lir`: 表达 Qy abstract machine：layout、ABI、virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation、fixup、peephole、debug injection。
 - `passes`: 只放阶段变换；IR model 不得 import `passes`。
-- `vm`: register VM 的唯一实现位置；bytecode compiler 只消费 LIR，不重新理解 HIR/MIR 语义。
 - `backend`: 非核心验证/输出后端；不得引入第二 runtime backend。
+- `backend/vm`: VM target 的规格、bytecode emit、验证与适配；不是 Python VM 实现。
+- `backend/vm/spec`: 稳定 VM 规格，包括 bytecode、opcode、operand schema、ABI、abstract state、effect/continuation protocol；不得依赖某个 Python VM instance。
+- `vm`: Qy Register VM 的 Python 实现位置；实现 `backend/vm/spec`，不定义 VM target 规格。
+- `vm/instance`: 一次执行的可变运行实例，包括 machine、runtime frame、runtime state、scheduler、host adapter；只能实现 `backend/vm/spec`，不得定义 opcode/ABI 规格。
 - `std`: standard profile 与标准库目标包；`qy/stdlib` 只是迁移期兼容目录。
 - `tools`: 面向维护者和编辑器的工具；读取同一 Qy 实例事实，不私造语言规则。
 - `cli`: 只编排 public API 和工具入口，不承载语言语义。
@@ -78,7 +83,9 @@ qy/
 - `macro -> frontend/core/source/diag/compile-time`，不得 import `register_vm` 作为长期方案。
 - `ir.* -> source/diag/errors/reader type`；不得 import `passes`、`vm`、`std`。
 - `passes -> ir/core/sem/session/diag`；不得把语义补丁写进 CLI 或 VM。
-- `vm -> bytecode/lir/core/sem/runtime values/errors/debug`；不得依赖 legacy evaluator。
+- `backend/vm/spec -> lir/core/sem/errors`；不得依赖 `qy/vm`。
+- `backend/vm/emit -> backend/vm/spec/lir/diag`；不得重新解释 HIR/MIR 语义。
+- `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`；不得依赖 legacy evaluator。
 - `std -> public runtime adapters`；不得直接依赖 `qy.evaluator`。
 - `tools/cli -> public API`；不得定义私有语言语义。
 
@@ -116,17 +123,107 @@ qy/
 - `qy/diagnostics.py` -> `qy/diag/diagnostic.py`。
 - `qy/reader.SourceSpan` / `qy.errors.SourceSpan` -> `qy/source/span.py`。
 - `qy/source_modules.py` -> `qy/import_/loader.py` 与 `qy/project/module.py`。
-- `qy/bytecode.py` -> `qy/vm/bytecode.py`。
+- `qy/bytecode.py` -> `qy/backend/vm/spec/bytecode.py`。
 - `qy/bytecode_compiler.py` -> `qy/vm/emit.py`。
-- `qy/register_vm.py` -> `qy/vm/interp.py`。
-- `qy/virtual_stack.py` -> `qy/vm/stack.py`。
+- `qy/register_vm.py` -> `qy/vm/instance/machine.py`。
+- `qy/virtual_stack.py` -> `qy/vm/instance/frame.py` / `state.py`。
 - `qy/analyzer.py` -> `qy/tools/check/`。
 - `qy/formatter.py` -> `qy/tools/fmt/`。
 - `qy/lsp.py` -> `qy/tools/lsp/`。
 - `qy/benchmark.py` -> `qy/tools/bench.py` 或 `bench/`。
 - `qy/stdlib/*` -> `qy/std/*`。
 
-# 5.1 工程层子包建议
+# 5.1 删除计划
+
+删除按三类推进，不允许无限期保留兼容文件。
+
+## 可直接删除
+
+这些不是源码真源，确认没有被构建脚本需要后可直接删除：
+
+- `qy/**/__pycache__/`
+- `.pytest_cache/`
+- `.ruff_cache/`
+- `.mypy_cache/` / `.ty/` 一类本地检查缓存
+- `QyLang.egg-info/`
+- `dist/`
+- packaging 临时 `build/`
+- `*.py.original`
+- `*.py.restored`
+
+## 迁移后删除
+
+这些文件仍可能被 public API 引用，必须先完成目标包迁移与 import 更新：
+
+- `qy/macro.py` -> `qy/macro/__init__.py` 后删除。
+- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*` 后删除。
+- `qy/errors.py` -> `qy/errors/__init__.py` 后删除。
+- `qy/diagnostics.py` -> `qy/diag/diagnostic.py` 后删除。
+- `qy/reader.py` -> `qy/frontend/` + `qy/source/` 边界稳定后删除或改为短期 public shim。
+- `qy/ir.py` -> `qy/ir/__init__.py` 后删除。
+- `qy/mir.py` -> `qy/ir/mir/__init__.py` 后删除。
+- `qy/lir.py` -> `qy/ir/lir/__init__.py` 后删除。
+- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` / `node.py` 后删除。
+- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` / `node.py` 后删除。
+- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` / `node.py` 后删除。
+- `qy/lowering.py` -> `qy/passes/lower_hir.py` 后删除。
+- `qy/mir_lowering.py` -> `qy/passes/lower_mir.py` 后删除。
+- `qy/lir_lowering.py` -> `qy/passes/lower_lir.py` 后删除。
+- `qy/bytecode.py` -> `qy/backend/vm/spec/bytecode.py` 后删除。
+- `qy/bytecode_compiler.py` -> `qy/vm/emit.py` 后删除。
+- `qy/register_vm.py` -> `qy/vm/instance/machine.py` 后删除。
+- `qy/virtual_stack.py` -> `qy/vm/instance/frame.py` / `state.py` 后删除。
+- `qy/analyzer.py` -> `qy/analysis/` + `qy/tools/check/` 后删除。
+- `qy/formatter.py` -> `qy/tools/fmt/` 后删除。
+- `qy/lsp.py` -> `qy/tools/lsp/` 后删除。
+- `qy/benchmark.py` -> `qy/tools/bench.py` 或 `bench/` 后删除。
+- `qy/source_modules.py` -> `qy/import_/loader.py` + `qy/project/module.py` 后删除。
+- `qy/llvm_codegen.py` -> `qy/backend/llvm/` 后删除。
+- `qy/types.py` -> `qy/core/` 或 `qy/sem/` 后删除；这是修复 console-script 启动时遮蔽 stdlib `types` 的结构前提。
+
+## 语义替代后删除
+
+这些是 legacy 语义承载点，不能只靠搬文件删除，必须先完成新语义：
+
+- `qy/evaluator.py`：register VM 与 macro compile-time 执行完全接管后删除。
+- `qy/eval_runtime.py`、`qy/async_runtime.py`、`qy/symbol_utils.py`：`std` 不再通过 legacy evaluator helper 后删除。
+- `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`、`qy/operator_docs.py`：operator metadata/schema 进入 core/std/profile 统一模型后删除或拆迁。
+- `qy/runtime_values.py`、`qy/environment.py`、`qy/continuation.py`：runtime value、symbol-space、continuation frame 进入 core/sem/vm spec/instance 后删除或拆迁。
+- `qy/values.py`、`qy/literals.py`、`qy/semantics.py`：syntax/runtime value 分层完成后迁入 `core/` 或 `sem/`，旧文件删除。
+- `qy/stdlib/`：迁入 `qy/std/` 且 compat import 期结束后删除。
+
+# 5.2 VM target spec / Python VM implementation 分层
+
+```text
+backend/vm/
+  spec/
+    bytecode.py      # bytecode program/function/instruction spec
+    opcode.py        # opcode set, operand schema, register/branch effects
+    abi.py           # call ABI, frame ABI, handler/continuation ABI
+    state.py         # abstract VM state contract
+    effect.py        # perform/handle/resume low-level protocol
+  emit.py            # verified LIR -> VM bytecode
+
+vm/
+  instance/
+    machine.py       # RegisterVirtualMachine instance and dispatch loop
+    frame.py         # runtime frame objects
+    state.py         # mutable execution state
+    scheduler.py     # parallel/all/race runtime scheduling
+    host.py          # host adapter / host callable bridge
+  emit.py            # Python VM local compatibility only; not final bytecode emit
+  debug.py           # VM-specific debug hooks
+```
+
+边界规则：
+
+- `backend/vm/spec` 是 VM target 契约，`qy/vm` 是该 target 的 Python 实现。
+- spec 可以被 LIR lowering、bytecode verifier、Python VM implementation、LLVM/libqy validation 共用。
+- `qy/vm/instance` 只能实现 spec，不能定义或修改 opcode、ABI、operand schema。
+- `backend/vm/emit` 写入 spec 规定的数据结构，不得把 HIR/MIR 语义补到 emit 阶段。
+- debug 只能观察 spec/instance，不得参与语义修正。
+
+# 5.3 工程层子包建议
 
 这些包属于 compiler infrastructure，不属于语言语义本体：
 
@@ -206,11 +303,12 @@ debug/
 
 1. 固定本文档、`AGENTS.md`、`CLAUDE.md`、`todo.md` 中的目标结构。
 2. 建立 compiler infrastructure 包：`diag/source/session/build/project/import_/analysis/debug/errors`。
-3. 建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。
-4. 修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。
-5. 解决同名 `macro`、`cli`、`errors` 冲突。
-6. 解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。
-7. 迁移 source/diag/session/project/import/build 的 legacy 文件。
-8. 迁移 VM 文件到 `qy/vm/`，再删除 top-level 旧文件。
-9. 迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。
-10. 迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。
+3. 建立 VM 分层：`qy/backend/vm/spec/` 与 `qy/vm/instance/`。
+4. 建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。
+5. 修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。
+6. 解决同名 `macro`、`cli`、`errors` 冲突。
+7. 解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。
+8. 迁移 source/diag/session/project/import/build 的 legacy 文件。
+9. 按 VM target spec / Python VM implementation 分层迁移 VM 文件，再删除 top-level 旧文件。
+10. 迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。
+11. 迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。

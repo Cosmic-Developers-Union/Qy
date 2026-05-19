@@ -51,6 +51,8 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 - **Package Structure** (`docs/package-structure.md`) — 目标包结构真源；新增目录、迁移旧 `.py` 文件、`stdlib -> std` 时先对齐这里
 - **Compiler Infrastructure** (`diag/`, `source/`, `session/`, `build/`, `project/`, `import_/`, `analysis/`, `debug/`, `errors/`) — 诊断、源码位置、会话、构建、项目、导入、分析、调试和异常分类；这些包只提供基础设施，不承载具体语言阶段语义
+- **VM Target Spec** (`backend/vm/spec/`) — VM bytecode/opcode/ABI/state/effect protocol 规格；不依赖 Python VM instance
+- **Python VM Implementation** (`vm/`) — Register VM 的 Python 实现；实现 `backend/vm/spec/`，不定义 target 规格
 - **Reader** (`reader.py`) — 基于 Lark 的 S-expression 解析器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，带源码位置追踪；默认 read pipeline 额外执行 default surface dialect。当前代码里把部分 literal 提前物化，属于待修偏移
 - **Lowering** (`lowering.py`) — Form → HIR，解析符号绑定，构建作用域层次
 - **HIR** (`ir.py`) — 高层语义 IR；只保留 resolved binding、structured control、operator/effect/module facts
@@ -82,7 +84,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard profile、字面量空间、std 空间、宿主注入空间都可以占据链上的明确位置。chain 只提供 lookup；fold 才会把 binding 吸收到某个 symbol-space。module root 初始化与 `from` 必须共用这套 fold 模型，后者是受 `exports` 约束的选择性 fold。语言核与默认 profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow 后续链节点。
 
-目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。标准库目标命名是 `qy.std`，不是 `qy.stdlib`。工程层包包括 `diag/source/session/build/project/import_/analysis/debug/errors`，它们负责编译器基础设施，不负责具体语言阶段语义。
+目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。标准库目标命名是 `qy.std`，不是 `qy.stdlib`。工程层包包括 `diag/source/session/build/project/import_/analysis/debug/errors`，它们负责编译器基础设施，不负责具体语言阶段语义。VM target spec 位于 `backend/vm/spec`，Python VM 实现位于 `vm`。
 
 语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 只能做源码到 `symbol` / `chain` 的映射，不得提前引入 runtime value。HIR / MIR / LIR 必须彼此独立：HIR 不得含 CFG/寄存器，MIR 不得含 Environment/物理布局，LIR 不得只是 bytecode opcode 的别名层，并且必须显式建模 virtual stack、continuation、handler、ss-chain transition、lookup 与 slot operation。详细边界见 `docs/ir-design.md`。
 

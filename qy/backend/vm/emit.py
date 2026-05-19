@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Register VM backend emit 目标模块。
+"""VM backend emit 目标模块。
 
 目标：
-- 放置面向 register VM 的 backend adapter。
-- 必要时包装 `qy/vm/emit.py` 的 public 输出能力。
+- 将 verified LIR 编码为符合 `qy/backend/vm/spec` 的 VM bytecode。
+- 替代迁移期 `qy/bytecode_compiler.py`。
 
 当前：
 - 占位模块。
 
 禁止：
-- 不得复制 bytecode compiler 或 register VM interpreter。
+- 不得重新理解 HIR/MIR 语义。
+- 不得依赖 `qy/vm` 的 Python VM instance。
 """

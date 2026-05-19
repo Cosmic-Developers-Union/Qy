@@ -24,6 +24,9 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/analysis/`：scope/ref/escape/liveness/effect analysis 目标包；迁移目标来自 `qy/analyzer.py`。
 - `qy/debug/`：IR dump、trace、VM debug、LLVM command log 目标包。
 - `qy/errors/`：语言级异常与内部编译器错误目标包；迁移目标来自 `qy/errors.py`。
+- `qy/backend/vm/spec/`：VM target 规格目标包，负责 bytecode/opcode/ABI/state/effect protocol；不得依赖 Python VM instance。
+- `qy/vm/`：VM 的 Python 实现目标包。
+- `qy/vm/instance/`：VM 运行实例目标包，负责 machine/frame/state/scheduler/host adapter；只能实现 `qy/backend/vm/spec`。
 - `qy/reader.py`：基于 Lark 的 S-expression 读取器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，并提供 default surface dialect。当前代码把部分 literal 提前物化，属于待修偏移，不得当作目标模型。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
@@ -95,6 +98,8 @@ make bench-check
 - 目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。
 - 标准库目标命名为 `qy.std`；`qy.stdlib` 只作为兼容迁移目录存在。
 - 工程层包（`diag/source/session/build/project/import_/analysis/debug/errors`）只提供编译器基础设施，不得承载具体语言阶段语义。
+- VM 必须区分 target spec 与 Python implementation：`qy/backend/vm/spec` 定义契约，`qy/vm` 实现该契约，`qy/vm/instance` 保存一次执行的可变状态；instance 不得定义 opcode/ABI 规格。
+- 删除 legacy 文件前必须满足 `docs/package-structure.md` 的删除前置条件；不得让兼容 shim 无限期保留。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
 - HIR、MIR、LIR 不是同一 IR 的三种格式：
   - HIR 只保留高层语义 facts；

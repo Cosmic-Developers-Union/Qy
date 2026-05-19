@@ -239,6 +239,10 @@ source
 - 目标结构分两层：
   - compiler infrastructure：`diag/source/session/build/project/import_/analysis/debug/errors`；
   - language pipeline：`frontend/macro/core/sem/ir/passes/vm/backend/std/tools/cli`；
+- VM 内部必须分层：
+  - `qy/backend/vm/spec/`：VM target 规格，描述 bytecode/opcode/ABI/state/effect 协议；
+  - `qy/vm/`：VM 的 Python 实现；
+  - `qy/vm/instance/`：一次执行的可变 VM 实例，实现 spec，不定义 spec；
 - 所有新增占位包必须使用中文 docstring 说明：
   - 目标；
   - 当前过渡状态；
@@ -255,6 +259,25 @@ source
 - `qy/analysis/`：scope/ref/escape/liveness/effect analysis，包含 `scope.py`、`refs.py`、`escape.py`、`liveness.py`、`effects.py`；
 - `qy/debug/`：IR dump、trace、VM debug、LLVM command log，包含 `dump.py`、`trace.py`、`vm.py`、`llvm.py`；
 - `qy/errors/`：语言级异常、runtime error、compile error、internal compiler error 分类。
+
+### A0.1.2 VM target spec / Python VM implementation
+
+- `qy/backend/vm/spec/`：
+  - `bytecode.py`：BytecodeProgram / BytecodeFunction / Instruction 规格；
+  - `opcode.py`：opcode set、operand schema、register/branch/effect 约束；
+  - `abi.py`：call ABI、frame ABI、handler/continuation ABI、host adapter ABI；
+  - `state.py`：抽象 VM 状态契约；
+  - `effect.py`：perform/handle/resume 的 VM 低层协议。
+- `qy/vm/instance/`：
+  - `machine.py`：RegisterVirtualMachine 实例与 dispatch loop；
+  - `frame.py`：function frame、continuation frame、handler frame、task frame 的运行时对象；
+  - `state.py`：pc、register file、frame stack、handler stack、pending task/effect；
+  - `scheduler.py`：parallel/all/race 的调度、barrier continuation、first-resume-wins；
+  - `host.py`：host reference/operator/capability adapter。
+- 边界：
+  - `backend/vm/spec` 是 VM target 的稳定契约，`qy/vm` 是 Python 实现；
+  - instance 只能实现 spec，不得定义 opcode/ABI/operand schema；
+  - bytecode emit 位于 `qy/backend/vm/emit.py`，只写入 spec 数据结构，不重新理解 HIR/MIR。
 
 ### A0.2 同名 module/package 冲突
 
@@ -280,6 +303,38 @@ source
 - `qy/cli/commands/*` 与 `qy/vm/{debug,emit,stack}.py` 仍有占位 docstring；若这些文件正在被他人修改，先不要抢写，实现完成后统一改成中文职责说明。
 - `uv run qy --help` 当前仍可能触发 `qy/types.py` 遮蔽 stdlib `types` 的启动问题；`uv run python -m qy --help` 已能工作，console-script 包装需单独修。
 
+### A0.2.1 删除计划
+
+删除不是清理偏好，而是结构收口的完成条件。所有删除按前置条件推进：
+
+- 可直接删除：
+  - `qy/**/__pycache__/`
+  - `.pytest_cache/`、`.ruff_cache/`、`.mypy_cache/`、`.ty/`
+  - `QyLang.egg-info/`、`dist/`、packaging 临时 `build/`
+  - `*.py.original`、`*.py.restored`
+- 迁移后删除：
+  - `qy/macro.py`
+  - `qy/cli.py`
+  - `qy/errors.py`
+  - `qy/diagnostics.py`
+  - `qy/reader.py` 或将其降为短期 public shim
+  - `qy/ir.py`、`qy/mir.py`、`qy/lir.py`
+  - `qy/ir/hir.py`、`qy/ir/mir.py`、`qy/ir/lir.py`
+  - `qy/lowering.py`、`qy/mir_lowering.py`、`qy/lir_lowering.py`
+  - `qy/bytecode.py`、`qy/bytecode_compiler.py`
+  - `qy/register_vm.py`、`qy/virtual_stack.py`
+  - `qy/analyzer.py`、`qy/formatter.py`、`qy/lsp.py`、`qy/benchmark.py`
+  - `qy/source_modules.py`
+  - `qy/llvm_codegen.py`
+  - `qy/types.py`
+- 语义替代后删除：
+  - `qy/evaluator.py`
+  - `qy/eval_runtime.py`、`qy/async_runtime.py`、`qy/symbol_utils.py`
+  - `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`、`qy/operator_docs.py`
+  - `qy/runtime_values.py`、`qy/environment.py`、`qy/continuation.py`
+  - `qy/values.py`、`qy/literals.py`、`qy/semantics.py`
+  - `qy/stdlib/`
+
 ### A0.3 `stdlib` -> `std`
 
 - 目标包名是 `qy/std/`；
@@ -296,8 +351,10 @@ source
 
 ### A0.5 VM / backend 边界
 
-- `qy/vm/` 是 register VM、bytecode、stack、debug 的目标位置；
-- `qy/backend/vm/` 只能放 VM backend adapter，不是第二执行器；
+- `qy/backend/vm/` 是 VM target spec、bytecode emit、验证与适配的目标位置；
+- `qy/backend/vm/spec/` 描述 VM 契约，可被 LIR lowering、bytecode verifier、Python VM implementation、LLVM/libqy validation 共用；
+- `qy/vm/` 是 VM 的 Python 实现；
+- `qy/vm/instance/` 保存一次运行的可变状态，不得反向污染 spec；
 - `qy/backend/llvm/` 只作为 LIR 可靠性验证后端，不改变 register VM 是唯一主执行器的定位。
 
 ### A0.5.1 Project / package / import 边界
@@ -314,6 +371,8 @@ source
 - 新代码不再写入待删 top-level legacy 文件；
 - 同名 module/package 冲突全部消失；
 - compiler infrastructure 包均存在，且与 language pipeline 包职责分离；
+- VM target spec 与 Python VM implementation 已分离，且 instance 不定义 opcode/ABI 规格；
+- 删除计划中的可直接删除项已清理，迁移后删除项不再被 public API 依赖；
 - `qy/std/` 成为标准库目标包；
 - `uv run python -c "import qy"` 恢复后，再进入语义修复和测试收口。
 
