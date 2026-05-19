@@ -2,7 +2,11 @@
   "name": "QyLang",
   "build": {
     "context": "..",
-    "dockerfile": "Dockerfile"
+    "dockerfile": "Dockerfile",
+    "args": {
+      "APT_CACHE_PROXY": "http://host.docker.internal:3142",
+      "BUN_REGISTRY": "http://host.docker.internal:4873"
+    }
   },
   "workspaceFolder": "/workspaces/Qy",
   "mounts": [
@@ -11,6 +15,8 @@
     "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
   ],
   "init": true,
+  "remoteUser": "vscode",
+  "updateRemoteUserUID": true,
   "containerEnv": {
     "UV_LINK_MODE": "copy"
   },
