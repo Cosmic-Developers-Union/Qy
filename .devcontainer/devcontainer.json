@@ -1,0 +1,62 @@
+{
+  "name": "QyLang",
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile",
+    "args": {
+      "USERNAME": "ubuntu",
+      "USER_UID": "1000",
+      "USER_GID": "1000"
+    }
+  },
+  "remoteUser": "ubuntu",
+  "workspaceFolder": "/workspaces/Qy",
+  "updateRemoteUserUID": true,
+  "init": true,
+  "containerEnv": {
+    "UV_LINK_MODE": "copy"
+  },
+  "remoteEnv": {
+    "SHELL": "/usr/bin/zsh"
+  },
+  "postCreateCommand": "uv sync --all-extras --group dev --group cli --group lsp && bun install --frozen-lockfile && cd extensions/qylang-support-vscode && bun install --frozen-lockfile",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+        "python.terminal.activateEnvironment": true,
+        "ruff.nativeServer": "on",
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/usr/bin/zsh"
+          }
+        }
+      },
+      "extensions": [
+        "charliermarsh.ruff",
+        "llvm-vs-code-extensions.vscode-clangd",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "tamasfe.even-better-toml"
+      ]
+    },
+    "jetbrains": {
+      "backend": "IntelliJ",
+      "settings": {
+        "com.intellij:app:HttpConfigurable.use_http_proxy": true,
+        "com.intellij:app:HttpConfigurable.proxy_type_is_socks": true,
+        "com.intellij:app:HttpConfigurable.proxy_host": "localhost",
+        "com.intellij:app:HttpConfigurable.proxy_port": 1080,
+        "com.intellij:app:HttpConfigurable.proxy_exceptions": "127.0.0.1, localhost, 192.168.*, *.vincentge.top",
+        "com.intellij:app:BaseRefactoringSettings.safe_delete_when_delete": false,
+        "com.intellij:app:BaseRefactoringSettings.rename_search_in_comments_for_file": false,
+        "com.intellij:app:BaseRefactoringSettings.rename_search_for_text_for_file": false,
+        "com.intellij:app:BaseRefactoringSettings.rename_search_for_references_for_file": false,
+        "com.intellij:app:BaseRefactoringSettings.rename_search_for_references_for_directory": false,
+        "com.intellij:app:BaseRefactoringSettings.move_search_for_references_for_file": false
+      },
+      "plugins": []
+    }
+  }
+}
