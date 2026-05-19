@@ -236,10 +236,25 @@ source
 
 - 新增并维护 `docs/package-structure.md`，作为包结构真源；
 - `AGENTS.md`、`CLAUDE.md`、`todo.md` 必须引用同一目标结构；
+- 目标结构分两层：
+  - compiler infrastructure：`diag/source/session/build/project/import_/analysis/debug/errors`；
+  - language pipeline：`frontend/macro/core/sem/ir/passes/vm/backend/std/tools/cli`；
 - 所有新增占位包必须使用中文 docstring 说明：
   - 目标；
   - 当前过渡状态；
   - 禁止承担的职责。
+
+### A0.1.1 Compiler infrastructure 包
+
+- `qy/diag/`：统一诊断系统，包含 `diagnostic.py`、`reporter.py`、`fixit.py`；
+- `qy/source/`：源码与位置系统，包含 `file.py`、`span.py`、`sourcemap.py`；
+- `qy/session/`：编译会话、配置、feature flags、profile facts，包含 `config.py`、`context.py`、`options.py`；
+- `qy/build/`：pipeline driver、artifact、cache、build graph，包含 `pipeline.py`、`artifact.py`、`cache.py`、`graph.py`、`driver.py`；
+- `qy/project/`：`qy.toml`、package、module、依赖与 source roots，包含 `manifest.py`、`package.py`、`module.py`；
+- `qy/import_/`：module loader/import resolver/from-fold bridge，包含 `resolver.py`、`loader.py`；
+- `qy/analysis/`：scope/ref/escape/liveness/effect analysis，包含 `scope.py`、`refs.py`、`escape.py`、`liveness.py`、`effects.py`；
+- `qy/debug/`：IR dump、trace、VM debug、LLVM command log，包含 `dump.py`、`trace.py`、`vm.py`、`llvm.py`；
+- `qy/errors/`：语言级异常、runtime error、compile error、internal compiler error 分类。
 
 ### A0.2 同名 module/package 冲突
 
@@ -247,6 +262,7 @@ source
 
 - `qy/macro.py` -> `qy/macro/__init__.py`，随后删除旧文件；
 - `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*`，随后删除旧文件；
+- `qy/errors.py` -> `qy/errors/__init__.py`，随后删除旧文件；
 - `qy/ir.py` -> `qy/ir/__init__.py`，随后删除旧文件；
 - `qy/mir.py` -> `qy/ir/mir/__init__.py`，随后删除旧文件；
 - `qy/lir.py` -> `qy/ir/lir/__init__.py`，随后删除旧文件；
@@ -257,6 +273,7 @@ source
 当前已知风险：
 
 - `qy/macro/` 会遮蔽 `qy/macro.py`；需要保证 package 已暴露 `MacroDefinition` 等 public 类型；
+- `qy/errors/` 会遮蔽 `qy/errors.py`；需要保证 package 已暴露全部 public error API；
 - `qy/ir/lir/`、`qy/ir/mir/` 会遮蔽同名 `.py` 文件；搬迁完成前 import 可能失败；
 - `qy/ir/hir/` 目前没有 `__init__.py`，一旦添加就会遮蔽 `qy/ir/hir.py`，必须同批迁入 public API。
 - top-level `qy/lir.py` 当前仍可能遮蔽目标 LIR public API；`qy/__init__.py` 应改为从 `qy.ir.lir` 导入，或把 `qy/lir.py` 改成纯 re-export shim 后删除。
@@ -283,11 +300,20 @@ source
 - `qy/backend/vm/` 只能放 VM backend adapter，不是第二执行器；
 - `qy/backend/llvm/` 只作为 LIR 可靠性验证后端，不改变 register VM 是唯一主执行器的定位。
 
+### A0.5.1 Project / package / import 边界
+
+- `project` 只描述项目、包、模块、manifest 和依赖，不执行 pipeline；
+- `import_` 解析 import spec 到 module/package/artifact，不直接求值 module body；
+- `build.graph` 记录 module/package dependency graph；
+- `build.pipeline` 串联阶段，但不实现阶段语义；
+- `build.driver` 面向 CLI/API 组织 check/run/test/build。
+
 ### A0.6 完成标准
 
 - 目标包均存在且有中文职责说明；
 - 新代码不再写入待删 top-level legacy 文件；
 - 同名 module/package 冲突全部消失；
+- compiler infrastructure 包均存在，且与 language pipeline 包职责分离；
 - `qy/std/` 成为标准库目标包；
 - `uv run python -c "import qy"` 恢复后，再进入语义修复和测试收口。
 

@@ -15,6 +15,15 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 ## 重要目录和文件
 
 - `docs/package-structure.md`：目标包结构真源；新增目录、迁移旧 `.py` 文件、`stdlib -> std` 时先对齐这里。
+- `qy/diag/`：统一诊断系统目标包，负责 diagnostic/reporter/fixit；迁移目标来自 `qy/diagnostics.py`。
+- `qy/source/`：源码、Span、SourceMap、位置映射目标包；`SourceSpan` 后续迁入这里。
+- `qy/session/`：编译会话、配置、feature flags、profile facts 目标包。
+- `qy/build/`：build graph、artifact、cache、pipeline driver 目标包；只编排阶段，不实现阶段语义。
+- `qy/project/`：`qy.toml`、package/module、项目依赖与 source roots 目标包。
+- `qy/import_/`：import resolver/module loader 目标包；尾随下划线用于避开 Python 关键字。
+- `qy/analysis/`：scope/ref/escape/liveness/effect analysis 目标包；迁移目标来自 `qy/analyzer.py`。
+- `qy/debug/`：IR dump、trace、VM debug、LLVM command log 目标包。
+- `qy/errors/`：语言级异常与内部编译器错误目标包；迁移目标来自 `qy/errors.py`。
 - `qy/reader.py`：基于 Lark 的 S-expression 读取器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，并提供 default surface dialect。当前代码把部分 literal 提前物化，属于待修偏移，不得当作目标模型。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
@@ -85,6 +94,7 @@ make bench-check
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
 - 目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。
 - 标准库目标命名为 `qy.std`；`qy.stdlib` 只作为兼容迁移目录存在。
+- 工程层包（`diag/source/session/build/project/import_/analysis/debug/errors`）只提供编译器基础设施，不得承载具体语言阶段语义。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
 - HIR、MIR、LIR 不是同一 IR 的三种格式：
   - HIR 只保留高层语义 facts；
