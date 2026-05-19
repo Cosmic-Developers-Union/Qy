@@ -2,16 +2,14 @@
   "name": "QyLang",
   "build": {
     "context": "..",
-    "dockerfile": "Dockerfile",
-    "args": {
-      "USERNAME": "ubuntu",
-      "USER_UID": "1000",
-      "USER_GID": "1000"
-    }
+    "dockerfile": "Dockerfile"
   },
-  "remoteUser": "ubuntu",
   "workspaceFolder": "/workspaces/Qy",
-  "updateRemoteUserUID": true,
+  "mounts": [
+    "source=qy-devcontainer-venv,target=${containerWorkspaceFolder}/.venv,type=volume",
+    "source=qy-devcontainer-node-modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
+    "source=${localEnv:HOME}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+  ],
   "init": true,
   "containerEnv": {
     "UV_LINK_MODE": "copy"
@@ -19,7 +17,9 @@
   "remoteEnv": {
     "SHELL": "/usr/bin/zsh"
   },
-  "postCreateCommand": "uv sync --all-extras --group dev --group cli --group lsp && bun install --frozen-lockfile && cd extensions/qylang-support-vscode && bun install --frozen-lockfile",
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
   "customizations": {
     "vscode": {
       "settings": {
@@ -48,7 +48,7 @@
         "com.intellij:app:HttpConfigurable.proxy_type_is_socks": true,
         "com.intellij:app:HttpConfigurable.proxy_host": "localhost",
         "com.intellij:app:HttpConfigurable.proxy_port": 1080,
-        "com.intellij:app:HttpConfigurable.proxy_exceptions": "127.0.0.1, localhost, 192.168.*, *.vincentge.top",
+        "com.intellij:app:HttpConfigurable.proxy_exceptions": "127.0.0.1, localhost, 192.168.*",
         "com.intellij:app:BaseRefactoringSettings.safe_delete_when_delete": false,
         "com.intellij:app:BaseRefactoringSettings.rename_search_in_comments_for_file": false,
         "com.intellij:app:BaseRefactoringSettings.rename_search_for_text_for_file": false,
