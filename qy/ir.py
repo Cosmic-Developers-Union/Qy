@@ -8,5 +8,5 @@ This file is kept for backward compatibility.
 
 from __future__ import annotations
 
-from qy.ir.hir import *  # noqa: F401, F403
+from qy.ir.hir import *  # noqa: F403
 from qy.ir.hir import __all__  # noqa: F401

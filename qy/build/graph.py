@@ -1,5 +1,5 @@
 # coding: utf-8
-"""构建图目标模块。
+"""构建图目标模块。.
 
 目标：
 - 建模 package/module/import dependency graph。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

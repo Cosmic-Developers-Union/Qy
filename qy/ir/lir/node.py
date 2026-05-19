@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""LIR 节点目标模块。
+"""LIR 节点目标模块。.
 
 目标：
 - 放置 LIRProgram、LIRFunction、LIRInstruction、opcode 等节点定义。

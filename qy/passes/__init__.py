@@ -13,27 +13,19 @@
 
 from __future__ import annotations
 
-from qy.passes.lower_hir import (
-    LoweringContext,
-    Scope,
-    lower,
-    lower_source,
-)
-
-from qy.passes.lower_mir import (
-    lower_mir,
-)
-
-from qy.passes.lower_lir import (
-    lower_lir,
-)
+from qy.passes.lower_hir import LoweringContext
+from qy.passes.lower_hir import Scope
+from qy.passes.lower_hir import lower
+from qy.passes.lower_hir import lower_source
+from qy.passes.lower_lir import lower_lir
+from qy.passes.lower_mir import lower_mir
 
 __all__ = [
     "LoweringContext",
     "Scope",
     "lower",
     "lower_hir",
-    "lower_mir",
     "lower_lir",
+    "lower_mir",
     "lower_source",
 ]

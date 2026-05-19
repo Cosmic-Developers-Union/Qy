@@ -9,9 +9,10 @@ NOTE: qy/types.py shadows Python stdlib `types` — this file must not use
 any top-level import that triggers stdlib `types` resolution at load time.
 Use __getattr__ for lazy access to types defined in qy/core.
 """
+
 from __future__ import annotations
 
-__all__ = ["OperatorKind", "TypeName"]
+__all__ = ["OperatorKind", "TypeName"]  # noqa: F822
 
 # Module-global cache for the stdlib types module — filled on first
 # successful retrieval so subsequent calls never re-trigger import.
@@ -41,10 +42,8 @@ def __getattr__(name: str):
     # loaded as "types" by Python's import machinery), fall back to the
     # stdlib by absolute path.  We detect this by checking __file__.
     candidate_file = getattr(candidate, "__file__", "") or ""
-    if "qy" + chr(47) + "types.py" in candidate_file or candidate_file.endswith(
-        "qy/types.py"
-    ):
-        import importlib.util, builtins
+    if "qy" + chr(47) + "types.py" in candidate_file or candidate_file.endswith("qy/types.py"):
+        import importlib.util
 
         # Use the same mechanism as `importlib.import_module` but with
         # absolute filesystem path so we never go through qy/types.py.
@@ -55,12 +54,12 @@ def __getattr__(name: str):
 
             if os.path.isfile(p):
                 spec = importlib.util.spec_from_file_location("types", p)
-                stdlib_types = importlib.util.module_from_spec(spec)
-                # Store in sys.modules so subsequent lookups find it directly.
-                sys.modules["types"] = stdlib_types
-                _STDLIB_TYPES = stdlib_types
-                spec.loader.exec_module(stdlib_types)
-                return getattr(stdlib_types, name)
+                if spec is not None and spec.loader is not None:
+                    stdlib_types = importlib.util.module_from_spec(spec)
+                    sys.modules["types"] = stdlib_types
+                    _STDLIB_TYPES = stdlib_types
+                    spec.loader.exec_module(stdlib_types)
+                    return getattr(stdlib_types, name)
 
     # Normal case: stdlib types already in sys.modules.
     _STDLIB_TYPES = candidate

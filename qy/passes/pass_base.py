@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Pass 基础接口目标模块。
+"""Pass 基础接口目标模块。.
 
 目标：
 - 定义 Pass、PassContext、PassResult、PassId、PassArtifact 等公共结构。
@@ -11,4 +11,3 @@
 禁止：
 - 不得在基础接口中实现具体语言变换。
 """
-

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""VM state spec 目标模块。
+"""VM state spec 目标模块。.
 
 目标：
 - 描述 VM target 抽象状态：program counter、register file、frame stack、handler stack、task state。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

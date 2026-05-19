@@ -1,5 +1,5 @@
 # coding: utf-8
-"""VM effect/continuation spec 目标模块。
+"""VM effect/continuation spec 目标模块。.
 
 目标：
 - 定义 perform/handle/resume 在 VM target 层的低层协议。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

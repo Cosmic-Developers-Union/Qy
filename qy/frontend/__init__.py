@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Qy 前端目标包。
+"""Qy 前端目标包。.
 
 目标：
 - 承载 source -> raw AST -> surface dialect 阶段。

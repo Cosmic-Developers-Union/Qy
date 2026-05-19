@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy Python VM implementation 目标包。
+"""Qy Python VM implementation 目标包。.
 
 目标：
 - 承载 Qy Register VM 的 Python 实现：instance、interpreter、runtime frame、state、scheduler、debug support。

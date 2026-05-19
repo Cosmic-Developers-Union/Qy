@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""LIR pretty printer 目标模块。
+"""LIR pretty printer 目标模块。.
 
 目标：
 - 为 CLI、debug、测试快照提供稳定 LIR dump。

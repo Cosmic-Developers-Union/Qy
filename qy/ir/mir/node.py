@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""MIR 节点目标模块。
+"""MIR 节点目标模块。.
 
 目标：
 - 放置 CFG、basic block、virtual register、terminator、effect flow 节点。

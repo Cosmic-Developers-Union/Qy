@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 from qy.bytecode import BytecodeFunctionValue
+from qy.core import OperatorKind
+from qy.core import TypeName
 from qy.macro import MacroDefinition
 from qy.operators import ControlOperator
 from qy.operators import EffectOperator
@@ -13,8 +15,6 @@ from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import UserFunction
-from qy.core import OperatorKind
-from qy.core import TypeName
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons

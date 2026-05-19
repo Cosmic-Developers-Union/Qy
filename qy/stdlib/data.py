@@ -114,12 +114,13 @@ def _is(left: object, right: object) -> object:
 
 
 def _eq(left: object, right: object) -> object:
-    # Value equality for immutable atoms; identity for reference types (chains, host objects)
+    if left is right:
+        return QY_T
     if type(left) is not type(right):
         return QY_NIL
     if isinstance(left, int | float | str | bool | Symbol):
         return QY_T if left == right else QY_NIL
-    return QY_T if left is right else QY_NIL
+    return QY_NIL
 
 
 def _reify(value: object) -> object:

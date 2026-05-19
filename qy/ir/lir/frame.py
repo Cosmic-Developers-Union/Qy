@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""LIR frame/layout 目标模块。
+"""LIR frame/layout 目标模块。.
 
 目标：
 - 建模 virtual stack frame、continuation frame、handler frame、task frame。

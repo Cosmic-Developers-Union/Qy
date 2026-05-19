@@ -886,7 +886,9 @@ def _format_instruction(instruction: MIRInstruction) -> str:
             indices_str = " ".join(f"fn#{i}" for i in operands[1:])
             rendered = f"{_format_register(operands[0])} = {instruction.opcode} [{indices_str}]"
         case "CACHE_EVAL":
-            rendered = f"{_format_register(operands[0])} = CACHE_EVAL {operands[1]!r} fn#{operands[2]}"
+            rendered = (
+                f"{_format_register(operands[0])} = CACHE_EVAL {operands[1]!r} fn#{operands[2]}"
+            )
         case "BUILD_TUPLE":
             args_str = " ".join(_format_register(r) for r in operands[1:])
             rendered = f"{_format_register(operands[0])} = BUILD_TUPLE {args_str}"
@@ -938,7 +940,9 @@ def _format_instruction(instruction: MIRInstruction) -> str:
         case "RESUME":
             rendered = f"{_format_register(operands[0])} = RESUME {_format_register(operands[1])} {_format_register(operands[2])}"
         case "RUNTIME_EVAL":
-            rendered = f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
+            rendered = (
+                f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
+            )
         case "STORE_LOCAL" | "DEFINE_ONCE":
             rendered = f"{instruction.opcode} {_format_operand(operands[0])}, {_format_register(operands[1])}"
         case _:

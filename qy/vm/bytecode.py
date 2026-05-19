@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Python VM bytecode 兼容目标模块。
+"""Python VM bytecode 兼容目标模块。.
 
 目标：
 - 迁移期为 Python VM implementation 提供本地 bytecode 适配。

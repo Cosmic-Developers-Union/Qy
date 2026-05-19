@@ -1,5 +1,5 @@
 # coding: utf-8
-"""optimize.dce pass。
+"""optimize.dce pass。.
 
 目标：
 - 删除无用代码。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

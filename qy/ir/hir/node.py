@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""HIR 节点目标模块。
+"""HIR 节点目标模块。.
 
 目标：
 - 放置 resolved binding、structured control、operator/effect/module facts 的节点。

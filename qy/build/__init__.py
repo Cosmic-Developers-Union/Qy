@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy build 目标包。
+"""Qy build 目标包。.
 
 目标：
 - 承载构建、打包、资源生成等工程能力。

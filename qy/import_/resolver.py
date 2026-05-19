@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Import resolver 目标模块。
+"""Import resolver 目标模块。.
 
 目标：
 - 将 import spec 解析为 package/module/artifact。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

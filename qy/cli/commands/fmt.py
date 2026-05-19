@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""`qy fmt` 命令目标模块。
+"""`qy fmt` 命令目标模块。.
 
 目标：
 - 承载格式化命令入口。

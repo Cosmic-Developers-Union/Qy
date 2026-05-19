@@ -1,5 +1,5 @@
 # coding: utf-8
-"""core.desugar pass。
+"""core.desugar pass。.
 
 目标：
 - 将 surface/core convenience form 降成更小的核心形式。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

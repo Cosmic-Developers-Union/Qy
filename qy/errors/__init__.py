@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Qy 语言级异常与内部错误目标包。
+"""Qy 语言级异常与内部错误目标包。.
 
 目标：
 - 承载语言级异常、runtime error、compile error、internal compiler error 分类。
@@ -237,4 +237,3 @@ def format_qy_error(error: QyError, *, debug: bool = False) -> str:
             )
         )
     return "\n".join(line.rstrip("\n") for line in lines)
-

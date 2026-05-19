@@ -1,5 +1,5 @@
 # coding: utf-8
-"""源码与位置映射目标包。
+"""源码与位置映射目标包。.
 
 目标：
 - 承载 SourceFile、Span、SourceMap、line/column 映射。
@@ -11,4 +11,3 @@
 禁止：
 - 不得放入 project/module loader 逻辑。
 """
-

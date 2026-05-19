@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Bytecode spec 目标模块。
+"""Bytecode spec 目标模块。.
 
 目标：
 - 定义 bytecode program/function/instruction 的规格、编码约束和验证规则。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

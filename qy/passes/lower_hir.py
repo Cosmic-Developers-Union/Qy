@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from qy.core import TypeName
 from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -47,6 +48,7 @@ from qy.operator_signature import format_arity_message
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
+from qy.reader import SpannedTuple
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
@@ -57,7 +59,6 @@ from qy.semantics import value_uses_eager_arguments
 from qy.source_modules import remember_source_module
 from qy.source_modules import resolve_known_module
 from qy.stdlib.imports import parse_from_import
-from qy.core import TypeName
 
 __all__ = [
     "LoweringContext",
@@ -279,7 +280,7 @@ def _lower_quote(
 ) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"quote expects exactly one argument, got {len(args)}", form)
-        return QuoteExpr((), get_span(form))
+        return QuoteExpr(SpannedTuple(), get_span(form))
     return QuoteExpr(cast(Form, args[0]), get_span(form))
 
 
@@ -293,7 +294,7 @@ def _lower_quasiquote(
 ) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"quasiquote expects exactly one argument, got {len(args)}", form)
-        return QuoteExpr((), get_span(form))
+        return QuoteExpr(SpannedTuple(), get_span(form))
     expanded = _expand_quasiquote_form(args[0])
     return _lower_form(expanded, scope, context, tail=tail)
 

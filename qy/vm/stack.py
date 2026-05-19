@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""VM stack 目标模块。
+"""VM stack 目标模块。.
 
 目标：
 - 承载 virtual stack、frame stack、handler stack 的运行时结构。

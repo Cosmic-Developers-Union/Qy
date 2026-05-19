@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""LIR verifier 目标模块。
+"""LIR verifier 目标模块。.
 
 目标：
 - 校验 LIR control、register、frame、handler、slot、debug metadata 的一致性。

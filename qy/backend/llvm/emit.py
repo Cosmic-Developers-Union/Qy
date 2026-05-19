@@ -11,16 +11,14 @@ Usage:
 
 from __future__ import annotations
 
-from qy.backend.llvm.abi import (
-    BUILTIN_NAMES,
-    BUILTIN_OPS,
-    fn_symbol,
-    str_global,
-    sym_global,
-)
+from qy.backend.llvm.abi import BUILTIN_NAMES
+from qy.backend.llvm.abi import BUILTIN_OPS
+from qy.backend.llvm.abi import fn_symbol
+from qy.backend.llvm.abi import str_global
+from qy.backend.llvm.abi import sym_global
 from qy.ir.lir import LIRProgram
 
-__all__ = ["emit", "compile_to_llvm_text"]
+__all__ = ["compile_to_llvm_text", "emit"]
 
 
 # ---------------------------------------------------------------------------
@@ -101,6 +99,7 @@ def _escape(s: str) -> str:
 # ---------------------------------------------------------------------------
 # Instruction emission
 # ---------------------------------------------------------------------------
+
 
 def _emit_instructions(fn, fn_idx: int, lines: list[str]) -> None:
     """Emit all instructions of one LIR function."""
@@ -272,7 +271,9 @@ def _emit_instructions(fn, fn_idx: int, lines: list[str]) -> None:
                 if isinstance(target, int) and cond is not None:
                     lines.append(f"  %cond.tag = extractvalue %qy_value %{cond}, 0")
                     lines.append("  %cond.nil_p = icmp eq i8 %cond.tag, 0")
-                    lines.append(f"  br i1 %cond.nil_p, label %block_{target}, label %block_{pc + 1}")
+                    lines.append(
+                        f"  br i1 %cond.nil_p, label %block_{target}, label %block_{pc + 1}"
+                    )
                 else:
                     lines.append(f"  br label %block_{pc + 1}")
 
@@ -288,7 +289,7 @@ def _emit_instructions(fn, fn_idx: int, lines: list[str]) -> None:
                 if val is not None:
                     lines.append(f"  ret %qy_value %{val}")
                 else:
-                    lines.append(f"  ret %qy_value @qy_nil()")
+                    lines.append("  ret %qy_value @qy_nil()")
 
             case "DEFEFFECT" | "PERFORM" | "HANDLE" | "RESUME":
                 dest = _dest(ops)
@@ -328,7 +329,7 @@ def _emit_instructions(fn, fn_idx: int, lines: list[str]) -> None:
         if last.opcode not in ("RETURN", "JUMP", "TAIL_CALL"):
             if _is_jump_target(fn, pc) or pc not in {i for i in range(len(fn.instructions))}:
                 lines.append(f"block_{pc}:")
-            lines.append(f"  ret %qy_value @qy_nil()")
+            lines.append("  ret %qy_value @qy_nil()")
 
 
 def _dest(ops) -> int | None:
@@ -346,6 +347,7 @@ def _is_jump_target(fn, pc: int) -> bool:
 # ---------------------------------------------------------------------------
 # Module emission
 # ---------------------------------------------------------------------------
+
 
 def emit(lir_program: LIRProgram) -> str:
     """Convert a LIRProgram to LLVM IR text."""
@@ -367,7 +369,7 @@ def emit(lir_program: LIRProgram) -> str:
             escaped = _escape(val)
             const_emitted.add(gname)
             str_constants.append(
-                (gname, f"{gname} = private constant [{len(escaped)+1} x i8] c\"{escaped}\\00\"")
+                (gname, f'{gname} = private constant [{len(escaped) + 1} x i8] c"{escaped}\\00"')
             )
         return gname
 
@@ -377,7 +379,10 @@ def emit(lir_program: LIRProgram) -> str:
             const_emitted.add(gname)
             sym_escaped = _escape(sym)
             sym_constants.append(
-                (gname, f"{gname} = private constant [{len(sym_escaped)+1} x i8] c\"{sym_escaped}\\00\"")
+                (
+                    gname,
+                    f'{gname} = private constant [{len(sym_escaped) + 1} x i8] c"{sym_escaped}\\00"',
+                )
             )
         return gname
 

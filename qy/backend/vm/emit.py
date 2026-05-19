@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""VM backend emit 目标模块。
+"""VM backend emit 目标模块。.
 
 目标：
 - 将 verified LIR 编码为符合 `qy/backend/vm/spec` 的 VM bytecode。

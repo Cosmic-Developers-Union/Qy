@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""core -> HIR 边界辅助目标模块。
+"""core -> HIR 边界辅助目标模块。.
 
 目标：
 - 放置从核心语义事实进入 HIR lowering 时需要的共享结构。

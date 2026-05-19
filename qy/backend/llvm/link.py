@@ -27,12 +27,13 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-__all__ = ["link", "CompileResult"]
+__all__ = ["CompileResult", "link"]
 
 
 # ---------------------------------------------------------------------------
 # Result types
 # ---------------------------------------------------------------------------
+
 
 class CompileResult:
     """Result of compiling a Qy program to an executable."""
@@ -54,7 +55,7 @@ class CompileResult:
     def run(self, *args: str) -> subprocess.CompletedProcess:
         """Run the executable with the given arguments."""
         return subprocess.run(
-            [str(self.executable)] + list(args),
+            [str(self.executable), *list(args)],
             capture_output=True,
             text=True,
         )
@@ -63,6 +64,7 @@ class CompileResult:
 # ---------------------------------------------------------------------------
 # Default tool paths
 # ---------------------------------------------------------------------------
+
 
 def _llc() -> str:
     return os.environ.get("QY_LLC", "llc")
@@ -114,6 +116,7 @@ int main(int argc, char** argv) {{
 # ---------------------------------------------------------------------------
 # Main linking function
 # ---------------------------------------------------------------------------
+
 
 def link(
     ll_text: str,
@@ -180,10 +183,15 @@ def link(
             [
                 _cc(),
                 "-c",
-                "-Wall", "-Wextra", "-pedantic", "-std=c11",
-                "-I", str(libqy_dir / "include"),
+                "-Wall",
+                "-Wextra",
+                "-pedantic",
+                "-std=c11",
+                "-I",
+                str(libqy_dir / "include"),
                 str(wrapper_path),
-                "-o", str(wrapper_o),
+                "-o",
+                str(wrapper_o),
             ],
             capture_output=True,
             text=True,
@@ -195,8 +203,7 @@ def link(
     libqy_a = libqy_dir / "libqy.a"
     if not libqy_a.exists():
         raise CompilationError(
-            f"libqy.a not found at {libqy_a}. "
-            "Run: python -m qy backend build-libqy"
+            f"libqy.a not found at {libqy_a}. Run: python -m qy backend build-libqy"
         )
 
     # Build link command
@@ -207,10 +214,13 @@ def link(
     ]
     if wrapper_o:
         link_cmd.append(str(wrapper_o))
-    link_cmd.extend([
-        str(libqy_a),
-        "-o", str(exe_path),
-    ])
+    link_cmd.extend(
+        [
+            str(libqy_a),
+            "-o",
+            str(exe_path),
+        ]
+    )
     if extra_cflags:
         link_cmd.extend(extra_cflags)
 
@@ -229,4 +239,5 @@ def link(
 
 class CompilationError(Exception):
     """Raised when compilation or linking fails."""
+
     pass

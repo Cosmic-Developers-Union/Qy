@@ -1,5 +1,5 @@
 # coding: utf-8
-"""control.tailcall pass。
+"""control.tailcall pass。.
 
 目标：
 - 识别并标记尾调用。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""resolve.imports pass。
+"""resolve.imports pass。.
 
 目标：
 - 解析 import/from/module exports。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

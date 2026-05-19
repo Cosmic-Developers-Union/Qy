@@ -655,4 +655,6 @@ def test_compile_lir_bytecode_rejects_abstract_machine_lir():
 
     assert not bytecode.ok
     assert bytecode.functions == ()
-    assert any("only supports compat LIR" in diagnostic.message for diagnostic in bytecode.diagnostics)
+    assert any(
+        "only supports compat LIR" in diagnostic.message for diagnostic in bytecode.diagnostics
+    )

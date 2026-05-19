@@ -23,9 +23,10 @@ from dataclasses import dataclass
 from typing import ClassVar
 
 __all__ = [
+    "NIL",
     "ArrayValue",
-    "CharValue",
     "ChainValue",
+    "CharValue",
     "ComplexValue",
     "DatumValue",
     "Float32Value",
@@ -34,7 +35,6 @@ __all__ = [
     "Int32Value",
     "Int64Value",
     "IntegerValue",
-    "NIL",
     "NilValue",
     "NumberValue",
     "ObjectValue",

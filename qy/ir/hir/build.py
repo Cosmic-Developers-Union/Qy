@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""HIR build 目标模块。
+"""HIR build 目标模块。.
 
 目标：
 - 放置从 macro-expanded syntax 进入 HIR 的构建辅助。

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""诊断修复建议目标模块。
+"""诊断修复建议目标模块。.
 
 目标：
 - 定义 fixit、text edit、replacement、insertion、deletion。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""VM debug 目标模块。
+"""VM debug 目标模块。.
 
 目标：
 - 承载 VM instruction trace、frame dump、register dump、handler dump。

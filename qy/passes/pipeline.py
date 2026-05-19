@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Pass pipeline 调度器目标模块。
+"""Pass pipeline 调度器目标模块。.
 
 目标：
 - 按固定阶段顺序调度 pass。
@@ -12,4 +12,3 @@
 禁止：
 - 调度器不得实现具体 pass 语义。
 """
-

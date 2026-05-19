@@ -1,5 +1,5 @@
 # coding: utf-8
-"""macro.expand pass。
+"""macro.expand pass。.
 
 目标：
 - 执行 macro expansion。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass；实现仍在 `qy/macroexpand.py`。
 """
-

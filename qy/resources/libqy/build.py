@@ -49,9 +49,19 @@ def build_libqy(clean: bool = False) -> None:
     obj = SRC_DIR / "runtime.o"
     print(f"compiling {SOURCE} ...")
     r = subprocess.run(
-        [CC, "-Wall", "-Wextra", "-pedantic", "-std=c11",
-         "-I", str(INCLUDE_DIR),
-         "-c", str(SOURCE), "-o", str(obj)],
+        [
+            CC,
+            "-Wall",
+            "-Wextra",
+            "-pedantic",
+            "-std=c11",
+            "-I",
+            str(INCLUDE_DIR),
+            "-c",
+            str(SOURCE),
+            "-o",
+            str(obj),
+        ],
         capture_output=True,
         text=True,
     )

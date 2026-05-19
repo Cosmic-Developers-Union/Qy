@@ -1,5 +1,5 @@
 # coding: utf-8
-"""SourceFile 目标模块。
+"""SourceFile 目标模块。.
 
 目标：
 - 建模源文件、虚拟源、stdin source、generated source。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

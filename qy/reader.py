@@ -8,5 +8,5 @@
 
 from __future__ import annotations
 
-from qy.frontend.reader import *  # noqa: F401, F403
+from qy.frontend.reader import *  # noqa: F403
 from qy.frontend.reader import __all__  # noqa: F401

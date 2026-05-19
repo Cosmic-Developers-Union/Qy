@@ -12,8 +12,8 @@ from qy.bytecode import Opcode
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
-from qy.passes.lower_lir import lower_lir
 from qy.ir.mir import MIRProgram
+from qy.passes.lower_lir import lower_lir
 from qy.passes.lower_mir import lower_mir
 
 __all__ = ["compile_bytecode", "compile_lir_bytecode", "compile_mir_bytecode"]

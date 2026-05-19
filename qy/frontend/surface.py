@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Surface dialect 实现目标模块。
+"""Surface dialect 实现目标模块。.
 
 目标：
 - 实现默认 surface dialect 的 sugar rewrite。

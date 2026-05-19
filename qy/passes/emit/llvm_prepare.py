@@ -1,5 +1,5 @@
 # coding: utf-8
-"""emit.llvm_prepare pass。
+"""emit.llvm_prepare pass。.
 
 目标：
 - 为 LLVM backend 准备 verified LIR / ABI metadata / runtime layout facts。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

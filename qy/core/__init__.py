@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy 语言核心模型目标包。
+"""Qy 语言核心模型目标包。.
 
 目标：
 - 保存 symbol、immutable chain、binding slot、operator/effect declaration 等核心语义模型。

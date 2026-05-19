@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Qy 前端 Reader 实现。
+"""Qy 前端 Reader 实现。.
 
 source -> raw AST 解析器，基于 Lark S-expression 解析器。
 
@@ -98,7 +98,7 @@ class DottedTuple(tuple):
         return value
 
 
-type Form = Symbol | tuple["Form", ...]
+type Form = Symbol | SpannedTuple | DottedTuple | tuple["Form", ...]
 type TupleAtom = Symbol | str | int | float | bool | bytes | None
 type TupleForm = TupleAtom | tuple["TupleForm", ...]
 

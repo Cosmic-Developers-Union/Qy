@@ -1,5 +1,5 @@
 # coding: utf-8
-"""构建缓存目标模块。
+"""构建缓存目标模块。.
 
 目标：
 - 缓存 source hash、macro expansion、IR、module artifacts。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

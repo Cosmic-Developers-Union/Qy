@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy 工具目标包。
+"""Qy 工具目标包。.
 
 目标：
 - 承载 check、fmt、lint、lsp、bench 等维护者与编辑器工具。

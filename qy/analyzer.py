@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qy.core import OperatorKind
+from qy.core import TypeName
 from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -28,8 +30,6 @@ from qy.runtime_values import UserFunction
 from qy.source_modules import remember_source_module
 from qy.source_modules import resolve_known_module
 from qy.stdlib.imports import parse_from_import
-from qy.core import OperatorKind
-from qy.core import TypeName
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons

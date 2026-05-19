@@ -24,11 +24,11 @@ from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.ir import ProgramIR
-from qy.passes.lower_hir import lower
 from qy.macroexpand import macroexpand_source_async
 from qy.operator_runtime import runtime_operator_semantics
 from qy.operator_runtime import validate_operator_arity
 from qy.operators import PureOperator
+from qy.passes.lower_hir import lower
 from qy.reader import Symbol
 from qy.runtime_values import EffectDefinition
 from qy.values import QY_NIL

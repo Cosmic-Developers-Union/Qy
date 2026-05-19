@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy register VM interpreter 目标模块。
+"""Qy register VM interpreter 目标模块。.
 
 目标：
 - 承载唯一执行器 Register VM。

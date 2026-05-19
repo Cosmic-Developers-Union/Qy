@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Python VM emit 兼容目标模块。
+"""Python VM emit 兼容目标模块。.
 
 目标：
 - 迁移期只保留 Python VM implementation 需要的本地适配。

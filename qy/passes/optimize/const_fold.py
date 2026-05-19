@@ -1,5 +1,5 @@
 # coding: utf-8
-"""optimize.const_fold pass。
+"""optimize.const_fold pass。.
 
 目标：
 - 执行常量折叠。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

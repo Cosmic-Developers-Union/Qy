@@ -1,5 +1,5 @@
 # coding: utf-8
-"""emit.bytecode preparation pass。
+"""emit.bytecode preparation pass。.
 
 目标：
 - 准备 VM bytecode backend 所需的 verified LIR artifact。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

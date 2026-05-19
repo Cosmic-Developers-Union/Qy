@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Pipeline driver 目标模块。
+"""Pipeline driver 目标模块。.
 
 目标：
 - 串联 source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块；实际编排仍主要位于 `Qy` runtime 和 CLI。
 """
-

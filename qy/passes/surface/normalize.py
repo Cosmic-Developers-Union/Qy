@@ -1,5 +1,5 @@
 # coding: utf-8
-"""surface.normalize pass。
+"""surface.normalize pass。.
 
 目标：
 - 执行 default surface dialect 规范化。
@@ -8,4 +8,3 @@
 当前：
 - 占位 pass。
 """
-

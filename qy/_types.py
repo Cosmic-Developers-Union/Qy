@@ -11,7 +11,8 @@ source) can import from here without triggering circular import of the qy packag
 
 from __future__ import annotations
 
-__all__ = ["OperatorKind", "TypeName"]
+__all__ = ["OperatorKind", "TypeName"]  # noqa: F822
+
 
 # Re-export from qy/core/__init__.py for backward compatibility.
 # Use __getattr__ to lazily import typing.Literal — avoids triggering

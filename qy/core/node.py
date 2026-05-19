@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy core node 目标模块。
+"""Qy core node 目标模块。.
 
 目标：
 - 放置 symbol、immutable chain、binding slot 等核心模型的数据结构。

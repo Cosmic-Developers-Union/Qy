@@ -1,5 +1,5 @@
 # coding: utf-8
-"""effect.flatten pass。
+"""effect.flatten pass。.
 
 目标：
 - 将 continuation / handler / resume 降成 CFG/state 形式。
@@ -11,4 +11,3 @@
 重要性：
 - 这是从语言级 effect 到底层可执行控制流的关键转换。
 """
-

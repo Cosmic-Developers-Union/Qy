@@ -1,5 +1,5 @@
 # coding: utf-8
-"""Opcode spec 目标模块。
+"""Opcode spec 目标模块。.
 
 目标：
 - 定义 opcode 集、operand schema、register effect、branch/effect 边界。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

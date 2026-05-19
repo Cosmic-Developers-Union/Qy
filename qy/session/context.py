@@ -1,5 +1,5 @@
 # coding: utf-8
-"""会话上下文目标模块。
+"""会话上下文目标模块。.
 
 目标：
 - 聚合 SourceManager、DiagnosticReporter、Project、pre-symbol-space-chain、cache。
@@ -8,4 +8,3 @@
 当前：
 - 占位模块。
 """
-

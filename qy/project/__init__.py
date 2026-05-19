@@ -1,5 +1,5 @@
 # coding: utf-8
-"""项目与包管理目标包。
+"""项目与包管理目标包。.
 
 目标：
 - 承载 `qy.toml`、package、module root、依赖解析、项目级 profile 配置。
@@ -11,4 +11,3 @@
 禁止：
 - 不得执行 source lowering 或 VM 运行。
 """
-

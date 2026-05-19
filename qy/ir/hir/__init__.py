@@ -14,13 +14,13 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
+from qy.core import OperatorKind
+from qy.core import TypeName
 from qy.diag import Diagnostic
 from qy.reader import Form
 from qy.reader import SourceSpan
 from qy.reader import Symbol
 from qy.stdlib.imports import ImportSpec
-from qy.core import OperatorKind
-from qy.core import TypeName
 
 __all__ = [
     "AllExpr",

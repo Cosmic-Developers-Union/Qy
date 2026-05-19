@@ -1,5 +1,5 @@
 # coding: utf-8
-"""编译会话目标包。
+"""编译会话目标包。.
 
 目标：
 - 承载单次编译/执行会话的配置、feature flags、profile、source manager、diagnostic reporter。
@@ -11,4 +11,3 @@
 禁止：
 - 不得成为全局单例状态。
 """
-

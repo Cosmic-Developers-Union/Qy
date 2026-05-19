@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy macro 系统目标包。
+"""Qy macro 系统目标包。.
 
 目标：
 - 承载 macro definition、macro expansion、hygiene、trace、source map、compile-time symbol-space。

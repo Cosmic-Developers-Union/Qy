@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy CLI 命令模块集合。
+"""Qy CLI 命令模块集合。.
 
 目标：
 - 每个文件只负责一个命令或一组紧密相关命令。

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""调试与 trace 目标包。
+"""调试与 trace 目标包。.
 
 目标：
 - 承载 IR dump、macro trace、VM debug、LLVM command log、pipeline trace。
@@ -11,4 +11,3 @@
 禁止：
 - debug 输出不得修正程序语义。
 """
-

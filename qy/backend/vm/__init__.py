@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""VM backend target 目标包。
+"""VM backend target 目标包。.
 
 目标：
 - 放置 VM target spec、bytecode emit、验证与适配代码。
