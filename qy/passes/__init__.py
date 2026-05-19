@@ -1,8 +1,14 @@
 # coding: utf-8
-"""Compiler passes.
+"""Qy compiler passes.
 
-Public API:
-    from qy.passes import lower_hir, lower_mir, lower_lir
+目标：
+- `lower_hir`: macro-expanded forms -> HIR。
+- `lower_mir`: HIR -> MIR。
+- `lower_lir`: MIR -> LIR。
+
+约束：
+- passes 可以 import IR model；IR model 不得反向 import passes。
+- bytecode emit 不属于 passes，应位于 `qy/vm`。
 """
 
 from __future__ import annotations

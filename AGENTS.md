@@ -14,6 +14,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 
 ## 重要目录和文件
 
+- `docs/package-structure.md`：目标包结构真源；新增目录、迁移旧 `.py` 文件、`stdlib -> std` 时先对齐这里。
 - `qy/reader.py`：基于 Lark 的 S-expression 读取器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，并提供 default surface dialect。当前代码把部分 literal 提前物化，属于待修偏移，不得当作目标模型。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
@@ -35,7 +36,8 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/evaluator.py`：legacy 求值器，仅通过 `eval_runtime.py` 受控导入；新代码不应从这里 import runtime 类型。
 - `qy/runtime.py`：`Qy` 主类 API，串联完整 pipeline。
 - `qy/analyzer.py`：静态分析、诊断、作用域和轻量类型检查。
-- `qy/stdlib/`：内置标准库操作符和模块导入支持；import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator。
+- `qy/std/`：标准库目标包；新增标准能力应优先进入这里。
+- `qy/stdlib/`：迁移期兼容目录；不得新增长期实现。当前 import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator。
 - `qy/cli.py`：Typer CLI，包括 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例。
@@ -81,6 +83,8 @@ make bench-check
 - Ruff 配置在 `pyproject.toml`，行宽 100。
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
+- 目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。
+- 标准库目标命名为 `qy.std`；`qy.stdlib` 只作为兼容迁移目录存在。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
 - HIR、MIR、LIR 不是同一 IR 的三种格式：
   - HIR 只保留高层语义 facts；

@@ -228,6 +228,69 @@ source
 
 # 4. 完整推进路径
 
+## Phase A0. 包结构收口（当前最高优先级）
+
+当前目标是先保证目录结构和职责边界正确；测试失败可以后续处理，但不能继续让错误结构扩散。
+
+### A0.1 目标结构真源
+
+- 新增并维护 `docs/package-structure.md`，作为包结构真源；
+- `AGENTS.md`、`CLAUDE.md`、`todo.md` 必须引用同一目标结构；
+- 所有新增占位包必须使用中文 docstring 说明：
+  - 目标；
+  - 当前过渡状态；
+  - 禁止承担的职责。
+
+### A0.2 同名 module/package 冲突
+
+不得长期同时保留 `name.py` 与 `name/`。迁移顺序：
+
+- `qy/macro.py` -> `qy/macro/__init__.py`，随后删除旧文件；
+- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*`，随后删除旧文件；
+- `qy/ir.py` -> `qy/ir/__init__.py`，随后删除旧文件；
+- `qy/mir.py` -> `qy/ir/mir/__init__.py`，随后删除旧文件；
+- `qy/lir.py` -> `qy/ir/lir/__init__.py`，随后删除旧文件；
+- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` / `node.py`，随后删除旧文件；
+- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` / `node.py`，随后删除旧文件；
+- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` / `node.py`，随后删除旧文件。
+
+当前已知风险：
+
+- `qy/macro/` 会遮蔽 `qy/macro.py`；需要保证 package 已暴露 `MacroDefinition` 等 public 类型；
+- `qy/ir/lir/`、`qy/ir/mir/` 会遮蔽同名 `.py` 文件；搬迁完成前 import 可能失败；
+- `qy/ir/hir/` 目前没有 `__init__.py`，一旦添加就会遮蔽 `qy/ir/hir.py`，必须同批迁入 public API。
+- top-level `qy/lir.py` 当前仍可能遮蔽目标 LIR public API；`qy/__init__.py` 应改为从 `qy.ir.lir` 导入，或把 `qy/lir.py` 改成纯 re-export shim 后删除。
+- `qy/cli/commands/*` 与 `qy/vm/{debug,emit,stack}.py` 仍有占位 docstring；若这些文件正在被他人修改，先不要抢写，实现完成后统一改成中文职责说明。
+- `uv run qy --help` 当前仍可能触发 `qy/types.py` 遮蔽 stdlib `types` 的启动问题；`uv run python -m qy --help` 已能工作，console-script 包装需单独修。
+
+### A0.3 `stdlib` -> `std`
+
+- 目标包名是 `qy/std/`；
+- `qy/stdlib/` 是迁移期兼容目录，不得新增长期实现；
+- docs 中可以暂时提到 `stdlib` 作为现状，但目标命名必须写作 `std`；
+- `docs/stdlib-operators.md` 当前可保留文件名，后续重命名为 `docs/std-operators.md`。
+
+### A0.4 Pass 命名修复
+
+- `qy/passes/lower_hir.py`：raw/macro-expanded forms -> HIR；
+- `qy/passes/lower_mir.py`：HIR -> MIR；
+- `qy/passes/lower_lir.py`：MIR -> LIR；
+- 当前如果存在 `lower_mir.py` 与 `lower_lir.py` 内容互换，必须先修正文件名，再讨论测试。
+
+### A0.5 VM / backend 边界
+
+- `qy/vm/` 是 register VM、bytecode、stack、debug 的目标位置；
+- `qy/backend/vm/` 只能放 VM backend adapter，不是第二执行器；
+- `qy/backend/llvm/` 只作为 LIR 可靠性验证后端，不改变 register VM 是唯一主执行器的定位。
+
+### A0.6 完成标准
+
+- 目标包均存在且有中文职责说明；
+- 新代码不再写入待删 top-level legacy 文件；
+- 同名 module/package 冲突全部消失；
+- `qy/std/` 成为标准库目标包；
+- `uv run python -c "import qy"` 恢复后，再进入语义修复和测试收口。
+
 ## Phase A. 文档与真源收口
 
 ### A1. 语言真源
@@ -236,7 +299,8 @@ source
 - `docs/op.md` 只描述 operator 分层与当前 operator 面；
 - `docs/pipeline.md` 只描述阶段边界；
 - `docs/ir-design.md` 只描述 HIR / MIR / LIR 的独立职责；
-- `docs/stdlib-operators.md` 只描述可变 stdlib 草案；
+- `docs/package-structure.md` 只描述包结构和迁移边界；
+- `docs/stdlib-operators.md` 当前只描述可变 std 草案，后续改名为 `docs/std-operators.md`；
 - `docs/language-core-audit.md` 只描述实现偏移，不重复发明规范。
 
 ### A2. 说明文件一致性
