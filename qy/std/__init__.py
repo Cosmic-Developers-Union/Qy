@@ -1,15 +1,17 @@
 # coding: utf-8
-"""Qy 标准库目标包。.
+"""标准库：standard profile 与标准库目标包。.
 
 目标：
-- 承载 standard profile 与标准库能力。
-- 作为 `qy/stdlib` 的迁移目标。
-- 按 pre-symbol-space-chain 的节点模型组织 core/std/host capability。
+- 提供 standard profile 与标准库实现
+- 包含常用算子（+、-、*、/ 等）和标准函数
+- 定义默认的 pre-symbol-space-chain
 
 当前：
-- 占位包；实际实现仍主要位于 `qy/stdlib`。
+- 占位包，qy/stdlib 是迁移期兼容目录
+- 新增长期标准能力应进入此包
 
 禁止：
-- 不得在这里新增依赖 legacy evaluator 的实现。
-- 不得把便利算子提升为语言核心语义。
+- 不是 Python helper 的随机集合
+- 不得将 profile 便利算子提升为核心 form
+- 不得绕过 symbol-space-chain 机制
 """

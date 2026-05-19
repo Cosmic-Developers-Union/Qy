@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy 工具目标包。.
+"""工具：面向维护者和编辑器的工具链。.
 
 目标：
-- 承载 check、fmt、lint、lsp、bench 等维护者与编辑器工具。
-- 所有工具读取同一 Qy 实例事实，包括 pre-symbol-space-chain、profile、operator metadata。
+- 提供面向维护者和编辑器的工具
+- 包括 LSP、formatter、linter、debugger 等
+- 读取同一 Qy 实例事实，不私造语言规则
 
 当前：
-- 占位包；实现仍主要位于 `analyzer.py`、`formatter.py`、`lsp.py`、`benchmark.py`。
+- 占位包
+- 实现仍主要位于 analyzer.py、formatter.py、lsp.py、benchmark.py
 
 禁止：
-- 工具不得私造语言规则，也不得绕过 pipeline 直接猜测语义。
+- 不承载语言语义
+- 不得定义独立的语言规则
+- 不得绕过标准 pipeline
 """

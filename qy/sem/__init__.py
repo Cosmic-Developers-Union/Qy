@@ -1,10 +1,19 @@
 # coding: utf-8
-"""Qy 语义值模型。.
+"""语义模型：面向执行的值模型和抽象机语义。.
 
-目标：定义 Qy runtime value 的语义层，所有后端（register VM、LLVM、libqy）
-必须收敛到此模型。Python 原生类型只是实现细节，不是语言语义。
+目标：
+- 保存面向 libqy / VM / backend 的值模型
+- 定义抽象机语义，包括 continuation、effect handler、symbol-space-chain
+- 提供 runtime value 类型（UserFunction、EffectDefinition、HostObjectRef 等）
 
-当前：core.py 已定义完整 value hierarchy，bridge.py 提供迁移期转换。
+当前：
+- core.py 已定义完整 value hierarchy
+- bridge.py 提供迁移期转换
+
+禁止：
+- 不得反向依赖 parser、CLI 或 std
+- 不得包含具体的 VM 实现细节
+- 不得混入工具链逻辑
 """
 
 from qy.sem.core import NIL

@@ -1,14 +1,17 @@
 # coding: utf-8
-"""VM backend spec 目标包。.
+"""VM 规格：稳定的虚拟机目标规范。.
 
 目标：
-- 描述 Qy Register VM target 的稳定规格：bytecode、opcode、ABI、状态机、frame、effect/continuation 协议。
-- 作为 LIR -> VM bytecode、Python VM implementation、LLVM/libqy 验证的共同契约。
+- 定义稳定 VM 规格，包括 bytecode、opcode、operand schema
+- 规定 ABI、abstract state、effect/continuation protocol
+- 作为 LIR 降低和 VM 实现之间的契约
 
 当前：
-- 占位包；实际 bytecode/opcode/spec 仍散落在 `qy/bytecode.py`、`qy/register_vm.py`、`qy/lir.py`。
+- 占位包，等待从 qy/bytecode.py 迁移
+- 实际 bytecode/opcode/spec 仍散落在 bytecode.py、register_vm.py、lir.py
 
 禁止：
-- 不得依赖 `qy/vm` 中的 Python VM instance 可变运行状态。
-- 不得把 Python 实现细节写成 VM target 规格。
+- 不得依赖某个 Python VM instance
+- 不得包含具体的执行逻辑
+- 不得混入优化策略或实现细节
 """
