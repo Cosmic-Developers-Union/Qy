@@ -54,5 +54,5 @@ USER $USERNAME
 RUN --mount=type=cache,target=$HOME/.bun,sharing=locked \
   bun add -g @anthropic-ai/claude-code
 
-ENV PATH="${HOME}/.bun/bin:${PATH}"
+ENV PATH="/home/${USERNAME}/.bun/bin:${PATH}"
 WORKDIR /workspace/Qy
