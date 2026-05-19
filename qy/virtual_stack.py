@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/vm/instance/frame.py + qy/vm/instance/state.py
 
 from __future__ import annotations
 

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/backend/vm/spec/effect.py + qy/vm/instance/frame.py
 
 from __future__ import annotations
 

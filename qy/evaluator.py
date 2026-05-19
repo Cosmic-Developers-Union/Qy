@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=register VM + compile-time macro execution
 # Legacy evaluator module.
 #
 # This module is being phased out in favor of the register VM pipeline.

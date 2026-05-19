@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=pre-symbol-space-chain literal layer
 
 from __future__ import annotations
 

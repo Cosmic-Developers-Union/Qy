@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/frontend/* + qy/source/*
 
 from __future__ import annotations
 

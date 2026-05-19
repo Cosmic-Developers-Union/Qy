@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/ir/lir/__init__.py + qy/ir/lir/node.py
 """LIR (Low-level IR): Qy abstract-machine IR.
 
 LIR is the first layer where Qy's runtime machinery must be explicit.  It is

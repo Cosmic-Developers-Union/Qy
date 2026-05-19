@@ -307,6 +307,12 @@ source
 
 删除不是清理偏好，而是结构收口的完成条件。所有删除按前置条件推进：
 
+标记规则：
+
+- 迁移后删除文件使用 `QY_DELETE_AFTER_MIGRATION: target=...`。
+- 语义替代后删除文件使用 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=...`。
+- 后续用 `rg QY_DELETE_AFTER qy` 审计待删范围。
+
 - 可直接删除：
   - `qy/**/__pycache__/`
   - `.pytest_cache/`、`.ruff_cache/`、`.mypy_cache/`、`.ty/`
@@ -344,10 +350,78 @@ source
 
 ### A0.4 Pass 命名修复
 
-- `qy/passes/lower_hir.py`：raw/macro-expanded forms -> HIR；
-- `qy/passes/lower_mir.py`：HIR -> MIR；
-- `qy/passes/lower_lir.py`：MIR -> LIR；
-- 当前如果存在 `lower_mir.py` 与 `lower_lir.py` 内容互换，必须先修正文件名，再讨论测试。
+- `passes/` 按“阶段 + 主题”组织，不再继续平铺。
+- 目标基础文件：
+  - `pipeline.py`：pass 调度器，支持 dump/stop；
+  - `pass_base.py`：Pass、PassContext、PassResult。
+- 目标阶段目录：
+  - `raw/validate.py`
+  - `surface/normalize.py`
+  - `macro/expand.py`、`macro/hygiene.py`
+  - `core/desugar.py`、`core/validate.py`
+  - `resolve/symbols.py`、`resolve/spaces.py`、`resolve/imports.py`
+  - `hir/build_cfg.py`、`hir/validate.py`
+  - `closure/convert.py`
+  - `effect/lower.py`、`effect/analyze.py`、`effect/flatten.py`
+  - `control/tailcall.py`、`control/loop.py`、`control/cfg_simplify.py`
+  - `mir/normalize.py`、`mir/validate.py`
+  - `lir/lower.py`、`lir/verify.py`、`lir/normalize.py`
+  - `optimize/const_fold.py`、`optimize/dce.py`、`optimize/inline.py`
+  - `emit/bytecode.py`、`emit/llvm_prepare.py`
+- 旧文件标记为迁移后删除：
+  - `qy/passes/lower_hir.py`
+  - `qy/passes/lower_mir.py`
+  - `qy/passes/lower_lir.py`
+- 核心原则：
+  - `ir/` 只放数据结构；
+  - `passes/` 只放变换和分析；
+  - `backend/` 只放目标后端输出。
+
+目标 pass 顺序：
+
+```text
+raw.validate
+-> surface.normalize
+-> macro.expand
+-> macro.hygiene
+-> core.desugar
+-> core.validate
+-> resolve.imports
+-> resolve.spaces
+-> resolve.symbols
+-> hir.build_cfg
+-> hir.validate
+-> closure.convert
+-> effect.lower
+-> effect.analyze
+-> effect.flatten
+-> control.tailcall
+-> control.loop
+-> control.cfg_simplify
+-> mir.normalize
+-> mir.validate
+-> lir.lower
+-> lir.verify
+-> lir.normalize
+-> optimize.const_fold / optimize.dce / optimize.inline
+-> emit.bytecode 或 emit.llvm_prepare
+-> backend
+```
+
+最重要的 pass：
+
+- `resolve.spaces.py`
+- `effect/analyze.py`
+- `effect/flatten.py`
+- `closure/convert.py`
+- `lir/verify.py`
+
+`pipeline.py` 必须支持：
+
+```bash
+qy emit main.qy --after=effect.flatten
+qy emit main.qy --target=lir
+```
 
 ### A0.5 VM / backend 边界
 

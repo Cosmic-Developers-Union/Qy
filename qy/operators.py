@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core operator declarations + qy/std
 
 from __future__ import annotations
 

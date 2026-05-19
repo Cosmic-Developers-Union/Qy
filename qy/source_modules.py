@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/import_/loader.py + qy/project/module.py
 
 from __future__ import annotations
 

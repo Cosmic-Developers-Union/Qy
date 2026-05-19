@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/std without legacy evaluator helpers
 # Compatibility facade for stdlib and runtime_values.
 #
 # This module provides the evaluation functions needed by stdlib operators

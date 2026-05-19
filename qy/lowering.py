@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/passes/* staged pipeline
 """HIR lowering pass (re-export shim).
 
 Use ``from qy.passes import lower`` for the lowering API.

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/backend/llvm/*
 """LLVM codegen — thin shim that re-exports the new backend.
 
 This file is kept for backward compatibility. New code should use:

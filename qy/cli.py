@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/cli/__init__.py + qy/cli/commands/*
 
 import atexit
 import sys

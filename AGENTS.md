@@ -27,6 +27,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/backend/vm/spec/`：VM target 规格目标包，负责 bytecode/opcode/ABI/state/effect protocol；不得依赖 Python VM instance。
 - `qy/vm/`：VM 的 Python 实现目标包。
 - `qy/vm/instance/`：VM 运行实例目标包，负责 machine/frame/state/scheduler/host adapter；只能实现 `qy/backend/vm/spec`。
+- `qy/passes/`：按“阶段 + 主题”组织 pass；`pipeline.py` 调度，`pass_base.py` 定义接口，子目录包括 `raw/surface/macro/core/resolve/hir/closure/effect/control/mir/lir/optimize/emit`。
 - `qy/reader.py`：基于 Lark 的 S-expression 读取器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，并提供 default surface dialect。当前代码把部分 literal 提前物化，属于待修偏移，不得当作目标模型。
 - `qy/lowering.py`：Form → HIR（`qy/ir.py` 定义的 IR 节点）。
 - `qy/ir.py`：HIR 数据结构（`CallExpr`、`LetExpr`、`HandleExpr`、`PerformExpr` 等）。
@@ -100,6 +101,8 @@ make bench-check
 - 工程层包（`diag/source/session/build/project/import_/analysis/debug/errors`）只提供编译器基础设施，不得承载具体语言阶段语义。
 - VM 必须区分 target spec 与 Python implementation：`qy/backend/vm/spec` 定义契约，`qy/vm` 实现该契约，`qy/vm/instance` 保存一次执行的可变状态；instance 不得定义 opcode/ABI 规格。
 - 删除 legacy 文件前必须满足 `docs/package-structure.md` 的删除前置条件；不得让兼容 shim 无限期保留。
+- 待删除源码必须使用 `QY_DELETE_AFTER_MIGRATION` 或 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT` 文件头标记，方便 `rg QY_DELETE_AFTER` 跟踪。
+- `passes/` 只放变换和分析；`ir/` 只放数据结构；`backend/` 只放目标后端输出。
 - 新核心语义必须落到明确 pipeline 阶段（surface dialect / macro expand / HIR / MIR / LIR / bytecode / VM），不能跨层补丁式扩散。
 - HIR、MIR、LIR 不是同一 IR 的三种格式：
   - HIR 只保留高层语义 facts；

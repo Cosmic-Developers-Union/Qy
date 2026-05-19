@@ -25,7 +25,22 @@ qy/
     hir/             # high-level semantic IR
     mir/             # CFG + virtual register IR
     lir/             # Qy abstract-machine IR
-  passes/            # lowering / verification / rewrite passes
+  passes/            # staged transforms and analyses, organized by phase + topic
+    pipeline.py      # pass scheduler and dump/stop support
+    pass_base.py     # Pass / PassContext / PassResult
+    raw/
+    surface/
+    macro/
+    core/
+    resolve/
+    hir/
+    closure/
+    effect/
+    control/
+    mir/
+    lir/
+    optimize/
+    emit/
   backend/
     llvm/            # optional LLVM validation backend
     vm/              # VM target：spec + bytecode emit, not a second runtime backend
@@ -61,7 +76,7 @@ qy/
 - `ir/hir`: 只表达 resolved binding、structured control、operator/effect/module facts。
 - `ir/mir`: 只表达 CFG、virtual register、显式 control/effect flow。
 - `ir/lir`: 表达 Qy abstract machine：layout、ABI、virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation、fixup、peephole、debug injection。
-- `passes`: 只放阶段变换；IR model 不得 import `passes`。
+- `passes`: 只放变换和分析，按“阶段 + 主题”组织；IR model 不得 import `passes`。
 - `backend`: 非核心验证/输出后端；不得引入第二 runtime backend。
 - `backend/vm`: VM target 的规格、bytecode emit、验证与适配；不是 Python VM 实现。
 - `backend/vm/spec`: 稳定 VM 规格，包括 bytecode、opcode、operand schema、ABI、abstract state、effect/continuation protocol；不得依赖某个 Python VM instance。
@@ -89,6 +104,100 @@ qy/
 - `std -> public runtime adapters`；不得直接依赖 `qy.evaluator`。
 - `tools/cli -> public API`；不得定义私有语言语义。
 
+# 3.1 Pass 组织与顺序
+
+核心原则：
+
+```text
+ir/       只放数据结构
+passes/   只放变换和分析
+backend/  只放目标后端输出
+```
+
+目标目录：
+
+```text
+passes/
+  pipeline.py
+  pass_base.py
+  raw/validate.py
+  surface/normalize.py
+  macro/expand.py
+  macro/hygiene.py
+  core/desugar.py
+  core/validate.py
+  resolve/symbols.py
+  resolve/spaces.py
+  resolve/imports.py
+  hir/build_cfg.py
+  hir/validate.py
+  closure/convert.py
+  effect/lower.py
+  effect/analyze.py
+  effect/flatten.py
+  control/tailcall.py
+  control/loop.py
+  control/cfg_simplify.py
+  mir/normalize.py
+  mir/validate.py
+  lir/lower.py
+  lir/verify.py
+  lir/normalize.py
+  optimize/const_fold.py
+  optimize/dce.py
+  optimize/inline.py
+  emit/bytecode.py
+  emit/llvm_prepare.py
+```
+
+目标 pass 顺序：
+
+```text
+raw.validate
+-> surface.normalize
+-> macro.expand
+-> macro.hygiene
+-> core.desugar
+-> core.validate
+-> resolve.imports
+-> resolve.spaces
+-> resolve.symbols
+-> hir.build_cfg
+-> hir.validate
+-> closure.convert
+-> effect.lower
+-> effect.analyze
+-> effect.flatten
+-> control.tailcall
+-> control.loop
+-> control.cfg_simplify
+-> mir.normalize
+-> mir.validate
+-> lir.lower
+-> lir.verify
+-> lir.normalize
+-> optimize.const_fold / optimize.dce / optimize.inline
+-> emit.bytecode 或 emit.llvm_prepare
+-> backend
+```
+
+最重要的 pass：
+
+- `resolve.spaces`: 符号提升、space layout、binding slot、pending binding、meta-space。
+- `effect.analyze`: one-shot/multi-shot、continuation escape、parallel effect 边界。
+- `effect.flatten`: continuation / handler / resume -> CFG/state。
+- `closure.convert`: lambda -> closure/env，捕获和 slot copy policy 显式化。
+- `lir.verify`: LIR frame、handler、continuation、slot、lookup、branch 可验证性。
+
+`passes/pipeline.py` 必须支持调试截断与 dump：
+
+```bash
+qy emit main.qy --after=effect.flatten
+qy emit main.qy --target=lir
+```
+
+`--after=<pass-id>` 表示运行到该 pass 后 dump artifact；`--target=<artifact>` 表示运行到目标产物后停止。
+
 # 4. 同名模块冲突
 
 同一目录下不得长期同时存在 `name.py` 与 `name/`。Python import 会优先解析其中一个，导致另一个实现被静默遮蔽。
@@ -114,8 +223,8 @@ qy/
 # 5. Legacy 文件迁移表
 
 - `qy/lowering.py` -> `qy/passes/lower_hir.py`。
-- `qy/mir_lowering.py` -> `qy/passes/lower_mir.py`。
-- `qy/lir_lowering.py` -> `qy/passes/lower_lir.py`。
+- `qy/mir_lowering.py` -> `qy/passes/closure` + `effect` + `control` + `mir`。
+- `qy/lir_lowering.py` -> `qy/passes/lir/lower.py`。
 - `qy/ir.py` -> `qy/ir/__init__.py`。
 - `qy/mir.py` -> `qy/ir/mir/__init__.py`。
 - `qy/lir.py` -> `qy/ir/lir/__init__.py`。
@@ -136,6 +245,12 @@ qy/
 # 5.1 删除计划
 
 删除按三类推进，不允许无限期保留兼容文件。
+
+标记规则：
+
+- 迁移后删除文件使用 `QY_DELETE_AFTER_MIGRATION: target=...`。
+- 语义替代后删除文件使用 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=...`。
+- 后续用 `rg QY_DELETE_AFTER qy` 审计待删范围。
 
 ## 可直接删除
 
@@ -169,6 +284,9 @@ qy/
 - `qy/lowering.py` -> `qy/passes/lower_hir.py` 后删除。
 - `qy/mir_lowering.py` -> `qy/passes/lower_mir.py` 后删除。
 - `qy/lir_lowering.py` -> `qy/passes/lower_lir.py` 后删除。
+- `qy/passes/lower_hir.py` -> staged passes 后删除。
+- `qy/passes/lower_mir.py` -> `closure/` + `effect/` + `control/` + `mir/` 后删除。
+- `qy/passes/lower_lir.py` -> `lir/lower.py` 后删除。
 - `qy/bytecode.py` -> `qy/backend/vm/spec/bytecode.py` 后删除。
 - `qy/bytecode_compiler.py` -> `qy/vm/emit.py` 后删除。
 - `qy/register_vm.py` -> `qy/vm/instance/machine.py` 后删除。

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/vm/instance/machine.py
 
 from __future__ import annotations
 

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/ir/lir/__init__.py
 """LIR (Low-level IR): linearized instruction sequence ready for register VM.
 
 LIR is a low-level IR with its own opcode vocabulary, independent from bytecode.

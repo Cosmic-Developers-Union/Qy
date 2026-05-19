@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/ir/mir/__init__.py + qy/ir/mir/node.py
 """MIR (Mid-level IR) — CFG / virtual-register IR for bytecode lowering.
 
 MIR uses virtual registers instead of SSA values.

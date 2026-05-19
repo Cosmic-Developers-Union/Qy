@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/ir/hir/__init__.py + qy/ir/hir/node.py
 """HIR (High-level IR) — resolved, structured semantic representation.
 
 HIR is emitted by the lowering pass and is the first layer where scoping

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy/errors/__init__.py
 
 from __future__ import annotations
 
