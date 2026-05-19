@@ -3,8 +3,8 @@ from qy import compile_lir_bytecode
 from qy import dump_lir
 from qy import lower_lir
 from qy.bytecode_compiler import compile_mir_bytecode
-from qy.lowering import lower_source
-from qy.mir_lowering import lower_mir
+from qy.passes.lower_hir import lower_source
+from qy.passes.lower_mir import lower_mir
 from qy.reader import Symbol
 from qy.register_vm import evaluate_bytecode_source
 
@@ -223,7 +223,7 @@ def test_lower_lir_compacts_sparse_register_layout():
 def test_peephole_removes_move_self_assignment():
     """Peephole eliminates MOVE r, r (no-op)."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
 
     instructions = [
         LIRInstruction("LOAD_HOST", (0, 1)),
@@ -239,7 +239,7 @@ def test_peephole_removes_move_self_assignment():
 def test_peephole_keeps_move_different_registers():
     """Peephole preserves MOVE between different registers."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
 
     instructions = [
         LIRInstruction("LOAD_HOST", (0, 1)),
@@ -254,7 +254,7 @@ def test_peephole_keeps_move_different_registers():
 def test_peephole_strength_reduces_nil():
     """Peephole converts LOAD_HOST r, None → LOAD_NIL r."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
 
     instructions = [LIRInstruction("LOAD_HOST", (0, None))]
     result = _peephole(instructions)
@@ -266,7 +266,7 @@ def test_peephole_strength_reduces_nil():
 def test_peephole_strength_reduces_t():
     """Peephole converts LOAD_HOST r, QY_T → LOAD_T r."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
     from qy.values import QY_T
 
     instructions = [LIRInstruction("LOAD_HOST", (0, QY_T))]
@@ -279,7 +279,7 @@ def test_peephole_strength_reduces_t():
 def test_peephole_keeps_jump_to_next_instruction():
     """Keep JUMP-to-next since jumps are pre-patched to absolute indices."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
 
     instructions = [
         LIRInstruction("LOAD_HOST", (0, 1)),
@@ -294,7 +294,7 @@ def test_peephole_keeps_jump_to_next_instruction():
 def test_peephole_keeps_jump_to_non_next():
     """Peephole keeps JUMP when target is not the next instruction."""
     from qy.ir.lir import LIRInstruction
-    from qy.lir_lowering import _peephole
+    from qy.passes.lower_lir import _peephole
 
     instructions = [
         LIRInstruction("LOAD_HOST", (0, 1)),
@@ -391,7 +391,7 @@ def test_verify_lir_passes_valid_program():
 
 def test_lir_load_nil_and_load_t_in_pipeline():
     """End-to-end: LOAD_NIL/LOAD_T opcodes appear in LIR output for nil/t values."""
-    from qy.lir_lowering import lower_lir
+    from qy.passes.lower_lir import lower_lir
 
     source = "(cond (true 1) (true 2))"
     mir = lower_mir(lower_source(source))

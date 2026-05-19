@@ -18,11 +18,11 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_mir_bytecode
 from qy.environment import Environment
 from qy.ir import ProgramIR
-from qy.lir_lowering import lower_lir
-from qy.lowering import lower
+from qy.passes.lower_lir import lower_lir
+from qy.passes.lower_hir import lower
 from qy.macroexpand import macroexpand
 from qy.ir.mir import MIRProgram
-from qy.mir_lowering import lower_mir
+from qy.passes.lower_mir import lower_mir
 from qy.reader import Form
 from qy.reader import read
 from qy.register_vm import RegisterVirtualMachine

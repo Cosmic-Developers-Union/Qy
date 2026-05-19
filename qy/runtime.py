@@ -14,8 +14,8 @@ from qy.environment import ChainFrame
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.ir import ProgramIR
-from qy.lowering import lower
-from qy.lowering import lower_source
+from qy.passes.lower_hir import lower
+from qy.passes.lower_hir import lower_source
 from qy.macroexpand import MacroExpansion
 from qy.macroexpand import MacroExpansionOptions
 from qy.macroexpand import macroexpand
@@ -23,7 +23,7 @@ from qy.macroexpand import macroexpand_async
 from qy.macroexpand import macroexpand_source
 from qy.macroexpand import macroexpand_source_async
 from qy.ir.mir import MIRProgram
-from qy.mir_lowering import lower_mir
+from qy.passes.lower_mir import lower_mir
 from qy.operator_signature import OperatorSignature
 from qy.operators import ArgumentEvaluator
 from qy.reader import Form

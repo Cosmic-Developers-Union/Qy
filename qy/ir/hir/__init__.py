@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
-from qy.diagnostics import Diagnostic
+from qy.diag import Diagnostic
 from qy.reader import Form
 from qy.reader import SourceSpan
 from qy.reader import Symbol

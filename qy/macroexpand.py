@@ -10,7 +10,7 @@ from typing import cast
 from qy.async_runtime import run_async
 from qy.compile_time import compile_time_binding_names
 from qy.compile_time import compile_time_environment
-from qy.diagnostics import Diagnostic
+from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError

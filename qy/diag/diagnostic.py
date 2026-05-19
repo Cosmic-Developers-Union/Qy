@@ -1,11 +1,17 @@
 # coding: utf-8
-"""诊断对象目标模块。
+from __future__ import annotations
 
-目标：
-- 定义 Diagnostic、Severity、Note、DiagnosticCode 等结构。
-- 统一 span、message、metadata、fixit 的承载格式。
+from dataclasses import dataclass
+from typing import Literal
 
-当前：
-- 占位模块；迁移目标来自 `qy/diagnostics.py`。
-"""
+__all__ = ["Diagnostic", "Severity"]
 
+Severity = Literal["error", "warning", "hint"]
+
+
+@dataclass(frozen=True, slots=True)
+class Diagnostic:
+    message: str
+    severity: Severity = "error"
+    line: int | None = None
+    column: int | None = None

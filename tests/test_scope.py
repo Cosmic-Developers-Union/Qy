@@ -57,14 +57,14 @@ def test_define_operator_binds_in_env():
 
 
 def test_duplicate_define_reports_error_at_lowering():
-    from qy.lowering import lower_source
+    from qy.passes.lower_hir import lower_source
 
     result = lower_source("(define x 1) (define x 2)")
     assert any("'x' is already bound" in d.message for d in result.diagnostics)
 
 
 def test_define_cannot_rebind_host_symbol_in_same_scope():
-    from qy.lowering import lower_source
+    from qy.passes.lower_hir import lower_source
 
     result = lower_source("(define + 99)")
     assert any("'+' is already bound in this scope" in d.message for d in result.diagnostics)
@@ -108,7 +108,7 @@ def test_define_once_raises_on_duplicate():
 
 
 def test_duplicate_defeffect_reports_error():
-    from qy.lowering import lower_source
+    from qy.passes.lower_hir import lower_source
 
     result = lower_source("(defeffect ask) (defeffect ask)")
     assert any("'ask' is already bound" in d.message for d in result.diagnostics)

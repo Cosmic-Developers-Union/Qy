@@ -161,7 +161,7 @@ async def _evaluate_ir_forms_async(
     runtime_env = env or standard_environment()
 
     from qy.bytecode_compiler import compile_bytecode
-    from qy.lowering import lower
+    from qy.passes.lower_hir import lower
     from qy.macroexpand import macroexpand_async
     from qy.register_vm import RegisterVirtualMachine
 

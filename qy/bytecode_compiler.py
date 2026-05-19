@@ -12,9 +12,9 @@ from qy.bytecode import Opcode
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
-from qy.lir_lowering import lower_lir
+from qy.passes.lower_lir import lower_lir
 from qy.ir.mir import MIRProgram
-from qy.mir_lowering import lower_mir
+from qy.passes.lower_mir import lower_mir
 
 __all__ = ["compile_bytecode", "compile_lir_bytecode", "compile_mir_bytecode"]
 
@@ -70,7 +70,7 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
     if program.dialect != "compat":
-        from qy.diagnostics import Diagnostic
+        from qy.diag import Diagnostic
 
         return BytecodeProgram(
             (),

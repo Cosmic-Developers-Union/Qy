@@ -7,7 +7,7 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import QuoteExpr
 from qy.ir import SymbolRefExpr
-from qy.lowering import lower_source
+from qy.passes.lower_hir import lower_source
 from qy.reader import Symbol
 
 

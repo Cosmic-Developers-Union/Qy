@@ -13,7 +13,7 @@ from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
-from qy.lowering import lower_source
+from qy.passes.lower_hir import lower_source
 from qy.ir.mir import MIROpcode
 from qy.reader import Symbol
 

@@ -66,9 +66,9 @@ from qy.ir.lir import LIRProgram
 from qy.ir.lir import LIRSymbolMeta
 from qy.ir.lir import LIRSymbolSpaceLayout
 from qy.ir.lir import dump_lir
-from qy.lir_lowering import lower_lir
-from qy.lowering import lower
-from qy.lowering import lower_source
+from qy.passes.lower_lir import lower_lir
+from qy.passes.lower_hir import lower
+from qy.passes.lower_hir import lower_source
 from qy.macro import MacroDefinition
 from qy.macroexpand import MacroEffectPolicy
 from qy.macroexpand import MacroExpansion
@@ -86,7 +86,7 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import dump_mir
 from qy.ir.mir import verify_mir
-from qy.mir_lowering import lower_mir
+from qy.passes.lower_mir import lower_mir
 from qy.operator_docs import OperatorDoc
 from qy.operator_docs import OperatorModuleDoc
 from qy.operator_docs import collect_supported_operators

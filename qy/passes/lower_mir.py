@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from qy.diagnostics import Diagnostic
+from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
-from qy.diagnostics import Diagnostic
+from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.reader import Symbol
 

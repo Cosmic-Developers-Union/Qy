@@ -4,7 +4,7 @@ from qy import BytecodeProgram
 from qy import Qy
 from qy import compile_bytecode
 from qy.errors import EvaluationError
-from qy.lowering import lower_source
+from qy.passes.lower_hir import lower_source
 from qy.reader import Symbol
 
 

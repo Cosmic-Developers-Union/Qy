@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from qy.diagnostics import Diagnostic
+from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.reader import Symbol
 

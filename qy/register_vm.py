@@ -24,7 +24,7 @@ from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.ir import ProgramIR
-from qy.lowering import lower
+from qy.passes.lower_hir import lower
 from qy.macroexpand import macroexpand_source_async
 from qy.operator_runtime import runtime_operator_semantics
 from qy.operator_runtime import validate_operator_arity
@@ -373,7 +373,7 @@ class RegisterVirtualMachine:
         from typing import cast
 
         from qy.ir import ProgramIR
-        from qy.lowering import lower
+        from qy.passes.lower_hir import lower
         from qy.reader import Form
         from qy.reader import Symbol as _Symbol
         from qy.values import QyCons

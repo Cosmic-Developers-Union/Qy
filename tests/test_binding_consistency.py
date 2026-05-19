@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 from qy.analyzer import analyze_source
-from qy.lowering import lower
+from qy.passes.lower_hir import lower
 from qy.reader import read
 from qy.runtime import Qy
 

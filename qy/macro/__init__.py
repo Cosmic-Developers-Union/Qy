@@ -72,7 +72,7 @@ class MacroDefinition:
             )
 
         from qy.bytecode_compiler import compile_bytecode
-        from qy.lowering import lower
+        from qy.passes.lower_hir import lower
         from qy.register_vm import RegisterVirtualMachine
 
         program = lower(list(cast(tuple[Form, ...], self.body)), local_env)
