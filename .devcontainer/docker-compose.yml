@@ -10,6 +10,11 @@ services:
         - BUN_REGISTRY=http://host.docker.internal:4873
     volumes:
       - ..:/workspaces/Qy:cached
+      - dev-venv:/workspaces/Qy/.venv
+      - dev-node-modules:/workspaces/Qy/node_modules
       - ${HOME}/.claude:/home/ge/.claude:cached
       - ${HOME}/.claude.json:/home/ge/.claude.json:cached
     command: sleep infinity
+volumes:
+  dev-venv:
+  dev-node-modules:
