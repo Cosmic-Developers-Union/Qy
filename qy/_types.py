@@ -13,32 +13,16 @@ from __future__ import annotations
 
 __all__ = ["OperatorKind", "TypeName"]
 
+# Re-export from qy/core/__init__.py for backward compatibility.
 # Use __getattr__ to lazily import typing.Literal — avoids triggering
 # Python stdlib `types` shadow at load time (qy/types.py shadows stdlib types).
 def __getattr__(name: str):
-    if name in ("TypeName", "OperatorKind"):
-        import typing
+    if name == "OperatorKind":
+        from qy.core import OperatorKind
 
-        if name == "TypeName":
-            return typing.Literal[
-                "any",
-                "bool",
-                "chain",
-                "dict",
-                "effect",
-                "function",
-                "list",
-                "nil",
-                "none",
-                "number",
-                "operator",
-                "set",
-                "string",
-                "symbol",
-                "tuple",
-                "T",
-                "unknown",
-            ]
-        if name == "OperatorKind":
-            return typing.Literal["pure", "scope", "control", "effect", "meta"]
+        return OperatorKind
+    if name == "TypeName":
+        from qy.core import TypeName
+
+        return TypeName
     raise AttributeError(name)

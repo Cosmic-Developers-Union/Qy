@@ -13,9 +13,8 @@ low-level work should model runtime mechanisms here instead of hiding them in
 the bytecode compiler or register VM.
 
 NOTE: ``LIRProgram``, ``LIRFunction``, ``LIRInstruction`` are canonically
-defined in ``qy.lir`` (the compat implementation consumed by lowering).  This
-package re-exports from there so that ``from qy import LIRProgram`` and
-``from qy.lir import LIRProgram`` refer to the same class.
+defined in this package.  The legacy ``qy.lir`` path was removed in favor
+of this package as the single source of truth.
 """
 
 from __future__ import annotations
@@ -26,15 +25,6 @@ from typing import Literal
 from qy.diagnostics import Diagnostic
 from qy.errors import SourceSpan
 from qy.reader import Symbol
-
-# Re-export canonical types from qy.lir so that "from qy.ir.lir import LIRProgram"
-# and "from qy.lir import LIRProgram" resolve to the same class object.
-# qy.lir is the implementation source used by lowering; qy/ir/lir/ is the public API layer.
-from qy.lir import (
-    LIRFunction as _LIRFunctionBase,
-    LIRInstruction as _LIRInstructionBase,
-    LIRProgram as _LIRProgramBase,
-)
 
 __all__ = [
     "LIRBindingAddr",
@@ -209,10 +199,41 @@ LIROpcode = Literal[
 ]
 
 
-# Canonical types re-exported from qy.lir (compat implementation used by lowering).
-LIRFunction = _LIRFunctionBase
-LIRInstruction = _LIRInstructionBase
-LIRProgram = _LIRProgramBase
+@dataclass(frozen=True, slots=True)
+class LIRInstruction:
+    """One LIR instruction with opcode and operands."""
+
+    opcode: LIROpcode
+    operands: tuple[object, ...] = ()
+    span: SourceSpan | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class LIRFunction:
+    """One LIR function with register allocation and instructions."""
+
+    name: Symbol
+    params: tuple[Symbol, ...]
+    register_count: int
+    instructions: tuple[LIRInstruction, ...]
+    frame_layout: LIRFrameLayout | None = None
+    symbol_spaces: tuple[LIRSymbolSpaceLayout, ...] = ()
+    continuations: tuple[LIRContinuationLayout, ...] = ()
+    handlers: tuple[LIRHandlerLayout, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class LIRProgram:
+    """Complete LIR program with all functions and metadata."""
+
+    functions: tuple[LIRFunction, ...]
+    main: int = 0
+    diagnostics: tuple[Diagnostic, ...] = ()
+    dialect: LIRDialect = "compat"
+
+    @property
+    def ok(self) -> bool:
+        return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
 
 
 _TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT"})

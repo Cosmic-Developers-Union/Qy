@@ -21,7 +21,7 @@ from qy.ir import ProgramIR
 from qy.lir_lowering import lower_lir
 from qy.lowering import lower
 from qy.macroexpand import macroexpand
-from qy.mir import MIRProgram
+from qy.ir.mir import MIRProgram
 from qy.mir_lowering import lower_mir
 from qy.reader import Form
 from qy.reader import read

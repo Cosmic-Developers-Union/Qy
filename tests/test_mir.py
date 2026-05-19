@@ -14,7 +14,7 @@ from qy.ir import CondExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
 from qy.lowering import lower_source
-from qy.mir import MIROpcode
+from qy.ir.mir import MIROpcode
 from qy.reader import Symbol
 
 

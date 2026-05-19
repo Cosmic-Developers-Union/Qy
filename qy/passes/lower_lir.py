@@ -6,16 +6,16 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from qy.lir import LIRFunction
-from qy.lir import LIRInstruction
-from qy.lir import LIRProgram
-from qy.mir import MIRBlockId
-from qy.mir import MIRConstantPool
-from qy.mir import MIRFunction
-from qy.mir import MIRInstruction
-from qy.mir import MIRProgram
-from qy.mir import MIRTerminator
-from qy.mir import verify_mir
+from qy.ir.lir import LIRFunction
+from qy.ir.lir import LIRInstruction
+from qy.ir.lir import LIRProgram
+from qy.ir.mir import MIRBlockId
+from qy.ir.mir import MIRConstantPool
+from qy.ir.mir import MIRFunction
+from qy.ir.mir import MIRInstruction
+from qy.ir.mir import MIRProgram
+from qy.ir.mir import MIRTerminator
+from qy.ir.mir import verify_mir
 
 __all__ = ["lower_lir"]
 

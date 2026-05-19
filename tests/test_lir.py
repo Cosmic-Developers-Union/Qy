@@ -66,10 +66,10 @@ def test_lower_lir_no_mir_terminators_in_output():
 
 
 def test_lower_lir_stops_on_mir_errors():
-    from qy.mir import MIRBlock
-    from qy.mir import MIRFunction
-    from qy.mir import MIRProgram
-    from qy.mir import MIRTerminator
+    from qy.ir.mir import MIRBlock
+    from qy.ir.mir import MIRFunction
+    from qy.ir.mir import MIRProgram
+    from qy.ir.mir import MIRTerminator
 
     mir = MIRProgram(
         (MIRFunction(Symbol("broken"), (), 1, (MIRBlock(0, (), MIRTerminator("JUMP", (99,))),), 0),)
@@ -113,10 +113,10 @@ def test_compile_lir_bytecode_produces_runnable_program():
 
 
 def test_compile_lir_bytecode_stops_on_lir_errors():
-    from qy.mir import MIRBlock
-    from qy.mir import MIRFunction
-    from qy.mir import MIRProgram
-    from qy.mir import MIRTerminator
+    from qy.ir.mir import MIRBlock
+    from qy.ir.mir import MIRFunction
+    from qy.ir.mir import MIRProgram
+    from qy.ir.mir import MIRTerminator
 
     mir = MIRProgram(
         (MIRFunction(Symbol("broken"), (), 1, (MIRBlock(0, (), MIRTerminator("JUMP", (99,))),), 0),)
@@ -183,11 +183,11 @@ def test_lir_and_mir_bytecode_compile_produce_same_result():
 
 
 def test_lower_lir_compacts_sparse_register_layout():
-    from qy.mir import MIRBlock
-    from qy.mir import MIRFunction
-    from qy.mir import MIRInstruction
-    from qy.mir import MIRProgram
-    from qy.mir import MIRTerminator
+    from qy.ir.mir import MIRBlock
+    from qy.ir.mir import MIRFunction
+    from qy.ir.mir import MIRInstruction
+    from qy.ir.mir import MIRProgram
+    from qy.ir.mir import MIRTerminator
 
     mir = MIRProgram(
         (
@@ -222,7 +222,7 @@ def test_lower_lir_compacts_sparse_register_layout():
 
 def test_peephole_removes_move_self_assignment():
     """Peephole eliminates MOVE r, r (no-op)."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
 
     instructions = [
@@ -238,7 +238,7 @@ def test_peephole_removes_move_self_assignment():
 
 def test_peephole_keeps_move_different_registers():
     """Peephole preserves MOVE between different registers."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
 
     instructions = [
@@ -253,7 +253,7 @@ def test_peephole_keeps_move_different_registers():
 
 def test_peephole_strength_reduces_nil():
     """Peephole converts LOAD_HOST r, None → LOAD_NIL r."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
 
     instructions = [LIRInstruction("LOAD_HOST", (0, None))]
@@ -265,7 +265,7 @@ def test_peephole_strength_reduces_nil():
 
 def test_peephole_strength_reduces_t():
     """Peephole converts LOAD_HOST r, QY_T → LOAD_T r."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
     from qy.values import QY_T
 
@@ -278,7 +278,7 @@ def test_peephole_strength_reduces_t():
 
 def test_peephole_keeps_jump_to_next_instruction():
     """Keep JUMP-to-next since jumps are pre-patched to absolute indices."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
 
     instructions = [
@@ -293,7 +293,7 @@ def test_peephole_keeps_jump_to_next_instruction():
 
 def test_peephole_keeps_jump_to_non_next():
     """Peephole keeps JUMP when target is not the next instruction."""
-    from qy.lir import LIRInstruction
+    from qy.ir.lir import LIRInstruction
     from qy.lir_lowering import _peephole
 
     instructions = [
@@ -308,10 +308,10 @@ def test_peephole_keeps_jump_to_non_next():
 
 def test_verify_lir_catches_out_of_range_register():
     """Verifier reports error for register operand >= register_count."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -337,10 +337,10 @@ def test_verify_lir_catches_out_of_range_register():
 
 def test_verify_lir_catches_out_of_range_jump():
     """Verifier reports error for jump target >= instruction count."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -364,10 +364,10 @@ def test_verify_lir_catches_out_of_range_jump():
 
 def test_verify_lir_passes_valid_program():
     """Verifier returns no errors for a well-formed program."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -412,9 +412,9 @@ def test_lir_load_nil_and_load_t_in_pipeline():
 def test_lir_peephole_load_t_compiles_to_bytecode():
     """LOAD_T in LIR compiles correctly to LOAD_HOST with QY_T in bytecode."""
     from qy.bytecode_compiler import compile_lir_bytecode
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
     from qy.values import QY_T
 
     program = LIRProgram(
@@ -441,10 +441,10 @@ def test_lir_peephole_load_t_compiles_to_bytecode():
 
 def test_verify_lir_catches_missing_terminator():
     """Verifier reports error when function does not end with a terminator."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -465,10 +465,10 @@ def test_verify_lir_catches_missing_terminator():
 
 def test_verify_lir_catches_unreachable_after_terminator():
     """Verifier warns about instructions after a terminator."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -492,10 +492,10 @@ def test_verify_lir_catches_unreachable_after_terminator():
 
 def test_verify_lir_accepts_terminators():
     """Verifier accepts RETURN, TAIL_CALL, and RAISE_EFFECT as terminators."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     # RETURN
     p1 = LIRProgram(
@@ -514,10 +514,10 @@ def test_verify_lir_accepts_terminators():
 
 def test_verify_lir_branch_nil_target_checked():
     """Verifier checks BRANCH_NIL jump targets."""
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -539,17 +539,17 @@ def test_verify_lir_branch_nil_target_checked():
 
 
 def test_lir_models_abstract_machine_layouts_in_dump():
-    from qy.lir import LIRBindingAddr
-    from qy.lir import LIRBindingSlot
-    from qy.lir import LIRContinuationLayout
-    from qy.lir import LIRFrameLayout
-    from qy.lir import LIRFunction
-    from qy.lir import LIRHandlerLayout
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import LIRSymbolMeta
-    from qy.lir import LIRSymbolSpaceLayout
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRBindingAddr
+    from qy.ir.lir import LIRBindingSlot
+    from qy.ir.lir import LIRContinuationLayout
+    from qy.ir.lir import LIRFrameLayout
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRHandlerLayout
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import LIRSymbolMeta
+    from qy.ir.lir import LIRSymbolSpaceLayout
+    from qy.ir.lir import verify_lir
 
     symbol = Symbol("x")
     address = LIRBindingAddr(0, 0)
@@ -605,10 +605,10 @@ def test_lir_models_abstract_machine_layouts_in_dump():
 
 
 def test_verify_lir_rejects_language_effect_opcodes_in_abstract_machine_dialect():
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
-    from qy.lir import verify_lir
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
 
     program = LIRProgram(
         (
@@ -632,9 +632,9 @@ def test_verify_lir_rejects_language_effect_opcodes_in_abstract_machine_dialect(
 
 def test_compile_lir_bytecode_rejects_abstract_machine_lir():
     from qy.bytecode_compiler import compile_lir_bytecode
-    from qy.lir import LIRFunction
-    from qy.lir import LIRInstruction
-    from qy.lir import LIRProgram
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
 
     program = LIRProgram(
         (

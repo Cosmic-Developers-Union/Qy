@@ -18,7 +18,7 @@ from qy.backend.llvm.abi import (
     str_global,
     sym_global,
 )
-from qy.lir import LIRProgram
+from qy.ir.lir import LIRProgram
 
 __all__ = ["emit", "compile_to_llvm_text"]
 

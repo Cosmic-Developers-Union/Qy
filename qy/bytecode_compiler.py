@@ -10,10 +10,10 @@ from qy.bytecode import BytecodeProgram
 from qy.bytecode import Instruction
 from qy.bytecode import Opcode
 from qy.ir import ProgramIR
-from qy.lir import LIRInstruction
-from qy.lir import LIRProgram
+from qy.ir.lir import LIRInstruction
+from qy.ir.lir import LIRProgram
 from qy.lir_lowering import lower_lir
-from qy.mir import MIRProgram
+from qy.ir.mir import MIRProgram
 from qy.mir_lowering import lower_mir
 
 __all__ = ["compile_bytecode", "compile_lir_bytecode", "compile_mir_bytecode"]

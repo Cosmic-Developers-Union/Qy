@@ -15,9 +15,9 @@ from qy.errors import format_qy_error
 from qy.formatter import dump_program
 from qy.formatter import format_source
 from qy.ir import dump_ir
-from qy.lir import dump_lir
+from qy.ir.lir import dump_lir
 from qy.lir_lowering import lower_lir
-from qy.mir import dump_mir
+from qy.ir.mir import dump_mir
 from qy.operator_docs import format_operator_docs
 from qy.reader import ReaderSyntaxError
 from qy.reader import read

@@ -22,7 +22,7 @@ from qy.macroexpand import macroexpand
 from qy.macroexpand import macroexpand_async
 from qy.macroexpand import macroexpand_source
 from qy.macroexpand import macroexpand_source_async
-from qy.mir import MIRProgram
+from qy.ir.mir import MIRProgram
 from qy.mir_lowering import lower_mir
 from qy.operator_signature import OperatorSignature
 from qy.operators import ArgumentEvaluator
