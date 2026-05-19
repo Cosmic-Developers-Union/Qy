@@ -13,8 +13,8 @@ from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import UserFunction
-from qy.types import OperatorKind
-from qy.types import TypeName
+from qy.core import OperatorKind
+from qy.core import TypeName
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons

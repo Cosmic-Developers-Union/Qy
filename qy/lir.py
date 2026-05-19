@@ -24,7 +24,41 @@ __all__ = [
     "LIRProgram",
     "dump_lir",
     "verify_lir",
+    # Abstract-machine types — re-exported from qy.ir.lir so that
+    # "from qy.lir import LIRBindingAddr" works without needing qy.ir.lir.
+    # qy.ir.lir defines the canonical types; qy.lir is the compat lowering source.
+    "LIRBindingAddr",
+    "LIRBindingSlot",
+    "LIRBindingState",
+    "LIRContinuationLayout",
+    "LIRDialect",
+    "LIRFrameKind",
+    "LIRFrameLayout",
+    "LIRHandlerLayout",
+    "LIRInstructionIndex",
+    "LIRRegister",
+    "LIRSlotIndex",
+    "LIRSymbolMeta",
+    "LIRSymbolSpaceId",
+    "LIRSymbolSpaceLayout",
 ]
+
+# Lazy re-export to avoid circular import.
+# Do NOT import from qy.ir.lir at module level here — qy.ir.lir imports from qy.lir.
+def __getattr__(name: str):
+    _ABSTRACT_MACHINE_TYPES = frozenset([
+        "LIRBindingAddr", "LIRBindingSlot", "LIRBindingState",
+        "LIRContinuationLayout", "LIRDialect", "LIRFrameKind",
+        "LIRFrameLayout", "LIRHandlerLayout", "LIRInstructionIndex",
+        "LIRRegister", "LIRSlotIndex", "LIRSymbolMeta",
+        "LIRSymbolSpaceId", "LIRSymbolSpaceLayout",
+    ])
+    if name in _ABSTRACT_MACHINE_TYPES:
+        from qy.ir.lir import __dict__ as d
+        obj = d[name]
+        globals()[name] = obj  # cache in globals to avoid future lookups
+        return obj
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 # LIR has its own opcode vocabulary.  Some opcodes overlap with bytecode for
 # simplicity, but LIR is free to add opcodes that have no direct bytecode
@@ -91,6 +125,10 @@ class LIRFunction:
     params: tuple[Symbol, ...]
     register_count: int
     instructions: tuple[LIRInstruction, ...]
+    frame_layout: object | None = None
+    symbol_spaces: tuple[object, ...] = ()
+    continuations: tuple[object, ...] = ()
+    handlers: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +136,7 @@ class LIRProgram:
     functions: tuple[LIRFunction, ...]
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
+    dialect: Literal["compat", "abstract-machine"] = "compat"
 
     @property
     def ok(self) -> bool:
@@ -116,11 +155,13 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
     Checks:
     - Every function ends with a terminator (RETURN / TAIL_CALL / RAISE_EFFECT).
     - No non-terminator instructions follow a terminator.
+    - In abstract-machine dialect: rejects language-level effect opcodes (HANDLE/PERFORM/RESUME).
     - LOAD_HOST None should be LOAD_NIL (peephole missed).
     - Register operands are within [0, register_count).
     - Jump targets are within the instruction list.
     """
     diagnostics: list[Diagnostic] = []
+    _LANGUAGE_LEVEL_EFFECT_OPCODES = frozenset({"HANDLE", "PERFORM", "RESUME"})
     for func in program.functions:
         if not func.instructions and func.name.name not in ("<lambda>",):
             diagnostics.append(
@@ -173,6 +214,18 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                             severity="error",
                         )
                     )
+            # Check abstract-machine dialect does not retain language-level effect opcodes
+            if (
+                program.dialect == "abstract-machine"
+                and inst.opcode in _LANGUAGE_LEVEL_EFFECT_OPCODES
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {func.name.name} retains language-level "
+                        f"effect opcode {inst.opcode} at {idx}",
+                        severity="error",
+                    )
+                )
             # Check jump targets are in range
             if inst.opcode in _JUMP_OPCODES and len(inst.operands) >= 1:
                 target = inst.operands[-1]

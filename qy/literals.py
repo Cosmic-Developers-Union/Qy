@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from qy.errors import QyResolveError
 from qy.reader import Symbol
-from qy.types import TypeName
+from qy.core import TypeName
 from qy.values import QY_NIL
 from qy.values import QY_T
 

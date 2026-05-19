@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
-from qy.types import TypeName
+from qy.core import TypeName
 
 __all__ = [
     "CORE_OPERATOR_SIGNATURES",

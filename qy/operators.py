@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import lookup_operator_signature
-from qy.types import OperatorKind
+from qy.core import OperatorKind
 
 if TYPE_CHECKING:
     from qy.environment import Environment

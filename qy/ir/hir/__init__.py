@@ -19,8 +19,8 @@ from qy.reader import Form
 from qy.reader import SourceSpan
 from qy.reader import Symbol
 from qy.stdlib.imports import ImportSpec
-from qy.types import OperatorKind
-from qy.types import TypeName
+from qy.core import OperatorKind
+from qy.core import TypeName
 
 __all__ = [
     "AllExpr",
