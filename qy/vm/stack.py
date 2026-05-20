@@ -1,15 +1,14 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""VM stack 目标模块。.
+"""VM 虚拟栈。.
 
-目标：
-- 承载 virtual stack、frame stack、handler stack 的运行时结构。
-- 后续应拆入 `qy/vm/instance/frame.py` 与 `qy/vm/instance/state.py`。
-
-当前：
-- 占位模块；真实实现仍在 `qy/virtual_stack.py`。
-
-禁止：
-- 不得在这里定义 VM target spec；spec 属于 `qy/backend/vm/spec`。
+目标：提供 VM 执行的虚拟调用栈。
+当前：从 qy/virtual_stack.py 重导出。
+禁止：不得混入语言语义。
 """
+
+from qy.virtual_stack import VirtualStack
+from qy.virtual_stack import VirtualStackFrame
+
+__all__ = ["VirtualStack", "VirtualStackFrame"]

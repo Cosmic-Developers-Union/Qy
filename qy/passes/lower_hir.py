@@ -391,9 +391,7 @@ def _lower_symbol(
     return UnresolvedSymbolExpr(symbol, symbol.span)
 
 
-def _lower_quote(
-    args: tuple[object, ...], context: LoweringContext, form: tuple[object, ...]
-) -> IRExpr:
+def _lower_quote(args: tuple[object, ...], context: LoweringContext, form: object) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"quote expects exactly one argument, got {len(args)}", form)
         return QuoteExpr(SpannedTuple(), get_span(form))
@@ -404,7 +402,7 @@ def _lower_quasiquote(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
     *,
     tail: bool = False,
 ) -> IRExpr:
@@ -492,7 +490,7 @@ def _lower_eval(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"eval expects exactly one argument, got {len(args)}", form)
@@ -597,7 +595,7 @@ def _lower_lambda(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) < 2:
         context.diagnostic("lambda expects a parameter list and body", form)
@@ -705,7 +703,7 @@ def _lower_module(
     return ModuleExpr(name, tuple(lowered_body), tuple(export_names), get_span(form))
 
 
-def _lower_from(form: tuple[object, ...], context: LoweringContext) -> IRExpr:
+def _lower_from(form: object, context: LoweringContext) -> IRExpr:
     try:
         module_name, specs = parse_from_import(form)
     except ValueError as e:
@@ -731,7 +729,7 @@ def _lower_perform(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) != 2:
         context.diagnostic(f"perform expects exactly two arguments, got {len(args)}", form)
@@ -798,7 +796,7 @@ def _lower_resume(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) != 2:
         context.diagnostic(f"resume expects exactly two arguments, got {len(args)}", form)
@@ -818,7 +816,7 @@ def _lower_assert(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) not in {1, 2}:
         context.diagnostic(f"assert expects one or two arguments, got {len(args)}", form)
@@ -999,7 +997,7 @@ def _infer_call_type(
     args: tuple[IRExpr, ...],
     operator_expr: IRExpr,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> TypeName:
     signature = _operator_signature(operator_expr)
     if signature is not None:
@@ -1091,7 +1089,7 @@ def _lower_pipeline(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
     *,
     tail: bool = False,
 ) -> IRExpr:
@@ -1109,7 +1107,7 @@ def _lower_parallel(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     lowered = tuple(_lower_form(arg, scope, context) for arg in args)
     return ParallelExpr(lowered, get_span(form))
@@ -1119,7 +1117,7 @@ def _lower_all(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     lowered = tuple(_lower_form(arg, scope, context) for arg in args)
     return AllExpr(lowered, get_span(form))
@@ -1129,7 +1127,7 @@ def _lower_race(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     lowered = tuple(_lower_form(arg, scope, context) for arg in args)
     return RaceExpr(lowered, get_span(form))
@@ -1139,7 +1137,7 @@ def _lower_apply(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) != 2:
         context.diagnostic("apply expects a function and an argument list", form)
@@ -1153,7 +1151,7 @@ def _lower_cache(
     args: tuple[object, ...],
     scope: Scope,
     context: LoweringContext,
-    form: tuple[object, ...],
+    form: object,
 ) -> IRExpr:
     if len(args) != 1:
         context.diagnostic("cache expects exactly one expression", form)

@@ -40,7 +40,7 @@ def to_sem(value: object) -> Value:
     return NIL
 
 
-def from_sem(value: Value) -> object:
+def from_sem(value: object) -> object:
     """将 sem Value 转回 legacy runtime 表示。."""
     if isinstance(value, NilValue):
         return QY_NIL

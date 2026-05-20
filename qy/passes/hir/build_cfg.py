@@ -1,10 +1,17 @@
 # coding: utf-8
-"""hir.build_cfg pass。.
+"""hir.build_cfg pass — Form → HIR lowering。.
 
-目标：
-- 从 resolved/core representation 构建 HIR 或 HIR control skeleton。
-- 保留高层结构 facts，不进入寄存器/物理布局。
-
-当前：
-- 占位 pass。
+从 S-expression forms 构建 HIR，解析符号绑定，构建作用域层次。
 """
+
+from qy.passes.lower_hir import LoweringContext
+from qy.passes.lower_hir import Scope
+from qy.passes.lower_hir import lower
+from qy.passes.lower_hir import lower_source
+
+__all__ = [
+    "LoweringContext",
+    "Scope",
+    "lower",
+    "lower_source",
+]

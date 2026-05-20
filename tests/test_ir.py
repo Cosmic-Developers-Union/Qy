@@ -1,3 +1,6 @@
+from typing import cast
+
+from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.ir import CallExpr
 from qy.ir import CondExpr
@@ -52,7 +55,7 @@ def test_quote_lowers_to_raw_ast_boundary():
     quote = program.body[0]
     assert isinstance(quote, QuoteExpr)
     assert is_chain(quote.form)
-    items = list(quote.form)
+    items = list(cast(Chain, quote.form))
     assert isinstance(items[0], Symbol)
     assert items[0].name == "+"
 

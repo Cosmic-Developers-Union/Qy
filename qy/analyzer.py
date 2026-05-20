@@ -4,6 +4,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+from typing import cast
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 from qy.core import OperatorKind
 from qy.core import TypeName
@@ -148,7 +153,7 @@ def _infer(
     # Convert args to tuple for compatibility with existing code
     try:
         args = (
-            tuple(args_chain)
+            tuple(cast("Iterable[object]", args_chain))
             if is_chain(args_chain)
             else ()
             if is_nil(args_chain)
@@ -427,7 +432,7 @@ def _infer_cond(
             diagnostics.append(Diagnostic(f"cond clause must be a pair, got {clause!r}"))
             continue
         try:
-            clause_list = list(clause)
+            clause_list = list(cast("Iterable[object]", clause))
             if len(clause_list) != 2:
                 diagnostics.append(Diagnostic(f"cond clause must be a pair, got {clause!r}"))
                 continue
@@ -505,9 +510,7 @@ def _infer_data_arg(
     return _infer(arg, env, scope, diagnostics)
 
 
-def _infer_from(
-    form: tuple[object, ...], env: Environment, diagnostics: list[Diagnostic]
-) -> TypeName:
+def _infer_from(form: object, env: Environment, diagnostics: list[Diagnostic]) -> TypeName:
     try:
         module_name, specs = parse_from_import(form)
     except ValueError as e:
@@ -545,12 +548,12 @@ def _infer_let(
 
     local_scope = scope
     try:
-        for binding in bindings if is_chain(bindings) else []:
+        for binding in cast("Iterable[object]", bindings) if is_chain(bindings) else []:
             if not is_chain(binding):
                 diagnostics.append(Diagnostic(f"let binding must be a pair, got {binding!r}"))
                 continue
             try:
-                binding_list = list(binding)
+                binding_list = list(cast("Iterable[object]", binding))
                 if len(binding_list) != 2:
                     diagnostics.append(Diagnostic(f"let binding must be a pair, got {binding!r}"))
                     continue
@@ -599,7 +602,7 @@ def _infer_defun(
         return "unknown"
 
     try:
-        form_list = list(form)
+        form_list = list(cast("Iterable[object]", form))
         if len(form_list) < 4:
             diagnostics.append(Diagnostic("defun expects a name, parameter list, and body"))
             return "unknown"
@@ -646,7 +649,7 @@ def _infer_defeffect(
         return "unknown"
 
     try:
-        form_list = list(form)
+        form_list = list(cast("Iterable[object]", form))
         if len(form_list) < 2:
             diagnostics.append(Diagnostic("defeffect expects an effect name"))
             return "unknown"
@@ -677,7 +680,7 @@ def _infer_macro(
         return "unknown"
 
     try:
-        form_list = list(form)
+        form_list = list(cast("Iterable[object]", form))
         if len(form_list) < 4:
             diagnostics.append(Diagnostic("macro expects a name, parameter list, and body"))
             return "unknown"
@@ -737,14 +740,14 @@ def _infer_handle(
         return result_type
 
     try:
-        for clause in handler_form if is_chain(handler_form) else []:
+        for clause in cast("Iterable[object]", handler_form) if is_chain(handler_form) else []:
             if not is_chain(clause):
                 diagnostics.append(
                     Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
                 )
                 continue
             try:
-                clause_list = list(clause)
+                clause_list = list(cast("Iterable[object]", clause))
                 if len(clause_list) < 3:
                     diagnostics.append(
                         Diagnostic(
@@ -791,7 +794,7 @@ def _infer_module(
         return "unknown"
 
     try:
-        form_list = list(form)
+        form_list = list(cast("Iterable[object]", form))
         if len(form_list) < 2:
             diagnostics.append(Diagnostic("module expects a name and body"))
             return "unknown"
@@ -835,7 +838,7 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         return scope
 
     try:
-        form_list = list(form)
+        form_list = list(cast("Iterable[object]", form))
         if not form_list:
             return scope
     except ValueError:
@@ -958,7 +961,7 @@ def _is_special_form(form: object, name: str) -> bool:
 
 
 def _infer_define(
-    form: Chain | tuple[object, ...],
+    form: object,
     env: Environment,
     scope: _Scope,
     diagnostics: list[Diagnostic],
@@ -971,7 +974,7 @@ def _infer_define(
             diagnostics.append(Diagnostic("improper list in define"))
             return "unknown"
     else:
-        items = list(form)
+        items = list(cast("Iterable[object]", form))
 
     if len(items) < 3:
         diagnostics.append(Diagnostic("define expects a name and a value"))

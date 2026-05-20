@@ -6,6 +6,9 @@
 
 from __future__ import annotations
 
+from dataclasses import FrozenInstanceError
+from typing import cast
+
 import pytest
 
 from qy.core.syntax import Chain
@@ -219,13 +222,13 @@ class TestIteration:
     def test_iterate_multiple(self):
         """测试迭代多元素链。."""
         c = list_to_chain([1, 2, 3])
-        assert list(c) == [1, 2, 3]
+        assert list(cast("Chain", c)) == [1, 2, 3]
 
     def test_for_loop(self):
         """测试 for 循环。."""
         c = list_to_chain(["a", "b", "c"])
         result = []
-        for item in c:
+        for item in cast("Chain", c):
             result.append(item)
         assert result == ["a", "b", "c"]
 
@@ -241,7 +244,7 @@ class TestLength:
     def test_len_multiple(self):
         """测试多元素链长度。."""
         c = list_to_chain([1, 2, 3, 4, 5])
-        assert len(c) == 5
+        assert len(cast("Chain", c)) == 5
 
 
 class TestSpanTracking:
@@ -258,7 +261,7 @@ class TestSpanTracking:
         span = SourceSpan(source="test.qy", start_line=1, start_column=0)
         c = list_to_chain([1, 2, 3], span=span)
         # span 应该在最外层 Chain
-        assert c.span is span
+        assert cast("Chain", c).span is span
 
     def test_span_not_in_equality(self):
         """测试 span 不参与相等性比较。."""
@@ -289,8 +292,10 @@ class TestImmutability:
     def test_chain_is_frozen(self):
         """测试 Chain 是 frozen 的。."""
         c = cons(1, nil)
-        with pytest.raises((AttributeError, TypeError)):  # FrozenInstanceError or AttributeError
-            c.head = 2
+        with pytest.raises(
+            (AttributeError, TypeError, FrozenInstanceError)
+        ):  # FrozenInstanceError or AttributeError
+            setattr(c, "head", 2)  # noqa: B010
 
     def test_chain_has_slots(self):
         """测试 Chain 使用 slots。."""

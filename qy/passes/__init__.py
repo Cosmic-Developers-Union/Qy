@@ -6,9 +6,6 @@
 - 支持 --after / --target dump
 - 提供统一 Pass 基类和调度器
 
-当前：
-- 基础结构，等待从 qy/lowering.py、qy/mir_lowering.py、qy/lir_lowering.py 迁移
-
 禁止：
 - pass 不得定义 IR 数据结构（那是 qy/ir/ 的职责）
 - pass 不得直接执行（那是 qy/build/ 的职责）
@@ -16,13 +13,13 @@
 
 from __future__ import annotations
 
-# 现有 lowering passes（迁移期兼容）
-from qy.passes.lower_hir import LoweringContext
-from qy.passes.lower_hir import Scope
-from qy.passes.lower_hir import lower
-from qy.passes.lower_hir import lower_source
-from qy.passes.lower_lir import lower_lir
-from qy.passes.lower_mir import lower_mir
+# 新子目录路径 —— 这些是正式导入来源
+from qy.passes.hir.build_cfg import LoweringContext
+from qy.passes.hir.build_cfg import Scope
+from qy.passes.hir.build_cfg import lower
+from qy.passes.hir.build_cfg import lower_source
+from qy.passes.lir.lower import lower_lir
+from qy.passes.mir.normalize import lower_mir
 
 # Pass 基础设施
 from qy.passes.pass_base import Pass

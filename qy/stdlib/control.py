@@ -3,6 +3,12 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+from typing import cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sized
+
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -58,7 +64,7 @@ def _form_length(form: object) -> int:
         if is_nil(form):
             return 0
         try:
-            return len(form)
+            return len(cast("Sized", form))
         except ValueError:
             # improper list
             count = 0

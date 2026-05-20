@@ -1,13 +1,14 @@
 # coding: utf-8
-"""源码与位置映射目标包。.
+"""源码与位置映射包。.
 
-目标：
-- 承载 SourceFile、Span、SourceMap、line/column 映射。
-- 让 reader、macro、IR dump、diagnostics、debug 使用同一位置模型。
-
-当前：
-- 占位包；SourceSpan 仍位于 `qy/errors.py`，reader 也有自己的 span 表达。
+承载 SourceFile、Span、SourceMap、line/column 映射。
+让 reader、macro、IR dump、diagnostics、debug 使用同一位置模型。
 
 禁止：
 - 不得放入 project/module loader 逻辑。
 """
+
+from qy.source.span import SourceSpan
+from qy.source.span import get_span
+
+__all__ = ["SourceSpan", "get_span"]

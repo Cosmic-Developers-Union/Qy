@@ -126,35 +126,15 @@ def cons(head: object, tail: object, span: SourceSpan | None = None) -> Chain:
     return Chain(head, tail, span)
 
 
-def car(chain: Chain) -> object:
-    """获取 chain 的 head（第一个元素）。.
-
-    Args:
-        chain: Chain 实例
-
-    Returns:
-        chain 的 head
-
-    Raises:
-        TypeError: 如果参数不是 Chain
-    """
+def car(chain: object) -> object:
+    """获取 chain 的 head（第一个元素）。."""
     if not isinstance(chain, Chain):
         raise TypeError(f"car expects a Chain, got {type(chain).__name__}")
     return chain.head
 
 
-def cdr(chain: Chain) -> object:
-    """获取 chain 的 tail（剩余部分）。.
-
-    Args:
-        chain: Chain 实例
-
-    Returns:
-        chain 的 tail（可能是另一个 Chain、nil 或其他值）
-
-    Raises:
-        TypeError: 如果参数不是 Chain
-    """
+def cdr(chain: object) -> object:
+    """获取 chain 的 tail（剩余部分）。."""
     if not isinstance(chain, Chain):
         raise TypeError(f"cdr expects a Chain, got {type(chain).__name__}")
     return chain.tail

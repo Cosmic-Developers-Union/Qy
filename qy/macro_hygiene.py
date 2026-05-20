@@ -70,7 +70,7 @@ def _tuple_like(original: tuple[object, ...], values: list[object]) -> tuple[obj
     return tuple(values)
 
 
-def _chain_form_to_tuple(value: object) -> tuple[object, ...]:
+def _chain_form_to_tuple(value: object) -> tuple[object, ...] | object:
     """Recursively convert Chain to tuple for hygiene processing."""
     if is_chain(value):
         return tuple(_chain_form_to_tuple(item) for item in chain_to_list(value))
@@ -214,7 +214,7 @@ def _rewrite_hygienic_form(
         # Convert Chain to tuple, process, then convert back
         if operator == Symbol("define") and len(items) >= 3:
             # Convert bindings to tuple if they are Chain
-            as_tuple = _chain_form_to_tuple(value)
+            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
             rewritten = _rewrite_hygienic_define(
                 as_tuple,
                 macro,
@@ -227,7 +227,7 @@ def _rewrite_hygienic_form(
             return _tuple_to_chain_form(rewritten)
 
         if operator == Symbol("let") and len(items) >= 2:
-            as_tuple = _chain_form_to_tuple(value)
+            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
             rewritten = _rewrite_hygienic_let(
                 as_tuple,
                 macro,
@@ -240,7 +240,7 @@ def _rewrite_hygienic_form(
             return _tuple_to_chain_form(rewritten)
 
         if operator == Symbol("lambda") and len(items) >= 2:
-            as_tuple = _chain_form_to_tuple(value)
+            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
             rewritten = _rewrite_hygienic_callable(
                 as_tuple,
                 macro,
@@ -255,7 +255,7 @@ def _rewrite_hygienic_form(
             return _tuple_to_chain_form(rewritten)
 
         if operator == Symbol("defun") and len(items) >= 3:
-            as_tuple = _chain_form_to_tuple(value)
+            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
             rewritten = _rewrite_hygienic_callable(
                 as_tuple,
                 macro,
@@ -270,7 +270,7 @@ def _rewrite_hygienic_form(
             return _tuple_to_chain_form(rewritten)
 
         if operator == Symbol("handle") and len(items) == 3:
-            as_tuple = _chain_form_to_tuple(value)
+            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
             rewritten = _rewrite_hygienic_handle(
                 as_tuple,
                 macro,

@@ -187,7 +187,7 @@ class _ReaderTransformer(lark.Transformer):
         del meta
         return list(forms)
 
-    def list_expr(self, meta: lark.tree.Meta, *items: object) -> Form:
+    def list_expr(self, meta: lark.tree.Meta, *items: object) -> object:
         span = self._span(meta)
         dot_index = _dot_index(items)
         if dot_index is None:
@@ -219,7 +219,7 @@ class _ReaderTransformer(lark.Transformer):
         span = self._token_span(token)
         return Symbol(str(token), span)
 
-    def tagged_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
+    def tagged_quoted_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> object:
         del meta
         return self._tagged_literal(token)
 
@@ -233,11 +233,11 @@ class _ReaderTransformer(lark.Transformer):
         span = self._token_span(token)
         return Symbol(str(token), span)
 
-    def tagged_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> Form:
+    def tagged_multiline_symbol(self, meta: lark.tree.Meta, token: lark.Token) -> object:
         del meta
         return self._tagged_literal(token)
 
-    def _tagged_literal(self, token: lark.Token) -> Form:
+    def _tagged_literal(self, token: lark.Token) -> object:
         span = self._token_span(token)
         tag, literal = _split_tagged_literal(str(token), span)
         # 构造 (tag (quote literal))
@@ -309,10 +309,10 @@ def read_one(source: str, *, source_name: str | None = None) -> Form:
 
 
 def _expand_surface_program(forms: list[Form]) -> list[Form]:
-    return list(_expand_surface_sequence(tuple(forms), in_quasiquote=False))
+    return cast(list[Form], list(_expand_surface_sequence(tuple(forms), in_quasiquote=False)))
 
 
-def _expand_surface_form(form: Form, *, in_quasiquote: bool) -> Form:
+def _expand_surface_form(form: object, *, in_quasiquote: bool) -> object:
     if isinstance(form, Symbol):
         expanded = _expand_surface_symbol(form, in_quasiquote=in_quasiquote)
         if expanded is not form:
@@ -327,8 +327,10 @@ def _expand_surface_form(form: Form, *, in_quasiquote: bool) -> Form:
     return form
 
 
-def _expand_surface_sequence(forms: tuple[Form, ...], *, in_quasiquote: bool) -> tuple[Form, ...]:
-    expanded: list[Form] = []
+def _expand_surface_sequence(
+    forms: tuple[object, ...], *, in_quasiquote: bool
+) -> tuple[object, ...]:
+    expanded: list[object] = []
     index = 0
     while index < len(forms):
         form = forms[index]
@@ -352,7 +354,7 @@ def _expand_surface_sequence(forms: tuple[Form, ...], *, in_quasiquote: bool) ->
     return tuple(expanded)
 
 
-def _expand_chain_sequence(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_chain_sequence(chain: object, *, in_quasiquote: bool) -> object:
     """展开 Chain 序列，处理前缀 quote。.
 
     类似于 _expand_surface_sequence，但处理 Chain 而不是 tuple。
@@ -361,7 +363,7 @@ def _expand_chain_sequence(chain: Chain, *, in_quasiquote: bool) -> Form:
         return chain
 
     span = get_span(chain)
-    expanded: list[Form] = []
+    expanded: list[object] = []
     current = chain
 
     while is_chain(current):
@@ -402,7 +404,7 @@ def _expand_chain_sequence(chain: Chain, *, in_quasiquote: bool) -> Form:
     return list_to_chain(expanded, span=span)
 
 
-def _expand_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 Chain 中的 surface dialect。.
 
     处理 Chain 的递归展开，保持 span 信息。
@@ -443,7 +445,7 @@ def _expand_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     return _expand_chain_sequence(chain, in_quasiquote=in_quasiquote)
 
 
-def _chain_to_list_safe(chain: Chain) -> tuple[list[object], object]:
+def _chain_to_list_safe(chain: object) -> tuple[list[object], object]:
     """安全地将 Chain 转换为 list，返回 (items, tail)。.
 
     对于 proper list，tail 是 nil。
@@ -457,7 +459,7 @@ def _chain_to_list_safe(chain: Chain) -> tuple[list[object], object]:
     return items, current
 
 
-def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (define ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -472,7 +474,7 @@ def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     return list_to_chain([items[0], items[1], *expanded_values], span=span)
 
 
-def _expand_named_body_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_named_body_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (defun ...) / (macro ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -485,7 +487,7 @@ def _expand_named_body_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Fo
     return list_to_chain([items[0], items[1], items[2], *list(expanded_body)], span=span)
 
 
-def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (lambda ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -498,7 +500,7 @@ def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     return list_to_chain([items[0], items[1], *list(expanded_body)], span=span)
 
 
-def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (module ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -510,7 +512,7 @@ def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     return list_to_chain([items[0], items[1], *expanded_body], span=span)
 
 
-def _expand_quasiquote_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_quasiquote_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (quasiquote ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -525,7 +527,7 @@ def _expand_quasiquote_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Fo
     )
 
 
-def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
+def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     """展开 (let ...) Chain。."""
     items, tail = _chain_to_list_safe(chain)
     if not is_nil(tail):
@@ -552,7 +554,7 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
                             values_chain, in_quasiquote=in_quasiquote
                         )
                         expanded_values = (
-                            list(expanded_values_chain)
+                            list(cast(Iterable[object], expanded_values_chain))
                             if is_chain(expanded_values_chain)
                             else [expanded_values_chain]
                         )
@@ -569,7 +571,7 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     return list_to_chain([items[0], bindings, *expanded_body], span=span)
 
 
-def _expand_surface_tuple(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_surface_tuple(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if not form:
         return SpannedTuple((), get_span(form))
     head = form[0]
@@ -618,28 +620,28 @@ def _expand_surface_dotted_tuple(form: DottedTuple, *, in_quasiquote: bool) -> D
     )
 
 
-def _expand_define_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_define_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if len(form) <= 2:
         return SpannedTuple(form, get_span(form))
     values = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
     return SpannedTuple((form[0], form[1], *values), get_span(form))
 
 
-def _expand_named_body_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_named_body_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if len(form) <= 3:
         return SpannedTuple(form, get_span(form))
     body = _expand_surface_sequence(tuple(form[3:]), in_quasiquote=in_quasiquote)
     return SpannedTuple((form[0], form[1], form[2], *body), get_span(form))
 
 
-def _expand_lambda_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_lambda_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if len(form) <= 2:
         return SpannedTuple(form, get_span(form))
     body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
     return SpannedTuple((form[0], form[1], *body), get_span(form))
 
 
-def _expand_let_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_let_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if len(form) <= 2:
         return SpannedTuple(form, get_span(form))
     bindings = form[1]
@@ -657,14 +659,14 @@ def _expand_let_surface(form: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
     return SpannedTuple((form[0], bindings, *body), get_span(form))
 
 
-def _expand_let_binding_surface(binding: tuple[Form, ...], *, in_quasiquote: bool) -> Form:
+def _expand_let_binding_surface(binding: tuple[object, ...], *, in_quasiquote: bool) -> Form:
     if len(binding) <= 1:
         return SpannedTuple(binding, get_span(binding))
     values = _expand_surface_sequence(tuple(binding[1:]), in_quasiquote=in_quasiquote)
     return SpannedTuple((binding[0], *values), get_span(binding))
 
 
-def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> Form:
+def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> object:
     if symbol.name.startswith("'") and len(symbol.name) > 1:
         quoted = Symbol(symbol.name[1:], symbol.span)
         return _surface_call(
@@ -692,11 +694,11 @@ def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> Form:
     return symbol
 
 
-def _surface_call(name: str, args: tuple[Form, ...], *, span: SourceSpan | None) -> Form:
+def _surface_call(name: str, args: tuple[object, ...], *, span: SourceSpan | None) -> object:
     return list_to_chain([Symbol(name, span), *args], span=span)
 
 
-def _forms_are_adjacent(left: Form, right: Form) -> bool:
+def _forms_are_adjacent(left: object, right: object) -> bool:
     left_span = get_span(left)
     right_span = get_span(right)
 
@@ -714,7 +716,7 @@ def _forms_are_adjacent(left: Form, right: Form) -> bool:
     )
 
 
-def _combine_spans(left: Form, right: Form) -> SourceSpan | None:
+def _combine_spans(left: object, right: object) -> SourceSpan | None:
     left_span = get_span(left)
     right_span = get_span(right)
     if left_span is None:
@@ -740,7 +742,7 @@ def read_one_tuple(source: str) -> TupleForm:
     return form_to_tuple(read_one(source))
 
 
-def form_to_tuple(form: Form) -> TupleForm:
+def form_to_tuple(form: object) -> TupleForm:
     if isinstance(form, Symbol):
         if _is_string_symbol(form.name):
             return _decode_string_symbol(form)
@@ -777,7 +779,7 @@ def tuple_to_form(form: TupleForm) -> Form:
     raise TypeError(f"expected symbolic tuple form, got literal {type(form).__name__}")
 
 
-def write(form: Form) -> str:
+def write(form: object) -> str:
     if isinstance(form, Symbol):
         if _is_string_symbol(form.name):
             return form.name
@@ -894,12 +896,12 @@ def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan |
     return SourceSpan(None, line, column, line, column)
 
 
-def _is_surface_quote(form: tuple[Form, ...]) -> bool:
+def _is_surface_quote(form: tuple[object, ...]) -> bool:
     """Check if a tuple form is ``(quote x)`` — a surface dialect quote."""
     return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quote"
 
 
-def _is_surface_quasiquote(form: tuple[Form, ...]) -> bool:
+def _is_surface_quasiquote(form: tuple[object, ...]) -> bool:
     """Check if a tuple form is ``(quasiquote x)`` — a surface dialect quasiquote."""
     return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quasiquote"
 
@@ -948,7 +950,7 @@ def chain_to_spanned_tuple(chain: Chain) -> tuple:
     return SpannedTuple(items, span)
 
 
-def spanned_tuple_to_chain(t: tuple) -> Chain:
+def spanned_tuple_to_chain(t: tuple) -> object:
     """兼容层：tuple -> Chain（迁移期使用）。."""
     span = get_span(t)
     return list_to_chain(list(t), span=span)

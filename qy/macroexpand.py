@@ -5,8 +5,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import Literal
 from typing import cast
+
+if TYPE_CHECKING:
+    from collections.abc import Sized
 
 from qy.async_runtime import run_async
 from qy.compile_time import compile_time_binding_names
@@ -94,7 +98,7 @@ def _get_args(form: object) -> tuple[object, ...]:
         if is_nil(rest):
             return ()
         if is_chain(rest):
-            return tuple(rest)
+            return tuple(cast("Chain", rest))
         # improper list
         return (rest,)
     if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
@@ -108,7 +112,7 @@ def _form_length(form: object) -> int:
         if is_nil(form):
             return 0
         try:
-            return len(form)
+            return len(cast("Sized", form))
         except ValueError:
             # improper list
             count = 0
@@ -128,7 +132,7 @@ def _form_to_list(form: object) -> list[object]:
         if is_nil(form):
             return []
         try:
-            return list(form)
+            return list(cast("Chain", form))
         except ValueError:
             # improper list - 展开所有元素
             result = []
@@ -559,7 +563,7 @@ def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
     return (Symbol("quote"), form)
 
 
-def _expand_quasiquote_chain(form: Chain, *, depth: int) -> object:
+def _expand_quasiquote_chain(form: object, *, depth: int) -> object:
     """展开 Chain 形式的 quasiquote。."""
     if is_nil(form):
         return list_to_chain([Symbol("quote"), nil], span=get_span(form))

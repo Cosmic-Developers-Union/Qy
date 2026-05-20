@@ -1,5 +1,5 @@
 # coding: utf-8
-"""测试 qy.errors 模块的边界情况。"""
+"""测试 qy.errors 模块的边界情况。."""
 
 from __future__ import annotations
 
@@ -8,24 +8,23 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
-from qy.errors import TraceFrame
 from qy.errors import format_qy_error
 
 
 def test_source_span_format_without_line_column():
-    """测试 SourceSpan.format() 在没有行列信息时只返回源文件名。"""
+    """测试 SourceSpan.format() 在没有行列信息时只返回源文件名。."""
     span = SourceSpan(source="test.qy")
     assert span.format() == "test.qy"
 
 
 def test_source_span_format_without_source():
-    """测试 SourceSpan.format() 在没有源文件时返回 <source>。"""
+    """测试 SourceSpan.format() 在没有源文件时返回 <source>。."""
     span = SourceSpan(start_line=10, start_column=5)
     assert span.format() == "<source>:10:5"
 
 
 def test_qy_error_set_span_if_missing():
-    """测试 QyError.set_span_if_missing() 只在 span 为 None 时设置。"""
+    """测试 QyError.set_span_if_missing() 只在 span 为 None 时设置。."""
     error = QyRuntimeError("test error")
     assert error.span is None
 
@@ -40,7 +39,7 @@ def test_qy_error_set_span_if_missing():
 
 
 def test_format_qy_error_with_aggregate_error():
-    """测试 format_qy_error() 处理 QyAggregateError。"""
+    """测试 format_qy_error() 处理 QyAggregateError。."""
     error1 = QyRuntimeError("error 1")
     error2 = QyRuntimeError("error 2")
     aggregate = QyAggregateError(
@@ -55,7 +54,7 @@ def test_format_qy_error_with_aggregate_error():
 
 
 def test_format_qy_error_with_effect_signal_wrapping_python_error():
-    """测试 format_qy_error() 处理包装 QyPythonError 的 QyEffectSignal。"""
+    """测试 format_qy_error() 处理包装 QyPythonError 的 QyEffectSignal。."""
     python_error = QyPythonError("python error", cause=ValueError("test"))
     effect_signal = QyEffectSignal(
         effect="test-effect",

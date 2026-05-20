@@ -7,9 +7,160 @@
 - 校验 LIR control、register、frame、handler、slot、debug metadata 的一致性。
 - 成为 LIR -> bytecode / LLVM 之前的结构门。
 
-当前：
-- 占位模块。
-
 禁止：
 - verifier 不得重写程序；rewrite 应属于 passes。
 """
+
+from __future__ import annotations
+
+from qy.diag import Diagnostic
+from qy.ir.lir.node import LIRProgram
+
+__all__ = ["verify_lir"]
+
+_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT"})
+_LANGUAGE_LEVEL_EFFECT_OPCODES = frozenset({"HANDLE", "PERFORM", "RESUME"})
+_JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
+
+
+def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    if program.dialect not in {"compat", "abstract-machine"}:
+        diagnostics.append(Diagnostic(f"unknown LIR dialect {program.dialect!r}", severity="error"))
+    for func in program.functions:
+        if not func.instructions and func.name.name not in ("<lambda>",):
+            diagnostics.append(
+                Diagnostic(f"LIR function {func.name.name} has no instructions", severity="warning")
+            )
+            continue
+
+        saw_terminator = False
+        for idx, inst in enumerate(func.instructions):
+            if saw_terminator:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {func.name.name} has unreachable instruction "
+                        f"{inst.opcode} at {idx} after terminator",
+                        severity="warning",
+                    )
+                )
+                break
+            if inst.opcode in _TERMINATORS:
+                saw_terminator = True
+
+        if not saw_terminator:
+            last_opcode = func.instructions[-1].opcode
+            diagnostics.append(
+                Diagnostic(
+                    f"LIR function {func.name.name} does not end with a terminator "
+                    f"(last instruction: {last_opcode})",
+                    severity="error",
+                )
+            )
+
+        for idx, inst in enumerate(func.instructions):
+            if (
+                program.dialect == "abstract-machine"
+                and inst.opcode in _LANGUAGE_LEVEL_EFFECT_OPCODES
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {func.name.name} retains language-level "
+                        f"effect opcode {inst.opcode} at {idx}",
+                        severity="error",
+                    )
+                )
+            if inst.opcode == "LOAD_HOST" and len(inst.operands) >= 2 and inst.operands[1] is None:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR LOAD_HOST None at {func.name.name}:{idx} should be LOAD_NIL",
+                        severity="warning",
+                    )
+                )
+            for operand in _register_operands_of(inst.opcode, inst.operands):
+                if not isinstance(operand, int):
+                    continue
+                if operand < 0 or operand >= func.register_count:
+                    diagnostics.append(
+                        Diagnostic(
+                            f"LIR function {func.name.name} uses out-of-range register r{operand} "
+                            f"(register_count={func.register_count})",
+                            severity="error",
+                        )
+                    )
+            if inst.opcode in _JUMP_OPCODES and len(inst.operands) >= 1:
+                target = inst.operands[-1]
+                if isinstance(target, int):
+                    if target < 0 or target >= len(func.instructions):
+                        diagnostics.append(
+                            Diagnostic(
+                                f"LIR function {func.name.name} has jump to out-of-range target {target}",
+                                severity="error",
+                            )
+                        )
+    return tuple(diagnostics)
+
+
+def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[object]:
+    match opcode:
+        case "LOAD_HOST" | "LOAD_NIL" | "LOAD_T" | "LOAD_ENV" | "RETURN" | "APPEND_RESULT":
+            return [operands[0]] if operands else []
+        case "SLOT_READ" | "SS_LOOKUP" | "SLOT_PENDING_EFFORT":
+            return [operands[0]] if operands else []
+        case "SLOT_COMPLETE":
+            return [operands[1]] if len(operands) >= 2 else []
+        case "MOVE":
+            return list(operands) if len(operands) >= 2 else []
+        case "DEFINE_ONCE":
+            return [operands[1]] if len(operands) >= 2 else []
+        case "MAKE_FUNCTION" | "MAKE_MACRO":
+            return [operands[0]] if operands else []
+        case "CALL":
+            regs = [operands[0], operands[1]] if len(operands) >= 2 else []
+            if len(operands) >= 3 and isinstance(operands[2], tuple):
+                regs.extend(operands[2])
+            return regs
+        case "TAIL_CALL":
+            regs = [operands[0]] if operands else []
+            if len(operands) >= 2 and isinstance(operands[1], tuple):
+                regs.extend(operands[1])
+            return regs
+        case "BUILD_TUPLE":
+            return list(operands)
+        case "APPLY" | "RUNTIME_EVAL" | "RESUME":
+            return list(operands)
+        case "JUMP_IF_FALSE":
+            return [operands[0]] if operands else []
+        case "PERFORM":
+            return (
+                [operands[0], operands[2]]
+                if len(operands) >= 3
+                else [operands[0]]
+                if operands
+                else []
+            )
+        case "HANDLE":
+            return [operands[0]] if operands else []
+        case "RAISE_EFFECT":
+            return [operands[1]] if len(operands) >= 2 else []
+        case "CONT_CAPTURE":
+            regs = [operands[0]] if operands else []
+            if len(operands) >= 4 and isinstance(operands[3], tuple):
+                regs.extend(operands[3])
+            return regs
+        case "CONT_COPY":
+            return [operands[0], operands[1]] if len(operands) >= 2 else list(operands)
+        case "CONT_RESTORE":
+            return [operands[0]] if operands else []
+        case "CONT_INJECT":
+            return [operands[0], operands[1]] if len(operands) >= 2 else list(operands)
+        case "EFFECT_UNWIND" | "EFFECT_DISPATCH":
+            return list(operands)
+        case "CACHE_EVAL":
+            return [operands[0]] if operands else []
+        case "DEFINE_MODULE":
+            return [operands[0]] if operands else []
+        case "PARALLEL_GATHER" | "ALL_GATHER" | "RACE_FIRST":
+            return [operands[0]] if operands else []
+        case _:
+            return []

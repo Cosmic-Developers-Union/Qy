@@ -1,5 +1,5 @@
 # coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/tools/lsp/*
+# Migrated from qy/lsp.py
 
 from __future__ import annotations
 
@@ -17,6 +17,17 @@ from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.runtime import Qy
+
+__all__ = [
+    "QyLanguageServer",
+    "completion_items",
+    "create_server",
+    "diagnostics_for_source",
+    "document_symbols_for_source",
+    "hover_for_source",
+    "main",
+    "signature_help_for_source",
+]
 
 SERVER_NAME = "qy-lsp"
 

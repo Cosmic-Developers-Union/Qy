@@ -1,5 +1,5 @@
 # coding: utf-8
-"""测试 qy.bytecode 和 qy.operator_signature 模块的边界情况。"""
+"""测试 qy.bytecode 和 qy.operator_signature 模块的边界情况。."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from qy.reader import Symbol
 
 
 def test_dump_bytecode_with_empty_function():
-    """测试格式化包含空函数的字节码程序。"""
+    """测试格式化包含空函数的字节码程序。."""
     empty_func = BytecodeFunction(
         name=Symbol("empty"),
         params=(),
@@ -32,7 +32,7 @@ def test_dump_bytecode_with_empty_function():
 
 
 def test_dump_bytecode_with_instruction_without_operands():
-    """测试格式化没有操作数的指令。"""
+    """测试格式化没有操作数的指令。."""
     instruction = Instruction(opcode="RETURN", operands=())
     func = BytecodeFunction(
         name=Symbol("test"),
@@ -52,7 +52,7 @@ def test_dump_bytecode_with_instruction_without_operands():
 
 
 def test_format_arity_message_at_least():
-    """测试格式化"至少 N 个参数"的错误消息。"""
+    """测试格式化"至少 N 个参数"的错误消息。."""
     signature = OperatorSignature(arity=Arity(min=2, max=None), return_type="any")
     message = format_arity_message("test-op", signature, 1)
     assert "at least 2 arguments" in message
@@ -60,7 +60,7 @@ def test_format_arity_message_at_least():
 
 
 def test_format_arity_message_exactly():
-    """测试格式化"恰好 N 个参数"的错误消息。"""
+    """测试格式化"恰好 N 个参数"的错误消息。."""
     signature = OperatorSignature(arity=Arity(min=3, max=3), return_type="any")
     message = format_arity_message("test-op", signature, 2)
     assert "exactly 3 arguments" in message
