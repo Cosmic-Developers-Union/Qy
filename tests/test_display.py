@@ -134,3 +134,33 @@ def test_format_value_unknown_type():
     obj = CustomObject()
     result = format_value(obj)
     assert result == "<CustomObject>"
+
+
+def test_format_value_function_fallback_to_repr():
+    """测试格式化函数对象回退到 repr。."""
+
+    def my_function():
+        pass
+
+    result = format_value(my_function)
+    assert "function" in result or "my_function" in result
+
+
+def test_format_value_type_fallback_to_repr():
+    """测试格式化类型对象回退到 repr。."""
+    result = format_value(type)
+    assert "type" in result
+
+
+def test_format_value_non_finite_float():
+    """测试格式化非有限浮点数回退到 repr。."""
+    import math
+
+    result_inf = format_value(math.inf)
+    assert "inf" in result_inf.lower()
+
+    result_nan = format_value(math.nan)
+    assert "nan" in result_nan.lower()
+
+    result_neg_inf = format_value(-math.inf)
+    assert "inf" in result_neg_inf.lower()
