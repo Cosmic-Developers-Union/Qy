@@ -50,51 +50,74 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 ### 核心组件
 
 - **Package Structure** (`docs/package-structure.md`) — 目标包结构真源；新增目录、迁移旧 `.py` 文件、`stdlib -> std` 时先对齐这里
-- **Compiler Infrastructure** (`diag/`, `source/`, `session/`, `build/`, `project/`, `import_/`, `analysis/`, `debug/`, `errors/`) — 诊断、源码位置、会话、构建、项目、导入、分析、调试和异常分类；这些包只提供基础设施，不承载具体语言阶段语义
+- **Compiler Infrastructure** (`diag/`, `source/`, `session/`, `build/`, `project/`, `import_/`, `analysis/`, `debug/`,
+  `errors/`) — 诊断、源码位置、会话、构建、项目、导入、分析、调试和异常分类；这些包只提供基础设施，不承载具体语言阶段语义
 - **VM Target Spec** (`backend/vm/spec/`) — VM bytecode/opcode/ABI/state/effect protocol 规格；不依赖 Python VM instance
 - **Python VM Implementation** (`vm/`) — Register VM 的 Python 实现；实现 `backend/vm/spec/`，不定义 target 规格
-- **Passes** (`passes/`) — 只放变换和分析，按 `raw/surface/macro/core/resolve/hir/closure/effect/control/mir/lir/optimize/emit` 分阶段组织；`pipeline.py` 支持 `--after` / `--target` dump
-- **Reader** (`reader.py`) — 基于 Lark 的 S-expression 解析器；目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成，带源码位置追踪；默认 read pipeline 额外执行 default surface dialect。当前代码里把部分 literal 提前物化，属于待修偏移
+- **Passes** (`passes/`) — 只放变换和分析，按
+  `raw/surface/macro/core/resolve/hir/closure/effect/control/mir/lir/optimize/emit` 分阶段组织；`pipeline.py` 支持
+  `--after` / `--target` dump
+- **Reader** (`reader.py`) — 基于 Lark 的 S-expression 解析器；目标 raw AST 只能由 `symbol` 与不可变 `chain`
+  组成，带源码位置追踪；默认 read pipeline 额外执行 default surface dialect。当前代码里把部分 literal 提前物化，属于待修偏移
 - **Lowering** (`lowering.py`) — Form → HIR，解析符号绑定，构建作用域层次
 - **HIR** (`ir.py`) — 高层语义 IR；只保留 resolved binding、structured control、operator/effect/module facts
 - **MIR** (`mir.py`) — CFG / virtual register IR；控制流、tail call、effect flow 显式
-- **LIR** (`lir.py`, `lir_lowering.py`) — Qy abstract machine IR；负责 instruction selection、layout、ABI、virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation、fixup、peephole、debug injection
+- **LIR** (`lir.py`, `lir_lowering.py`) — Qy abstract machine IR；负责 instruction selection、layout、ABI、virtual
+  stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot
+  operation、fixup、peephole、debug injection
 - **Bytecode compiler** (`bytecode_compiler.py`) — LIR → `BytecodeProgram`，纯结构转换，不重新理解语义
 - **Register VM** (`register_vm.py`) — 唯一执行器
 - **IR VM** (`ir_vm/`) — 已删除；不得重新引入第二执行后端
 - **Analyzer** (`analyzer.py`) — 静态分析，类型推断、作用域追踪、参数数量检查
 - **Runtime** (`runtime.py`) — `Qy` 主类 API，串联完整 pipeline
 - **Environment** (`environment.py`) — symbol-space 实现，`standard_environment`
-- **Operators** (`operators.py`) — `PureOperator`/`ScopeOperator`/`ControlOperator`/`EffectOperator`/`MetaOperator`（legacy dispatch，新语义不走这里）
+- **Operators** (`operators.py`) — `PureOperator`/`ScopeOperator`/`ControlOperator`/`EffectOperator`/`MetaOperator`
+  （legacy dispatch，新语义不走这里）
 - **Runtime Values** (`runtime_values.py`) — `UserFunction`、`EffectDefinition`、`HostObjectRef` 等 runtime 值类型
 - **Continuation** (`continuation.py`) — `QyContinuation`，可恢复的效应续延
 - **Compatibility Facades** (新) — 为迁移期间的兼容性提供：
-  - `async_runtime.py`：`run_async` 同步/异步桥接，从 evaluator 抽离
-  - `eval_runtime.py`：`evaluate_async` / `evaluate_body_async` / `evaluate_tail_body_async`，stdlib 用兼容门面
-  - `symbol_utils.py`：`ensure_symbol` 工具函数
+    - `async_runtime.py`：`run_async` 同步/异步桥接，从 evaluator 抽离
+    - `eval_runtime.py`：`evaluate_async` / `evaluate_body_async` / `evaluate_tail_body_async`，stdlib 用兼容门面
+    - `symbol_utils.py`：`ensure_symbol` 工具函数
 - **Std** (`std/`) — 标准库目标包；`stdlib/` 只是迁移期兼容目录，新增长期标准能力应进入 `std/`
-- **Stdlib Compatibility** (`stdlib/`) — 当前内置操作符实现位置；import 自 `async_runtime` / `eval_runtime` / `symbol_utils` 而非直接依赖 evaluator
+- **Stdlib Compatibility** (`stdlib/`) — 当前内置操作符实现位置；import 自 `async_runtime` / `eval_runtime` /
+  `symbol_utils` 而非直接依赖 evaluator
 
 ### 执行器约束
 
-| 执行器           | 状态                                                      |
-| ---------------- | --------------------------------------------------------- |
-| `register_vm.py` | 唯一执行器，新语义目标；使用 \_EffectFrame 显式表达效应帧 |
-| `ir_vm/`         | 已删除，不能重新引入第二执行后端                          |
-| `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入       |
+| 执行器              | 状态                                     |
+|------------------|----------------------------------------|
+| `register_vm.py` | 唯一执行器，新语义目标；使用 \_EffectFrame 显式表达效应帧   |
+| `ir_vm/`         | 已删除，不能重新引入第二执行后端                       |
+| `evaluator.py`   | legacy，迁移待删；仅通过 `eval_runtime.py` 受控导入 |
 
-Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard profile、字面量空间、std 空间、宿主注入空间都可以占据链上的明确位置。chain 只提供 lookup；fold 才会把 binding 吸收到某个 symbol-space。module root 初始化与 `from` 必须共用这套 fold 模型，后者是受 `exports` 约束的选择性 fold。语言核与默认 profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow 后续链节点。
+Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言内核没有宿主环境；但标准实现总是围绕某个 `Qy` 实例展开，
+`pre-symbol-space-chain` 是该实例的初始查找链，reader、analyzer、LSP、lowering、runtime 都必须读取同一份实例事实。它是链，不是单个特殊空间；standard
+profile、字面量空间、std 空间、宿主注入空间都可以占据链上的明确位置。chain 只提供 lookup；fold 才会把 binding 吸收到某个
+symbol-space。module root 初始化与 `from` 必须共用这套 fold 模型，后者是受 `exports` 约束的选择性 fold。语言核与默认
+profile 分离，profile 可以预装 `+` 等常用算子，但这不把它们提升为核心 form。Python host interop 不属于默认语言核心；host
+value/operator 必须通过实例链、显式注入或显式 import 进入 symbol-space-chain。`define` 只检查当前 symbol-space，可以 shadow
+后续链节点。
 
-目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。标准库目标命名是 `qy.std`，不是 `qy.stdlib`。工程层包包括 `diag/source/session/build/project/import_/analysis/debug/errors`，它们负责编译器基础设施，不负责具体语言阶段语义。VM target spec 位于 `backend/vm/spec`，Python VM 实现位于 `vm`。
+目标包结构见 `docs/package-structure.md`。不得长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API
+搬入目标 package `__init__.py`，再删除旧文件。标准库目标命名是 `qy.std`，不是 `qy.stdlib`。工程层包包括
+`diag/source/session/build/project/import_/analysis/debug/errors`，它们负责编译器基础设施，不负责具体语言阶段语义。VM
+target spec 位于 `backend/vm/spec`，Python VM 实现位于 `vm`。
 待删除源码必须带 `QY_DELETE_AFTER_MIGRATION` 或 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT` 文件头标记。
 
-语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 只能做源码到 `symbol` / `chain` 的映射，不得提前引入 runtime value。HIR / MIR / LIR 必须彼此独立：HIR 不得含 CFG/寄存器，MIR 不得含 Environment/物理布局，LIR 不得只是 bytecode opcode 的别名层，并且必须显式建模 virtual stack、continuation、handler、ss-chain transition、lookup 与 slot operation。详细边界见 `docs/ir-design.md`。
+语法只有 S-expression；`form` 只是单个 S-expression 单元，不是第三类语法对象。reader 只能做源码到 `symbol` / `chain`
+的映射，不得提前引入 runtime value。HIR / MIR / LIR 必须彼此独立：HIR 不得含 CFG/寄存器，MIR 不得含 Environment/物理布局，LIR
+不得只是 bytecode opcode 的别名层，并且必须显式建模 virtual stack、continuation、handler、ss-chain transition、lookup 与 slot
+operation。详细边界见 `docs/ir-design.md`。
 
 ### 效应系统
 
-代数效应通过 `defeffect`/`perform`/`handle`/`resume` 实现。`QyContinuation` 是可恢复的效应续延。效应在 MIR 层有独立 opcode，LIR/bytecode/register VM 中有对应支持。
+代数效应通过 `defeffect`/`perform`/`handle`/`resume` 实现。`QyContinuation` 是可恢复的效应续延。效应在 MIR 层有独立
+opcode，LIR/bytecode/register VM 中有对应支持。
 
-**Effect/Continuation Frame**：当前 `_EffectFrame` 是过渡实现。目标模型中 `handle`/`perform`/`resume` 必须在 LIR 降成 virtual stack、continuation frame、handler frame 与 ss-chain transition；bytecode/VM 只执行这些低层机制，不再保留语言级 `PERFORM`/`HANDLE` 语义。
+**Effect/Continuation Frame**：当前 `_EffectFrame` 是过渡实现。目标模型中 `handle`/`perform`/`resume` 必须在 LIR 降成
+virtual stack、continuation frame、handler frame 与 ss-chain transition；bytecode/VM 只执行这些低层机制，不再保留语言级
+`PERFORM`/`HANDLE` 语义。
 
 ### 值类型（values.py）
 
@@ -106,3 +129,10 @@ Qy 不保留 `backend` 选择；公共执行入口必须走 register VM。语言
 - 依赖：lark（解析）、typer（CLI）、pygls（LSP）
 - 工具：ruff（lint+format）、ty（类型检查）、pytest（测试）、commitlint（提交信息）
 - VSCode 扩展：`extensions/qylang-support-vscode/`
+
+## 备注
+
+不要创建除文档以外的 `*.md` 文件；文档只能放在 `docs/` 目录，且必须在 `docs/README.md` 中注册。所有设计文档都必须放在
+`docs/`，并在 `docs/README.md` 中注册；不允许长期存在未注册的设计文档。
+
+LANGUAGE.md 是细节无关的语言设计文档，仅包含语言设计.

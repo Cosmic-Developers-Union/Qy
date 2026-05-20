@@ -362,3 +362,6 @@ report.md
 
 bunfig.toml
 reports
+
+coverage*
+*.md
