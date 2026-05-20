@@ -25,11 +25,11 @@ from qy.stdlib.imports import ImportSpec
 from qy.stdlib.imports import parse_from_import
 
 __all__ = [
-    "ImportSpec",
     "LANGUAGE_CORE_MODULES",
     "OPTIONAL_STDLIB_MODULES",
     "PRELUDE_MODULES",
     "STANDARD_PROFILE_MODULES",
+    "ImportSpec",
     "load_module",
     "load_module_async",
     "module_names",

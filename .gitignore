@@ -351,6 +351,7 @@ dist
 .pnp.*
 
 !qy/build
+!qy/vm/instance
 
 .vscode
 
