@@ -42,7 +42,7 @@ release:
 	uv run twine upload dist/*
 
 tokens:
-	python scripts/tokens.py
+	uv run scripts/tokens.py
 
 # ---------------------------------------------------------------------------
 # LLVM Native Backend (Phase Q)
