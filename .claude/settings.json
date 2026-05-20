@@ -20,7 +20,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo 'Reminder: don't edit @todo.md, read @qy to known code and status.'"
+            "command": "echo 'Reminder: don't edit @todo.md, read @qy to known code and status, and use chinese.'"
           }
         ]
       }
