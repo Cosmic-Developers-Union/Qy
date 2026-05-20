@@ -1,0 +1,49 @@
+(from qy.testhost import cli-args list-dir path-join dir? qy-file? run-file-with-coverage start-coverage stop-coverage report-coverage)
+
+(defun qytest-root ()
+  (let ((args (cli-args)))
+    (cond
+      ((eq args nil) (quote tests/qy))
+      (true (car args)))))
+
+(defun collect-files (root)
+  (collect-files-from root (list-dir root)))
+
+(defun collect-files-from (root entries)
+  (cond
+    ((eq entries nil) nil)
+    (true
+      (let ((entry (car entries))
+            (rest (cdr entries))
+            (full (path-join root entry)))
+        (cond
+          ((dir? full) (append (collect-files full) (collect-files-from root rest)))
+          ((qy-file? full) (cons full (collect-files-from root rest)))
+          (true (collect-files-from root rest)))))))
+
+(defun run-files (files passed failed)
+  (cond
+    ((eq files nil) (cons passed (cons failed nil)))
+    (true
+      (let ((file (car files))
+            (rest (cdr files)))
+        (cond
+          ((run-file-with-coverage file)
+            (pipeline
+              (print qytest-pass: file)
+              (run-files rest (+ passed 1) failed)))
+          (true
+            (pipeline
+              (print qytest-fail: file)
+              (run-files rest passed (+ failed 1)))))))))
+
+(pipeline
+  (start-coverage)
+  (let ((result (run-files (collect-files (qytest-root)) 0 0)))
+    (let ((passed (car result))
+          (failed (car (cdr result))))
+      (pipeline
+        (stop-coverage)
+        (report-coverage)
+        (print qytest-summary passed= passed failed= failed)
+        (= failed 0)))))

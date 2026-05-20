@@ -6,6 +6,8 @@ from __future__ import annotations
 from typing import cast
 
 from qy.compile_time import compile_time_environment
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
 from qy.environment import Environment
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
@@ -53,44 +55,80 @@ def resolve_known_module(name: str, env: Environment) -> StandardModule:
 def build_provisional_module(form: object, env: Environment) -> StandardModule | None:
     if not _is_special_form(form, "module"):
         return None
-    assert isinstance(form, tuple)
-    if len(form) < 2 or not isinstance(form[1], Symbol):
+
+    # 统一转换为 list 处理
+    if isinstance(form, tuple):
+        items = list(form)
+    elif is_chain(form):
+        items = chain_to_list(form)
+    else:
         return None
 
-    name = form[1]
-    body = tuple(form[2:])
+    if len(items) < 2 or not isinstance(items[1], Symbol):
+        return None
+
+    name = items[1]
+    body = items[2:]
     locals_map: dict[Symbol, object] = {}
     export_names: list[Symbol] = []
 
     for item in body:
         if _is_special_form(item, "exports"):
-            assert isinstance(item, tuple)
-            export_names.extend(_parse_export_items(tuple(item[1:])))
+            # 转换为 list
+            if isinstance(item, tuple):
+                export_items = tuple(item[1:])
+            elif is_chain(item):
+                export_items = tuple(chain_to_list(item)[1:])
+            else:
+                continue
+            export_names.extend(_parse_export_items(export_items))
             continue
-        if not isinstance(item, tuple) or not item:
+
+        # 转换为 list 以统一处理
+        if isinstance(item, tuple):
+            item_list = list(item)
+        elif is_chain(item):
+            item_list = chain_to_list(item)
+        else:
             continue
-        operator = item[0]
+
+        if not item_list:
+            continue
+
+        operator = item_list[0]
         if operator == Symbol("from"):
             _populate_imported_bindings((item,), env, locals_map)
             continue
-        if operator == Symbol("defun") and len(item) >= 3 and isinstance(item[1], Symbol):
-            locals_map[item[1]] = UserFunction(item[1], _parameter_symbols(item[2]), (None,), env)
+        if operator == Symbol("defun") and len(item_list) >= 3 and isinstance(item_list[1], Symbol):
+            locals_map[item_list[1]] = UserFunction(
+                item_list[1], _parameter_symbols(item_list[2]), (None,), env
+            )
             continue
-        if operator == Symbol("macro") and len(item) >= 4 and isinstance(item[1], Symbol):
-            locals_map[item[1]] = MacroDefinition(
-                item[1],
-                _parameter_symbols(item[2]),
-                tuple(item[3:]),
+        if operator == Symbol("macro") and len(item_list) >= 4 and isinstance(item_list[1], Symbol):
+            locals_map[item_list[1]] = MacroDefinition(
+                item_list[1],
+                _parameter_symbols(item_list[2]),
+                tuple(item_list[3:]),
                 compile_time_environment(env),
             )
             continue
-        if operator == Symbol("defeffect") and len(item) >= 2 and isinstance(item[1], Symbol):
-            locals_map[item[1]] = EffectDefinition(item[1], resumable=_effect_resumable(item[2:]))
+        if (
+            operator == Symbol("defeffect")
+            and len(item_list) >= 2
+            and isinstance(item_list[1], Symbol)
+        ):
+            locals_map[item_list[1]] = EffectDefinition(
+                item_list[1], resumable=_effect_resumable(tuple(item_list[2:]))
+            )
             continue
-        if operator == Symbol("module") and len(item) >= 2 and isinstance(item[1], Symbol):
+        if (
+            operator == Symbol("module")
+            and len(item_list) >= 2
+            and isinstance(item_list[1], Symbol)
+        ):
             nested = build_provisional_module(item, env)
             if nested is not None:
-                locals_map[item[1]] = nested
+                locals_map[item_list[1]] = nested
 
     selected = (
         {
@@ -126,6 +164,9 @@ def _populate_imported_bindings(
     locals_map: dict[Symbol, object],
 ) -> None:
     for import_form in import_forms:
+        # 转换为 tuple 以供 parse_from_import 使用
+        if is_chain(import_form):
+            import_form = tuple(chain_to_list(import_form))
         if not isinstance(import_form, tuple):
             continue
         try:
@@ -141,9 +182,12 @@ def _populate_imported_bindings(
 
 
 def _parameter_symbols(params: object) -> tuple[Symbol, ...]:
-    if not isinstance(params, tuple):
-        return ()
-    return tuple(param for param in params if isinstance(param, Symbol))
+    if isinstance(params, tuple):
+        return tuple(param for param in params if isinstance(param, Symbol))
+    if is_chain(params):
+        items = chain_to_list(params)
+        return tuple(param for param in items if isinstance(param, Symbol))
+    return ()
 
 
 def _parse_export_items(items: tuple[object, ...]) -> list[Symbol]:
@@ -151,6 +195,8 @@ def _parse_export_items(items: tuple[object, ...]) -> list[Symbol]:
     for item in items:
         if isinstance(item, tuple):
             names.extend(_parse_export_items(item))
+        elif is_chain(item):
+            names.extend(_parse_export_items(tuple(chain_to_list(item))))
         elif isinstance(item, Symbol):
             names.append(item)
     return names
@@ -163,4 +209,13 @@ def _effect_resumable(options: tuple[object, ...]) -> bool:
 
 
 def _is_special_form(form: object, name: str) -> bool:
-    return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+    """检查 form 是否为特定的 special form.
+
+    支持 tuple 和 Chain 两种形式。
+    """
+    if isinstance(form, tuple):
+        return len(form) > 0 and form[0] == Symbol(name)
+    if is_chain(form):
+        items = chain_to_list(form)
+        return len(items) > 0 and items[0] == Symbol(name)
+    return False

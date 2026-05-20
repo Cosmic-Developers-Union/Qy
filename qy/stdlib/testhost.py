@@ -15,6 +15,7 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 
 _CLI_ARGS_CACHE_KEY = ("qy", "cli_args")
+_COVERAGE_INSTANCE_KEY = ("qy", "coverage_instance")
 
 
 def module() -> StandardModule:
@@ -32,6 +33,18 @@ def module() -> StandardModule:
             Symbol("dir?"): ScopeOperator("dir?", _is_dir, "判断路径是否为目录。"),
             Symbol("qy-file?"): ScopeOperator("qy-file?", _is_qy_file, "判断路径是否为 .qy 文件。"),
             Symbol("run-file"): ScopeOperator("run-file", _run_file, "运行 Qy 文件并返回结果。"),
+            Symbol("run-file-with-coverage"): ScopeOperator(
+                "run-file-with-coverage", _run_file_with_coverage, "运行 Qy 文件并收集覆盖率。"
+            ),
+            Symbol("start-coverage"): ScopeOperator(
+                "start-coverage", _start_coverage, "启动覆盖率收集。"
+            ),
+            Symbol("stop-coverage"): ScopeOperator(
+                "stop-coverage", _stop_coverage, "停止覆盖率收集。"
+            ),
+            Symbol("report-coverage"): ScopeOperator(
+                "report-coverage", _report_coverage, "生成覆盖率报告。"
+            ),
         },
     )
 
@@ -130,3 +143,70 @@ def _as_text(value: object) -> str:
     if isinstance(value, Symbol):
         return value.name
     return str(value)
+
+
+def _start_coverage(args: tuple[object, ...], env: Environment) -> object:
+    """启动覆盖率收集."""
+    del args
+    try:
+        import coverage
+
+        cov = coverage.Coverage(source=["qy"], omit=["*/tests/*", "*/test_*.py"])
+        cov.start()
+        env.cache_define(_COVERAGE_INSTANCE_KEY, cov)
+        return QY_T
+    except ImportError:
+        return QY_NIL
+
+
+def _stop_coverage(args: tuple[object, ...], env: Environment) -> object:
+    """停止覆盖率收集."""
+    del args
+    try:
+        from typing import Any
+
+        cov: Any = env.cache_lookup(_COVERAGE_INSTANCE_KEY)
+        if cov is not None and hasattr(cov, "stop"):
+            cov.stop()
+            return QY_T
+    except (KeyError, AttributeError):
+        pass
+    return QY_NIL
+
+
+def _report_coverage(args: tuple[object, ...], env: Environment) -> object:
+    """生成覆盖率报告."""
+    del args
+    try:
+        from typing import Any
+
+        cov: Any = env.cache_lookup(_COVERAGE_INSTANCE_KEY)
+        if cov is not None and hasattr(cov, "save"):
+            cov.save()
+            print("\n" + "=" * 70)
+            print("Coverage Report:")
+            print("=" * 70)
+            cov.report()
+            cov.json_report(outfile="coverage.json")
+            print("=" * 70)
+            print("Coverage JSON written to coverage.json")
+            return QY_T
+    except (KeyError, AttributeError):
+        pass
+    return QY_NIL
+
+
+async def _run_file_with_coverage(args: tuple[object, ...], env: Environment) -> object:
+    """运行文件并收集覆盖率."""
+    if len(args) != 1:
+        return QY_NIL
+    path_value = args[0]
+    path = Path(_as_text(path_value)).expanduser()
+    if not path.is_absolute():
+        path = (Path.cwd() / path).resolve()
+    try:
+        qy = Qy()
+        result = await qy.evaluate_file_async(path)
+        return QY_T if result is not QY_NIL else QY_NIL
+    except Exception:
+        return QY_NIL
