@@ -136,3 +136,7 @@ virtual stack、continuation frame、handler frame 与 ss-chain transition；byt
 `docs/`，并在 `docs/README.md` 中注册；不允许长期存在未注册的设计文档。
 
 LANGUAGE.md 是细节无关的语言设计文档，仅包含语言设计.
+
+## 工作建议
+
+- subagent 保持在 3~5 个.
