@@ -6,7 +6,7 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyPythonError
 from qy.errors import format_qy_error
 from qy.reader import Symbol
-from qy.runtime import Qy
+from qy.runtime import AsyncQy as Qy
 from qy.stdlib import load_module
 
 

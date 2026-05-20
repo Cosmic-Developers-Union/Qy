@@ -12,7 +12,7 @@ from typing import cast
 if TYPE_CHECKING:
     from collections.abc import Sized
 
-from qy.async_runtime import run_async
+
 from qy.compile_time import compile_time_binding_names
 from qy.compile_time import compile_time_environment
 from qy.core.syntax import Chain
@@ -193,7 +193,8 @@ def macroexpand(
     *,
     options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
-    return cast(MacroExpansion, run_async(macroexpand_async(forms, env, options=options)))
+    from qy.evaluator import _run_coro
+    return cast(MacroExpansion, _run_coro(macroexpand_async(forms, env, options=options)))
 
 
 async def macroexpand_async(
@@ -235,9 +236,10 @@ def macroexpand_source(
     source_name: str | None = None,
     options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
+    from qy.evaluator import _run_coro
     return cast(
         MacroExpansion,
-        run_async(macroexpand_source_async(source, env, source_name=source_name, options=options)),
+        _run_coro(macroexpand_source_async(source, env, source_name=source_name, options=options)),
     )
 
 

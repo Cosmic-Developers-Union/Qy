@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from qy.async_runtime import run_async
+import asyncio
 from qy.continuation import QyContinuation
 from qy.continuation import _await_if_needed
 from qy.environment import Environment
@@ -90,7 +90,6 @@ __all__ = [
     "evaluate_program_async",
     "evaluate_source",
     "evaluate_source_async",
-    "run_async",
     "standard_environment",
 ]
 
@@ -98,8 +97,18 @@ __all__ = [
 # -- Public evaluation API (legacy, used by tests) --------------------------
 
 
+def _run_coro(coro):
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return asyncio.run(coro)
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(1) as pool:
+        return pool.submit(asyncio.run, coro).result()
+
+
 def evaluate(expression: object, env: Environment | None = None) -> object:
-    return run_async(evaluate_async(expression, env))
+    return _run_coro(evaluate_async(expression, env))
 
 
 async def evaluate_async(expression: object, env: Environment | None = None) -> object:
@@ -113,7 +122,7 @@ async def evaluate_async(expression: object, env: Environment | None = None) -> 
 def evaluate_source(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> object:
-    return run_async(evaluate_source_async(source, env, source_name=source_name))
+    return _run_coro(evaluate_source_async(source, env, source_name=source_name))
 
 
 async def evaluate_source_async(
@@ -128,7 +137,7 @@ def evaluate_program(
 ) -> list[object]:
     return cast(
         list[object],
-        run_async(evaluate_program_async(source, env, source_name=source_name)),
+        _run_coro(evaluate_program_async(source, env, source_name=source_name)),
     )
 
 
@@ -139,7 +148,7 @@ async def evaluate_program_async(
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
-    return run_async(evaluate_file_async(path, env))
+    return _run_coro(evaluate_file_async(path, env))
 
 
 async def evaluate_file_async(path: str | Path, env: Environment | None = None) -> object:
@@ -201,7 +210,7 @@ async def _evaluate_ir_forms_async(
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
-    return run_async(evaluate_body_async(body, env))
+    return _run_coro(evaluate_body_async(body, env))
 
 
 async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:

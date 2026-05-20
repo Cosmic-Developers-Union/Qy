@@ -9,7 +9,6 @@ from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.operators import ScopeOperator
 from qy.reader import Symbol
-from qy.runtime import Qy
 from qy.stdlib.module import StandardModule
 from qy.values import QY_NIL
 from qy.values import QY_T
@@ -131,9 +130,10 @@ async def _run_file(args: tuple[object, ...], env: Environment) -> object:
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
     try:
-        qy = Qy()
-        result = await qy.evaluate_file_async(path)
-        # Any non-nil result means the file ran successfully
+        from qy import AsyncQy
+
+        qy = AsyncQy()
+        result = await qy.evaluate_file(path)
         return QY_T if result is not QY_NIL else QY_NIL
     except Exception:
         return QY_NIL
@@ -205,8 +205,10 @@ async def _run_file_with_coverage(args: tuple[object, ...], env: Environment) ->
     if not path.is_absolute():
         path = (Path.cwd() / path).resolve()
     try:
-        qy = Qy()
-        result = await qy.evaluate_file_async(path)
+        from qy import AsyncQy
+
+        qy = AsyncQy()
+        result = await qy.evaluate_file(path)
         return QY_T if result is not QY_NIL else QY_NIL
     except Exception:
         return QY_NIL

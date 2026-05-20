@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-from qy.async_runtime import run_async
+import asyncio
 from qy.bytecode import BytecodeFunction
 from qy.bytecode import BytecodeFunctionValue
 from qy.bytecode import BytecodeProgram
@@ -624,7 +624,8 @@ class RegisterVirtualMachine:
 
 
 def evaluate_bytecode(program: BytecodeProgram, env: Environment | None = None) -> object:
-    return run_async(evaluate_bytecode_async(program, env))
+    from qy.evaluator import _run_coro
+    return _run_coro(evaluate_bytecode_async(program, env))
 
 
 async def evaluate_bytecode_async(
@@ -640,7 +641,8 @@ def evaluate_bytecode_source(
     *,
     source_name: str | None = None,
 ) -> object:
-    return run_async(evaluate_bytecode_source_async(source, env, source_name=source_name))
+    from qy.evaluator import _run_coro
+    return _run_coro(evaluate_bytecode_source_async(source, env, source_name=source_name))
 
 
 async def evaluate_bytecode_source_async(

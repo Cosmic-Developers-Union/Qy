@@ -119,6 +119,7 @@ from qy.register_vm import evaluate_bytecode
 from qy.register_vm import evaluate_bytecode_async
 from qy.register_vm import evaluate_bytecode_source
 from qy.register_vm import evaluate_bytecode_source_async
+from qy.runtime import AsyncQy
 from qy.runtime import Qy
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import HostObjectRef
@@ -142,6 +143,7 @@ __all__ = [
     "QY_T",
     "Analysis",
     "Arity",
+    "AsyncQy",
     "Binding",
     "BytecodeFunction",
     "BytecodeFunctionValue",

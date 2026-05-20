@@ -401,13 +401,14 @@ def test_mir_dump_shows_defeffect_perform_handle_resume():
 
 
 def test_bytecode_vm_defeffect_defines_effect_in_env():
+    import asyncio
+
     from qy.evaluator import EffectDefinition
-    from qy.evaluator import run_async
     from qy.evaluator import standard_environment
     from qy.register_vm import evaluate_bytecode_source_async
 
     env = standard_environment()
-    run_async(evaluate_bytecode_source_async("(defeffect my-signal)", env))
+    asyncio.run(evaluate_bytecode_source_async("(defeffect my-signal)", env))
 
     assert isinstance(env.resolve(Symbol("my-signal")), EffectDefinition)
 

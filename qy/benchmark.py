@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from qy.async_runtime import run_async
+import asyncio
 from qy.bytecode import BytecodeProgram
 from qy.bytecode_compiler import compile_mir_bytecode
 from qy.environment import Environment
@@ -300,7 +300,7 @@ def _run_bytecode_compile_iterations(program: MIRProgram, iterations: int) -> No
 
 def _run_bytecode_iterations(env: Environment, program: BytecodeProgram, iterations: int) -> None:
     for _ in range(iterations):
-        run_async(RegisterVirtualMachine(program, env).evaluate_program())
+        asyncio.run(RegisterVirtualMachine(program, env).evaluate_program())
 
 
 def _elapsed(func: Callable[[], None]) -> float:
