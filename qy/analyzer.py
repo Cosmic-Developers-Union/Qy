@@ -917,6 +917,9 @@ def _scope_with_parameters(
 
 
 def _is_special_form(form: object, name: str) -> bool:
+    if is_chain(form):
+        items = chain_to_list(form)
+        return len(items) > 0 and items[0] == Symbol(name)
     return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
 
 
