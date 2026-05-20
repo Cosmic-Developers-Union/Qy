@@ -1,4 +1,4 @@
-from qy.analyzer import type_check_source
+from qy.analysis import type_check_source
 from qy.evaluator import standard_environment
 from qy.macro import MacroDefinition
 from qy.reader import Symbol

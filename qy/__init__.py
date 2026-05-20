@@ -6,11 +6,11 @@ Stable pipeline APIs are centered around `Qy`, `macroexpand`, `lower`, `lower_mi
 
 # coding: utf-8
 
-from qy.analyzer import Analysis
-from qy.analyzer import Diagnostic
-from qy.analyzer import analyze
-from qy.analyzer import analyze_source
-from qy.analyzer import type_check_source
+from qy.analysis import Analysis
+from qy.analysis import Diagnostic
+from qy.analysis import analyze
+from qy.analysis import analyze_source
+from qy.analysis import type_check_source
 from qy.backend.llvm import compile_to_llvm_text
 from qy.backend.llvm import emit
 from qy.backend.llvm import link

@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Annotated
 from typing import Any
 
-from qy.analyzer import Diagnostic
-from qy.analyzer import analyze_source
+from qy.analysis import Diagnostic
+from qy.analysis import analyze_source
 from qy.bytecode import dump_bytecode
 from qy.display import format_value
 from qy.errors import QyError

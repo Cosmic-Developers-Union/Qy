@@ -1,5 +1,5 @@
-from qy.analyzer import analyze_source
-from qy.analyzer import type_check_source
+from qy.analysis import analyze_source
+from qy.analysis import type_check_source
 
 
 def test_analyze_valid_program():

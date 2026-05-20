@@ -7,8 +7,8 @@ from lsprotocol import types
 from pygls.lsp.server import LanguageServer
 
 from qy import __version__
-from qy.analyzer import Diagnostic
-from qy.analyzer import analyze_source
+from qy.analysis import Diagnostic
+from qy.analysis import analyze_source
 from qy.core.syntax import Chain
 from qy.formatter import format_source
 from qy.reader import Form

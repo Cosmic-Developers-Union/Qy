@@ -1,6 +1,6 @@
 import pytest
 
-from qy.analyzer import analyze_source
+from qy.analysis import analyze_source
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
 from qy.evaluator import Environment
