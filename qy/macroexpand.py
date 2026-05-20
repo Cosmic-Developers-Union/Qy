@@ -529,13 +529,17 @@ def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
             rest = cdr(form)
             if is_chain(rest) and not is_nil(rest):
                 inner = _expand_quasiquote(car(rest), depth=depth - 1)
-                return list_to_chain([Symbol("list"), Symbol("unquote"), inner], span=get_span(form))
+                return list_to_chain(
+                    [Symbol("list"), Symbol("unquote"), inner], span=get_span(form)
+                )
             return form
         if op == Symbol("quasiquote"):
             rest = cdr(form)
             if is_chain(rest) and not is_nil(rest):
                 inner = _expand_quasiquote(car(rest), depth=depth + 1)
-                return list_to_chain([Symbol("list"), Symbol("quasiquote"), inner], span=get_span(form))
+                return list_to_chain(
+                    [Symbol("list"), Symbol("quasiquote"), inner], span=get_span(form)
+                )
             return form
         return _expand_quasiquote_chain(form, depth=depth)
 
@@ -575,11 +579,19 @@ def _expand_quasiquote_chain(form: Chain, *, depth: int) -> object:
             spliced = car(rest_of_head)
         else:
             spliced = head_form
-        rest = _expand_quasiquote_chain(tail, depth=depth) if is_chain(tail) else list_to_chain([Symbol("quote"), tail])
+        rest = (
+            _expand_quasiquote_chain(tail, depth=depth)
+            if is_chain(tail)
+            else list_to_chain([Symbol("quote"), tail])
+        )
         return list_to_chain([Symbol("append"), spliced, rest], span=get_span(form))
 
     head = _expand_quasiquote(head_form, depth=depth)
-    rest = _expand_quasiquote_chain(tail, depth=depth) if is_chain(tail) else list_to_chain([Symbol("quote"), tail])
+    rest = (
+        _expand_quasiquote_chain(tail, depth=depth)
+        if is_chain(tail)
+        else list_to_chain([Symbol("quote"), tail])
+    )
     return list_to_chain([Symbol("cons"), head, rest], span=get_span(form))
 
 

@@ -77,6 +77,7 @@ def test_qy_instance_exposes_pipeline_helpers():
     from qy.core.syntax import car
     from qy.core.syntax import cdr
     from qy.core.syntax import chain_to_list
+
     assert isinstance(expanded, Chain)
     assert isinstance(car(expanded), Symbol)
     rest = chain_to_list(cdr(expanded))

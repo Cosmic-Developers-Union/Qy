@@ -466,7 +466,9 @@ def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
     if len(items) <= 2:
         return chain
     span = get_span(chain)
-    expanded_values = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]]
+    expanded_values = [
+        _expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]
+    ]
     return list_to_chain([items[0], items[1], *expanded_values], span=span)
 
 
@@ -546,9 +548,17 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> Form:
                     if is_nil(b_tail) and len(b_items) > 1:
                         # 使用 _expand_chain_sequence 处理绑定值，以支持前缀 quote
                         values_chain = list_to_chain(b_items[1:])
-                        expanded_values_chain = _expand_chain_sequence(values_chain, in_quasiquote=in_quasiquote)
-                        expanded_values = list(expanded_values_chain) if is_chain(expanded_values_chain) else [expanded_values_chain]
-                        expanded_bindings.append(list_to_chain([b_items[0], *expanded_values], span=get_span(binding)))
+                        expanded_values_chain = _expand_chain_sequence(
+                            values_chain, in_quasiquote=in_quasiquote
+                        )
+                        expanded_values = (
+                            list(expanded_values_chain)
+                            if is_chain(expanded_values_chain)
+                            else [expanded_values_chain]
+                        )
+                        expanded_bindings.append(
+                            list_to_chain([b_items[0], *expanded_values], span=get_span(binding))
+                        )
                     else:
                         expanded_bindings.append(binding)
                 else:

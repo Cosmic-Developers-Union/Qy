@@ -83,6 +83,7 @@ def test_list_car_cdr_cons():
     from qy.core.syntax import car
     from qy.core.syntax import cdr
     from qy.core.syntax import is_chain
+
     assert is_chain(result)
     assert car(result) == S("a")
     assert cdr(result) == ["b", "c"]

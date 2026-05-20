@@ -170,7 +170,12 @@ def _contains_complex_list(form: Form) -> bool:
             return False
         if len(items) <= 1:
             return False
-        return any(isinstance(item, (tuple, Chain)) and not _is_quote_form(item) and not _is_quote_form_chain(item) for item in items[1:])
+        return any(
+            isinstance(item, (tuple, Chain))
+            and not _is_quote_form(item)
+            and not _is_quote_form_chain(item)
+            for item in items[1:]
+        )
     # Fallback for tuple (legacy)
     if isinstance(form, tuple):
         return any(isinstance(item, tuple) and not _is_quote_form(item) for item in form[1:])

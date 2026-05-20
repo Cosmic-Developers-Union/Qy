@@ -232,7 +232,10 @@ def _lower_form(
                     return _lower_cache(tuple(args), scope, context, form)
 
         operator_expr = _lower_form(operator, scope, context)
-        if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
+        if (
+            isinstance(operator_expr, SymbolRefExpr)
+            and operator_expr.binding.operator_kind == "meta"
+        ):
             context.diagnostic(
                 f"meta operator {operator_expr.symbol.name!r} can only run during macro expansion",
                 form,
@@ -429,7 +432,9 @@ def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
                     _expand_quasiquote_form(items[1], depth=depth - 1),
                 )
             if isinstance(op, Symbol) and op.name == "quasiquote":
-                inner = _expand_quasiquote_form(items[1] if len(items) == 2 else form, depth=depth + 1)
+                inner = _expand_quasiquote_form(
+                    items[1] if len(items) == 2 else form, depth=depth + 1
+                )
                 return (Symbol("list"), Symbol("quasiquote"), inner)
             return _build_quasiquote_tuple(tuple(items), depth=depth)
         return (Symbol("quote"), form)

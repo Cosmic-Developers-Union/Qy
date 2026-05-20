@@ -147,7 +147,13 @@ def _infer(
     args_chain = cdr(form)
     # Convert args to tuple for compatibility with existing code
     try:
-        args = tuple(args_chain) if is_chain(args_chain) else () if is_nil(args_chain) else (args_chain,)
+        args = (
+            tuple(args_chain)
+            if is_chain(args_chain)
+            else ()
+            if is_nil(args_chain)
+            else (args_chain,)
+        )
     except ValueError:
         # Improper list
         diagnostics.append(Diagnostic("improper list cannot be evaluated as a call"))
@@ -550,7 +556,9 @@ def _infer_let(
                     continue
                 name, expression = binding_list
             except ValueError:
-                diagnostics.append(Diagnostic(f"let binding must be a proper list, got {binding!r}"))
+                diagnostics.append(
+                    Diagnostic(f"let binding must be a proper list, got {binding!r}")
+                )
                 continue
             _infer(expression, env, local_scope, diagnostics)
             if isinstance(name, Symbol):
@@ -612,7 +620,11 @@ def _infer_defun(
         function_scope = function_scope.define(name, "function")
 
     try:
-        params_list = chain_to_list(params) if is_chain(params) else (list(params) if isinstance(params, tuple) else [])
+        params_list = (
+            chain_to_list(params)
+            if is_chain(params)
+            else (list(params) if isinstance(params, tuple) else [])
+        )
         for param in params_list:
             if isinstance(param, Symbol):
                 function_scope = function_scope.define(param)
@@ -735,7 +747,9 @@ def _infer_handle(
                 clause_list = list(clause)
                 if len(clause_list) < 3:
                     diagnostics.append(
-                        Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
+                        Diagnostic(
+                            f"handle clause must be (effect (arg k) body...), got {clause!r}"
+                        )
                     )
                     continue
                 effect, params, *body = clause_list
@@ -753,11 +767,15 @@ def _infer_handle(
                         )
                     )
             else:
-                diagnostics.append(Diagnostic(f"handle effect name must be a symbol, got {effect!r}"))
+                diagnostics.append(
+                    Diagnostic(f"handle effect name must be a symbol, got {effect!r}")
+                )
             handler_scope = _scope_with_parameters(params, scope, diagnostics, "handle")
             result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
     except ValueError:
-        diagnostics.append(Diagnostic(f"handle clauses must be a proper list, got {handler_form!r}"))
+        diagnostics.append(
+            Diagnostic(f"handle clauses must be a proper list, got {handler_form!r}")
+        )
 
     return result_type
 
@@ -827,11 +845,19 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         if scope.has_local(form_list[1]):
             return scope
         return scope.define(form_list[1], "function")
-    if len(form_list) >= 2 and form_list[0] == Symbol("define") and isinstance(form_list[1], Symbol):
+    if (
+        len(form_list) >= 2
+        and form_list[0] == Symbol("define")
+        and isinstance(form_list[1], Symbol)
+    ):
         if scope.has_local(form_list[1]):
             return scope
         return scope.define(form_list[1], "any")
-    if len(form_list) >= 2 and form_list[0] == Symbol("defeffect") and isinstance(form_list[1], Symbol):
+    if (
+        len(form_list) >= 2
+        and form_list[0] == Symbol("defeffect")
+        and isinstance(form_list[1], Symbol)
+    ):
         if scope.has_local(form_list[1]):
             return scope
         return scope.define(form_list[1], "effect")
@@ -839,7 +865,11 @@ def _scope_after_form(form: object, env: Environment, scope: _Scope) -> _Scope:
         if scope.has_local(form_list[1]):
             return scope
         return scope.define(form_list[1], "operator", operator_kind="meta", eager_arguments=False)
-    if len(form_list) >= 2 and form_list[0] == Symbol("module") and isinstance(form_list[1], Symbol):
+    if (
+        len(form_list) >= 2
+        and form_list[0] == Symbol("module")
+        and isinstance(form_list[1], Symbol)
+    ):
         remember_source_module(form, env)
         if scope.has_local(form_list[1]):
             return scope
@@ -906,7 +936,11 @@ def _scope_with_parameters(
         diagnostics.append(Diagnostic(f"{context} parameters must be a list, got {params!r}"))
         return scope
 
-    params_list = chain_to_list(params) if is_chain(params) else (list(params) if isinstance(params, tuple) else [])
+    params_list = (
+        chain_to_list(params)
+        if is_chain(params)
+        else (list(params) if isinstance(params, tuple) else [])
+    )
     next_scope = scope
     for param in params_list:
         if isinstance(param, Symbol):
