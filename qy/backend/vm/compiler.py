@@ -1,14 +1,28 @@
 # coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/backend/vm/emit.py
+"""Bytecode 编译器：LIR → Bytecode。.
+
+目标：
+- 从 LIR 降低到 bytecode
+- 纯结构转换，不重新理解语义
+- 替代 qy/bytecode_compiler.py
+
+当前：
+- 从 qy/bytecode_compiler.py 迁移编译逻辑
+- 支持 HIR/MIR/LIR 到 bytecode 的完整管线
+
+禁止：
+- 不得重新理解 HIR/MIR 语义
+- 不得包含执行逻辑
+"""
 
 from __future__ import annotations
 
 from typing import cast
 
-from qy.bytecode import BytecodeFunction
-from qy.bytecode import BytecodeProgram
-from qy.bytecode import Instruction
-from qy.bytecode import Opcode
+from qy.backend.vm.bytecode import BytecodeFunction
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.backend.vm.bytecode import Instruction
+from qy.backend.vm.bytecode import Opcode
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
@@ -20,10 +34,26 @@ __all__ = ["compile_bytecode", "compile_lir_bytecode", "compile_mir_bytecode"]
 
 
 def compile_bytecode(program: ProgramIR) -> BytecodeProgram:
+    """Compile HIR program to bytecode.
+
+    Args:
+        program: HIR program
+
+    Returns:
+        BytecodeProgram
+    """
     return compile_mir_bytecode(lower_mir(program))
 
 
 def compile_mir_bytecode(program: MIRProgram) -> BytecodeProgram:
+    """Compile MIR program to bytecode.
+
+    Args:
+        program: MIR program
+
+    Returns:
+        BytecodeProgram
+    """
     lir = lower_lir(program)
     return compile_lir_bytecode(lir)
 
@@ -35,6 +65,12 @@ def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
     - LOAD_NIL -> LOAD_HOST with QY_NIL value
     - LOAD_T   -> LOAD_HOST with QY_T value
     - BRANCH_NIL -> JUMP_IF_FALSE (same semantics now that truth is nil-only)
+
+    Args:
+        opcode: LIR opcode
+
+    Returns:
+        Bytecode opcode
     """
     if opcode == "LOAD_NIL":
         return "LOAD_HOST"
@@ -46,7 +82,15 @@ def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
 
 
 def _lir_to_bytecode_operands(opcode: str, operands: tuple[object, ...]) -> tuple[object, ...]:
-    """Adjust operands when mapping LIR opcodes to bytecode opcodes."""
+    """Adjust operands when mapping LIR opcodes to bytecode opcodes.
+
+    Args:
+        opcode: LIR opcode
+        operands: LIR operands
+
+    Returns:
+        Bytecode operands
+    """
     if opcode == "LOAD_NIL":
         # LOAD_NIL r -> LOAD_HOST r, QY_NIL
         from qy.values import QY_NIL
@@ -61,12 +105,28 @@ def _lir_to_bytecode_operands(opcode: str, operands: tuple[object, ...]) -> tupl
 
 
 def _encode_instruction(instruction: LIRInstruction) -> Instruction:
+    """Encode LIR instruction to bytecode instruction.
+
+    Args:
+        instruction: LIR instruction
+
+    Returns:
+        Bytecode instruction
+    """
     opcode = _lir_to_bytecode_opcode(instruction.opcode)
     operands = _lir_to_bytecode_operands(instruction.opcode, instruction.operands)
     return Instruction(opcode, operands, instruction.span)
 
 
 def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
+    """Compile LIR program to bytecode.
+
+    Args:
+        program: LIR program
+
+    Returns:
+        BytecodeProgram
+    """
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
     if program.dialect != "compat":

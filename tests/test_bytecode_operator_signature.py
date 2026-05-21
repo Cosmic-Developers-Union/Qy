@@ -3,10 +3,10 @@
 
 from __future__ import annotations
 
-from qy.bytecode import BytecodeFunction
-from qy.bytecode import BytecodeProgram
-from qy.bytecode import Instruction
-from qy.bytecode import dump_bytecode
+from qy.backend.vm.bytecode import BytecodeFunction
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.backend.vm.bytecode import Instruction
+from qy.backend.vm.bytecode import dump_bytecode
 from qy.operator_signature import Arity
 from qy.operator_signature import OperatorSignature
 from qy.operator_signature import format_arity_message

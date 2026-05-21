@@ -71,7 +71,7 @@ class MacroDefinition:
                 doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
             )
 
-        from qy.bytecode_compiler import compile_bytecode
+        from qy.backend.vm.compiler import compile_bytecode
         from qy.passes.lower_hir import lower
         from qy.register_vm import RegisterVirtualMachine
 

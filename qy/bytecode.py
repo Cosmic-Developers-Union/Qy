@@ -1,137 +1,31 @@
 # coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/backend/vm/spec/bytecode.py
+"""Compatibility re-exports for BytecodeFunctionValue.
+
+BytecodeFunctionValue is a VM implementation detail (contains closure).
+It remains accessible from qy.bytecode for backward compatibility.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from typing import Literal
 
-from qy.diag import Diagnostic
-from qy.errors import SourceSpan
-from qy.reader import Symbol
+from qy.backend.vm.bytecode import BytecodeFunction
+from qy.backend.vm.bytecode import BytecodeProgram
 
 if TYPE_CHECKING:
     from qy.environment import Environment
 
-__all__ = [
-    "BytecodeFunction",
-    "BytecodeFunctionValue",
-    "BytecodeProgram",
-    "Instruction",
-    "Opcode",
-    "Register",
-    "dump_bytecode",
-]
-
-Register = int
-
-Opcode = Literal[
-    "APPEND_RESULT",
-    "ALL_GATHER",
-    "APPLY",
-    "BUILD_TUPLE",
-    "CACHE_EVAL",
-    "CALL",
-    "DEFEFFECT",
-    "DEFINE_MODULE",
-    "DEFINE_ONCE",
-    "ENTER_SCOPE",
-    "EXIT_SCOPE",
-    "FROM_IMPORT",
-    "HANDLE",
-    "JUMP",
-    "JUMP_IF_FALSE",
-    "LOAD_HOST",
-    "LOAD_ENV",
-    "MAKE_MACRO",
-    "MAKE_FUNCTION",
-    "MOVE",
-    "PARALLEL_GATHER",
-    "PERFORM",
-    "RAISE_EFFECT",
-    "RACE_FIRST",
-    "RESUME",
-    "RETURN",
-    "RUNTIME_EVAL",
-    "STORE_LOCAL",
-    "TAIL_CALL",
-]
-
-
-@dataclass(frozen=True, slots=True)
-class Instruction:
-    opcode: Opcode
-    operands: tuple[object, ...] = ()
-    span: SourceSpan | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class BytecodeFunction:
-    name: Symbol
-    params: tuple[Symbol, ...]
-    register_count: int
-    instructions: tuple[Instruction, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class BytecodeProgram:
-    functions: tuple[BytecodeFunction, ...]
-    main: int = 0
-    diagnostics: tuple[Diagnostic, ...] = ()
-
-    @property
-    def ok(self) -> bool:
-        return not any(diagnostic.severity == "error" for diagnostic in self.diagnostics)
+__all__ = ["BytecodeFunctionValue"]
 
 
 @dataclass(frozen=True, slots=True)
 class BytecodeFunctionValue:
+    """Bytecode function with closure (VM implementation detail).
+
+    This is specific to the Python VM implementation and contains runtime state.
+    """
+
     function: BytecodeFunction
     closure: Environment
     program: BytecodeProgram | None = None
-
-
-def dump_bytecode(program: BytecodeProgram) -> str:
-    lines: list[str] = []
-    for index, function in enumerate(program.functions):
-        params = ", ".join(param.name for param in function.params)
-        suffix = " [main]" if index == program.main else ""
-        lines.append(
-            f"fn#{index} {function.name.name}({params}) regs={function.register_count}{suffix}"
-        )
-        if not function.instructions:
-            lines.append("  ; no instructions")
-            continue
-        for instruction_index, instruction in enumerate(function.instructions):
-            lines.append(
-                f"  {instruction_index:04d}: {_format_instruction(instruction)}{_format_span(instruction.span)}"
-            )
-    if program.diagnostics:
-        lines.append("diagnostics:")
-        lines.extend(
-            f"  - {diagnostic.severity}: {diagnostic.message}" for diagnostic in program.diagnostics
-        )
-    return "\n".join(lines)
-
-
-def _format_instruction(instruction: Instruction) -> str:
-    if not instruction.operands:
-        return instruction.opcode
-    return (
-        f"{instruction.opcode} {', '.join(_format_operand(item) for item in instruction.operands)}"
-    )
-
-
-def _format_operand(value: object) -> str:
-    if isinstance(value, Symbol):
-        return value.name
-    if isinstance(value, tuple):
-        return f"({', '.join(_format_operand(item) for item in value)})"
-    return repr(value)
-
-
-def _format_span(span: SourceSpan | None) -> str:
-    if span is None:
-        return ""
-    return f" @ {span.format()}"

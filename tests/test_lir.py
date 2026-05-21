@@ -2,7 +2,7 @@ from qy import LIRProgram
 from qy import compile_lir_bytecode
 from qy import dump_lir
 from qy import lower_lir
-from qy.bytecode_compiler import compile_mir_bytecode
+from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir
 from qy.reader import Symbol
@@ -411,7 +411,7 @@ def test_lir_load_nil_and_load_t_in_pipeline():
 
 def test_lir_peephole_load_t_compiles_to_bytecode():
     """LOAD_T in LIR compiles correctly to LOAD_HOST with QY_T in bytecode."""
-    from qy.bytecode_compiler import compile_lir_bytecode
+    from qy.backend.vm.compiler import compile_lir_bytecode
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram
@@ -631,7 +631,7 @@ def test_verify_lir_rejects_language_effect_opcodes_in_abstract_machine_dialect(
 
 
 def test_compile_lir_bytecode_rejects_abstract_machine_lir():
-    from qy.bytecode_compiler import compile_lir_bytecode
+    from qy.backend.vm.compiler import compile_lir_bytecode
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram

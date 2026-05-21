@@ -1,9 +1,9 @@
 # coding: utf-8
-"""测试 qy.bytecode_compiler 模块。."""
+"""测试 qy.backend.vm.compiler 模块。."""
 
 from __future__ import annotations
 
-from qy.bytecode_compiler import _lir_to_bytecode_opcode
+from qy.backend.vm.compiler import _lir_to_bytecode_opcode
 
 
 def test_lir_to_bytecode_opcode_load_nil():

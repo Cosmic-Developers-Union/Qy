@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import statistics
 import time
@@ -13,9 +14,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-import asyncio
-from qy.bytecode import BytecodeProgram
-from qy.bytecode_compiler import compile_mir_bytecode
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.environment import Environment
 from qy.ir import ProgramIR
 from qy.ir.mir import MIRProgram

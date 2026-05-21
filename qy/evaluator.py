@@ -17,11 +17,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-import asyncio
 from qy.continuation import QyContinuation
 from qy.continuation import _await_if_needed
 from qy.environment import Environment
@@ -103,6 +103,7 @@ def _run_coro(coro):
     except RuntimeError:
         return asyncio.run(coro)
     import concurrent.futures
+
     with concurrent.futures.ThreadPoolExecutor(1) as pool:
         return pool.submit(asyncio.run, coro).result()
 
@@ -169,7 +170,7 @@ async def _evaluate_ir_forms_async(
 ) -> list[object]:
     runtime_env = env or standard_environment()
 
-    from qy.bytecode_compiler import compile_bytecode
+    from qy.backend.vm.compiler import compile_bytecode
     from qy.macroexpand import macroexpand_async
     from qy.passes.lower_hir import lower
     from qy.register_vm import RegisterVirtualMachine

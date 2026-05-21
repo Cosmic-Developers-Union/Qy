@@ -153,6 +153,7 @@ def _load_file_module(name: str) -> StandardModule:
         return _load_python_file_module(path)
     if path.suffix == ".qy":
         from qy.evaluator import _run_coro
+
         return cast(StandardModule, _run_coro(_load_qy_file_module_async(path)))
     raise KeyError(f"unsupported module file type {path.suffix!r}")
 

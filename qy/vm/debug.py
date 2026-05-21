@@ -8,6 +8,6 @@
 禁止：不得包含执行逻辑。
 """
 
-from qy.bytecode import dump_bytecode
+from qy.backend.vm.bytecode import dump_bytecode
 
 __all__ = ["dump_bytecode"]

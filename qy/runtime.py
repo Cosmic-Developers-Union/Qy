@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from qy.bytecode import BytecodeProgram
-from qy.bytecode_compiler import compile_bytecode
-from qy.bytecode_compiler import compile_mir_bytecode
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.backend.vm.compiler import compile_bytecode
+from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.environment import ChainFrame
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -201,6 +200,7 @@ class Qy(_QyBase):
         bytecode = compile_bytecode(program)
         coro = RegisterVirtualMachine(bytecode, self.env).evaluate_program()
         from qy.evaluator import _run_coro
+
         return cast(list[object], _run_coro(coro))
 
     def evaluate_file(self, path: str | Path) -> object:

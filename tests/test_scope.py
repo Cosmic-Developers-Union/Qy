@@ -115,9 +115,9 @@ def test_duplicate_defeffect_reports_error():
 
 
 def test_define_once_opcode_enforced_at_runtime():
-    from qy.bytecode import BytecodeFunction
-    from qy.bytecode import BytecodeProgram
-    from qy.bytecode import Instruction
+    from qy.backend.vm.bytecode import BytecodeFunction
+    from qy.backend.vm.bytecode import BytecodeProgram
+    from qy.backend.vm.bytecode import Instruction
     from qy.errors import QyRuntimeError
     from qy.register_vm import evaluate_bytecode
 

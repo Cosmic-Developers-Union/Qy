@@ -3,18 +3,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-import asyncio
-from qy.bytecode import BytecodeFunction
+from qy.backend.vm.bytecode import BytecodeFunction
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.backend.vm.bytecode import Instruction
+from qy.backend.vm.bytecode import Register
+from qy.backend.vm.compiler import compile_bytecode
 from qy.bytecode import BytecodeFunctionValue
-from qy.bytecode import BytecodeProgram
-from qy.bytecode import Instruction
-from qy.bytecode import Register
-from qy.bytecode_compiler import compile_bytecode
 from qy.continuation import QyContinuation
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -625,6 +625,7 @@ class RegisterVirtualMachine:
 
 def evaluate_bytecode(program: BytecodeProgram, env: Environment | None = None) -> object:
     from qy.evaluator import _run_coro
+
     return _run_coro(evaluate_bytecode_async(program, env))
 
 
@@ -642,6 +643,7 @@ def evaluate_bytecode_source(
     source_name: str | None = None,
 ) -> object:
     from qy.evaluator import _run_coro
+
     return _run_coro(evaluate_bytecode_source_async(source, env, source_name=source_name))
 
 

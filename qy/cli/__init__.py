@@ -8,7 +8,7 @@ from typing import Any
 
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
-from qy.bytecode import dump_bytecode
+from qy.backend.vm.bytecode import dump_bytecode
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
