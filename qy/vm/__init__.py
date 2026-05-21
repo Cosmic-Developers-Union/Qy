@@ -8,8 +8,8 @@
 禁止：不得定义 VM 规格（规格在 qy/backend/vm/spec/）。
 """
 
-from qy.vm.interp import RegisterVirtualMachine
-from qy.vm.interp import evaluate_bytecode
-from qy.vm.interp import evaluate_bytecode_async
+# Note: Do not import qy.vm.interp here to avoid circular imports.
+# qy.vm.interp imports from qy.register_vm, which imports qy.vm.bytecode.
+# Importing qy.vm.bytecode triggers qy.vm.__init__, creating a cycle.
 
-__all__ = ["RegisterVirtualMachine", "evaluate_bytecode", "evaluate_bytecode_async"]
+__all__ = []

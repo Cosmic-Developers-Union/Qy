@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from qy.bytecode import BytecodeFunctionValue
+from typing import TYPE_CHECKING
+
 from qy.core import OperatorKind
 from qy.core import TypeName
 from qy.macro import MacroDefinition
@@ -18,6 +19,9 @@ from qy.runtime_values import UserFunction
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons
+
+if TYPE_CHECKING:
+    pass
 
 __all__ = [
     "literal_type",
@@ -56,6 +60,8 @@ def literal_type(value: object) -> TypeName:
 
 
 def value_type(value: object) -> TypeName:
+    from qy.vm.bytecode import BytecodeFunctionValue
+
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):

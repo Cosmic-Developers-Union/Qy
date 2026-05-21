@@ -168,7 +168,7 @@ def test_compile_simple_program():
 
 def test_bytecode_function_value_location():
     """Test that BytecodeFunctionValue is still in qy.bytecode."""
-    from qy.bytecode import BytecodeFunctionValue
+    from qy.vm.bytecode import BytecodeFunctionValue
 
     # Should be importable from old location
     assert BytecodeFunctionValue is not None

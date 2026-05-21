@@ -14,7 +14,6 @@ from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Register
 from qy.backend.vm.compiler import compile_bytecode
-from qy.bytecode import BytecodeFunctionValue
 from qy.continuation import QyContinuation
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -34,6 +33,7 @@ from qy.runtime_values import EffectDefinition
 from qy.values import QY_NIL
 from qy.virtual_stack import VirtualStack
 from qy.virtual_stack import VirtualStackFrame
+from qy.vm.bytecode import BytecodeFunctionValue
 
 __all__ = [
     "RegisterVirtualMachine",

@@ -300,7 +300,7 @@ def _python_to_qy(value: object) -> object:
 
 
 def _is_qy_callable(value: object) -> bool:
-    from qy.bytecode import BytecodeFunctionValue
+    from qy.vm.bytecode import BytecodeFunctionValue
 
     return isinstance(
         value,
@@ -329,7 +329,7 @@ def _wrap_qy_callable(value: object, env: Environment) -> Callable[..., object]:
 
 
 def _qy_callable_name(value: object) -> str | None:
-    from qy.bytecode import BytecodeFunctionValue
+    from qy.vm.bytecode import BytecodeFunctionValue
 
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
@@ -343,7 +343,7 @@ def _qy_callable_name(value: object) -> str | None:
 
 
 async def _call_qy_callable(value: object, args: tuple[object, ...], env: Environment) -> object:
-    from qy.bytecode import BytecodeFunctionValue
+    from qy.vm.bytecode import BytecodeFunctionValue
 
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))

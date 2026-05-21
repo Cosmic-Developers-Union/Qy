@@ -21,7 +21,6 @@ from qy.backend.vm import compile_bytecode
 from qy.backend.vm import compile_lir_bytecode
 from qy.backend.vm import compile_mir_bytecode
 from qy.backend.vm import dump_bytecode
-from qy.bytecode import BytecodeFunctionValue
 from qy.continuation import QyContinuation
 from qy.display import format_value
 from qy.environment import Environment
@@ -133,6 +132,7 @@ from qy.values import QyEmptyChain
 from qy.values import QyEmptyList
 from qy.values import QyNil
 from qy.values import QyT
+from qy.vm.bytecode import BytecodeFunctionValue
 
 __version__ = "0.0.4"
 __author__ = "Ge"
