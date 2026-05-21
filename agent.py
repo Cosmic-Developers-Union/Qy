@@ -152,7 +152,7 @@ async def clean_task():
 
 async def main():
     await clean_task()
-    for task in []:
+    for task in ["参考 @examples/hello.qy 实现 component 算子"]:
         try:
             await run_task(task)
             await clean_task()
