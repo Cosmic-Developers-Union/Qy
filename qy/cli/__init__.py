@@ -258,8 +258,29 @@ def create_app() -> Any:
     @app.command("ast")
     def ast_command(
         path: Annotated[Path, typer.Argument(help="Qy source file to inspect.")],
+        raw: Annotated[
+            bool,
+            typer.Option("--raw", help="Show raw AST without surface dialect expansion."),
+        ] = False,
+        expand: Annotated[
+            bool,
+            typer.Option("--expand", help="Show AST after macro expansion."),
+        ] = False,
     ) -> None:
-        typer.echo(dump_program(read(path.read_text(encoding="utf-8"))))
+        source = path.read_text(encoding="utf-8")
+        if raw:
+            forms = read_raw(source)
+            typer.echo(dump_program(forms))
+        elif expand:
+            qy = Qy()
+            expansion = qy.macroexpand_source(source, source_name=str(path))
+            if expansion.forms:
+                typer.echo(dump_program(expansion.forms), nl=False)
+            if _print_debug_diagnostics(str(path), expansion.diagnostics):
+                raise typer.Exit(1)
+        else:
+            forms = read(source)
+            typer.echo(dump_program(forms))
 
     @app.command("check")
     def check_command(

@@ -12,5 +12,8 @@
 (define simple-01
   (lambda () (+ 1 2)))
 (defun main ()
-  (simple-01))
+  (pipeline (simple-01)
+    (handle
+      (on divide-by-zero () k (resume k 1))
+      (+ (/ 1 0) (/ 1 0)))))
 (main)
