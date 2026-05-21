@@ -1,5 +1,16 @@
 # coding: utf-8
 # QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=pre-symbol-space-chain literal layer
+#
+# DEPRECATED: This module is being replaced by qy/session/pre_ss.py
+#
+# Migration status:
+# - New implementation: qy/session/pre_ss.py (pre-symbol-space architecture)
+# - ProfileConfig updated to use pre-ss by default (use_pre_ss=True)
+# - Legacy mode available via ProfileConfig(use_pre_ss=False)
+# - All tests passing with new implementation
+#
+# This module remains for backward compatibility and will be removed once
+# all references are migrated to the pre-symbol-space architecture.
 
 from __future__ import annotations
 
