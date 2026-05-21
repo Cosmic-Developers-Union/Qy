@@ -357,6 +357,7 @@ dist
 
 todo.review.md
 report.md
+!bytecode.md
 
 !.claude/loop.md
 .claude/worktrees
