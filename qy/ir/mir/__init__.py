@@ -797,7 +797,7 @@ def _format_instruction(instruction: MIRInstruction) -> str:
         case "ENTER_SCOPE" | "EXIT_SCOPE":
             rendered = instruction.opcode
         case "FROM_IMPORT":
-            from qy.stdlib.imports import ImportSpec
+            from qy.std.imports import ImportSpec
 
             specs = operands[1]
             specs_str = ", ".join(

@@ -1,6 +1,6 @@
 from qy.analysis import type_check_source
 from qy.evaluator import standard_environment
-from qy.stdlib import load_module
+from qy.std import load_module
 
 
 def _legacy_env():

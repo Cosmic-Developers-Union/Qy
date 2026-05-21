@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from qy.reader import Symbol
-from qy.stdlib.module import StandardModule
+from qy.std.module import StandardModule
 
 
 def test_standard_module_creation():

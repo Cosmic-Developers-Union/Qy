@@ -30,7 +30,7 @@ from qy.environment import Environment
 from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.source_modules import resolve_known_module
-from qy.stdlib.imports import parse_from_import
+from qy.std.imports import parse_from_import
 
 
 def infer(form: object, env: Environment, scope: Scope, diagnostics: list[Diagnostic]) -> TypeName:

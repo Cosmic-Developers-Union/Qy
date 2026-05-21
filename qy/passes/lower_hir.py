@@ -65,7 +65,7 @@ from qy.semantics import value_type
 from qy.semantics import value_uses_eager_arguments
 from qy.source_modules import remember_source_module
 from qy.source_modules import resolve_known_module
-from qy.stdlib.imports import parse_from_import
+from qy.std.imports import parse_from_import
 
 __all__ = [
     "LoweringContext",

@@ -7,8 +7,8 @@ import pytest
 
 from qy.errors import QyTypeError
 from qy.reader import Symbol
-from qy.stdlib.modules import _is_special_form
-from qy.stdlib.modules import _parse_export_names
+from qy.std.modules import _is_special_form
+from qy.std.modules import _parse_export_names
 
 
 def test_is_special_form_with_matching_form():

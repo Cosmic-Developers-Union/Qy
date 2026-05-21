@@ -38,6 +38,34 @@ else:
 ClaudeAgentSDKInstrumentor().instrument()
 
 
+def print_message_content(
+    it: TextBlock
+    | ThinkingBlock
+    | ToolUseBlock
+    | ToolResultBlock
+    | ServerToolUseBlock
+    | ServerToolResultBlock,
+):
+    if isinstance(it, TextBlock):
+        print(it.text)
+    elif isinstance(it, ThinkingBlock):
+        print(it.thinking)
+    elif isinstance(it, ToolUseBlock):
+        print(it.name, it.id)
+        print(it.input)
+    elif isinstance(it, ToolResultBlock):
+        print(it.tool_use_id, it.is_error)
+        print(it.content)
+    elif isinstance(it, ServerToolUseBlock):
+        print(it.name, it.id)
+        print(it.input)
+    elif isinstance(it, ServerToolResultBlock):
+        print(it.tool_use_id)
+        print(it.content)
+    else:
+        print(it)
+
+
 async def main():
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
@@ -48,7 +76,7 @@ async def main():
         max_budget_usd=None,
     )
     async with ClaudeSDKClient(options=options) as client:
-        await client.query("What's the weather like in Berlin and New York?")
+        await client.query("迁移 @qy/stdlib 到 @qy/std, 并移除 @qy/stdlib 模块")
         async for message in client.receive_response():
             with contextlib.suppress(Exception):
                 message = cast(
@@ -69,6 +97,12 @@ async def main():
                 elif isinstance(message, RateLimitEvent):
                     print("RateLimitEvent:", message)
                 elif isinstance(message, UserMessage):
+                    content = message.content
+                    if isinstance(content, str):
+                        print(content)
+                    else:
+                        for it in content:
+                            print_message_content(it)
                     print("User:", message.content)
                 elif isinstance(message, AssistantMessage):
                     for it in message.content:
@@ -81,24 +115,7 @@ async def main():
                             | ServerToolResultBlock,
                             it,
                         )
-                        if isinstance(it, TextBlock):
-                            print(it.text)
-                        elif isinstance(it, ThinkingBlock):
-                            print(it.thinking)
-                        elif isinstance(it, ToolUseBlock):
-                            print(it.name, it.id)
-                            print(it.input)
-                        elif isinstance(it, ToolResultBlock):
-                            print(it.tool_use_id, it.is_error)
-                            print(it.content)
-                        elif isinstance(it, ServerToolUseBlock):
-                            print(it.name, it.id)
-                            print(it.input)
-                        elif isinstance(it, ServerToolResultBlock):
-                            print(it.tool_use_id)
-                            print(it.content)
-                        else:
-                            print(it)
+                        print_message_content(it)
 
                 else:
                     print(message)

@@ -46,8 +46,8 @@ from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
-from qy.stdlib import load_module
-from qy.stdlib.imports import parse_from_import
+from qy.std import load_module
+from qy.std.imports import parse_from_import
 from qy.values import QyCons
 from qy.values import qy_cons_to_tuple
 
@@ -678,15 +678,63 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
             span=get_span(params),
         )
 
-    param_items = _form_to_list(params) if _is_list_form(params) else []
+    # 解析参数列表，支持 &body 和点对语法
     param_symbols = []
-    for param in param_items:
-        if not isinstance(param, Symbol):
+    rest_param = None
+
+    # 检查是否是点对语法 (a b . rest)
+    if isinstance(params, DottedTuple):
+        # 点对语法：固定参数在 items 中，rest 参数在 tail 中
+        for param in params.items:
+            if not isinstance(param, Symbol):
+                raise QyTypeError(
+                    f"macro parameter must be a symbol, got {param!r}",
+                    span=get_span(param),
+                )
+            param_symbols.append(param)
+
+        if not isinstance(params.tail, Symbol):
             raise QyTypeError(
-                f"macro parameter must be a symbol, got {param!r}",
-                span=get_span(param),
+                f"macro rest parameter must be a symbol, got {params.tail!r}",
+                span=get_span(params.tail),
             )
-        param_symbols.append(param)
+        rest_param = params.tail
+    else:
+        # 普通列表或 &body 语法
+        param_items = _form_to_list(params) if _is_list_form(params) else []
+
+        for i, param in enumerate(param_items):
+            if not isinstance(param, Symbol):
+                raise QyTypeError(
+                    f"macro parameter must be a symbol, got {param!r}",
+                    span=get_span(param),
+                )
+
+            # 检查是否是 &body 关键字
+            if param.name == "&body":
+                # &body 后面必须有且只有一个参数
+                if i + 1 >= len(param_items):
+                    raise QyArityError(
+                        "macro &body requires a parameter name",
+                        span=get_span(param),
+                    )
+                if i + 2 < len(param_items):
+                    raise QyArityError(
+                        "macro &body must be the last parameter",
+                        span=get_span(param),
+                    )
+
+                rest_param_candidate = param_items[i + 1]
+                if not isinstance(rest_param_candidate, Symbol):
+                    raise QyTypeError(
+                        f"macro rest parameter must be a symbol, got {rest_param_candidate!r}",
+                        span=get_span(rest_param_candidate),
+                    )
+                rest_param = rest_param_candidate
+                break
+
+            param_symbols.append(param)
+
     context.define_macro(
         name,
         MacroDefinition(
@@ -694,6 +742,7 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
             tuple(param_symbols),
             tuple(body),
             compile_time_environment(context.env),
+            rest_param=rest_param,
         ),
     )
 

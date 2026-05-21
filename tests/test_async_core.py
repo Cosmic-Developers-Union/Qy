@@ -3,7 +3,7 @@ from typing import cast
 
 from qy.evaluator import standard_environment
 from qy.runtime import AsyncQy
-from qy.stdlib import load_module
+from qy.std import load_module
 
 
 async def test_async_api_awaits_python_coroutines():

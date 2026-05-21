@@ -5,7 +5,7 @@ from qy.evaluator import HostObjectRef
 from qy.evaluator import standard_environment
 from qy.reader import Symbol
 from qy.runtime import AsyncQy as Qy
-from qy.stdlib import load_module
+from qy.std import load_module
 
 S = Symbol
 

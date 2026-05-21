@@ -16,7 +16,7 @@ from qy.diag import Diagnostic
 from qy.reader import Form
 from qy.reader import SourceSpan
 from qy.reader import Symbol
-from qy.stdlib.imports import ImportSpec
+from qy.std.imports import ImportSpec
 
 __all__ = [
     "AllExpr",

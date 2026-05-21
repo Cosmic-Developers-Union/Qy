@@ -13,8 +13,8 @@ from qy.operators import MetaOperator
 from qy.operators import PureOperator
 from qy.operators import ScopeOperator
 from qy.runtime_values import EffectDefinition
-from qy.stdlib import STANDARD_PROFILE_MODULES
-from qy.stdlib import load_module
+from qy.std import STANDARD_PROFILE_MODULES
+from qy.std import load_module
 
 __all__ = [
     "OperatorDoc",

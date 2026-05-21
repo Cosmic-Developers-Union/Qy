@@ -105,7 +105,7 @@ def create_app() -> Any:
         try:
             qy = Qy()
             if args:
-                from qy.stdlib.testhost import set_cli_args
+                from qy.std.testhost import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
             typer.echo(format_value(qy.evaluate_file(path)))

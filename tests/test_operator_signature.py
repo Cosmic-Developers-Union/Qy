@@ -8,8 +8,8 @@ from qy.operator_signature import EffectSpec
 from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.runtime import Qy
-from qy.stdlib import STANDARD_PROFILE_MODULES
-from qy.stdlib import standard_profile_bindings
+from qy.std import STANDARD_PROFILE_MODULES
+from qy.std import standard_profile_bindings
 
 S = Symbol
 
@@ -35,7 +35,7 @@ def test_core_operators_expose_static_signatures():
 
 def test_non_core_legacy_data_operators_do_not_have_core_signatures():
     from qy.environment import Environment
-    from qy.stdlib import standard_bindings
+    from qy.std import standard_bindings
 
     qy = Qy(env=Environment(standard_bindings(("qy.core", "qy.io", "qy.py"))))
 

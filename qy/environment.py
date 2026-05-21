@@ -312,7 +312,7 @@ class Environment:
 
 
 def standard_environment(*, literal_resolver: LiteralResolver | None = None) -> Environment:
-    from qy.stdlib import standard_profile_bindings
+    from qy.std import standard_profile_bindings
 
     # The chain is built bottom-up:
     #   root (stdlib layer) <- writable-head (user definitions)

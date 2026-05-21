@@ -1,13 +1,23 @@
 # coding: utf-8
-"""标准库 core 模块 — re-export from qy.stdlib.core。.
-
-目标：
-- 让 `from qy.std.core` 可导入
-- 最终取代 qy.stdlib.core
-"""
 
 from __future__ import annotations
 
-from qy.stdlib.core import module
+from qy.std.arithmetic import operators as arithmetic_operators
+from qy.std.control import operators as control_operators
+from qy.std.data import operators as chain_operators
+from qy.std.effects import operators as effects_operators
+from qy.std.module import StandardModule
+from qy.std.modules import operators as modules_operators
 
-__all__ = ["module"]
+
+def module() -> StandardModule:
+    return StandardModule(
+        "qy.core",
+        {
+            **arithmetic_operators(),
+            **chain_operators(),
+            **control_operators(),
+            **effects_operators(),
+            **modules_operators(),
+        },
+    )

@@ -8,8 +8,8 @@ from qy.macro import MacroDefinition
 from qy.macroexpand import MacroExpansionOptions
 from qy.macroexpand import macroexpand_source
 from qy.reader import Symbol
-from qy.stdlib import StandardModule
-from qy.stdlib import register_module
+from qy.std import StandardModule
+from qy.std import register_module
 
 
 def L(*items, span=None):

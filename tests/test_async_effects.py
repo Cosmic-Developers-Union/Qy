@@ -7,7 +7,7 @@ from qy.errors import QyPythonError
 from qy.errors import format_qy_error
 from qy.reader import Symbol
 from qy.runtime import AsyncQy as Qy
-from qy.stdlib import load_module
+from qy.std import load_module
 
 
 def _py_env():

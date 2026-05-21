@@ -2,8 +2,8 @@ from qy.analysis import type_check_source
 from qy.evaluator import standard_environment
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
-from qy.stdlib import StandardModule
-from qy.stdlib import register_module
+from qy.std import StandardModule
+from qy.std import register_module
 
 S = Symbol
 

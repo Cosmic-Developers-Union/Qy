@@ -13,9 +13,9 @@ from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import UserFunction
-from qy.stdlib import load_module
-from qy.stdlib.imports import parse_from_import
-from qy.stdlib.module import StandardModule
+from qy.std import load_module
+from qy.std.imports import parse_from_import
+from qy.std.module import StandardModule
 
 __all__ = [
     "build_provisional_module",

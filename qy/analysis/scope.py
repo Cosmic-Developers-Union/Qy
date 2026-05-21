@@ -23,7 +23,7 @@ from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.source_modules import remember_source_module
 from qy.source_modules import resolve_known_module
-from qy.stdlib.imports import parse_from_import
+from qy.std.imports import parse_from_import
 
 
 @dataclass(frozen=True, slots=True)

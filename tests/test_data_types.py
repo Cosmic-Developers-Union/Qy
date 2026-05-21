@@ -5,7 +5,7 @@ from qy.environment import Environment
 from qy.errors import QyTypeError
 from qy.evaluator import evaluate_source
 from qy.reader import Symbol
-from qy.stdlib import standard_bindings
+from qy.std import standard_bindings
 from qy.values import QY_NIL
 from qy.values import QY_T
 
