@@ -209,16 +209,14 @@ async def macroexpand_async(
     expanded_forms: list[Form] = []
     for form in forms:
         try:
-            expanded_forms.append(
-                cast(
-                    Form,
-                    await _macroexpand_form(
-                        form,
-                        context,
-                        depth=0,
-                    ),
-                )
+            expanded = await _macroexpand_form(
+                form,
+                context,
+                depth=0,
             )
+            # 过滤掉编译时构造（macro, from 等返回 nil）
+            if not is_nil(expanded):
+                expanded_forms.append(cast(Form, expanded))
         except EvaluationError as e:
             context.diagnostics.append(
                 Diagnostic(
@@ -389,7 +387,7 @@ async def _macroexpand_form(
         )
     if operator == Symbol("macro"):
         _define_macro(form, context)
-        return form
+        return nil
     if operator == Symbol("from"):
         _import_macros_from_form(form, context)
         return form
@@ -457,7 +455,10 @@ async def _macroexpand_body_form(
     body_items = _slice_form(form, body_start)
     body = []
     for item in body_items:
-        body.append(await _macroexpand_form(item, body_context, depth=depth))
+        expanded = await _macroexpand_form(item, body_context, depth=depth)
+        # 过滤掉编译时构造（macro 定义返回 nil）
+        if not is_nil(expanded):
+            body.append(expanded)
     context.sync_from(body_context)
     return _list_to_form([*prefix, *body], form)
 
@@ -487,13 +488,21 @@ async def _macroexpand_module_form(
 
     body: list[object] = []
     for item in body_items:
-        body.append(await _macroexpand_form(item, body_context, depth=depth))
+        expanded = await _macroexpand_form(item, body_context, depth=depth)
+        # 过滤掉编译时构造（macro 定义返回 nil）
+        if not is_nil(expanded):
+            body.append(expanded)
 
     context.sync_from(body_context)
     module_name = prefix[1]
     if isinstance(module_name, Symbol):
         exported_macros = _exported_module_macros(body_items, body_context)
         context.define_module_macros(module_name, exported_macros)
+
+        # 缓存 provisional 模块，以便运行时使用
+        from qy.source_modules import remember_source_module
+
+        remember_source_module(form, context.env)
     return _list_to_form([*prefix, *body], form)
 
 

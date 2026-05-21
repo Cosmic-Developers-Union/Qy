@@ -65,7 +65,9 @@ def test_macroexpand_keeps_local_macro_scope_inside_body():
     let_form = expansion.forms[0]
     assert isinstance(let_form, Chain)
     items = list(let_form)
-    inner = items[3]
+    # macro 定义被过滤掉，let form 只有 3 个元素：let、参数列表、展开后的宏调用
+    assert len(items) == 3
+    inner = items[2]  # 展开后的宏调用
     assert isinstance(inner, Chain)
     inner_items = list(inner)
     assert isinstance(inner_items[0], Symbol)
@@ -222,7 +224,9 @@ def test_macroexpand_keeps_module_macro_scope_inside_module_body():
     module_form = expansion.forms[0]
     assert isinstance(module_form, Chain)
     items = list(module_form)
-    assert items[3] == 42
+    # macro 定义被过滤掉，模块只有 3 个元素：module、名称、展开后的宏调用
+    assert len(items) == 3
+    assert items[2] == 42
 
 
 def test_macroexpand_imports_exported_module_macros_without_runtime_binding_pollution():
@@ -251,6 +255,8 @@ def test_macroexpand_imports_exported_module_macros_without_runtime_binding_poll
     )
 
     assert expansion.ok
+    # from 语句保留（用于运行时导入），宏调用被展开
+    assert len(expansion.forms) == 2
     assert expansion.forms[1] == 42
     with pytest.raises(EvaluationError):
         env.resolve(Symbol("const-answer"))

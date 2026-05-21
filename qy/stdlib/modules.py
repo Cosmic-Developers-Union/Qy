@@ -35,6 +35,7 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     from qy.macro import MacroDefinition
     from qy.source_modules import build_provisional_module
     from qy.source_modules import cache_source_module
+    from qy.source_modules import lookup_source_module
 
     name, *body = args
     name = ensure_symbol(name, "module name")
@@ -49,7 +50,11 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
         await evaluate_async(form, module_env)
 
     selected = (
-        {export_name: module_env.resolve(export_name) for export_name in export_names}
+        {
+            export_name: module_env.resolve(export_name)
+            for export_name in export_names
+            if export_name in module_env.local_bindings()
+        }
         if export_names
         else module_env.local_bindings()
     )
@@ -61,7 +66,11 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     macro_exports = {
         symbol: value for symbol, value in selected.items() if isinstance(value, MacroDefinition)
     }
-    provisional = build_provisional_module((Symbol("module"), name, *body), env)
+    # 优先使用缓存的 provisional 模块（在宏展开阶段缓存）
+    provisional = lookup_source_module(name.name, env)
+    if provisional is None:
+        # 如果没有缓存，尝试从当前 body 构建（可能已经展开，宏定义被移除）
+        provisional = build_provisional_module((Symbol("module"), name, *body), env)
     if provisional is not None:
         macro_exports = {**dict(provisional.macro_exports), **macro_exports}
 

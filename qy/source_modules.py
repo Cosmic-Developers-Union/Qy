@@ -42,6 +42,10 @@ def remember_source_module(form: object, env: Environment) -> StandardModule | N
     module = build_provisional_module(form, env)
     if module is None:
         return None
+    # Don't overwrite existing cache (宏展开阶段已缓存原始 AST)
+    modules = _source_module_cache(env)
+    if module.name in modules:
+        return modules[module.name]
     return cache_source_module(module, env)
 
 

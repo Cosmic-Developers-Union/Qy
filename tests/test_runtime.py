@@ -72,7 +72,9 @@ def test_qy_instance_exposes_pipeline_helpers():
     )
 
     assert expansion.ok
-    expanded = expansion.forms[1]
+    # macro 定义被过滤掉，只剩下展开后的宏调用
+    assert len(expansion.forms) == 1
+    expanded = expansion.forms[0]
     from qy.core.syntax import Chain
     from qy.core.syntax import car
     from qy.core.syntax import cdr

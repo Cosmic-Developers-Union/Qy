@@ -7,7 +7,7 @@ import asyncio
 
 import dotenv
 from claude_agent_sdk import ClaudeAgentOptions
-from claude_agent_sdk import query
+from claude_agent_sdk import ClaudeSDKClient
 from langfuse import get_client
 from openinference.instrumentation.claude_agent_sdk import ClaudeAgentSDKInstrumentor
 
@@ -33,11 +33,10 @@ async def main():
         max_turns=None,
         max_budget_usd=None,
     )
-    async for message in query(
-        prompt="分析当前项目进度",
-        options=options,
-    ):
-        print(message)  # Claude reads the file, finds the bug, edits it
+    async with ClaudeSDKClient(options=options) as client:
+        await client.query("What's the weather like in Berlin and New York?")
+        async for message in client.receive_response():
+            print(message)
 
 
 asyncio.run(main())
