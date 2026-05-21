@@ -1,15 +1,9 @@
 # -*- coding: utf-8 -*-
 # Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
 
-"""Qy macro 系统目标包。.
+"""Qy macro 系统。.
 
-目标：
-- 承载 macro definition、macro expansion、hygiene、trace、source map、compile-time symbol-space。
-- 将 `qy/macro.py`、`macroexpand.py`、`macro_hygiene.py`、`macro_scope.py`、`macro_trace.py` 收口到同一包边界。
-
-当前：
-- 先迁入 `qy/macro.py` 的 public 类型，避免 package 遮蔽旧模块后破坏导入。
-- `qy/macro.py` 仍是待删除的 legacy 同名文件。
+承载 macro definition、macro expansion、hygiene、trace、source map、compile-time symbol-space。
 
 禁止：
 - macro expand 不得长期依赖 register VM 作为普通 runtime 执行路径。
@@ -26,7 +20,22 @@ from qy.errors import QyArityError
 from qy.reader import Form
 from qy.reader import Symbol
 
-__all__ = ["CapturedForm", "MacroDefinition", "MacroExpansionServices"]
+__all__ = [
+    "CapturedForm",
+    "MacroDefinition",
+    "MacroEffectPolicy",
+    "MacroExpansion",
+    "MacroExpansionOptions",
+    "MacroExpansionServices",
+    "MacroExpansionTrace",
+    "MacroRename",
+    "MacroScope",
+    "MacroSourceMapEntry",
+    "macroexpand",
+    "macroexpand_async",
+    "macroexpand_source",
+    "macroexpand_source_async",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,3 +113,17 @@ class MacroDefinition:
         program = lower(list(cast(tuple[Form, ...], self.body)), local_env)
         bytecode = compile_bytecode(program)
         return await RegisterVirtualMachine(bytecode, local_env).evaluate()
+
+
+# Re-export from submodules
+from qy.macro.expand import MacroEffectPolicy
+from qy.macro.expand import MacroExpansion
+from qy.macro.expand import MacroExpansionOptions
+from qy.macro.expand import macroexpand
+from qy.macro.expand import macroexpand_async
+from qy.macro.expand import macroexpand_source
+from qy.macro.expand import macroexpand_source_async
+from qy.macro.hygiene import MacroRename
+from qy.macro.scope import MacroScope
+from qy.macro.trace import MacroExpansionTrace
+from qy.macro.trace import MacroSourceMapEntry

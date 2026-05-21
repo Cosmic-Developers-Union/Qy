@@ -1,4 +1,6 @@
-# coding: utf-8
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
+
 """Macro hygiene: definition-site alias, rename/capture rewriting."""
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ from qy.reader import SpannedTuple
 from qy.reader import Symbol
 
 if TYPE_CHECKING:
-    from qy.macroexpand import MacroExpansionContext
+    from qy.macro.expand import MacroExpansionContext
 
 __all__ = ["MacroRename", "apply_hygiene"]
 

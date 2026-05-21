@@ -1,11 +1,14 @@
-# coding: utf-8
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
+
+"""Macro expansion trace and source map."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
 
-from qy.macro_hygiene import MacroRename
+from qy.macro.hygiene import MacroRename
 from qy.reader import SourceSpan
 from qy.reader import Symbol
 

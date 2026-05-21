@@ -1,4 +1,7 @@
-# coding: utf-8
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
+
+"""Macro scope management."""
 
 from __future__ import annotations
 

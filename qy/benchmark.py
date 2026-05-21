@@ -19,7 +19,7 @@ from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.environment import Environment
 from qy.ir import ProgramIR
 from qy.ir.mir import MIRProgram
-from qy.macroexpand import macroexpand
+from qy.macro import macroexpand
 from qy.passes.lower_hir import lower
 from qy.passes.lower_lir import lower_lir
 from qy.passes.lower_mir import lower_mir

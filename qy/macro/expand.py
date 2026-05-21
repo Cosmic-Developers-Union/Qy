@@ -1,5 +1,7 @@
-# coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/passes/macro/expand.py
+# -*- coding: utf-8 -*-
+# Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
+
+"""Macro expansion implementation."""
 
 from __future__ import annotations
 
@@ -34,12 +36,12 @@ from qy.errors import QyTypeError
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionServices
-from qy.macro_hygiene import MacroRename
-from qy.macro_hygiene import _tuple_like
-from qy.macro_hygiene import apply_hygiene
-from qy.macro_scope import MacroScope
-from qy.macro_trace import MacroExpansionTrace
-from qy.macro_trace import MacroSourceMapEntry
+from qy.macro.hygiene import MacroRename
+from qy.macro.hygiene import _tuple_like
+from qy.macro.hygiene import apply_hygiene
+from qy.macro.scope import MacroScope
+from qy.macro.trace import MacroExpansionTrace
+from qy.macro.trace import MacroSourceMapEntry
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
