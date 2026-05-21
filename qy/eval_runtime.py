@@ -38,15 +38,40 @@ __all__ = [
 
 
 async def evaluate_async(expression: object, env: Environment) -> object:
-    from qy.evaluator import evaluate_async as _evaluate_async
+    """Evaluate a single expression using the register VM pipeline.
 
-    return await _evaluate_async(expression, env)
+    This function routes through: macroexpand -> lower -> compile -> RegisterVM.
+    For Symbol resolution, it directly uses env.resolve for efficiency.
+    """
+    from typing import cast
+
+    from qy.backend.vm.compiler import compile_bytecode
+    from qy.ir import ProgramIR
+    from qy.macro import macroexpand_async
+    from qy.passes.lower_hir import lower
+    from qy.reader import Form
+    from qy.register_vm import RegisterVirtualMachine
+
+    if isinstance(expression, Symbol):
+        return env.resolve(expression)
+
+    expansion = await macroexpand_async([cast(Form, expression)], env)
+    program_ir = lower(expansion.forms, env)
+    bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
+    vm = RegisterVirtualMachine(bytecode, env)
+    results = await vm.evaluate_program()
+    return None if not results else results[-1]
 
 
 async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:
-    from qy.evaluator import evaluate_body_async as _evaluate_body_async
+    """Evaluate a sequence of expressions, returning the last result.
 
-    return await _evaluate_body_async(body, env)
+    This function supports effect handling by evaluating each expression
+    sequentially and composing effect continuations when effects are performed.
+    """
+    if not body:
+        raise QyArityError("body must contain at least one expression")
+    return await _evaluate_body_from(body, 0, env)
 
 
 # -- Tail-call optimization (legacy -- will be removed after UserFunction migration) --
@@ -153,6 +178,45 @@ async def _evaluate_tail_let_async(
 
 def _truthy(value: object) -> bool:
     return value is not QY_NIL
+
+
+# -- Body evaluation with effect support (used by evaluate_body_async) ------
+
+
+async def _evaluate_body_from(
+    body: tuple[object, ...],
+    index: int,
+    env: Environment,
+) -> object:
+    """Evaluate body expressions starting from index, with effect support."""
+    result = None
+    for current in range(index, len(body)):
+        try:
+            result = await evaluate_async(body[current], env)
+        except QyEffectSignal as e:
+            _compose_effect_continuation(
+                e,
+                lambda resumed, next_index=current + 1: _continue_body_after_resume(
+                    body,
+                    next_index,
+                    resumed,
+                    env,
+                ),
+            )
+            raise
+    return result
+
+
+async def _continue_body_after_resume(
+    body: tuple[object, ...],
+    index: int,
+    resumed: object,
+    env: Environment,
+) -> object:
+    """Continue body evaluation after effect resumption."""
+    if index >= len(body):
+        return resumed
+    return await _evaluate_body_from(body, index, env)
 
 
 # -- Effect-aware value evaluation helpers (used by TCO above) --
