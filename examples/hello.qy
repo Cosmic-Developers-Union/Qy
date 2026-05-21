@@ -1,3 +1,9 @@
-(define main
+(macro defun (name args &body body)
+  `(define ,name
+     (lambda ,args
+       ,@body)))
+(define simple-01
   (lambda () (+ 1 2)))
+(defun main ())
+  (simple-01))
 (main)
