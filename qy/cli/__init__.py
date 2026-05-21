@@ -259,7 +259,7 @@ def create_app() -> Any:
     def ast_command(
         path: Annotated[Path, typer.Argument(help="Qy source file to inspect.")],
     ) -> None:
-        typer.echo(dump_program(read_raw(path.read_text(encoding="utf-8"))))
+        typer.echo(dump_program(read(path.read_text(encoding="utf-8"))))
 
     @app.command("check")
     def check_command(

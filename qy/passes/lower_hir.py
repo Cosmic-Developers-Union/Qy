@@ -45,6 +45,7 @@ from qy.ir import RaceExpr
 from qy.ir import ResumeExpr
 from qy.ir import RuntimeEvalExpr
 from qy.ir import SymbolRefExpr
+from qy.ir import SymbolSpace
 from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
@@ -76,16 +77,26 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True)
 class Scope:
+    """Scope tracks bindings during HIR lowering.
+
+    This is a transitional structure that wraps SymbolSpace and maintains
+    backward compatibility with the legacy Binding type. Eventually, this
+    will be replaced by direct SymbolSpace usage with BindingRef.
+    """
     bindings: dict[Symbol, Binding] | None = None
     parent: Scope | None = None
+    symbol_space: SymbolSpace | None = None
 
-    def child(self) -> Scope:
-        return Scope(parent=self)
+    def child(self, name: str = "anonymous") -> Scope:
+        """Create a child scope with its own symbol space."""
+        parent_space = self.symbol_space
+        child_space = parent_space.child(name) if parent_space else SymbolSpace(name)
+        return Scope(parent=self, symbol_space=child_space)
 
     def define(self, binding: Binding) -> Scope:
         bindings = dict(self.bindings or {})
         bindings[binding.symbol] = binding
-        return Scope(bindings, self.parent)
+        return Scope(bindings, self.parent, self.symbol_space)
 
     def has_local(self, symbol: Symbol) -> bool:
         return self.bindings is not None and symbol in self.bindings
@@ -102,10 +113,11 @@ class Scope:
 class LoweringContext:
     env: Environment
     diagnostics: list[Diagnostic]
+    next_binding_id: int = 0
 
     @classmethod
     def create(cls, env: Environment | None = None) -> LoweringContext:
-        return cls(env or standard_environment(), [])
+        return cls(env or standard_environment(), [], 0)
 
     def diagnostic(self, message: str, form: object | None = None) -> None:
         span = get_span(form) if form is not None else None
@@ -116,6 +128,12 @@ class LoweringContext:
                 column=None if span is None else span.column,
             )
         )
+
+    def allocate_binding_id(self) -> int:
+        """Allocate a unique binding ID for BindingRef."""
+        binding_id = self.next_binding_id
+        self.next_binding_id += 1
+        return binding_id
 
 
 def lower_source(
@@ -133,7 +151,9 @@ def lower_source(
 
 def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     context = LoweringContext.create(env)
-    scope = _scope_from_environment(context.env)
+    # Initialize root symbol space named "Main" as per ir-design.md
+    root_space = SymbolSpace(name="Main")
+    scope = _scope_from_environment(context.env, root_space)
     scope = _predeclare_callable_definitions(tuple(forms), scope, context)
     body: list[IRExpr] = []
     for index, form in enumerate(forms):
@@ -143,8 +163,8 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     return ProgramIR(tuple(body), tuple(context.diagnostics))
 
 
-def _scope_from_environment(env: Environment) -> Scope:
-    scope = Scope()
+def _scope_from_environment(env: Environment, symbol_space: SymbolSpace) -> Scope:
+    scope = Scope(symbol_space=symbol_space)
     all_visible = {**env.bindings(), **env.hidden_bindings()}
     for symbol, value in all_visible.items():
         scope = scope.define(
@@ -512,7 +532,7 @@ def _lower_macro(
     _, name, params, *body = items
     name = _ensure_symbol(name, "macro name", context)
     param_symbols = _parameter_symbols(params, "macro", context)
-    macro_scope = _define_parameters(scope.child(), param_symbols, context)
+    macro_scope = _define_parameters(scope.child(f"macro:{name.name}"), param_symbols, context)
     macro_scope = _define_local(
         macro_scope,
         Binding(Symbol("gensym"), "local", "operator", "pure"),
@@ -566,11 +586,11 @@ def _lower_let(
     if not (is_chain(bindings_form) or isinstance(bindings_form, tuple) or is_nil(bindings_form)):
         context.diagnostic(f"let bindings must be a list, got {bindings_form!r}", bindings_form)
         return LetExpr(
-            (), _lower_body(tuple(body), scope.child(), context, tail=tail), get_span(form)
+            (), _lower_body(tuple(body), scope.child("let:error"), context, tail=tail), get_span(form)
         )
 
     bindings_list = _form_to_list(bindings_form) if not is_nil(bindings_form) else []
-    local_scope = scope.child()
+    local_scope = scope.child("let")
     bindings: list[LetBinding] = []
     for binding_form in bindings_list:
         binding_items = _form_to_list(binding_form)
@@ -602,7 +622,7 @@ def _lower_lambda(
         return LambdaExpr((), (), get_span(form))
     params, *body = args
     param_symbols = _parameter_symbols(params, "lambda", context)
-    function_scope = _define_parameters(scope.child(), param_symbols, context)
+    function_scope = _define_parameters(scope.child("lambda"), param_symbols, context)
     return LambdaExpr(
         param_symbols,
         _lower_body(tuple(body), function_scope, context, tail=True),
@@ -623,7 +643,7 @@ def _lower_defun(
     name = _ensure_symbol(name, "defun name", context)
     param_symbols = _parameter_symbols(params, "defun", context)
     function_scope = _define_local(
-        scope.child(),
+        scope.child(f"defun:{name.name}"),
         Binding(name, "local", "function"),
         context,
     )
@@ -683,7 +703,7 @@ def _lower_module(
     _, name, *body = items
     name = _ensure_symbol(name, "module name", context)
     export_names: list[Symbol] = []
-    module_scope = _predeclare_callable_definitions(tuple(body), scope.child(), context)
+    module_scope = _predeclare_callable_definitions(tuple(body), scope.child(f"module:{name.name}"), context)
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
@@ -784,7 +804,7 @@ def _lower_handle(
         if len(param_symbols) != 2:
             context.diagnostic(f"handle parameters must be (arg k), got {params!r}", params)
             continue
-        handler_scope = scope.child()
+        handler_scope = scope.child(f"handle:{effect.name}")
         handler_scope = _define_parameters(handler_scope, param_symbols, context)
         lowered_body = _lower_body(tuple(body), handler_scope, context, tail=tail)
         result_type = _body_type(lowered_body)
@@ -921,7 +941,7 @@ def _predeclare_callable_definitions(
     scope: Scope,
     context: LoweringContext,
 ) -> Scope:
-    """前向声明 defun 和 (define name (lambda ...))，不检查重复。"""
+    """前向声明 defun 和 (define name (lambda ...))，不检查重复。."""
     next_scope = scope
     for expression in body:
         items = _form_to_list(expression)
@@ -944,7 +964,7 @@ def _predeclare_callable_definitions(
 
 
 def _is_lambda_form(form: object) -> bool:
-    """检查 form 是否是 lambda 表达式。"""
+    """检查 form 是否是 lambda 表达式。."""
     items = _form_to_list(form)
     return len(items) > 0 and items[0] == Symbol("lambda")
 
@@ -952,7 +972,7 @@ def _is_lambda_form(form: object) -> bool:
 def _define_local(
     scope: Scope, binding: Binding, context: LoweringContext, *, allow_redefinition: bool = False
 ) -> Scope:
-    """在当前 scope 定义 binding。
+    """在当前 scope 定义 binding。.
 
     Args:
         allow_redefinition: 如果为 True，允许覆盖已存在的 binding（用于前向声明后的实际定义）

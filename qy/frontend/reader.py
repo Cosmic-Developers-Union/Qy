@@ -349,13 +349,28 @@ def _expand_surface_sequence(
             )
             index += 2
             continue
+        if (
+            isinstance(form, Symbol)
+            and form.name == "`"
+            and index + 1 < len(forms)
+            and _forms_are_adjacent(form, forms[index + 1])
+        ):
+            expanded.append(
+                _surface_call(
+                    "quasiquote",
+                    (_expand_surface_form(forms[index + 1], in_quasiquote=True),),
+                    span=_combine_spans(form, forms[index + 1]),
+                )
+            )
+            index += 2
+            continue
         expanded.append(_expand_surface_form(form, in_quasiquote=in_quasiquote))
         index += 1
     return tuple(expanded)
 
 
 def _expand_chain_sequence(chain: object, *, in_quasiquote: bool) -> object:
-    """展开 Chain 序列，处理前缀 quote。.
+    """展开 Chain 序列，处理前缀 quote 和 quasiquote。.
 
     类似于 _expand_surface_sequence，但处理 Chain 而不是 tuple。
     """
@@ -384,6 +399,26 @@ def _expand_chain_sequence(chain: object, *, in_quasiquote: bool) -> object:
                     "quote",
                     (_expand_surface_form(quoted_form, in_quasiquote=in_quasiquote),),
                     span=_combine_spans(head, quoted_form),
+                )
+            )
+            # 跳过下一个元素（已经处理过了）
+            current = cdr(tail)
+            continue
+
+        # 检查是否是前缀 quasiquote: ` 后面跟着另一个 form
+        if (
+            isinstance(head, Symbol)
+            and head.name == "`"
+            and is_chain(tail)
+            and _forms_are_adjacent(head, car(tail))
+        ):
+            # 展开为 (quasiquote form)
+            quasiquoted_form = car(tail)
+            expanded.append(
+                _surface_call(
+                    "quasiquote",
+                    (_expand_surface_form(quasiquoted_form, in_quasiquote=True),),
+                    span=_combine_spans(head, quasiquoted_form),
                 )
             )
             # 跳过下一个元素（已经处理过了）
@@ -468,10 +503,12 @@ def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object
     if len(items) <= 2:
         return chain
     span = get_span(chain)
-    expanded_values = [
-        _expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]
-    ]
-    return list_to_chain([items[0], items[1], *expanded_values], span=span)
+    # 只在 quasiquote 内部展开名称（用于 ,name 等）
+    # 在 quasiquote 外部，'x 应该保持为 Symbol("'x")
+    expanded_name = _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
+    # 使用 _expand_surface_sequence 来正确处理前缀 quote 和 quasiquote
+    expanded_values = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
+    return list_to_chain([items[0], expanded_name, *list(expanded_values)], span=span)
 
 
 def _expand_named_body_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
@@ -495,9 +532,11 @@ def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object
     if len(items) <= 2:
         return chain
     span = get_span(chain)
+    # 只在 quasiquote 内部展开参数列表（用于 ,args 等）
+    expanded_args = _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
     # 使用 _expand_surface_sequence 来正确处理前缀 quote
     expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
-    return list_to_chain([items[0], items[1], *list(expanded_body)], span=span)
+    return list_to_chain([items[0], expanded_args, *list(expanded_body)], span=span)
 
 
 def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
