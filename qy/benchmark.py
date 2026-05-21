@@ -25,8 +25,8 @@ from qy.passes.lower_lir import lower_lir
 from qy.passes.lower_mir import lower_mir
 from qy.reader import Form
 from qy.reader import read
-from qy.register_vm import RegisterVirtualMachine
 from qy.runtime import Qy
+from qy.vm.instance.machine import RegisterVirtualMachine
 
 __all__ = [
     "DEFAULT_CASES",

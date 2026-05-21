@@ -8,11 +8,11 @@
 禁止：不得绕过 bytecode 直接解释 HIR/MIR。
 """
 
-from qy.register_vm import RegisterVirtualMachine
-from qy.register_vm import evaluate_bytecode
-from qy.register_vm import evaluate_bytecode_async
-from qy.register_vm import evaluate_bytecode_source
-from qy.register_vm import evaluate_bytecode_source_async
+from qy.vm.instance.machine import RegisterVirtualMachine
+from qy.vm.instance.machine import evaluate_bytecode
+from qy.vm.instance.machine import evaluate_bytecode_async
+from qy.vm.instance.machine import evaluate_bytecode_source
+from qy.vm.instance.machine import evaluate_bytecode_source_async
 
 __all__ = [
     "RegisterVirtualMachine",

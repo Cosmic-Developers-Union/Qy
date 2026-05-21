@@ -28,11 +28,11 @@ from qy.passes.lower_mir import lower_mir
 from qy.reader import Form
 from qy.reader import read
 from qy.reader import read_one
-from qy.register_vm import RegisterVirtualMachine
-from qy.register_vm import evaluate_bytecode
-from qy.register_vm import evaluate_bytecode_async
-from qy.register_vm import evaluate_bytecode_source
-from qy.register_vm import evaluate_bytecode_source_async
+from qy.vm.instance.machine import RegisterVirtualMachine
+from qy.vm.instance.machine import evaluate_bytecode
+from qy.vm.instance.machine import evaluate_bytecode_async
+from qy.vm.instance.machine import evaluate_bytecode_source
+from qy.vm.instance.machine import evaluate_bytecode_source_async
 
 __all__ = ["AsyncQy", "Qy"]
 

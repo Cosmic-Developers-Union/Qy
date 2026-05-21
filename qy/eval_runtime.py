@@ -50,7 +50,7 @@ async def evaluate_async(expression: object, env: Environment) -> object:
     from qy.macro import macroexpand_async
     from qy.passes.lower_hir import lower
     from qy.reader import Form
-    from qy.register_vm import RegisterVirtualMachine
+    from qy.vm.instance.machine import RegisterVirtualMachine
 
     if isinstance(expression, Symbol):
         return env.resolve(expression)

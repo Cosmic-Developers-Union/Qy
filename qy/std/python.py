@@ -349,7 +349,7 @@ async def _call_qy_callable(value: object, args: tuple[object, ...], env: Enviro
     if isinstance(value, UserFunction):
         return await _await_cached_value(value(*args))
     if isinstance(value, BytecodeFunctionValue):
-        from qy.register_vm import call_function_value
+        from qy.vm.instance.machine import call_function_value
 
         return await call_function_value(value, args, env)
     if isinstance(value, ScopeOperator | ControlOperator | EffectOperator):

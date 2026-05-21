@@ -173,7 +173,7 @@ async def _evaluate_ir_forms_async(
     from qy.backend.vm.compiler import compile_bytecode
     from qy.macro import macroexpand_async
     from qy.passes.lower_hir import lower
-    from qy.register_vm import RegisterVirtualMachine
+    from qy.vm.instance.machine import RegisterVirtualMachine
 
     expansion = await macroexpand_async(forms, runtime_env)
     program = lower(expansion.forms, runtime_env)
