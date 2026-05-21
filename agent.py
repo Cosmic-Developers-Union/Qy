@@ -152,14 +152,39 @@ async def clean_task():
 
 async def main():
     await clean_task()
-    for task in ["参考 @examples/hello.qy 实现 component 算子"]:
+    tasks = [
+        "参考 @examples/hello.qy 实现 component 算子",
+        "read @qy/macro, 将旧的 macro 系统迁移到这里并移除旧系统",
+        *[
+            f"read @{i} 完成该模块的迁移工作, 并添加测试"
+            for i in [
+                "qy/environment.py",
+                "qy/eval_runtime.py",
+                "qy/evaluator.py",
+                "qy/literals.py",
+                "qy/lsp.py",
+                "qy/operators.py, @qy/operator_docs.py @qy/operator_runtime.py @qy/operator_signature.py",
+                "qy/register_vm.py",
+                "qy/runtime_values.py",
+                "qy/semantics.py",
+                "qy/values.py",
+                "qy/virtual_stack.py",
+            ]
+        ],
+        "@qy/import_ 现在不是最新的语义, 最新的内容为 ss/ssc 的折叠和展开",
+        *[f"移除该内容 @{i}, 这是过时的内容" for i in ["qy/llvm_codegen.py", "@qy/reader.py"]],
+    ]
+    for task in tasks:
         try:
             await run_task(task)
-            await clean_task()
-            os.system("make lint-fix")
-            os.system('git add . && git commit -m "测试提交" --no-verify')
+            try:
+                await clean_task()
+                os.system("make lint-fix")
+                os.system('git add . && git commit -m "测试提交" --no-verify')
+            except Exception as e:
+                logger.error(e)
         except Exception as e:
-            print(e)
+            logger.error(e)
 
 
 if __name__ == "__main__":
