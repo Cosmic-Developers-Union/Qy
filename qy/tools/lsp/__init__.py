@@ -10,13 +10,13 @@ from qy import __version__
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
 from qy.core.syntax import Chain
-from qy.formatter import format_source
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.reader import read
 from qy.runtime import Qy
+from qy.tools.fmt import format_source
 
 __all__ = [
     "QyLanguageServer",

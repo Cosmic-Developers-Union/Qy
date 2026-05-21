@@ -42,11 +42,6 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.errors import format_qy_error
-from qy.formatter import dump_form
-from qy.formatter import dump_program
-from qy.formatter import format_form
-from qy.formatter import format_program
-from qy.formatter import format_source
 from qy.ir import Binding
 from qy.ir import CallExpr
 from qy.ir import LiteralExpr
@@ -122,6 +117,11 @@ from qy.runtime import AsyncQy
 from qy.runtime import Qy
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import HostObjectRef
+from qy.tools.fmt import dump_form
+from qy.tools.fmt import dump_program
+from qy.tools.fmt import format_form
+from qy.tools.fmt import format_program
+from qy.tools.fmt import format_source
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL

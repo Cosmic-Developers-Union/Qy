@@ -101,7 +101,12 @@ def _format_chain(form: Chain | object, indent: int) -> str:
     if _is_quote_form_chain(form):
         try:
             items = list(cast("Iterable[object]", form))
-            return "'" + format_form(items[1], indent)
+            inner = format_form(items[1], indent)
+            # Remove leading indent from first line since we're adding the ' prefix
+            current_indent = INDENT * indent
+            if inner.startswith(current_indent):
+                inner = inner[len(current_indent) :]
+            return current_indent + "'" + inner
         except (TypeError, ValueError):
             pass
 
@@ -109,7 +114,12 @@ def _format_chain(form: Chain | object, indent: int) -> str:
     if _is_quasiquote_form_chain(form):
         try:
             items = list(cast("Iterable[object]", form))
-            return "`" + format_form(items[1], indent)
+            inner = format_form(items[1], indent)
+            # Remove leading indent from first line since we're adding the ` prefix
+            current_indent = INDENT * indent
+            if inner.startswith(current_indent):
+                inner = inner[len(current_indent) :]
+            return current_indent + "`" + inner
         except (TypeError, ValueError):
             pass
 
@@ -117,7 +127,12 @@ def _format_chain(form: Chain | object, indent: int) -> str:
     if _is_unquote_form_chain(form):
         try:
             items = list(cast("Iterable[object]", form))
-            return "," + format_form(items[1], indent)
+            inner = format_form(items[1], indent)
+            # Remove leading indent from first line since we're adding the , prefix
+            current_indent = INDENT * indent
+            if inner.startswith(current_indent):
+                inner = inner[len(current_indent) :]
+            return current_indent + "," + inner
         except (TypeError, ValueError):
             pass
 
@@ -125,7 +140,12 @@ def _format_chain(form: Chain | object, indent: int) -> str:
     if _is_unquote_splicing_form_chain(form):
         try:
             items = list(cast("Iterable[object]", form))
-            return ",@" + format_form(items[1], indent)
+            inner = format_form(items[1], indent)
+            # Remove leading indent from first line since we're adding the ,@ prefix
+            current_indent = INDENT * indent
+            if inner.startswith(current_indent):
+                inner = inner[len(current_indent) :]
+            return current_indent + ",@" + inner
         except (TypeError, ValueError):
             pass
 

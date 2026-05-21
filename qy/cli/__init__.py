@@ -12,8 +12,6 @@ from qy.backend.vm.bytecode import dump_bytecode
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
-from qy.formatter import dump_program
-from qy.formatter import format_source
 from qy.ir import dump_ir
 from qy.ir.lir import dump_lir
 from qy.ir.mir import dump_mir
@@ -23,6 +21,8 @@ from qy.reader import ReaderSyntaxError
 from qy.reader import read
 from qy.reader import read_raw
 from qy.runtime import Qy
+from qy.tools.fmt import dump_program
+from qy.tools.fmt import format_source
 
 INSTALL_CLI_MESSAGE = (
     "Qy CLI requires the optional cli dependency. Install with: pip install 'QyLang[cli]'"

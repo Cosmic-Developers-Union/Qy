@@ -1,6 +1,6 @@
-from qy.formatter import dump_program
-from qy.formatter import format_source
 from qy.reader import read
+from qy.tools.fmt import dump_program
+from qy.tools.fmt import format_source
 
 
 def test_format_source_locks_simple_spacing():
