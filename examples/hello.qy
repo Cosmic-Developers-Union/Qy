@@ -3,6 +3,7 @@
   `(define ,name
      (lambda ,args
        ,@body)))
+(defun-macro simple-00 () (+ 1 2))
 ; 由 component 实现的 defun 版本
 ; component 是一个元算子, 它接收任意个算子, 并进行融合, 成为一个新算子
 ; 新算子的参数是所有输入算子的参数的组合, 在使用时, 依次传递
