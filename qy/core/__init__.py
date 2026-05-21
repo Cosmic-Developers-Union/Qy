@@ -22,6 +22,10 @@ from __future__ import annotations
 
 from typing import Literal
 
+from qy.core.symbol_space import BindingSlot
+from qy.core.symbol_space import ChainFrame
+from qy.core.symbol_space import SymbolSpace
+from qy.core.symbol_space import SymbolSpaceChain
 from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
@@ -35,8 +39,12 @@ from qy.core.syntax import nil
 from qy.core.syntax import tuple_to_chain
 
 __all__ = [
+    "BindingSlot",
     "Chain",
+    "ChainFrame",
     "OperatorKind",
+    "SymbolSpace",
+    "SymbolSpaceChain",
     "TypeName",
     "car",
     "cdr",

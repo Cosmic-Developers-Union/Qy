@@ -11,3 +11,11 @@
 禁止：
 - 不得成为全局单例状态。
 """
+
+from qy.session.profile import LiteralResolver
+from qy.session.profile import ProfileConfig
+
+__all__ = [
+    "LiteralResolver",
+    "ProfileConfig",
+]
