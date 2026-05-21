@@ -11,7 +11,7 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.macro import MacroDefinition
-from qy.runtime_values import EffectDefinition
+from qy.sem.runtime import EffectDefinition
 from qy.std import STANDARD_PROFILE_MODULES
 from qy.std import load_module
 

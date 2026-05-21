@@ -29,7 +29,7 @@ from qy.ir import ProgramIR
 from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
 from qy.reader import Symbol
-from qy.runtime_values import EffectDefinition
+from qy.sem.runtime import EffectDefinition
 from qy.values import QY_NIL
 from qy.virtual_stack import VirtualStack
 from qy.virtual_stack import VirtualStackFrame

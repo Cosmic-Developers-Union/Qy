@@ -11,8 +11,8 @@ from qy.core.syntax import is_chain
 from qy.environment import Environment
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
-from qy.runtime_values import EffectDefinition
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import EffectDefinition
+from qy.sem.runtime import UserFunction
 from qy.std import load_module
 from qy.std.imports import parse_from_import
 from qy.std.module import StandardModule

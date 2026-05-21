@@ -4,10 +4,11 @@
 目标：
 - 保存面向 libqy / VM / backend 的值模型
 - 定义抽象机语义，包括 continuation、effect handler、symbol-space-chain
-- 提供 runtime value 类型（UserFunction、EffectDefinition、HostObjectRef 等）
+- 提供 runtime value 类型（UserFunction、EffectDefinition、ComponentOperator 等）
 
 当前：
 - core.py 已定义完整 value hierarchy
+- runtime.py 提供运行时值（UserFunction、EffectDefinition、ComponentOperator）
 - bridge.py 提供迁移期转换
 
 禁止：
@@ -38,6 +39,9 @@ from qy.sem.core import SymbolValue
 from qy.sem.core import T
 from qy.sem.core import TValue
 from qy.sem.core import Value
+from qy.sem.runtime import ComponentOperator
+from qy.sem.runtime import EffectDefinition
+from qy.sem.runtime import UserFunction
 
 __all__ = [
     "NIL",
@@ -45,7 +49,9 @@ __all__ = [
     "ChainValue",
     "CharValue",
     "ComplexValue",
+    "ComponentOperator",
     "DatumValue",
+    "EffectDefinition",
     "Float32Value",
     "FloatValue",
     "HashMapValue",
@@ -61,5 +67,6 @@ __all__ = [
     "SymbolValue",
     "T",
     "TValue",
+    "UserFunction",
     "Value",
 ]

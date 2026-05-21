@@ -7,6 +7,7 @@
 
 当前：
 - RegisterVirtualMachine 已从 qy/register_vm.py 迁移到此处
+- values.py 提供 VM 特定的运行时值（HostObjectRef、TailCall）
 
 禁止：
 - 只能实现 backend/vm/spec，不得定义 opcode/ABI 规格
@@ -26,6 +27,8 @@ from qy.vm.instance.machine import evaluate_bytecode_source_async
 from qy.vm.instance.scheduler import ScheduledTask
 from qy.vm.instance.scheduler import TaskState
 from qy.vm.instance.state import ExecutionState
+from qy.vm.instance.values import HostObjectRef
+from qy.vm.instance.values import TailCall
 
 __all__ = [
     "CapturedFrame",
@@ -33,8 +36,10 @@ __all__ = [
     "FunctionFrame",
     "HostAdapter",
     "HostCallable",
+    "HostObjectRef",
     "RegisterVirtualMachine",
     "ScheduledTask",
+    "TailCall",
     "TaskState",
     "call_function_value",
     "evaluate_bytecode",

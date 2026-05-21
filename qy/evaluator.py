@@ -47,9 +47,8 @@ from qy.macro import MacroDefinition
 from qy.reader import Form
 from qy.reader import Symbol
 from qy.reader import read
-from qy.runtime_values import EffectDefinition
-from qy.runtime_values import HostObjectRef
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import EffectDefinition
+from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_EMPTY_CHAIN
 from qy.values import QY_EMPTY_LIST
@@ -57,6 +56,7 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import QyCons
+from qy.vm.instance.values import HostObjectRef
 
 __all__ = [
     "QY_EMPTY_CHAIN",

@@ -16,9 +16,9 @@ from qy.eval_runtime import evaluate_body_async
 from qy.eval_runtime import evaluate_tail_body_async
 from qy.reader import Symbol
 from qy.reader import read
-from qy.runtime_values import UserFunction
-from qy.runtime_values import _TailCall
+from qy.sem.runtime import UserFunction
 from qy.values import QY_NIL
+from qy.vm.instance.values import TailCall
 
 
 @pytest.mark.asyncio
@@ -158,9 +158,9 @@ async def test_evaluate_tail_body_async_self_tail_call():
     env.define(Symbol("countdown"), func)
     env.define(Symbol("n"), 5)
 
-    # 这应该返回 _TailCall 而不是实际执行递归
+    # 这应该返回 TailCall 而不是实际执行递归
     result = await evaluate_tail_body_async(func.body, env, func)
-    assert isinstance(result, _TailCall)
+    assert isinstance(result, TailCall)
     assert result.function is func
 
 

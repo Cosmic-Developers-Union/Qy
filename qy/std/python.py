@@ -31,14 +31,14 @@ from qy.eval_runtime import evaluate_async
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
 from qy.reader import get_span
-from qy.runtime_values import HostObjectRef
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import UserFunction
 from qy.std.data import python_container_operators
 from qy.std.effects import _await_cached_value
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons
 from qy.values import map_qy_cons
+from qy.vm.instance.values import HostObjectRef
 
 _PY_FUNCTION_NAME = "__qy_py__"
 _PY_FUNCTION_CACHE: dict[tuple[str, tuple[str, ...]], Callable[..., Awaitable[object]]] = {}

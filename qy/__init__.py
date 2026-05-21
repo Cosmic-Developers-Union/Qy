@@ -111,8 +111,7 @@ from qy.register_vm import evaluate_bytecode_source
 from qy.register_vm import evaluate_bytecode_source_async
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
-from qy.runtime_values import EffectDefinition
-from qy.runtime_values import HostObjectRef
+from qy.sem.runtime import EffectDefinition
 from qy.std.profile import OperatorDoc
 from qy.std.profile import OperatorModuleDoc
 from qy.std.profile import collect_supported_operators
@@ -133,6 +132,7 @@ from qy.values import QyEmptyList
 from qy.values import QyNil
 from qy.values import QyT
 from qy.vm.bytecode import BytecodeFunctionValue
+from qy.vm.instance.values import HostObjectRef
 
 __version__ = "0.0.4"
 __author__ = "Ge"

@@ -22,8 +22,8 @@ from qy.diag import Diagnostic
 from qy.errors import EvaluationError
 from qy.literals import default_literal_type
 from qy.macro import MacroDefinition
-from qy.runtime_values import EffectDefinition
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import EffectDefinition
+from qy.sem.runtime import UserFunction
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons

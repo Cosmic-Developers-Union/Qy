@@ -256,7 +256,7 @@ def _coerce_python_export(name: str, value: object) -> object:
     from qy.core.operators import PureOperator
     from qy.core.operators import ScopeOperator
     from qy.macro import MacroDefinition
-    from qy.runtime_values import UserFunction
+    from qy.sem.runtime import UserFunction
 
     if isinstance(
         value,

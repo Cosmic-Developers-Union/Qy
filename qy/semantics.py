@@ -14,8 +14,8 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.macro import MacroDefinition
 from qy.reader import Symbol
-from qy.runtime_values import EffectDefinition
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import EffectDefinition
+from qy.sem.runtime import UserFunction
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons

@@ -19,7 +19,7 @@ from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
 from qy.reader import Symbol
 from qy.reader import get_span
-from qy.runtime_values import EffectDefinition
+from qy.sem.runtime import EffectDefinition
 from qy.symbol_utils import ensure_symbol
 
 

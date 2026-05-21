@@ -26,7 +26,7 @@ from qy.eval_runtime import evaluate_async
 from qy.eval_runtime import evaluate_body_async
 from qy.reader import Symbol
 from qy.reader import get_span
-from qy.runtime_values import UserFunction
+from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
 from qy.values import QY_T

@@ -22,10 +22,10 @@ from qy.errors import QyError
 from qy.errors import QyTypeError
 from qy.reader import Symbol
 from qy.reader import get_span
-from qy.runtime_values import UserFunction
-from qy.runtime_values import _TailCall
+from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
+from qy.vm.instance.values import TailCall
 
 __all__ = [
     "evaluate_async",
@@ -103,7 +103,7 @@ async def _evaluate_tail_expression_async(
         return await _evaluate_values(
             tuple(expression[1:]),
             env,
-            lambda arguments: _TailCall(function, arguments),
+            lambda arguments: TailCall(function, arguments),
         )
     if isinstance(expression, tuple) and expression:
         operator = expression[0]

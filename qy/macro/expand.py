@@ -529,8 +529,8 @@ async def _macroexpand_module_form(
 
 
 def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
-    from qy.runtime_values import EffectDefinition
-    from qy.runtime_values import UserFunction
+    from qy.sem.runtime import EffectDefinition
+    from qy.sem.runtime import UserFunction
 
     for item in body:
         if not _is_list_form(item):
