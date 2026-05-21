@@ -505,7 +505,9 @@ def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object
     span = get_span(chain)
     # 只在 quasiquote 内部展开名称（用于 ,name 等）
     # 在 quasiquote 外部，'x 应该保持为 Symbol("'x")
-    expanded_name = _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
+    expanded_name = (
+        _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
+    )
     # 使用 _expand_surface_sequence 来正确处理前缀 quote 和 quasiquote
     expanded_values = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
     return list_to_chain([items[0], expanded_name, *list(expanded_values)], span=span)
@@ -533,7 +535,9 @@ def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object
         return chain
     span = get_span(chain)
     # 只在 quasiquote 内部展开参数列表（用于 ,args 等）
-    expanded_args = _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
+    expanded_args = (
+        _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
+    )
     # 使用 _expand_surface_sequence 来正确处理前缀 quote
     expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
     return list_to_chain([items[0], expanded_args, *list(expanded_body)], span=span)

@@ -65,6 +65,7 @@ class SymbolSpace:
     Forms a chain via parent pointer, modeling the symbol-space-chain
     described in ir-design.md.
     """
+
     name: str
     bindings: dict[Symbol, int] = field(default_factory=dict)
     parent: SymbolSpace | None = None
@@ -83,6 +84,7 @@ class BindingRef:
     - Binding source (define/defun/lambda param/let binding)
     - Type and operator metadata
     """
+
     id: int
     symbol: Symbol
     source: BindingSource
@@ -99,6 +101,7 @@ class Binding:
 
     Will be gradually replaced by BindingRef during Phase 2 refactoring.
     """
+
     symbol: Symbol
     source: BindingSource
     type_name: TypeName

@@ -84,6 +84,7 @@ class MacroDefinition:
             bindings = dict(zip(self.params, args[:min_args], strict=True))
             # 绑定剩余参数为列表
             from qy.core.syntax import list_to_chain
+
             rest_args = args[min_args:]
             bindings[self.rest_param] = list_to_chain(list(rest_args))
 
