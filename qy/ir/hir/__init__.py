@@ -18,6 +18,7 @@ from qy.ir.hir.node import AllExpr
 from qy.ir.hir.node import ApplyExpr
 from qy.ir.hir.node import AssertExpr
 from qy.ir.hir.node import Binding
+from qy.ir.hir.node import BindingRef
 from qy.ir.hir.node import BindingSource
 from qy.ir.hir.node import CacheExpr
 from qy.ir.hir.node import CallExpr
@@ -45,6 +46,7 @@ from qy.ir.hir.node import RaceExpr
 from qy.ir.hir.node import ResumeExpr
 from qy.ir.hir.node import RuntimeEvalExpr
 from qy.ir.hir.node import SymbolRefExpr
+from qy.ir.hir.node import SymbolSpace
 from qy.ir.hir.node import UnresolvedSymbolExpr
 
 __all__ = [
@@ -52,6 +54,7 @@ __all__ = [
     "ApplyExpr",
     "AssertExpr",
     "Binding",
+    "BindingRef",
     "BindingSource",
     "CacheExpr",
     "CallExpr",
@@ -79,6 +82,7 @@ __all__ = [
     "ResumeExpr",
     "RuntimeEvalExpr",
     "SymbolRefExpr",
+    "SymbolSpace",
     "UnresolvedSymbolExpr",
     "dump_ir",
 ]

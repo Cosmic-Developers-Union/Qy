@@ -857,7 +857,6 @@ def _scope_after_form(
     scope: Scope,
     context: LoweringContext,
 ) -> Scope:
-    del expr
     items = _form_to_list(form)
     if len(items) < 2:
         return scope
@@ -866,11 +865,14 @@ def _scope_after_form(
     name = items[1]
 
     if operator == Symbol("defun") and isinstance(name, Symbol):
-        if scope.has_local(name):
-            return scope
-        return _define_local(scope, Binding(name, "local", "function"), context)
+        # defun 已经被前向声明，允许覆盖
+        return _define_local(scope, Binding(name, "local", "function"), context, allow_redefinition=True)
     if operator == Symbol("define") and isinstance(name, Symbol):
-        return _define_local(scope, Binding(name, "local", "any"), context)
+        # define 的 binding 类型应该是其 value 的类型，而不是 DefineExpr 本身的类型
+        inferred = _type_of(expr.value) if isinstance(expr, DefineExpr) else "any"
+        # 如果是 define + lambda 且已前向声明，允许覆盖
+        allow_redef = scope.has_local(name) and inferred == "function"
+        return _define_local(scope, Binding(name, "local", inferred), context, allow_redefinition=allow_redef)
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
         return _define_local(scope, Binding(name, "local", "effect"), context)
     if operator == Symbol("macro") and isinstance(name, Symbol):
@@ -919,21 +921,43 @@ def _predeclare_callable_definitions(
     scope: Scope,
     context: LoweringContext,
 ) -> Scope:
+    """前向声明 defun 和 (define name (lambda ...))，不检查重复。"""
     next_scope = scope
     for expression in body:
         items = _form_to_list(expression)
         if len(items) < 2:
             continue
-        if items[0] != Symbol("defun"):
-            continue
-        name = items[1]
-        if isinstance(name, Symbol):
-            next_scope = _define_local(next_scope, Binding(name, "local", "function"), context)
+        # 处理 defun
+        if items[0] == Symbol("defun"):
+            name = items[1]
+            if isinstance(name, Symbol):
+                # 直接 define，不通过 _define_local（避免重复检查）
+                next_scope = next_scope.define(Binding(name, "local", "function"))
+        # 处理 (define name (lambda ...))
+        elif items[0] == Symbol("define") and len(items) >= 3:
+            name = items[1]
+            value_form = items[2]
+            if isinstance(name, Symbol) and _is_lambda_form(value_form):
+                # 直接 define，不通过 _define_local（避免重复检查）
+                next_scope = next_scope.define(Binding(name, "local", "function"))
     return next_scope
 
 
-def _define_local(scope: Scope, binding: Binding, context: LoweringContext) -> Scope:
-    if scope.has_local(binding.symbol):
+def _is_lambda_form(form: object) -> bool:
+    """检查 form 是否是 lambda 表达式。"""
+    items = _form_to_list(form)
+    return len(items) > 0 and items[0] == Symbol("lambda")
+
+
+def _define_local(
+    scope: Scope, binding: Binding, context: LoweringContext, *, allow_redefinition: bool = False
+) -> Scope:
+    """在当前 scope 定义 binding。
+
+    Args:
+        allow_redefinition: 如果为 True，允许覆盖已存在的 binding（用于前向声明后的实际定义）
+    """
+    if scope.has_local(binding.symbol) and not allow_redefinition:
         context.diagnostic(
             f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
         )
@@ -1082,7 +1106,7 @@ def _lower_define(form: object, scope: Scope, context: LoweringContext) -> IRExp
     _, name_form, value_form = items[0], items[1], items[2]
     name = _ensure_symbol(name_form, "define name", context)
     value = _lower_form(value_form, scope, context)
-    return DefineExpr(name, value, get_span(form))
+    return DefineExpr(name, value, get_span(form), _type_of(value))
 
 
 def _lower_pipeline(

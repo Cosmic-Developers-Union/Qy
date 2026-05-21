@@ -13,6 +13,7 @@ from qy.ir.hir import AllExpr
 from qy.ir.hir import ApplyExpr
 from qy.ir.hir import AssertExpr
 from qy.ir.hir import Binding
+from qy.ir.hir import BindingRef
 from qy.ir.hir import BindingSource
 from qy.ir.hir import CacheExpr
 from qy.ir.hir import CallExpr
@@ -40,6 +41,7 @@ from qy.ir.hir import RaceExpr
 from qy.ir.hir import ResumeExpr
 from qy.ir.hir import RuntimeEvalExpr
 from qy.ir.hir import SymbolRefExpr
+from qy.ir.hir import SymbolSpace
 from qy.ir.hir import UnresolvedSymbolExpr
 from qy.ir.hir import dump_ir
 from qy.ir.lir import LIRBindingAddr
@@ -81,6 +83,7 @@ __all__ = [
     "ApplyExpr",
     "AssertExpr",
     "Binding",
+    "BindingRef",
     "BindingSource",
     "CacheExpr",
     "CallExpr",
@@ -136,6 +139,7 @@ __all__ = [
     "ResumeExpr",
     "RuntimeEvalExpr",
     "SymbolRefExpr",
+    "SymbolSpace",
     "UnresolvedSymbolExpr",
     "dump_ir",
     # LIR

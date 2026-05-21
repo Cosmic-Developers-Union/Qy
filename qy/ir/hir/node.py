@@ -23,6 +23,7 @@ __all__ = [
     "ApplyExpr",
     "AssertExpr",
     "Binding",
+    "BindingRef",
     "BindingSource",
     "CacheExpr",
     "CallExpr",
@@ -50,6 +51,7 @@ __all__ = [
     "ResumeExpr",
     "RuntimeEvalExpr",
     "SymbolRefExpr",
+    "SymbolSpace",
     "UnresolvedSymbolExpr",
 ]
 
@@ -57,7 +59,46 @@ BindingSource = Literal["local", "global", "default-literal", "unresolved"]
 
 
 @dataclass(frozen=True, slots=True)
+class SymbolSpace:
+    """Represents a lexical scope with its own bindings.
+
+    Forms a chain via parent pointer, modeling the symbol-space-chain
+    described in ir-design.md.
+    """
+    name: str
+    bindings: dict[Symbol, int] = field(default_factory=dict)
+    parent: SymbolSpace | None = None
+
+    def child(self, name: str) -> SymbolSpace:
+        return SymbolSpace(name=name, parent=self)
+
+
+@dataclass(frozen=True, slots=True)
+class BindingRef:
+    """Enhanced binding with stable ID and symbol-space reference.
+
+    Replaces the simple Binding with a richer structure that tracks:
+    - Stable binding ID (for identity across transformations)
+    - Owner symbol-space (where this binding was created)
+    - Binding source (define/defun/lambda param/let binding)
+    - Type and operator metadata
+    """
+    id: int
+    symbol: Symbol
+    source: BindingSource
+    type_name: TypeName
+    owner_space: SymbolSpace
+    operator_kind: OperatorKind | None = None
+    eager_arguments: bool = True
+    value: object | None = field(default=None, compare=False, repr=False)
+
+
+@dataclass(frozen=True, slots=True)
 class Binding:
+    """Legacy binding structure, kept for backward compatibility.
+
+    Will be gradually replaced by BindingRef during Phase 2 refactoring.
+    """
     symbol: Symbol
     source: BindingSource
     type_name: TypeName
