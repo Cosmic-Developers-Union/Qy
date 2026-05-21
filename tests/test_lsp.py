@@ -4,13 +4,13 @@ pytest.importorskip("pygls")
 
 from lsprotocol import types
 
-from qy.lsp import QyLanguageServer
-from qy.lsp import completion_items
-from qy.lsp import create_server
-from qy.lsp import diagnostics_for_source
-from qy.lsp import document_symbols_for_source
-from qy.lsp import hover_for_source
-from qy.lsp import signature_help_for_source
+from qy.tools.lsp import QyLanguageServer
+from qy.tools.lsp import completion_items
+from qy.tools.lsp import create_server
+from qy.tools.lsp import diagnostics_for_source
+from qy.tools.lsp import document_symbols_for_source
+from qy.tools.lsp import hover_for_source
+from qy.tools.lsp import signature_help_for_source
 
 
 def test_diagnostics_for_valid_source():
