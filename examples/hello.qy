@@ -1,7 +1,14 @@
+; 由宏实现的 defun 版本
 (macro defun (name args &body body)
   `(define ,name
      (lambda ,args
        ,@body)))
+; 由 component 实现的 defun 版本
+; component 是一个元算子, 它接收任意个算子, 并进行融合, 成为一个新算子
+; 新算子的参数是所有输入算子的参数的组合, 在使用时, 依次传递
+; 典型 f(x) = g(m(x)), (component g m) 就是一个新算子, 它的参数是 x, 在使用时传递 x 就行了
+(define defun-v2 (component define lambda))
+; 这是一个具名算子的标准实现
 (define simple-01
   (lambda () (+ 1 2)))
 (defun main ())
