@@ -400,6 +400,26 @@ async def _macroexpand_form(
     if operator == Symbol("defun"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=3)
     if operator == Symbol("define"):
+        # 特殊处理 (define name (component ...))
+        # 这样可以在宏展开阶段注册 component 生成的宏
+        items = _form_to_list(form)
+        if len(items) == 3:
+            name, value = items[1], items[2]
+            if isinstance(name, Symbol) and _is_list_form(value):
+                value_op = _get_operator(value)
+                if value_op == Symbol("component"):
+                    # 在宏展开阶段求值 component
+                    from qy.evaluator import evaluate_async
+
+                    try:
+                        macro_def = await evaluate_async(
+                            value, compile_time_environment(context.env)
+                        )
+                        if isinstance(macro_def, MacroDefinition):
+                            context.define_macro(name, macro_def)
+                    except Exception:
+                        # 如果求值失败，继续正常处理
+                        pass
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
 
     if isinstance(operator, Symbol):
@@ -684,8 +704,8 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
 
     # 检查是否是点对语法 (a b . rest)
     if isinstance(params, DottedTuple):
-        # 点对语法：固定参数在 items 中，rest 参数在 tail 中
-        for param in params.items:
+        # 点对语法：固定参数在 tuple 中，rest 参数在 tail 中
+        for param in params:
             if not isinstance(param, Symbol):
                 raise QyTypeError(
                     f"macro parameter must be a symbol, got {param!r}",

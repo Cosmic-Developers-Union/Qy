@@ -1,0 +1,31 @@
+; 演示 component 算子的功能
+
+; component 是一个元算子，用于组合多个算子创建新的复合算子
+; 例如：(component define lambda) 创建一个类似 defun 的宏
+
+; 1. 基本用法：组合 define 和 lambda 创建 defun
+(define defun (component define lambda))
+
+; 使用 defun 定义函数（等价于 define + lambda）
+(defun add (a b) (+ a b))
+(defun multiply (x y) (* x y))
+
+; 测试函数
+(add 3 4)        ; 输出 7
+(multiply 5 6)   ; 输出 30
+
+; 2. 带多个表达式的函数体
+(defun greet (name)
+  (print "Hello,")
+  (print name)
+  name)
+
+(greet "World")
+
+; 3. 递归函数
+(defun factorial (n)
+  (cond
+    ((= n 0) 1)
+    (true (* n (factorial (- n 1))))))
+
+(factorial 5)  ; 输出 120

@@ -286,22 +286,101 @@ def _defun(args: object, env: Environment) -> object:
 
 
 def _component(args: object, env: Environment) -> object:
-    args_list = _to_list(args)
-    if len(args_list) < 3:
-        raise QyArityError("component expects a name, parameter list, and body")
+    """组合多个算子成为一个新算子。.
 
-    name = args_list[0]
-    params = args_list[1]
-    body = args_list[2:]
-    name = ensure_symbol(name, "component name")
-    param_symbols = _ensure_parameter_list(params, "component")
-    component = UserFunction(name, param_symbols, tuple(body), env)
-    return env.define(name, component)
+    (component op1 op2 ... opn) 创建一个新算子，当调用时：
+    - 第一个参数传给 op1
+    - 剩余参数传给 opn，得到结果 rn
+    - 然后将结果向前传递：op(n-1) 接收 r(n-1) 和 rn 的结果
+    - 最终 op1 接收第一个参数和 op2 的结果
+
+    例如：(component define lambda) 创建的算子，
+    调用 (new-op name params body) 时等价于 (define name (lambda params body))。
+
+    component 返回一个宏，这样它可以在宏展开阶段工作。
+    """
+    from qy.core.syntax import list_to_chain
+    from qy.macro import MacroDefinition
+
+    args_list = _to_list(args)
+    if len(args_list) < 2:
+        raise QyArityError(
+            "component expects at least 2 operators",
+            span=get_span(args),
+        )
+
+    # 获取算子的符号名称
+    # 参数可能是符号（未求值）或算子对象（已求值）
+    operator_symbols = []
+    for op_form in args_list:
+        if isinstance(op_form, Symbol):
+            operator_symbols.append(op_form)
+        elif hasattr(op_form, "name") and isinstance(op_form.name, str):
+            # 算子对象，提取其名称
+            operator_symbols.append(Symbol(op_form.name))
+        else:
+            raise QyTypeError(
+                f"component expects operators or operator symbols, got {op_form!r}",
+                span=get_span(op_form),
+            )
+
+    # 创建宏的 body
+    # 宏接收参数 &body args，然后生成组合的调用
+    # 例如：(component define lambda) 生成的宏，
+    # 当调用 (macro-name a b c) 时，应该展开为 (define a (lambda b c))
+
+    if len(operator_symbols) == 2:
+        op1, op2 = operator_symbols
+        # 生成：(cons 'op1 (cons (car args) (cons (cons 'op2 (cdr args)) nil)))
+        # 这会构造 (op1 first-arg (op2 rest-args...))
+        macro_body = (
+            list_to_chain(
+                [
+                    Symbol("cons"),
+                    list_to_chain([Symbol("quote"), op1]),
+                    list_to_chain(
+                        [
+                            Symbol("cons"),
+                            list_to_chain([Symbol("car"), Symbol("args")]),
+                            list_to_chain(
+                                [
+                                    Symbol("cons"),
+                                    list_to_chain(
+                                        [
+                                            Symbol("cons"),
+                                            list_to_chain([Symbol("quote"), op2]),
+                                            list_to_chain([Symbol("cdr"), Symbol("args")]),
+                                        ]
+                                    ),
+                                    Symbol("nil"),
+                                ]
+                            ),
+                        ]
+                    ),
+                ]
+            ),
+        )
+    else:
+        # 多个算子的情况更复杂，暂时不支持
+        raise QyArityError(
+            "component currently only supports 2 operators",
+            span=get_span(args),
+        )
+
+    # 返回一个宏定义
+    return MacroDefinition(
+        Symbol("<component-macro>"),
+        (),  # 固定参数
+        macro_body,
+        env,
+        rest_param=Symbol("args"),  # 可变参数
+    )
 
 
 def operators() -> dict[Symbol, object]:
     return {
         Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
+        Symbol("component"): MetaOperator("component", _component, "组合多个算子成为一个新算子。"),
         Symbol("define"): ScopeOperator(
             "define", _define, "在当前 symbol-space 一次性绑定 symbol。"
         ),
@@ -318,6 +397,4 @@ def operators() -> dict[Symbol, object]:
 
 
 def legacy_operators() -> dict[Symbol, object]:
-    return {
-        Symbol("component"): ScopeOperator("component", _component, "在当前作用域定义可复用组件。"),
-    }
+    return {}

@@ -96,6 +96,17 @@ def scope_after_form(form: object, env: Environment, scope: Scope) -> Scope:
     ):
         if scope.has_local(form_list[1]):
             return scope
+        # 检查是否是 (define name (component ...))
+        if len(form_list) >= 3 and is_chain(form_list[2]):
+            try:
+                value_list = list(cast("Iterable[object]", form_list[2]))
+                if value_list and value_list[0] == Symbol("component"):
+                    # component 生成宏，所以类型是 operator
+                    return scope.define(
+                        form_list[1], "operator", operator_kind="meta", eager_arguments=False
+                    )
+            except (ValueError, TypeError):
+                pass
         return scope.define(form_list[1], "any")
     if (
         len(form_list) >= 2

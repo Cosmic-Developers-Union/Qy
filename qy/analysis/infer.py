@@ -74,6 +74,8 @@ def infer(form: object, env: Environment, scope: Scope, diagnostics: list[Diagno
                 return _infer_let(args, env, scope, diagnostics)
             case "lambda":
                 return _infer_lambda(args, env, scope, diagnostics)
+            case "component":
+                return _infer_component(args, env, scope, diagnostics)
             case "defun":
                 return _infer_defun(form, env, scope, diagnostics)
             case "defeffect":
@@ -226,6 +228,24 @@ def _infer_lambda(
     params, *body = args
     function_scope = scope_with_parameters(params, scope, diagnostics, "lambda")
     _infer_body(tuple(body), env, function_scope, diagnostics)
+    return "function"
+
+
+def _infer_component(
+    args: tuple[object, ...],
+    env: Environment,
+    scope: Scope,
+    diagnostics: list[Diagnostic],
+) -> TypeName:
+    if len(args) < 2:
+        diagnostics.append(Diagnostic("component expects at least 2 operators"))
+        return "unknown"
+
+    # 推断所有算子参数的类型
+    for arg in args:
+        infer(arg, env, scope, diagnostics)
+
+    # component 返回一个函数
     return "function"
 
 

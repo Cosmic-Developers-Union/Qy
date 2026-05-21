@@ -83,6 +83,7 @@ class Scope:
     backward compatibility with the legacy Binding type. Eventually, this
     will be replaced by direct SymbolSpace usage with BindingRef.
     """
+
     bindings: dict[Symbol, Binding] | None = None
     parent: Scope | None = None
     symbol_space: SymbolSpace | None = None
@@ -220,6 +221,8 @@ def _lower_form(
                     return _lower_let(tuple(args), scope, context, form, tail=tail)
                 case "lambda":
                     return _lower_lambda(tuple(args), scope, context, form)
+                case "component":
+                    return _lower_component(tuple(args), scope, context, form)
                 case "defun":
                     return _lower_defun(form, scope, context)
                 case "defeffect":
@@ -298,6 +301,8 @@ def _lower_form(
                 return _lower_let(args, scope, context, form, tail=tail)
             case "lambda":
                 return _lower_lambda(args, scope, context, form)
+            case "component":
+                return _lower_component(args, scope, context, form)
             case "defun":
                 return _lower_defun(form, scope, context)
             case "defeffect":
@@ -586,7 +591,9 @@ def _lower_let(
     if not (is_chain(bindings_form) or isinstance(bindings_form, tuple) or is_nil(bindings_form)):
         context.diagnostic(f"let bindings must be a list, got {bindings_form!r}", bindings_form)
         return LetExpr(
-            (), _lower_body(tuple(body), scope.child("let:error"), context, tail=tail), get_span(form)
+            (),
+            _lower_body(tuple(body), scope.child("let:error"), context, tail=tail),
+            get_span(form),
         )
 
     bindings_list = _form_to_list(bindings_form) if not is_nil(bindings_form) else []
@@ -627,6 +634,47 @@ def _lower_lambda(
         param_symbols,
         _lower_body(tuple(body), function_scope, context, tail=True),
         get_span(form),
+    )
+
+
+def _lower_component(
+    args: tuple[object, ...],
+    scope: Scope,
+    context: LoweringContext,
+    form: object,
+) -> IRExpr:
+    """Lower component 算子调用。.
+
+    component 在运行时求值其参数并返回一个 ComponentOperator。
+    我们将其 lower 为一个普通的函数调用。
+    """
+    component_symbol = Symbol("component")
+    component_ref = scope.lookup(component_symbol)
+
+    if len(args) < 2:
+        context.diagnostic("component expects at least 2 operators", form)
+        if component_ref is None:
+            return UnresolvedSymbolExpr(component_symbol, get_span(form))
+        return CallExpr(
+            SymbolRefExpr(component_symbol, component_ref, get_span(form)),
+            (),
+            get_span(form),
+            "function",
+        )
+
+    # Lower 所有算子参数
+    lowered_args = tuple(_lower_form(arg, scope, context) for arg in args)
+
+    # 创建对 component 算子的调用
+    if component_ref is None:
+        context.diagnostic("unresolved symbol 'component'", form)
+        return UnresolvedSymbolExpr(component_symbol, get_span(form))
+
+    return CallExpr(
+        SymbolRefExpr(component_symbol, component_ref, get_span(form)),
+        lowered_args,
+        get_span(form),
+        "function",
     )
 
 
@@ -703,7 +751,9 @@ def _lower_module(
     _, name, *body = items
     name = _ensure_symbol(name, "module name", context)
     export_names: list[Symbol] = []
-    module_scope = _predeclare_callable_definitions(tuple(body), scope.child(f"module:{name.name}"), context)
+    module_scope = _predeclare_callable_definitions(
+        tuple(body), scope.child(f"module:{name.name}"), context
+    )
     lowered_body: list[IRExpr] = []
     for expression in body:
         if _is_special_form(expression, "exports"):
@@ -886,13 +936,17 @@ def _scope_after_form(
 
     if operator == Symbol("defun") and isinstance(name, Symbol):
         # defun 已经被前向声明，允许覆盖
-        return _define_local(scope, Binding(name, "local", "function"), context, allow_redefinition=True)
+        return _define_local(
+            scope, Binding(name, "local", "function"), context, allow_redefinition=True
+        )
     if operator == Symbol("define") and isinstance(name, Symbol):
         # define 的 binding 类型应该是其 value 的类型，而不是 DefineExpr 本身的类型
         inferred = _type_of(expr.value) if isinstance(expr, DefineExpr) else "any"
         # 如果是 define + lambda 且已前向声明，允许覆盖
         allow_redef = scope.has_local(name) and inferred == "function"
-        return _define_local(scope, Binding(name, "local", inferred), context, allow_redefinition=allow_redef)
+        return _define_local(
+            scope, Binding(name, "local", inferred), context, allow_redefinition=allow_redef
+        )
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
         return _define_local(scope, Binding(name, "local", "effect"), context)
     if operator == Symbol("macro") and isinstance(name, Symbol):
@@ -975,6 +1029,9 @@ def _define_local(
     """在当前 scope 定义 binding。.
 
     Args:
+        scope: 当前作用域
+        binding: 要定义的符号绑定
+        context: Lowering 上下文
         allow_redefinition: 如果为 True，允许覆盖已存在的 binding（用于前向声明后的实际定义）
     """
     if scope.has_local(binding.symbol) and not allow_redefinition:
