@@ -7,9 +7,9 @@ from qy.backend.vm.bytecode import BytecodeFunction
 from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import dump_bytecode
-from qy.operator_signature import Arity
-from qy.operator_signature import OperatorSignature
-from qy.operator_signature import format_arity_message
+from qy.core.operator_signature import Arity
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operator_signature import format_arity_message
 from qy.reader import Symbol
 
 

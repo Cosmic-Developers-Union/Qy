@@ -7,21 +7,21 @@ if TYPE_CHECKING:
     from qy.analysis.scope import Scope
     from qy.core import OperatorKind
     from qy.core import TypeName
+    from qy.core.operator_signature import OperatorSignature
     from qy.environment import Environment
-    from qy.operator_signature import OperatorSignature
     from qy.reader import Symbol
 
+from qy.core.operator_signature import format_arity_message
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
 from qy.diag import Diagnostic
 from qy.errors import EvaluationError
 from qy.literals import default_literal_type
 from qy.macro import MacroDefinition
-from qy.operator_signature import format_arity_message
-from qy.operators import ControlOperator
-from qy.operators import EffectOperator
-from qy.operators import MetaOperator
-from qy.operators import PureOperator
-from qy.operators import ScopeOperator
 from qy.runtime_values import EffectDefinition
 from qy.runtime_values import UserFunction
 from qy.values import QY_NIL

@@ -9,6 +9,10 @@ from typing import cast
 if TYPE_CHECKING:
     from collections.abc import Sized
 
+from qy.core.operators import ControlOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -20,10 +24,6 @@ from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
 from qy.eval_runtime import evaluate_body_async
-from qy.operators import ControlOperator
-from qy.operators import MetaOperator
-from qy.operators import PureOperator
-from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.runtime_values import UserFunction

@@ -182,7 +182,7 @@ def test_host_injection_in_symbol_space() -> None:
 
     q = Qy()
     # + is injected by standard profile
-    from qy.operators import PureOperator
+    from qy.core.operators import PureOperator
 
     plus = q.env.resolve(Symbol("+"))
     assert isinstance(plus, PureOperator)

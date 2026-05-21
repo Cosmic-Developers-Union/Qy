@@ -24,6 +24,16 @@ from typing import cast
 
 from qy.continuation import QyContinuation
 from qy.continuation import _await_if_needed
+
+# Re-export sub-module symbols for backward compatibility.
+from qy.core.operators import ArgumentEvaluator  # noqa: F401
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import EvaluationOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
+from qy.core.operators import SyntaxOperator
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
@@ -34,16 +44,6 @@ from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.macro import MacroDefinition
-
-# Re-export sub-module symbols for backward compatibility.
-from qy.operators import ArgumentEvaluator  # noqa: F401
-from qy.operators import ControlOperator
-from qy.operators import EffectOperator
-from qy.operators import EvaluationOperator
-from qy.operators import MetaOperator
-from qy.operators import PureOperator
-from qy.operators import ScopeOperator
-from qy.operators import SyntaxOperator
 from qy.reader import Form
 from qy.reader import Symbol
 from qy.reader import read

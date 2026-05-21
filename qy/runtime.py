@@ -9,6 +9,8 @@ from typing import cast
 from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.compiler import compile_bytecode
 from qy.backend.vm.compiler import compile_mir_bytecode
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operators import ArgumentEvaluator
 from qy.environment import ChainFrame
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -20,8 +22,6 @@ from qy.macro import macroexpand
 from qy.macro import macroexpand_async
 from qy.macro import macroexpand_source
 from qy.macro import macroexpand_source_async
-from qy.operator_signature import OperatorSignature
-from qy.operators import ArgumentEvaluator
 from qy.passes.lower_hir import lower
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir

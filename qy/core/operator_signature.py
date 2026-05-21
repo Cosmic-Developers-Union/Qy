@@ -1,5 +1,4 @@
 # coding: utf-8
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core operator metadata schema
 
 from __future__ import annotations
 
@@ -7,7 +6,25 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
-from qy.core import TypeName
+TypeName = Literal[
+    "any",
+    "bool",
+    "chain",
+    "dict",
+    "effect",
+    "function",
+    "list",
+    "nil",
+    "none",
+    "number",
+    "operator",
+    "set",
+    "string",
+    "symbol",
+    "tuple",
+    "T",
+    "unknown",
+]
 
 __all__ = [
     "CORE_OPERATOR_SIGNATURES",

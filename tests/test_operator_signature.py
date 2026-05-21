@@ -1,11 +1,11 @@
 import pytest
 
+from qy.core.operator_signature import Arity
+from qy.core.operator_signature import EffectSpec
+from qy.core.operator_signature import OperatorSignature
 from qy.evaluator import EffectOperator
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
-from qy.operator_signature import Arity
-from qy.operator_signature import EffectSpec
-from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.runtime import Qy
 from qy.std import STANDARD_PROFILE_MODULES
@@ -77,7 +77,7 @@ def test_custom_operator_can_declare_signature():
 
 def test_stdlib_signatures_subset_of_profile():
     """STDLIB_OPERATOR_SIGNATURES keys must be available in default profile."""
-    from qy.operator_signature import STDLIB_OPERATOR_SIGNATURES
+    from qy.core.operator_signature import STDLIB_OPERATOR_SIGNATURES
 
     qy = Qy()
     profile_keys = set(qy.env.bindings())
@@ -88,7 +88,7 @@ def test_stdlib_signatures_subset_of_profile():
 
 
 def test_truthy_has_standard_profile_signature():
-    from qy.operator_signature import lookup_operator_signature
+    from qy.core.operator_signature import lookup_operator_signature
 
     signature = lookup_operator_signature("truthy")
 
@@ -99,7 +99,7 @@ def test_truthy_has_standard_profile_signature():
 
 def test_collect_supported_operators_covers_profile():
     """collect_supported_operators lists all standard profile symbols."""
-    from qy.operator_docs import collect_supported_operators
+    from qy.std.profile import collect_supported_operators
 
     qy = Qy()
     supported_names: set[str] = set()

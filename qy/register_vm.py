@@ -15,6 +15,9 @@ from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Register
 from qy.backend.vm.compiler import compile_bytecode
 from qy.continuation import QyContinuation
+from qy.core.operator_runtime import runtime_operator_semantics
+from qy.core.operator_runtime import validate_operator_arity
+from qy.core.operators import PureOperator
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
@@ -24,9 +27,6 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.ir import ProgramIR
 from qy.macro import macroexpand_source_async
-from qy.operator_runtime import runtime_operator_semantics
-from qy.operator_runtime import validate_operator_arity
-from qy.operators import PureOperator
 from qy.passes.lower_hir import lower
 from qy.reader import Symbol
 from qy.runtime_values import EffectDefinition

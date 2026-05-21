@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
+from qy.core.operators import ScopeOperator
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.eval_runtime import evaluate_async
-from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.std.imports import parse_from_import
 from qy.std.module import StandardModule

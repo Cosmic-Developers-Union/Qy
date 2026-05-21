@@ -14,12 +14,12 @@ from qy.analysis.refs import value_type
 from qy.analysis.refs import value_uses_eager_arguments
 from qy.core import OperatorKind
 from qy.core import TypeName
+from qy.core.operator_signature import OperatorSignature
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
 from qy.environment import Environment
-from qy.operator_signature import OperatorSignature
 from qy.reader import Symbol
 from qy.source_modules import remember_source_module
 from qy.source_modules import resolve_known_module

@@ -22,6 +22,28 @@ from __future__ import annotations
 
 from typing import Literal
 
+from qy.core.operator_runtime import RuntimeArgumentMode
+from qy.core.operator_runtime import RuntimeDispatchKind
+from qy.core.operator_runtime import RuntimeOperatorSemantics
+from qy.core.operator_runtime import operator_uses_raw_args
+from qy.core.operator_runtime import runtime_operator_semantics
+from qy.core.operator_runtime import validate_operator_arity
+from qy.core.operator_signature import CORE_OPERATOR_SIGNATURES
+from qy.core.operator_signature import STDLIB_OPERATOR_SIGNATURES
+from qy.core.operator_signature import ArgumentPolicy
+from qy.core.operator_signature import Arity
+from qy.core.operator_signature import EffectSpec
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operator_signature import format_arity_message
+from qy.core.operator_signature import lookup_operator_signature
+from qy.core.operators import ArgumentEvaluator
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import EvaluationOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
+from qy.core.operators import SyntaxOperator
 from qy.core.symbol_space import BindingSlot
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
@@ -39,23 +61,45 @@ from qy.core.syntax import nil
 from qy.core.syntax import tuple_to_chain
 
 __all__ = [
+    "CORE_OPERATOR_SIGNATURES",
+    "STDLIB_OPERATOR_SIGNATURES",
+    "ArgumentEvaluator",
+    "ArgumentPolicy",
+    "Arity",
     "BindingSlot",
     "Chain",
     "ChainFrame",
+    "ControlOperator",
+    "EffectOperator",
+    "EffectSpec",
+    "EvaluationOperator",
+    "MetaOperator",
     "OperatorKind",
+    "OperatorSignature",
+    "PureOperator",
+    "RuntimeArgumentMode",
+    "RuntimeDispatchKind",
+    "RuntimeOperatorSemantics",
+    "ScopeOperator",
     "SymbolSpace",
     "SymbolSpaceChain",
+    "SyntaxOperator",
     "TypeName",
     "car",
     "cdr",
     "chain_to_list",
     "chain_to_tuple",
     "cons",
+    "format_arity_message",
     "is_chain",
     "is_nil",
     "list_to_chain",
+    "lookup_operator_signature",
     "nil",
+    "operator_uses_raw_args",
+    "runtime_operator_semantics",
     "tuple_to_chain",
+    "validate_operator_arity",
 ]
 
 TypeName = Literal[

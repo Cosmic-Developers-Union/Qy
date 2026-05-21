@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from qy.core.operators import ScopeOperator
 from qy.core.syntax import list_to_chain
 from qy.environment import Environment
-from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.std.module import StandardModule
 from qy.values import QY_NIL

@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import cast
 
 from qy.core import TypeName
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operator_signature import format_arity_message
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -50,8 +52,6 @@ from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
 from qy.macro import CapturedForm
-from qy.operator_signature import OperatorSignature
-from qy.operator_signature import format_arity_message
 from qy.reader import DottedTuple
 from qy.reader import Form
 from qy.reader import ReaderSyntaxError

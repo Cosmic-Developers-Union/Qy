@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import operator
 
+from qy.core.operators import PureOperator
 from qy.errors import QyTypeError
-from qy.operators import PureOperator
 from qy.reader import Symbol
 
 

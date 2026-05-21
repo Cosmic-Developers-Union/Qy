@@ -1,21 +1,20 @@
 # coding: utf-8
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core operator runtime schema
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Literal
 
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operator_signature import format_arity_message
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
 from qy.errors import QyArityError
 from qy.errors import SourceSpan
 from qy.macro import MacroDefinition
-from qy.operator_signature import OperatorSignature
-from qy.operator_signature import format_arity_message
-from qy.operators import ControlOperator
-from qy.operators import EffectOperator
-from qy.operators import MetaOperator
-from qy.operators import PureOperator
-from qy.operators import ScopeOperator
 
 __all__ = [
     "RuntimeArgumentMode",

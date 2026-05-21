@@ -14,11 +14,32 @@
 
 from __future__ import annotations
 
-from qy.core import TypeName
+from typing import Literal
+
 from qy.errors import QyResolveError
 from qy.reader import Symbol
 from qy.values import QY_NIL
 from qy.values import QY_T
+
+TypeName = Literal[
+    "any",
+    "bool",
+    "chain",
+    "dict",
+    "effect",
+    "function",
+    "list",
+    "nil",
+    "none",
+    "number",
+    "operator",
+    "set",
+    "string",
+    "symbol",
+    "tuple",
+    "T",
+    "unknown",
+]
 
 __all__ = [
     "default_literal_type",

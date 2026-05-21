@@ -1,18 +1,17 @@
 # coding: utf-8
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core operator declarations + qy/std
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-
-from qy.core import OperatorKind
-from qy.operator_signature import OperatorSignature
-from qy.operator_signature import lookup_operator_signature
+from typing import Literal
 
 if TYPE_CHECKING:
+    from qy.core.operator_signature import OperatorSignature
     from qy.environment import Environment
+
+OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
 
 __all__ = [
     "ArgumentEvaluator",
@@ -126,6 +125,8 @@ SyntaxOperator = MetaOperator
 def _set_default_signature(operator: object) -> None:
     from typing import Any
     from typing import cast
+
+    from qy.core.operator_signature import lookup_operator_signature
 
     signature = getattr(operator, "signature", None)
     if signature is None:

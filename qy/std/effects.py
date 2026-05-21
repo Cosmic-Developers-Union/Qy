@@ -6,6 +6,9 @@ from __future__ import annotations
 import asyncio
 import inspect
 
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import ScopeOperator
 from qy.environment import Environment
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
@@ -14,9 +17,6 @@ from qy.errors import QyError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
-from qy.operators import ControlOperator
-from qy.operators import EffectOperator
-from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.runtime_values import EffectDefinition

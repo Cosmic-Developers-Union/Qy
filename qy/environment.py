@@ -13,15 +13,15 @@ from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Mapping
 
+from qy.core.operator_signature import OperatorSignature
+from qy.core.operators import ArgumentEvaluator
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
 from qy.core.symbol_space import ChainFrame as _ChainFrame
 from qy.core.symbol_space import SymbolSpace
-from qy.operator_signature import OperatorSignature
-from qy.operators import ArgumentEvaluator
-from qy.operators import ControlOperator
-from qy.operators import EffectOperator
-from qy.operators import MetaOperator
-from qy.operators import PureOperator
-from qy.operators import ScopeOperator
 from qy.reader import Symbol
 from qy.session.profile import LiteralResolver
 from qy.session.profile import ProfileConfig

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.core.operators import PureOperator
 from qy.core.syntax import car as chain_car
 from qy.core.syntax import cdr as chain_cdr
 from qy.core.syntax import chain_to_list
@@ -14,7 +15,6 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.operators import PureOperator
 from qy.reader import Symbol
 from qy.reader import get_span
 from qy.values import QY_NIL

@@ -250,12 +250,12 @@ def _module_from_public_callables(module: types.ModuleType, path: Path) -> Stand
 
 
 def _coerce_python_export(name: str, value: object) -> object:
+    from qy.core.operators import ControlOperator
+    from qy.core.operators import EffectOperator
+    from qy.core.operators import MetaOperator
+    from qy.core.operators import PureOperator
+    from qy.core.operators import ScopeOperator
     from qy.macro import MacroDefinition
-    from qy.operators import ControlOperator
-    from qy.operators import EffectOperator
-    from qy.operators import MetaOperator
-    from qy.operators import PureOperator
-    from qy.operators import ScopeOperator
     from qy.runtime_values import UserFunction
 
     if isinstance(
