@@ -68,8 +68,21 @@ def format_form(form: object, indent: int = 0) -> str:
 
         current_indent = INDENT * indent
         child_indent = INDENT * (indent + 1)
-        lines = [f"({format_form(form[0], indent)}"]
-        for item in form[1:]:
+
+        first_line = f"({format_form(form[0], indent)}"
+        body_start = 1
+        for i, item in enumerate(form[1:], 1):
+            if _is_complex(item):
+                break
+            rendered = _format_inline(item)
+            candidate = f"{first_line} {rendered}"
+            if len(candidate) > MAX_INLINE_LENGTH:
+                break
+            first_line = candidate
+            body_start = i + 1
+
+        lines = [first_line]
+        for item in form[body_start:]:
             formatted = format_form(item, indent + 1)
             if "\n" in formatted:
                 lines.append(formatted)
@@ -121,6 +134,17 @@ def dump_form(form: object, indent: int = 0) -> str:
     lines.extend(f"{dump_form(item, indent + 1)}," for item in cast("Iterable[object]", form))
     lines.append(f"{prefix})")
     return "\n".join(lines)
+
+
+def _is_complex(form: object) -> bool:
+    if isinstance(form, Symbol):
+        return False
+    if is_nil(form):
+        return False
+    if isinstance(form, (tuple, Chain)) or is_chain(form):
+        inline = _format_inline(form)
+        return len(inline) > 12 or _contains_complex_list(form)
+    return False
 
 
 def _format_inline(form: object) -> str:
@@ -239,8 +263,25 @@ def _format_chain(form: Chain | object, indent: int) -> str:
 
     current_indent = INDENT * indent
     child_indent = INDENT * (indent + 1)
-    lines = [f"({format_form(items[0], indent)}"]
-    for item in items[1:]:
+
+    # Build first line: head + consecutive simple args that fit
+    first_line = f"({format_form(items[0], indent)}"
+    body_start = 1
+    for i, item in enumerate(items[1:], 1):
+        if _is_complex(item):
+            break
+        rendered = _format_inline(item)
+        candidate = f"{first_line} {rendered}"
+        if len(candidate) > MAX_INLINE_LENGTH:
+            break
+        first_line = candidate
+        body_start = i + 1
+
+    if body_start >= len(items):
+        return inline
+
+    lines = [first_line]
+    for item in items[body_start:]:
         formatted = format_form(item, indent + 1)
         if "\n" in formatted:
             lines.append(formatted)

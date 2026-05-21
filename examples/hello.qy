@@ -1,6 +1,3 @@
-(define
-  main
-  (lambda
-    ()
-    ((+ 1 2))))
+(define main
+  (lambda () ((+ 1 2))))
 (main)

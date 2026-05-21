@@ -8,7 +8,7 @@ def test_format_source_locks_simple_spacing():
 
 
 def test_format_source_expands_nested_forms():
-    assert format_source("(defun square (x) (* x x))") == "(defun\n  square\n  (x)\n  (* x x))\n"
+    assert format_source("(defun square (x) (* x x))") == "(defun square (x) (* x x))\n"
 
 
 def test_format_source_uses_quote_sugar():
