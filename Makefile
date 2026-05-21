@@ -192,3 +192,10 @@ dc-reup:
 	$(MAKE) dc-up
 dc-build:
 	https_proxy=http://127.0.0.1:1080 devcontainer build
+
+
+demo:
+	for cmd in ast expand hir mir lir bytecode run; do \
+		echo "=== $${cmd} ==="; \
+		qy $${cmd} examples/hello.qy; \
+	done
