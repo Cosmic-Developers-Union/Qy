@@ -221,7 +221,7 @@ def create_app() -> Any:
             typer.Argument(help="Qy source file to compile to LLVM IR, or - to read from stdin."),
         ],
     ) -> None:
-        from qy.llvm_codegen import emit_llvm_module
+        from qy.backend.llvm.emit import emit as emit_llvm_module
 
         qy = Qy()
         source, source_name = _read_debug_source(target)
