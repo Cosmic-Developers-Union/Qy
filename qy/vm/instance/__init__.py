@@ -16,6 +16,7 @@
 
 from qy.vm.instance.frame import CapturedFrame
 from qy.vm.instance.frame import FunctionFrame
+from qy.vm.instance.frame import VirtualStackFrame
 from qy.vm.instance.host import HostAdapter
 from qy.vm.instance.host import HostCallable
 from qy.vm.instance.machine import RegisterVirtualMachine
@@ -27,6 +28,7 @@ from qy.vm.instance.machine import evaluate_bytecode_source_async
 from qy.vm.instance.scheduler import ScheduledTask
 from qy.vm.instance.scheduler import TaskState
 from qy.vm.instance.state import ExecutionState
+from qy.vm.instance.state import VirtualStack
 from qy.vm.instance.values import HostObjectRef
 from qy.vm.instance.values import TailCall
 
@@ -41,6 +43,8 @@ __all__ = [
     "ScheduledTask",
     "TailCall",
     "TaskState",
+    "VirtualStack",
+    "VirtualStackFrame",
     "call_function_value",
     "evaluate_bytecode",
     "evaluate_bytecode_async",
