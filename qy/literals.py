@@ -16,10 +16,10 @@ from __future__ import annotations
 
 from typing import Literal
 
+from qy.core.syntax import nil
 from qy.errors import QyResolveError
 from qy.reader import Symbol
-from qy.values import QY_NIL
-from qy.values import QY_T
+from qy.sem.core import T
 
 TypeName = Literal[
     "any",
@@ -70,13 +70,13 @@ def try_default_literal(symbol: Symbol) -> object:
     if _is_string_literal(symbol.name):
         return _decode_string_literal(symbol.name)
     if symbol.name == "T":
-        return QY_T
+        return T
     if symbol.name == "nil":
-        return QY_NIL
+        return nil
     if symbol.name == "true":
-        return QY_T
+        return T
     if symbol.name == "false":
-        return QY_NIL
+        return nil
     if symbol.name == "none":
         return None
     try:
@@ -107,9 +107,9 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
     value = try_default_literal(symbol)
     if value is _MISSING:
         return None
-    if value is QY_NIL:
+    if value is nil:
         return "nil"
-    if value is QY_T:
+    if value is T:
         return "T"
     if isinstance(value, bool):
         return "bool"

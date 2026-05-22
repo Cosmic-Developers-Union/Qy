@@ -101,16 +101,16 @@ def create_lisp_ss() -> SymbolSpace:
     This is the foundational symbol-space providing Lisp's truth values.
     """
     from qy.core.symbol_space import SymbolSpace
+    from qy.core.syntax import nil
     from qy.reader import Symbol
-    from qy.values import QY_NIL
-    from qy.values import QY_T
+    from qy.sem.core import T
 
     return SymbolSpace(
         {
-            Symbol("T"): QY_T,
-            Symbol("nil"): QY_NIL,
-            Symbol("true"): QY_T,
-            Symbol("false"): QY_NIL,
+            Symbol("T"): T,
+            Symbol("nil"): nil,
+            Symbol("true"): T,
+            Symbol("false"): nil,
             Symbol("none"): None,
         },
         name="lisp-ss",
@@ -182,15 +182,15 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """
     if parent is not None:
         # Chain: parent -> lisp-ss -> literal-ss
+        from qy.core.syntax import nil
         from qy.reader import Symbol
-        from qy.values import QY_NIL
-        from qy.values import QY_T
+        from qy.sem.core import T
 
         lisp = parent.child(name="lisp-ss", writable=False)
-        lisp.define(Symbol("T"), QY_T)
-        lisp.define(Symbol("nil"), QY_NIL)
-        lisp.define(Symbol("true"), QY_T)
-        lisp.define(Symbol("false"), QY_NIL)
+        lisp.define(Symbol("T"), T)
+        lisp.define(Symbol("nil"), nil)
+        lisp.define(Symbol("true"), T)
+        lisp.define(Symbol("false"), nil)
         lisp.define(Symbol("none"), None)
     else:
         lisp = create_lisp_ss()

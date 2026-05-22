@@ -4,26 +4,23 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.core.syntax import Chain
+from qy.core.syntax import is_chain
+from qy.core.syntax import nil
 from qy.reader import Symbol
 from qy.reader import TupleForm
 from qy.reader import write_tuple
-from qy.values import QY_EMPTY_LIST
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyCons
+from qy.sem.core import T
 
 __all__ = ["format_value"]
 
 
 def format_value(value: object) -> str:
-    from qy.core.syntax import Chain
-    from qy.core.syntax import is_chain
-
-    if value is QY_NIL:
+    if value is nil:
         return "nil"
-    if value is QY_T:
+    if value is T:
         return "T"
-    if isinstance(value, QyCons):
+    if isinstance(value, Chain):
         return _format_cons(value)
     # Handle AST Chain
     if isinstance(value, Chain) or is_chain(value):
@@ -46,13 +43,13 @@ def format_value(value: object) -> str:
     return repr(value)
 
 
-def _format_cons(value: QyCons) -> str:
+def _format_cons(value: Chain) -> str:
     parts: list[str] = []
     current: object = value
-    while isinstance(current, QyCons):
+    while isinstance(current, Chain):
         parts.append(format_value(current.head))
         current = current.tail
-    if current is QY_EMPTY_LIST:
+    if current is nil:
         return f"({' '.join(parts)})"
     return f"({' '.join(parts)} . {format_value(current)})"
 

@@ -111,7 +111,7 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
     already been patched to absolute indices.  Removing a JUMP shifts all
     subsequent indices but does not update other jump targets.
     """
-    from qy.values import QY_T
+    from qy.sem.core import T
 
     result = list(instructions)
     changed = True
@@ -132,11 +132,11 @@ def _peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
                 changed = True
                 out.append(LIRInstruction("LOAD_NIL", (instruction.operands[0],), instruction.span))
                 continue
-            # Strength-reduce LOAD_HOST QY_T → LOAD_T
+            # Strength-reduce LOAD_HOST T → LOAD_T
             if (
                 instruction.opcode == "LOAD_HOST"
                 and len(instruction.operands) >= 2
-                and instruction.operands[1] is QY_T
+                and instruction.operands[1] is T
             ):
                 changed = True
                 out.append(LIRInstruction("LOAD_T", (instruction.operands[0],), instruction.span))

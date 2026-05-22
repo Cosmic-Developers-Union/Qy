@@ -92,15 +92,15 @@ def _lir_to_bytecode_operands(opcode: str, operands: tuple[object, ...]) -> tupl
         Bytecode operands
     """
     if opcode == "LOAD_NIL":
-        # LOAD_NIL r -> LOAD_HOST r, QY_NIL
-        from qy.values import QY_NIL
+        # LOAD_NIL r -> LOAD_HOST r, nil
+        from qy.core.syntax import nil
 
-        return (operands[0], QY_NIL)
+        return (operands[0], nil)
     if opcode == "LOAD_T":
-        # LOAD_T r -> LOAD_HOST r, QY_T
-        from qy.values import QY_T
+        # LOAD_T r -> LOAD_HOST r, T
+        from qy.sem.core import T
 
-        return (operands[0], QY_T)
+        return (operands[0], T)
     return operands
 
 

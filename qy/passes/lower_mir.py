@@ -6,6 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
+from qy.core.syntax import list_to_chain
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.ir import AllExpr
@@ -49,7 +50,6 @@ from qy.reader import DottedTuple
 from qy.reader import Symbol
 from qy.reader import _decode_string_symbol
 from qy.reader import _is_string_symbol
-from qy.values import list_to_qy_cons
 
 __all__ = ["lower_mir"]
 
@@ -586,7 +586,7 @@ def _quote_data(value: object) -> object:
     if isinstance(value, Symbol) and _is_string_symbol(value.name):
         return _decode_string_symbol(value)
     if isinstance(value, DottedTuple):
-        return list_to_qy_cons((_quote_data(item) for item in value), _quote_data(value.tail))
+        return list_to_chain((_quote_data(item) for item in value), _quote_data(value.tail))
     if isinstance(value, tuple):
-        return list_to_qy_cons(_quote_data(item) for item in value)
+        return list_to_chain(_quote_data(item) for item in value)
     return value

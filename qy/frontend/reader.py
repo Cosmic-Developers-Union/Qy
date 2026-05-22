@@ -40,10 +40,6 @@ from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.errors import QySyntaxError
 from qy.errors import SourceSpan
-from qy.values import QY_EMPTY_LIST
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyCons
 
 __all__ = [
     "GRAMMAR",
@@ -860,11 +856,13 @@ def write_program(forms: Iterable[Form]) -> str:
 
 
 def write_tuple(form: TupleForm) -> str:
-    if form is QY_NIL:
+    from qy.sem.core import T
+
+    if form is nil:
         return "nil"
-    if form is QY_T:
+    if form is T:
         return "T"
-    if isinstance(form, QyCons):
+    if isinstance(form, Chain):
         return _write_cons(form)
     if isinstance(form, str):
         return json.dumps(form, ensure_ascii=False)
@@ -915,13 +913,13 @@ def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[s
     return token[:quote_index], token[quote_index:]
 
 
-def _write_cons(value: QyCons) -> str:
+def _write_cons(value: Chain) -> str:
     parts: list[str] = []
     current: object = value
-    while isinstance(current, QyCons):
+    while isinstance(current, Chain):
         parts.append(write_tuple(cast(TupleForm, current.head)))
         current = current.tail
-    if current is QY_EMPTY_LIST:
+    if current is nil:
         return f"({' '.join(parts)})"
     return f"({' '.join(parts)} . {write_tuple(cast(TupleForm, current))})"
 

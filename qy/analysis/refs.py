@@ -18,23 +18,22 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
+from qy.core.syntax import nil
 from qy.diag import Diagnostic
 from qy.errors import EvaluationError
 from qy.literals import default_literal_type
 from qy.macro import MacroDefinition
+from qy.sem.core import T
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyCons
 
 
 def literal_type(value: object) -> TypeName:
-    if value is QY_NIL:
+    if value is nil:
         return "nil"
-    if value is QY_T:
+    if value is T:
         return "T"
-    if isinstance(value, (QyCons, Chain)):
+    if isinstance(value, Chain):
         return "chain"
     if isinstance(value, bool):
         return "bool"

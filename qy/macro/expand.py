@@ -50,8 +50,6 @@ from qy.reader import get_span
 from qy.reader import read
 from qy.std import load_module
 from qy.std.imports import parse_from_import
-from qy.values import QyCons
-from qy.values import qy_cons_to_tuple
 
 __all__ = [
     "MacroEffectPolicy",
@@ -780,8 +778,6 @@ def _gensym_prefix(prefix: object | None) -> str:
 def _normalize_macro_result(value: object) -> object:
     if isinstance(value, CapturedForm):
         return CapturedForm(_normalize_macro_result(value.value))
-    if isinstance(value, QyCons):
-        return tuple(_normalize_macro_result(item) for item in qy_cons_to_tuple(value))
     if is_chain(value):
         # 递归规范化 Chain 的元素
         if is_nil(value):

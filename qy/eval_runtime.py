@@ -15,6 +15,7 @@ from collections.abc import Callable
 
 from qy.continuation import QyContinuation
 from qy.continuation import _await_if_needed
+from qy.core.syntax import nil
 from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
@@ -24,7 +25,6 @@ from qy.reader import Symbol
 from qy.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
-from qy.values import QY_NIL
 from qy.vm.instance.values import TailCall
 
 __all__ = [
@@ -142,7 +142,7 @@ async def _evaluate_tail_cond_async(
         condition, result = clause
         if _truthy(await evaluate_async(condition, env)):
             return await _evaluate_tail_expression_async(result, env, function)
-    return QY_NIL
+    return nil
 
 
 async def _evaluate_tail_let_async(
@@ -177,7 +177,7 @@ async def _evaluate_tail_let_async(
 
 
 def _truthy(value: object) -> bool:
-    return value is not QY_NIL
+    return value is not nil
 
 
 # -- Body evaluation with effect support (used by evaluate_body_async) ------
