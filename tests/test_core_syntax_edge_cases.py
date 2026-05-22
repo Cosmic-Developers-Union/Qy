@@ -7,7 +7,7 @@ import pytest
 
 from qy.core.syntax import cons
 from qy.core.syntax import nil
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 
 def test_chain_iter_improper_list():

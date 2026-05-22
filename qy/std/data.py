@@ -15,8 +15,8 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.reader import Symbol
-from qy.reader import get_span
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
 from qy.values import QY_NIL
 from qy.values import QY_T
 

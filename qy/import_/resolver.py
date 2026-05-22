@@ -17,7 +17,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from qy.errors import QyRuntimeError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 __all__ = [
     "FoldSpec",

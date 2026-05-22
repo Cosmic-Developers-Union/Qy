@@ -2,7 +2,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from qy.evaluator import evaluate_file
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 S = Symbol
 

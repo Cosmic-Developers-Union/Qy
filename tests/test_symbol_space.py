@@ -7,7 +7,7 @@ from qy.core.symbol_space import BindingSlot
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
 from qy.errors import QyRuntimeError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 S = Symbol
 

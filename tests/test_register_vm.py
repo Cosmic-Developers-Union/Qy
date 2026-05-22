@@ -4,8 +4,8 @@ from qy import BytecodeProgram
 from qy import Qy
 from qy import compile_bytecode
 from qy.errors import EvaluationError
+from qy.frontend.reader import Symbol
 from qy.passes.lower_hir import lower_source
-from qy.reader import Symbol
 
 
 def test_bytecode_compiler_emits_program_for_core_call():

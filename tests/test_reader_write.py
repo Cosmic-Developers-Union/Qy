@@ -1,12 +1,12 @@
-from qy.reader import Symbol
-from qy.reader import form_to_tuple
-from qy.reader import read_one_tuple
-from qy.reader import read_tuple
-from qy.reader import tuple_to_form
-from qy.reader import write
-from qy.reader import write_program
-from qy.reader import write_tuple
-from qy.reader import write_tuple_program
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import form_to_tuple
+from qy.frontend.reader import read_one_tuple
+from qy.frontend.reader import read_tuple
+from qy.frontend.reader import tuple_to_form
+from qy.frontend.reader import write
+from qy.frontend.reader import write_program
+from qy.frontend.reader import write_tuple
+from qy.frontend.reader import write_tuple_program
 
 S = Symbol
 

@@ -7,9 +7,9 @@ from qy.evaluator import Environment
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
+from qy.frontend.reader import Symbol
 from qy.literals import resolve_default_literal
 from qy.passes.lower_hir import lower_source
-from qy.reader import Symbol
 
 S = Symbol
 

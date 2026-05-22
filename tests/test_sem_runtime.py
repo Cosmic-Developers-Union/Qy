@@ -7,7 +7,7 @@ import pytest
 
 from qy.environment import Environment
 from qy.errors import QyArityError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction

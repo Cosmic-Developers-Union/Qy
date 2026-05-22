@@ -2,7 +2,7 @@
 
 from lsprotocol import types
 
-from qy.reader import read
+from qy.frontend.reader import read
 from qy.tools.lsp.completion import completion_items
 from qy.tools.lsp.completion import completion_prefix_at
 from qy.tools.lsp.completion import defined_name

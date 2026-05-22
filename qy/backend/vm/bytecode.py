@@ -28,7 +28,7 @@ from qy.diag import Diagnostic
 
 if TYPE_CHECKING:
     from qy.errors import SourceSpan
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
 __all__ = [
     "BytecodeFunction",
@@ -315,7 +315,7 @@ def deserialize_bytecode(data: bytes) -> BytecodeProgram:
     """
     import pickle
 
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     offset = 0
 
@@ -397,7 +397,7 @@ def _format_instruction(instruction: Instruction) -> str:
 
 def _format_operand(value: object) -> str:
     """Format operand for display."""
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     if isinstance(value, Symbol):
         return value.name

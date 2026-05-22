@@ -14,8 +14,8 @@ from qy.errors import QyArityError
 from qy.eval_runtime import evaluate_async
 from qy.eval_runtime import evaluate_body_async
 from qy.eval_runtime import evaluate_tail_body_async
-from qy.reader import Symbol
-from qy.reader import read
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import read
 from qy.sem.runtime import UserFunction
 from qy.values import QY_NIL
 from qy.vm.instance.values import TailCall

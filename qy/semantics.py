@@ -14,8 +14,8 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
 from qy.core.syntax import nil
+from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
-from qy.reader import Symbol
 from qy.sem.core import T
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction

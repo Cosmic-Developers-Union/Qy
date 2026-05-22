@@ -29,8 +29,8 @@ from qy.evaluator import evaluate_program
 from qy.evaluator import evaluate_program_async
 from qy.evaluator import evaluate_source
 from qy.evaluator import evaluate_source_async
-from qy.reader import Symbol
-from qy.reader import read
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import read
 from qy.values import QY_NIL
 from qy.values import QyChain
 

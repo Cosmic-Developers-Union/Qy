@@ -18,12 +18,12 @@ from typing import TYPE_CHECKING
 from typing import Literal
 
 if TYPE_CHECKING:
+    from qy.frontend.reader import Symbol
     from qy.ir.lir.node import LIRBindingSlot
     from qy.ir.lir.node import LIRInstructionIndex
     from qy.ir.lir.node import LIRRegister
     from qy.ir.lir.node import LIRSymbolMeta
     from qy.ir.lir.node import LIRSymbolSpaceId
-    from qy.reader import Symbol
 
 __all__ = [
     "LIRContinuationLayout",

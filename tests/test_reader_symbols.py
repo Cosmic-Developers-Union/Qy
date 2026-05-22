@@ -1,6 +1,6 @@
 from qy.core.syntax import list_to_chain
-from qy.reader import Symbol
-from qy.reader import read
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import read
 
 S = Symbol
 

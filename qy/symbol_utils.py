@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 from qy.errors import QyTypeError
-from qy.reader import Symbol
-from qy.reader import get_span
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
 
 __all__ = ["ensure_symbol"]
 

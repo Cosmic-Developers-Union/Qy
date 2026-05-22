@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from qy.errors import QyTypeError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std.modules import _is_special_form
 from qy.std.modules import _parse_export_names
 

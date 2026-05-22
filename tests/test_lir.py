@@ -3,9 +3,9 @@ from qy import compile_lir_bytecode
 from qy import dump_lir
 from qy import lower_lir
 from qy.backend.vm.compiler import compile_mir_bytecode
+from qy.frontend.reader import Symbol
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir
-from qy.reader import Symbol
 from qy.register_vm import evaluate_bytecode_source
 
 

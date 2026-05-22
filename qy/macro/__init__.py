@@ -17,8 +17,8 @@ from typing import cast
 
 from qy.compile_time import CompileTimeEnvironment
 from qy.errors import QyArityError
-from qy.reader import Form
-from qy.reader import Symbol
+from qy.frontend.reader import Form
+from qy.frontend.reader import Symbol
 
 __all__ = [
     "CapturedForm",

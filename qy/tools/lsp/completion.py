@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from lsprotocol import types
 
-from qy.reader import Form
-from qy.reader import ReaderSyntaxError
-from qy.reader import Symbol
-from qy.reader import read
+from qy.frontend.reader import Form
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import read
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance
 from qy.tools.lsp.utils import symbol_name_at

@@ -2,6 +2,7 @@ from typing import cast
 
 from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
+from qy.frontend.reader import Symbol
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
@@ -12,7 +13,6 @@ from qy.ir import LiteralExpr
 from qy.ir import QuoteExpr
 from qy.ir import SymbolRefExpr
 from qy.passes.lower_hir import lower_source
-from qy.reader import Symbol
 
 
 def test_lowering_keeps_default_literals_after_symbol_resolution():

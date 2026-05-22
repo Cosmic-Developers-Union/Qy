@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from lsprotocol import types
 
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 from qy.tools.lsp.utils import active_parameter
 from qy.tools.lsp.utils import operator_before_position

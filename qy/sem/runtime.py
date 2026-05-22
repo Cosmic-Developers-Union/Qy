@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from qy.errors import QyArityError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 if TYPE_CHECKING:
     from qy.environment import Environment

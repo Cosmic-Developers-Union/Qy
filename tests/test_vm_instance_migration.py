@@ -75,9 +75,9 @@ def test_register_vm_basic_functionality():
     """测试 RegisterVirtualMachine 基本功能仍然正常。."""
     from qy.backend.vm.compiler import compile_bytecode
     from qy.environment import standard_environment
+    from qy.frontend.reader import read
     from qy.ir import ProgramIR
     from qy.passes.lower_hir import lower
-    from qy.reader import read
     from qy.vm.instance.machine import RegisterVirtualMachine
 
     source = "(+ 1 2)"

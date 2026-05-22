@@ -18,6 +18,13 @@ from qy.diag import Diagnostic
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
+from qy.frontend.reader import DottedTuple
+from qy.frontend.reader import Form
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import SpannedTuple
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
+from qy.frontend.reader import read
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -52,13 +59,6 @@ from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
 from qy.macro import CapturedForm
-from qy.reader import DottedTuple
-from qy.reader import Form
-from qy.reader import ReaderSyntaxError
-from qy.reader import SpannedTuple
-from qy.reader import Symbol
-from qy.reader import get_span
-from qy.reader import read
 from qy.semantics import literal_type
 from qy.semantics import operator_kind_for_value
 from qy.semantics import value_type
@@ -439,7 +439,7 @@ def _lower_quasiquote(
 
 
 def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
-    from qy.reader import DottedTuple as _DottedTuple
+    from qy.frontend.reader import DottedTuple as _DottedTuple
 
     # 支持 Chain
     if is_chain(form):
@@ -481,7 +481,7 @@ def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
 
 
 def _build_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
-    from qy.reader import DottedTuple as _DottedTuple
+    from qy.frontend.reader import DottedTuple as _DottedTuple
 
     if not form:
         return (Symbol("quote"), ())

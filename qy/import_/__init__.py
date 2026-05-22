@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from qy.core.symbol_space import SymbolSpace
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
 __all__ = [
     # Resolver
@@ -82,7 +82,7 @@ def fold(
 
     Example:
         >>> from qy.core.symbol_space import SymbolSpace
-        >>> from qy.reader import Symbol
+        >>> from qy.frontend.reader import Symbol
         >>> source = {Symbol("x"): 1, Symbol("y"): 2}
         >>> target = SymbolSpace()
         >>> fold(target, source, [Symbol("x"), Symbol("y")])
@@ -140,7 +140,7 @@ def unfold(
 
     Example:
         >>> from qy.core.symbol_space import SymbolSpace
-        >>> from qy.reader import Symbol
+        >>> from qy.frontend.reader import Symbol
         >>> source = {Symbol("x"): 1, Symbol("y"): 2}
         >>> target = SymbolSpace()
         >>> unfold(target, source, prefix="mod.")

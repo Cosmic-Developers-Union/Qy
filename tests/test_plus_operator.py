@@ -10,7 +10,7 @@ import pytest
 from qy.evaluator import EvaluationError
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_source
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 S = Symbol
 

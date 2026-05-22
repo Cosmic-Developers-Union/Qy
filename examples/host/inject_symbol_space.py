@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 
 

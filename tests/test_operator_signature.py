@@ -6,7 +6,7 @@ from qy.core.operator_signature import OperatorSignature
 from qy.evaluator import EffectOperator
 from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 from qy.std import STANDARD_PROFILE_MODULES
 from qy.std import standard_profile_bindings

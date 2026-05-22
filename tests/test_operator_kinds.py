@@ -8,7 +8,7 @@ from qy.evaluator import MetaOperator
 from qy.evaluator import PureOperator
 from qy.evaluator import ScopeOperator
 from qy.evaluator import standard_environment
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std import load_module
 
 S = Symbol

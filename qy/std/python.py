@@ -28,9 +28,9 @@ from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
 from qy.macro import MacroDefinition
-from qy.reader import Symbol
-from qy.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.std.data import python_container_operators
 from qy.std.effects import _await_cached_value

@@ -6,7 +6,7 @@ import operator
 
 from qy.core.operators import PureOperator
 from qy.errors import QyTypeError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 
 def _ensure_number(value: object) -> int | float:

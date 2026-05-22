@@ -22,7 +22,7 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_space import ChainFrame as _ChainFrame
 from qy.core.symbol_space import SymbolSpace
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.session.profile import LiteralResolver
 from qy.session.profile import ProfileConfig
 

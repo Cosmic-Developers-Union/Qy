@@ -14,6 +14,9 @@ from qy.core.operators import ArgumentEvaluator
 from qy.environment import ChainFrame
 from qy.environment import Environment
 from qy.environment import standard_environment
+from qy.frontend.reader import Form
+from qy.frontend.reader import read
+from qy.frontend.reader import read_one
 from qy.ir import ProgramIR
 from qy.ir.mir import MIRProgram
 from qy.macro import MacroExpansion
@@ -25,9 +28,6 @@ from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir
-from qy.reader import Form
-from qy.reader import read
-from qy.reader import read_one
 from qy.vm.instance.machine import RegisterVirtualMachine
 from qy.vm.instance.machine import evaluate_bytecode
 from qy.vm.instance.machine import evaluate_bytecode_async

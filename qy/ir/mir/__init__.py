@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
+from qy.frontend.reader import Symbol
 from qy.ir.mir.node import MIRBlock
 from qy.ir.mir.node import MIRBlockId
 from qy.ir.mir.node import MIRConstantPool
@@ -21,7 +22,6 @@ from qy.ir.mir.node import MIRProgram
 from qy.ir.mir.node import MIRRegister
 from qy.ir.mir.node import MIRTerminator
 from qy.ir.mir.node import MIRTerminatorOpcode
-from qy.reader import Symbol
 
 __all__ = [
     "MIRBlock",

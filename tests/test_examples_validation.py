@@ -1,7 +1,7 @@
 from examples.run_validation import CASES
 from examples.run_validation import ROOT
 from examples.run_validation import run_case
-from qy.reader import read
+from qy.frontend.reader import read
 
 
 def test_validation_examples_run():

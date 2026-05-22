@@ -7,8 +7,8 @@ from qy.errors import EvaluationError
 from qy.evaluator import PureOperator
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
+from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
-from qy.reader import Symbol
 from qy.std import StandardModule
 from qy.std import register_module
 

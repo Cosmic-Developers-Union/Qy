@@ -11,9 +11,9 @@ from qy.core.syntax import is_nil
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.eval_runtime import evaluate_async
-from qy.reader import Symbol
-from qy.reader import TupleForm
-from qy.reader import write_tuple
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import TupleForm
+from qy.frontend.reader import write_tuple
 from qy.std.module import StandardModule
 from qy.values import QY_NIL
 from qy.values import QY_T

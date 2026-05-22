@@ -33,6 +33,12 @@ from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
+from qy.frontend.reader import DottedTuple
+from qy.frontend.reader import Form
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
+from qy.frontend.reader import read
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionServices
@@ -42,12 +48,6 @@ from qy.macro.hygiene import apply_hygiene
 from qy.macro.scope import MacroScope
 from qy.macro.trace import MacroExpansionTrace
 from qy.macro.trace import MacroSourceMapEntry
-from qy.reader import DottedTuple
-from qy.reader import Form
-from qy.reader import ReaderSyntaxError
-from qy.reader import Symbol
-from qy.reader import get_span
-from qy.reader import read
 from qy.std import load_module
 from qy.std.imports import parse_from_import
 

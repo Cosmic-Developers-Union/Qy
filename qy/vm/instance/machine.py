@@ -25,10 +25,10 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
+from qy.frontend.reader import Symbol
 from qy.ir import ProgramIR
 from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
-from qy.reader import Symbol
 from qy.sem.runtime import EffectDefinition
 from qy.values import QY_NIL
 from qy.vm.bytecode import BytecodeFunctionValue
@@ -374,10 +374,10 @@ class RegisterVirtualMachine:
         from typing import cast
 
         from qy.core.syntax import Chain
+        from qy.frontend.reader import Form
+        from qy.frontend.reader import Symbol as _Symbol
         from qy.ir import ProgramIR
         from qy.passes.lower_hir import lower
-        from qy.reader import Form
-        from qy.reader import Symbol as _Symbol
         from qy.values import QyCons
         from qy.values import qy_cons_to_tuple
 

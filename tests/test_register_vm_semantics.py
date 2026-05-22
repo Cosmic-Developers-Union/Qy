@@ -5,7 +5,7 @@ from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
 from qy.evaluator import standard_environment
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.values import QY_NIL
 
 

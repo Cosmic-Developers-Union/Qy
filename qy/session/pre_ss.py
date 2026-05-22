@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
 __all__ = [
     "create_lisp_ss",
@@ -102,7 +102,7 @@ def create_lisp_ss() -> SymbolSpace:
     """
     from qy.core.symbol_space import SymbolSpace
     from qy.core.syntax import nil
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
     from qy.sem.core import T
 
     return SymbolSpace(
@@ -183,7 +183,7 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     if parent is not None:
         # Chain: parent -> lisp-ss -> literal-ss
         from qy.core.syntax import nil
-        from qy.reader import Symbol
+        from qy.frontend.reader import Symbol
         from qy.sem.core import T
 
         lisp = parent.child(name="lisp-ss", writable=False)

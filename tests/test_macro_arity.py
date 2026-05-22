@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from qy.errors import QyArityError
+from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
-from qy.reader import Symbol
 
 
 def _make_compile_time_env():

@@ -18,7 +18,7 @@ from typing import Literal
 
 from qy.core.syntax import nil
 from qy.errors import QyResolveError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.sem.core import T
 
 TypeName = Literal[

@@ -24,8 +24,8 @@ from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.eval_runtime import evaluate_async
 from qy.eval_runtime import evaluate_body_async
-from qy.reader import Symbol
-from qy.reader import get_span
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL

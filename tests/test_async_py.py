@@ -3,7 +3,7 @@ import pytest
 from qy.evaluator import EvaluationError
 from qy.evaluator import HostObjectRef
 from qy.evaluator import standard_environment
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import AsyncQy as Qy
 from qy.std import load_module
 

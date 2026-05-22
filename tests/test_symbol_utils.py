@@ -6,7 +6,7 @@ from __future__ import annotations
 import pytest
 
 from qy.errors import QyTypeError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.symbol_utils import ensure_symbol
 
 

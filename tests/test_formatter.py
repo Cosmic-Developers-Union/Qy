@@ -1,4 +1,4 @@
-from qy.reader import read
+from qy.frontend.reader import read
 from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_source
 

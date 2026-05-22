@@ -7,9 +7,9 @@ from typing import cast
 from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.core.syntax import nil
-from qy.reader import Symbol
-from qy.reader import TupleForm
-from qy.reader import write_tuple
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import TupleForm
+from qy.frontend.reader import write_tuple
 from qy.sem.core import T
 
 __all__ = ["format_value"]

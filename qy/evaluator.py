@@ -43,10 +43,10 @@ from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
+from qy.frontend.reader import Form
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import read
 from qy.macro import MacroDefinition
-from qy.reader import Form
-from qy.reader import Symbol
-from qy.reader import read
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol

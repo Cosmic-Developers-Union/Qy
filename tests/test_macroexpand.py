@@ -4,10 +4,10 @@ from qy.core.syntax import Chain
 from qy.core.syntax import list_to_chain
 from qy.errors import EvaluationError
 from qy.evaluator import standard_environment
+from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionOptions
 from qy.macro import macroexpand_source
-from qy.reader import Symbol
 from qy.std import StandardModule
 from qy.std import register_module
 

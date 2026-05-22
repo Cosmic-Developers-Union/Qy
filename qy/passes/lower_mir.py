@@ -9,6 +9,10 @@ from typing import cast
 from qy.core.syntax import list_to_chain
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
+from qy.frontend.reader import DottedTuple
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import _decode_string_symbol
+from qy.frontend.reader import _is_string_symbol
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -46,10 +50,6 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRRegister
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import MIRTerminatorOpcode
-from qy.reader import DottedTuple
-from qy.reader import Symbol
-from qy.reader import _decode_string_symbol
-from qy.reader import _is_string_symbol
 
 __all__ = ["lower_mir"]
 

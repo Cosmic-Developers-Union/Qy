@@ -10,7 +10,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std.module import StandardModule
 
 __all__ = [
@@ -195,8 +195,8 @@ def _load_python_file_module(path: Path) -> StandardModule:
 async def _load_qy_file_module_async(path: Path) -> StandardModule:
     from qy.environment import standard_environment
     from qy.eval_runtime import evaluate_async
+    from qy.frontend.reader import read
     from qy.macro import MacroDefinition
-    from qy.reader import read
 
     env = standard_environment()
     baseline_symbols = set(env.bindings())

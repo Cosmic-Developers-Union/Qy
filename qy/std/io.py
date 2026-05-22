@@ -7,7 +7,7 @@ from qy.display import format_value
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.eval_runtime import evaluate_async
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std.module import StandardModule
 
 

@@ -2,7 +2,7 @@ import pytest
 
 from qy.core.syntax import list_to_chain
 from qy.evaluator import standard_environment
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 
 

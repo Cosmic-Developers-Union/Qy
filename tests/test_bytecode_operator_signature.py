@@ -10,7 +10,7 @@ from qy.backend.vm.bytecode import dump_bytecode
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import OperatorSignature
 from qy.core.operator_signature import format_arity_message
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 
 def test_dump_bytecode_with_empty_function():

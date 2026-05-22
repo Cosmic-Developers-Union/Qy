@@ -9,7 +9,7 @@ from typing import cast
 from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 
 @dataclass(frozen=True, slots=True)

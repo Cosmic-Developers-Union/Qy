@@ -19,9 +19,9 @@ from qy.analysis.scope import scope_after_form
 from qy.analysis.scope import scope_from_environment
 from qy.diag import Diagnostic
 from qy.environment import standard_environment
-from qy.reader import Form
-from qy.reader import ReaderSyntaxError
-from qy.reader import read
+from qy.frontend.reader import Form
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import read
 
 __all__ = [
     "Analysis",

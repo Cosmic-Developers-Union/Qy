@@ -5,7 +5,7 @@ import pytest
 
 from qy.core.symbol_space import SymbolSpace
 from qy.errors import QyResolveError
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.session.pre_ss import _MISSING
 from qy.session.pre_ss import create_lisp_ss
 from qy.session.pre_ss import create_literal_ss

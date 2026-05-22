@@ -1,6 +1,6 @@
 from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std import load_module
 
 S = Symbol

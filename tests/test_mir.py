@@ -9,13 +9,13 @@ from qy import compile_mir_bytecode
 from qy import dump_mir
 from qy import lower_mir
 from qy import verify_mir
+from qy.frontend.reader import Symbol
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
 from qy.ir.mir import MIROpcode
 from qy.passes.lower_hir import lower_source
-from qy.reader import Symbol
 
 
 def test_mir_lowering_emits_cfg_blocks_for_cond():

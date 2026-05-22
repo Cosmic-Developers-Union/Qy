@@ -1,7 +1,7 @@
 # coding: utf-8
 """Tests for session profile configuration."""
 
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.session.profile import ProfileConfig
 
 S = Symbol

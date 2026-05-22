@@ -7,7 +7,7 @@ from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.eval_runtime import evaluate_async
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.std.imports import parse_from_import
 from qy.std.module import StandardModule
 from qy.symbol_utils import ensure_symbol

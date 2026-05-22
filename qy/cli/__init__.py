@@ -12,13 +12,13 @@ from qy.backend.vm.bytecode import dump_bytecode
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import read
+from qy.frontend.reader import read_raw
 from qy.ir import dump_ir
 from qy.ir.lir import dump_lir
 from qy.ir.mir import dump_mir
 from qy.passes.lower_lir import lower_lir
-from qy.reader import ReaderSyntaxError
-from qy.reader import read
-from qy.reader import read_raw
 from qy.runtime import Qy
 from qy.std.profile import format_operator_docs
 from qy.tools.fmt import dump_program

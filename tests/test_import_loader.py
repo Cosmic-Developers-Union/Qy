@@ -5,11 +5,11 @@ import pytest
 
 from qy.core.symbol_space import SymbolSpace
 from qy.errors import QyRuntimeError
+from qy.frontend.reader import Symbol
 from qy.import_.loader import ModuleLoader
 from qy.import_.loader import get_global_loader
 from qy.import_.loader import load_named_space
 from qy.import_.loader import set_global_loader
-from qy.reader import Symbol
 
 S = Symbol
 

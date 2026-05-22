@@ -9,7 +9,7 @@ from qy.backend.vm import deserialize_bytecode
 from qy.backend.vm import dump_bytecode
 from qy.backend.vm import pretty_print_bytecode
 from qy.backend.vm import serialize_bytecode
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 
 

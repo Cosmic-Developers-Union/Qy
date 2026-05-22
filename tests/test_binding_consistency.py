@@ -5,8 +5,8 @@
 from __future__ import annotations
 
 from qy.analysis import analyze_source
+from qy.frontend.reader import read
 from qy.passes.lower_hir import lower
-from qy.reader import read
 from qy.runtime import Qy
 
 
@@ -28,7 +28,7 @@ def test_define_resolves_consistently() -> None:
 
     # Runtime: evaluate succeeds, x is bound
     qy.evaluate_source(source)
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     assert qy.env.resolve(Symbol("x")) == 42
 
@@ -151,7 +151,7 @@ def test_eq_identity_vs_num_equality() -> None:
 
 def test_module_export_view_consistent() -> None:
     """module/from/exports: export view is selective, from is fold with define-once."""
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     # Module with exports: only exported names visible
     q = Qy()
@@ -178,7 +178,7 @@ def test_module_export_view_consistent() -> None:
 
 def test_host_injection_in_symbol_space() -> None:
     """Host-injected names are visible through symbol-space chain."""
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     q = Qy()
     # + is injected by standard profile

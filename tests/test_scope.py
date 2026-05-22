@@ -1,7 +1,7 @@
 import pytest
 
 from qy import Qy
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 S = Symbol
 
@@ -99,7 +99,7 @@ def test_define_in_child_scope_can_shadow_parent_binding():
 def test_define_once_raises_on_duplicate():
     from qy.environment import Environment
     from qy.errors import QyRuntimeError
-    from qy.reader import Symbol
+    from qy.frontend.reader import Symbol
 
     env = Environment()
     env.define_once(Symbol("x"), 1)

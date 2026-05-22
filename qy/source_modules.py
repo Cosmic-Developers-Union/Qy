@@ -9,8 +9,8 @@ from qy.compile_time import compile_time_environment
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.environment import Environment
+from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
-from qy.reader import Symbol
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 from qy.std import load_module

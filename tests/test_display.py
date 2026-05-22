@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from qy.core.syntax import list_to_chain
 from qy.display import format_value
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.values import QY_EMPTY_LIST
 from qy.values import QY_NIL
 from qy.values import QY_T

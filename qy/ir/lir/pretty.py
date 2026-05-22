@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from qy.errors import SourceSpan
+from qy.frontend.reader import Symbol
 from qy.ir.lir.frame import LIRContinuationLayout
 from qy.ir.lir.frame import LIRFrameLayout
 from qy.ir.lir.frame import LIRHandlerLayout
@@ -21,7 +22,6 @@ from qy.ir.lir.frame import LIRSymbolSpaceLayout
 from qy.ir.lir.node import LIRBindingAddr
 from qy.ir.lir.node import LIRInstruction
 from qy.ir.lir.node import LIRProgram
-from qy.reader import Symbol
 
 __all__ = ["dump_lir"]
 

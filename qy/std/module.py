@@ -6,7 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from dataclasses import field
 
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 
 @dataclass(frozen=True, slots=True)

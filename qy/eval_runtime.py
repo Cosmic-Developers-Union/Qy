@@ -21,8 +21,8 @@ from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyError
 from qy.errors import QyTypeError
-from qy.reader import Symbol
-from qy.reader import get_span
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.vm.instance.values import TailCall
@@ -46,10 +46,10 @@ async def evaluate_async(expression: object, env: Environment) -> object:
     from typing import cast
 
     from qy.backend.vm.compiler import compile_bytecode
+    from qy.frontend.reader import Form
     from qy.ir import ProgramIR
     from qy.macro import macroexpand_async
     from qy.passes.lower_hir import lower
-    from qy.reader import Form
     from qy.vm.instance.machine import RegisterVirtualMachine
 
     if isinstance(expression, Symbol):

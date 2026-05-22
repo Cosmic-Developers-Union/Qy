@@ -17,11 +17,11 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.errors import EvaluationError as QyResolutionError
+from qy.frontend.reader import SpannedTuple
+from qy.frontend.reader import Symbol
 from qy.literals import default_literal_type
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
-from qy.reader import SpannedTuple
-from qy.reader import Symbol
 
 if TYPE_CHECKING:
     from qy.macro.expand import MacroExpansionContext

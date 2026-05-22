@@ -4,7 +4,7 @@ from qy.errors import QyRuntimeError
 from qy.evaluator import ControlOperator
 from qy.evaluator import MetaOperator
 from qy.evaluator import evaluate
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 
 S = Symbol

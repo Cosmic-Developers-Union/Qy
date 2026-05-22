@@ -4,13 +4,13 @@ from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import list_to_chain
-from qy.reader import ReaderSyntaxError
-from qy.reader import Symbol
-from qy.reader import expand_surface_dialect
-from qy.reader import get_span
-from qy.reader import read
-from qy.reader import read_one
-from qy.reader import read_raw
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import expand_surface_dialect
+from qy.frontend.reader import get_span
+from qy.frontend.reader import read
+from qy.frontend.reader import read_one
+from qy.frontend.reader import read_raw
 
 S = Symbol
 

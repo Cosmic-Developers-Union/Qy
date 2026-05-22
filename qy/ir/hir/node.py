@@ -13,9 +13,9 @@ from typing import Literal
 from qy.core import OperatorKind
 from qy.core import TypeName
 from qy.diag import Diagnostic
-from qy.reader import Form
-from qy.reader import SourceSpan
-from qy.reader import Symbol
+from qy.frontend.reader import Form
+from qy.frontend.reader import SourceSpan
+from qy.frontend.reader import Symbol
 from qy.std.imports import ImportSpec
 
 __all__ = [

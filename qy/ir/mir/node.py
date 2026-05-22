@@ -13,7 +13,7 @@ from typing import Literal
 
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 __all__ = [
     "MIRBlock",

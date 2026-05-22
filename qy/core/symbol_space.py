@@ -22,7 +22,7 @@ from collections.abc import Iterable
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from qy.reader import Symbol
+from qy.frontend.reader import Symbol
 
 __all__ = [
     "BindingSlot",

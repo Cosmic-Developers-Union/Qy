@@ -5,11 +5,11 @@ from __future__ import annotations
 from lsprotocol import types
 
 from qy.core.syntax import Chain
-from qy.reader import Form
-from qy.reader import ReaderSyntaxError
-from qy.reader import Symbol
-from qy.reader import get_span
-from qy.reader import read
+from qy.frontend.reader import Form
+from qy.frontend.reader import ReaderSyntaxError
+from qy.frontend.reader import Symbol
+from qy.frontend.reader import get_span
+from qy.frontend.reader import read
 from qy.tools.lsp.completion import defined_name
 from qy.tools.lsp.utils import span_to_range
 
