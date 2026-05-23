@@ -17,9 +17,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
+      BUN_INSTALL_CACHE_DIR: /workspaces/Qy/.cache/bun/install
+      BUN_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
+      NPM_CONFIG_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       HTTP_PROXY: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
       HTTPS_PROXY: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
       NO_PROXY: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+      npm_config_registry: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       http_proxy: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
       https_proxy: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
       no_proxy: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
@@ -29,8 +33,19 @@ services:
       - dev-venv:/workspaces/Qy/.venv
       - dev-node-modules:/workspaces/Qy/node_modules
       - zsh-history:/home/ge/.zsh_history
-      - ${HOME}/.claude:/home/ge/.claude:cached
-      - ${HOME}/.claude.json:/home/ge/.claude.json:cached
+      - type: bind
+        source: ${HOME}/.claude
+        target: /home/ge/.claude
+        consistency: cached
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HOME}/.claude.json
+        target: /home/ge/.claude.json
+        read_only: true
+        consistency: cached
+        bind:
+          create_host_path: false
     command: sleep infinity
 volumes:
   dev-venv:

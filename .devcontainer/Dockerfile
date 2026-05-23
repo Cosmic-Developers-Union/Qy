@@ -1,5 +1,5 @@
 FROM node:24 AS node
-FROM oven/bun:1 AS bun
+FROM oven/bun@sha256:e10577f0db68676a7024391c6e5cb4b879ebd17188ab750cf10024a6d700e5c4 AS bun
 FROM ghcr.io/astral-sh/uv:latest AS uv
 FROM mcr.microsoft.com/devcontainers/cpp:ubuntu-24.04
 
@@ -20,6 +20,11 @@ COPY --from=bun /usr/local/bin/bun /usr/local/bin/bunx /usr/local/bin/
 RUN if [ -n "$APT_CACHE_PROXY" ]; then \
     echo "Acquire::http::Proxy \"$APT_CACHE_PROXY\";" > /etc/apt/apt.conf.d/01proxy; \
     echo "Acquire::https::Proxy \"$APT_CACHE_PROXY\";" >> /etc/apt/apt.conf.d/01proxy; \
+fi
+
+RUN if [ -n "$BUN_REGISTRY" ]; then \
+    mkdir -p /usr/local/etc; \
+    echo "registry=$BUN_REGISTRY" > /usr/local/etc/npmrc; \
 fi
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -50,15 +55,11 @@ RUN set -eux; \
 
 RUN usermod -s /usr/bin/zsh $USERNAME
 
+ENV BUN_REGISTRY="$BUN_REGISTRY" \
+    NPM_CONFIG_REGISTRY="$BUN_REGISTRY" \
+    npm_config_registry="$BUN_REGISTRY"
+
 USER $USERNAME
-
-RUN if [ -n "$BUN_REGISTRY" ]; then \
-    echo "[install]" > /home/$USERNAME/.bunfig.toml; \
-    echo "registry = \"$BUN_REGISTRY\"" >> /home/$USERNAME/.bunfig.toml; \
-fi
-
-RUN --mount=type=cache,target=/home/ge/.bun,uid=1000,gid=1000,sharing=locked \
-  bun add -g @anthropic-ai/claude-code
 
 ENV PATH="/home/${USERNAME}/.bun/bin:${PATH}"
 WORKDIR /workspace/Qy

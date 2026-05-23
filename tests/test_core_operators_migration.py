@@ -50,6 +50,7 @@ def test_import_operator_runtime_from_core():
 
 def test_pure_operator_creation():
     """测试创建纯算子。."""
+
     def add(x: object, y: object) -> object:
         return int(x) + int(y)  # type: ignore
 
@@ -80,6 +81,7 @@ def test_operator_signature_lookup():
 
 def test_runtime_operator_semantics():
     """测试运行时算子语义分析。."""
+
     def dummy_func(x: object) -> object:
         return x
 
@@ -91,6 +93,7 @@ def test_runtime_operator_semantics():
 
 def test_operator_uses_raw_args():
     """测试判断算子是否使用原始参数。."""
+
     def dummy_func(x: object) -> object:
         return x
 
@@ -100,12 +103,13 @@ def test_operator_uses_raw_args():
     def control_func(args: tuple[object, ...], env: object) -> object:
         return args[0]
 
-    control_op = ControlOperator("test-control", control_func)  # type: ignore
+    control_op = ControlOperator("test-control", control_func)
     assert operator_uses_raw_args(control_op)
 
 
 def test_validate_operator_arity_success():
     """测试算子参数数量验证成功。."""
+
     def dummy_func(x: object, y: object) -> object:
         return x
 
@@ -116,6 +120,7 @@ def test_validate_operator_arity_success():
 
 def test_validate_operator_arity_failure():
     """测试算子参数数量验证失败。."""
+
     def dummy_func(x: object, y: object) -> object:
         return x
 
@@ -164,6 +169,7 @@ def test_operator_signature_with_effects():
 
 def test_custom_argument_evaluator():
     """测试自定义参数求值器。."""
+
     def custom_evaluator(args: tuple[object, ...], env: object) -> object:
         return args
 
@@ -177,10 +183,11 @@ def test_custom_argument_evaluator():
 
 def test_scope_operator():
     """测试作用域算子。."""
+
     def scope_func(args: tuple[object, ...], env: object) -> object:
         return len(args)
 
-    op = ScopeOperator("test-scope", scope_func, "测试作用域算子")  # type: ignore
+    op = ScopeOperator("test-scope", scope_func, "测试作用域算子")
     assert op.name == "test-scope"
     assert op.kind == "scope"
     assert op.doc == "测试作用域算子"
@@ -188,10 +195,11 @@ def test_scope_operator():
 
 def test_effect_operator():
     """测试 Effect 算子。."""
+
     def effect_func(args: tuple[object, ...], env: object) -> object:
         return args[0]
 
-    op = EffectOperator("test-effect", effect_func, "测试 Effect 算子")  # type: ignore
+    op = EffectOperator("test-effect", effect_func, "测试 Effect 算子")
     assert op.name == "test-effect"
     assert op.kind == "effect"
     assert op.doc == "测试 Effect 算子"
@@ -199,10 +207,11 @@ def test_effect_operator():
 
 def test_meta_operator():
     """测试元算子。."""
+
     def meta_func(expression: tuple[object, ...], env: object) -> object:
         return expression
 
-    op = MetaOperator("test-meta", meta_func, "测试元算子")  # type: ignore
+    op = MetaOperator("test-meta", meta_func, "测试元算子")
     assert op.name == "test-meta"
     assert op.kind == "meta"
     assert op.doc == "测试元算子"

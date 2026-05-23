@@ -8,7 +8,6 @@
 """
 
 
-
 def test_new_location_imports():
     """测试从新位置导入所有公共 API。."""
     from qy.vm.instance.machine import RegisterVirtualMachine
