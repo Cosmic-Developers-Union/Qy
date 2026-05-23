@@ -1,0 +1,109 @@
+QyLang_final_product:
+  identity:
+    - Qy 是一个独特的、由 Python 实现的、支持代数效应、跑在寄存式虚拟机上、经过 AST / expand / HIR / MIR / LIR / bytecode 多层 pass 的编程语言。
+    - 缺一不可的部分包括：独特的编程语言、Python 实现、代数效应、寄存式虚拟机、AST / expand / HIR / MIR / LIR / bytecode 多层 pass。
+
+  truth_source:
+    - 语义真源是语言规格文档。
+    - examples/hello.qy 是核心 golden file；当语言规格文档和 examples/hello.qy 冲突时，examples/hello.qy 优先，规格文档必须更新以解释它。
+
+  canonical_example:
+    - examples/hello.qy 是唯一核心标准样例，所有其它样例都是衍生样例，不与它平级。
+    - examples/hello.qy 由 human 手动维护，agent 不允许修改。
+    - examples/hello.qy 必须证明最小可运行程序、标准语言形态，以及 AST / expand / HIR / MIR / LIR / bytecode / VM 全管线可观察。
+    - examples/hello.qy 的验收命令包括 qy ast、qy expand、qy hir、qy mir、qy lir、qy bytecode、qy run，并且每个层级都必须成功。
+    - examples/hello.qy 同时是 Python API、CLI、VM、tests 的 smoke case。
+    - 所有实现和所有工具链都必须接受 examples/hello.qy。
+
+  language_core:
+    - Qy 的核心语法是 s-expression。
+    - raw AST 只能由 symbol 和 chain 组成。
+    - symbol-space / symbol-space-chain 是核心语义模型。
+    - algebraic effects 是核心控制能力。
+
+  symbol:
+    - symbol 就是 symbol, 它属于一种子面的含义, 是对值的助计符
+    - symbol 必定在 symbol-space 中, 并且和其他符号建立了绑定关系
+    - symbol 和 value 的绑定是唯一的, 即 在一个 symbol-space 中, symbol 只能绑定一个 value
+    - symbol 可以和 symbol 建立绑定关系
+
+  chain:
+    - chain 是 cons chain (也是传统 lisp 社区中的 list, but 这是语义错位, 我这里修正它)
+
+  symbol-space:
+    - symbol 和 value 绑定的空间。
+    - 分为有限空间和无限空间，但空间是静态的、不可变的。
+    - 无限空间如整数空间，建立所有数字字面量的绑定。
+    - 有限空间是常见的空间，它由 slot 组成，每个 symbol 和 value 的 binding 就是一种 slot。
+    - define 算子就是创建 slot，将一个 symbol 绑定到 slot，再将一个 value 绑定到 slot。
+    - 更加深入的理解是，它表达了 symbol 和 symbol 的关系。
+    - 计算过程被称为求值；求值过程就是在 symbol-space lookup 一个符号到 value 的过程。
+    - 对于 chain 的求值会将其首位标记为算子，它属于求值规则。
+
+  binding:
+    - binding 是 symbol-space 中 symbol 与 slot/value/symbol 建立的语义关系。
+    - 它本身是一个动作.
+    - binding 构建 symbol/value 和 solt 直接的映射关系
+    - binding 构建 symbol 和 symbol 的等价关系.
+
+  slot:
+    - slot 是 ss 的中的一个位置
+    - 有限 ss 是存在固定大小的, 每个 symbol 和 symbol 的绑定关系占据一个 slot
+
+  symbol-space-chain:
+    - symbol-space-chain 是多个 symbol-space 组成的有序查找链。
+    - symbol-space-chain 的核心行为是 lookup：沿链寻找 symbol 的 binding，并由链的顺序决定 shadow 和 fallback。
+
+  pre-sysbol-space:
+    - pss, 是 qy 中的 symbol-value 绑定关系描述的.
+    - 一般 pss 需要提供两个方法, exist and lookup, 即该 symbol 是否在该空间中, 和找到该值.
+    - 常见的 pss 包括 number-ss, char-ss, string-ss, bool-ss, nil-ss,
+
+  value:
+    - value is value.
+
+  operator:
+    - 被求值的 chain 的首位符号被称为 operator
+
+  evaluation:
+    - 对 qy source 进行求值.
+
+  raw-ast:
+    - raw AST 是 source 经过 reader 后得到的最早结构形态。
+    - raw AST 只能由 symbol 和不可变 chain 组成。
+    - raw AST 的职责是保存 source 的结构事实，而不是提前完成求值、类型判断或 host 互操作。
+
+  pass-pipeline:
+    - Qy 的固定管线是 source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> bytecode -> register VM。
+    - 每一层 pass 都必须有独立职责，不能跨层补丁式扩散语义。
+    - expand 之前的层负责语法和表层语言形态，HIR 表达高层语义，MIR 表达 CFG / virtual register / explicit control-effect flow，LIR 表达 Qy abstract machine 相关布局，bytecode 是 register VM 的输入。
+    - bytecode compiler 只做 LIR 到 BytecodeProgram 的结构转换，不重新理解 HIR/MIR 语义。
+
+  algebraic-effects:
+    - algebraic effects 是 Qy 的核心控制能力，不是普通异常机制，也不是 Python async 的别名。
+    - effect 必须在语言语义、IR、bytecode、VM 中有一致表达。
+    - perform 表示发起 effect，handle 表示安装处理规则，continuation 表示可恢复的控制上下文。
+    - effect 行为必须能跨 Python VM、Go VM、LLVM 后端保持可观察一致。
+
+  python_embedding:
+    - Python 必须导出 Qy / AsyncQy 两个对象，并且该嵌入层要求纯 Python 实现。
+    - Python 必须能操作 symbol-space 和 symbol-space-chain。
+    - Python 函数必须能包装为 qy 算子。
+    - Python 对象必须能传递给 qy，并允许 qy 通过语言模型操作该对象。
+
+  developer_tooling:
+    - qy fmt 提供格式化。
+    - qy check 提供 lint / 静态检查。
+    - qy typecheck 提供类型检查。
+    - qy completion 支持 zsh / bash 补全。
+    - qy lsp 提供语言服务器。
+    - qy repl 提供交互式解释器。
+
+  project_and_package_ecosystem:
+    - qy init 初始化 qy project 或 package。
+    - qy pkg 是包管理入口。
+    - qy pkg search 搜索包。
+    - qy pkg install 安装包。
+    - qy pkg upgrade 升级包。
+    - qy pkg build 构建 qy 包。
+    - qy pkg server 启动包索引服务器。
