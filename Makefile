@@ -180,7 +180,7 @@ clean-llvm:
 
 ## Dev Container
 dc-up:
-	https_proxy=http://127.0.0.1:1080 devcontainer up --remove-existing-container --workspace-folder . --log-level trace --skip-post-create
+	devcontainer up --remove-existing-container --workspace-folder . --log-level trace --skip-post-create
 dc-stop:
 	docker stop $$(docker ps -q --filter label=devcontainer.local_folder=$$(pwd))
 dc-rm:
@@ -191,7 +191,7 @@ dc-reup:
 	$(MAKE) dc-stop
 	$(MAKE) dc-up
 dc-build:
-	https_proxy=http://127.0.0.1:1080 devcontainer build
+	devcontainer build --workspace-folder .
 
 
 demo:

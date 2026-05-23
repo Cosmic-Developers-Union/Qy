@@ -14,9 +14,6 @@
     "SHELL": "/usr/bin/zsh",
     "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
   },
-  "features": {
-    "ghcr.io/devcontainers/features/git:1": {}
-  },
   "customizations": {
     "vscode": {
       "settings": {

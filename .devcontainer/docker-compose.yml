@@ -6,8 +6,24 @@ services:
       extra_hosts:
         - "host.docker.internal:host-gateway"
       args:
-        - APT_CACHE_PROXY=http://host.docker.internal:3142
-        - BUN_REGISTRY=http://host.docker.internal:4873
+        APT_CACHE_PROXY: ${DEVCONTAINER_APT_CACHE_PROXY-http://host.docker.internal:3142}
+        BUN_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
+        HTTP_PROXY: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
+        HTTPS_PROXY: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
+        NO_PROXY: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+        http_proxy: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
+        https_proxy: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
+        no_proxy: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      HTTP_PROXY: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
+      HTTPS_PROXY: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
+      NO_PROXY: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+      http_proxy: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
+      https_proxy: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
+      no_proxy: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+      UV_LINK_MODE: copy
     volumes:
       - ..:/workspaces/Qy:cached
       - dev-venv:/workspaces/Qy/.venv

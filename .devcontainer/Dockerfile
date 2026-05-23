@@ -5,6 +5,12 @@ FROM mcr.microsoft.com/devcontainers/cpp:ubuntu-24.04
 
 ARG APT_CACHE_PROXY
 ARG BUN_REGISTRY
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG NO_PROXY
+ARG http_proxy
+ARG https_proxy
+ARG no_proxy
 
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=node /usr/local/ /usr/local/
@@ -44,14 +50,14 @@ RUN set -eux; \
 
 RUN usermod -s /usr/bin/zsh $USERNAME
 
-RUN if [ -n "$BUN_REGISTRY" ]; then \
-    echo "[install]" > $HOME/.bunfig.toml; \
-    echo "registry = \"$BUN_REGISTRY\"" >> $HOME/.bunfig.toml; \
-fi
-
 USER $USERNAME
 
-RUN --mount=type=cache,target=$HOME/.bun,sharing=locked \
+RUN if [ -n "$BUN_REGISTRY" ]; then \
+    echo "[install]" > /home/$USERNAME/.bunfig.toml; \
+    echo "registry = \"$BUN_REGISTRY\"" >> /home/$USERNAME/.bunfig.toml; \
+fi
+
+RUN --mount=type=cache,target=/home/ge/.bun,uid=1000,gid=1000,sharing=locked \
   bun add -g @anthropic-ai/claude-code
 
 ENV PATH="/home/${USERNAME}/.bun/bin:${PATH}"
