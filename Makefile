@@ -180,7 +180,7 @@ clean-llvm:
 
 ## Dev Container
 dc-up:
-	devcontainer up --remove-existing-container --workspace-folder . --log-level trace --skip-post-create
+	devcontainer up --workspace-folder .
 dc-stop:
 	docker stop $$(docker ps -q --filter label=devcontainer.local_folder=$$(pwd))
 dc-rm:

@@ -16,6 +16,7 @@ COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=node /usr/local/ /usr/local/
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bunx /usr/local/bin/
 COPY .devcontainer/entrypoint.sh /usr/local/bin/devcontainer-entrypoint
+COPY .devcontainer/check-config.sh /usr/local/bin/devcontainer-check-config
 
 # use apt-cacher-ng
 RUN if [ -n "$APT_CACHE_PROXY" ]; then \
@@ -40,19 +41,22 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     ninja-build \
     llvm clang lld
 
-ARG USERNAME=ge
+ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=1000
 
 RUN set -eux; \
-    if id vscode >/dev/null 2>&1; then \
-        usermod -l ge -d /home/ge -m vscode; \
+    if [ "$USERNAME" != "vscode" ] && id vscode >/dev/null 2>&1; then \
+        usermod -l "$USERNAME" -d "/home/$USERNAME" -m vscode; \
     fi; \
-    if getent group vscode >/dev/null; then \
-        groupmod -n ge vscode; \
+    if [ "$USERNAME" != "vscode" ] && getent group vscode >/dev/null; then \
+        groupmod -n "$USERNAME" vscode; \
     fi; \
-    mkdir -p /home/ge; \
-    chown -R ge:$(id -gn ge) /home/ge
+    if ! id "$USERNAME" >/dev/null 2>&1; then \
+        useradd -m -s /usr/bin/zsh "$USERNAME"; \
+    fi; \
+    mkdir -p "/home/$USERNAME"; \
+    chown -R "$USERNAME:$(id -gn "$USERNAME")" "/home/$USERNAME"
 
 RUN usermod -s /usr/bin/zsh $USERNAME
 
@@ -66,14 +70,15 @@ ENV BUN_REGISTRY="$BUN_REGISTRY" \
     http_proxy="" \
     https_proxy="" \
     no_proxy="" \
-    npm_config_registry="$BUN_REGISTRY"
+    npm_config_registry="$BUN_REGISTRY" \
+    REMOTE_USER="$USERNAME"
 
 RUN mkdir -p /home/$USERNAME/.bun/bin /home/$USERNAME/.bun/install/cache /home/$USERNAME/.bun/install/global && \
     chown -R $USERNAME:$(id -gn $USERNAME) /home/$USERNAME/.bun && \
-    chmod +x /usr/local/bin/devcontainer-entrypoint
+    chmod +x /usr/local/bin/devcontainer-entrypoint /usr/local/bin/devcontainer-check-config
 
 USER root
 
 ENV PATH="/home/${USERNAME}/.bun/bin:${PATH}"
 ENTRYPOINT ["/usr/local/bin/devcontainer-entrypoint"]
-WORKDIR /workspace/Qy
+WORKDIR /workspaces/Qy

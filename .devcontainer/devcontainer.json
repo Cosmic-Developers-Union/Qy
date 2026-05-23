@@ -3,9 +3,9 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "devcontainer",
   "workspaceFolder": "/workspaces/Qy",
-  "postCreateCommand": "mkdir -p \"$BUN_INSTALL\" \"$BUN_INSTALL_CACHE_DIR\" && if [ -n \"${BUN_REGISTRY:-}\" ]; then bun install --registry \"$BUN_REGISTRY\"; else bun install; fi && uv sync --all-extras",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
   "init": true,
-  "remoteUser": "ge",
+  "remoteUser": "${localEnv:USER}",
   "updateRemoteUserUID": true,
   "containerEnv": {
     "UV_LINK_MODE": "copy"

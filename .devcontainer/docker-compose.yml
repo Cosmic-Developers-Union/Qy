@@ -1,5 +1,6 @@
 services:
   devcontainer:
+    image: ${DEVCONTAINER_IMAGE-qy_devcontainer-devcontainer:latest}
     build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
@@ -11,19 +12,22 @@ services:
         HTTP_PROXY: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
         HTTPS_PROXY: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
         NO_PROXY: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
+        USERNAME: ${USER:-vscode}
         http_proxy: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
         https_proxy: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
         no_proxy: ${DEVCONTAINER_NO_PROXY-localhost,127.0.0.1,::1,host.docker.internal}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
-      BUN_INSTALL: /home/ge/.bun
-      BUN_INSTALL_CACHE_DIR: /home/ge/.bun/install/cache
+      BUN_INSTALL: /home/${USER:-vscode}/.bun
+      BUN_INSTALL_CACHE_DIR: /home/${USER:-vscode}/.bun/install/cache
       BUN_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
       NPM_CONFIG_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       NO_PROXY: ""
+      REMOTE_USER: ${USER:-vscode}
+      WORKSPACE_FOLDER: /workspaces/Qy
       http_proxy: ""
       https_proxy: ""
       no_proxy: ""
@@ -33,17 +37,17 @@ services:
       - ..:/workspaces/Qy:cached
       - dev-venv:/workspaces/Qy/.venv
       - dev-node-modules:/workspaces/Qy/node_modules
-      - dev-bun:/home/ge/.bun
-      - zsh-history:/home/ge/.zsh_history
+      - dev-bun:/home/${USER:-vscode}/.bun
+      - zsh-history:/home/${USER:-vscode}/.zsh_history
       - type: bind
         source: ${HOME}/.claude
-        target: /home/ge/.claude
+        target: /home/${USER:-vscode}/.claude
         consistency: cached
         bind:
           create_host_path: false
       - type: bind
         source: ${HOME}/.claude.json
-        target: /home/ge/.claude.json
+        target: /home/${USER:-vscode}/.claude.json
         read_only: true
         consistency: cached
         bind:
