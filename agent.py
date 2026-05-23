@@ -3,13 +3,18 @@
 
 """Models Description."""
 
+
 import asyncio
 import contextlib
+import dataclasses
+import datetime
+import json
 import os
 import pathlib
 from typing import cast
 
 import dotenv
+import httpx
 from claude_agent_sdk import AssistantMessage
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk import ClaudeSDKClient
@@ -27,6 +32,7 @@ from claude_agent_sdk import UserMessage
 from langfuse import get_client
 from loguru import logger
 from openinference.instrumentation.claude_agent_sdk import ClaudeAgentSDKInstrumentor
+from pydantic import BaseModel
 
 dotenv.load_dotenv()
 langfuse = get_client()
@@ -69,7 +75,7 @@ def print_message_content(
         print(it)
 
 
-async def run_task(task_prompt: str):
+async def run_task(task: "Task", pm: "PM", pid: str):
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
         tools={"type": "preset", "preset": "claude_code"},
@@ -79,7 +85,7 @@ async def run_task(task_prompt: str):
         max_budget_usd=None,
     )
     async with ClaudeSDKClient(options=options) as client:
-        await client.query(task_prompt)
+        await client.query(task.prompt)
         async for message in client.receive_response():
             with contextlib.suppress(Exception):
                 message = cast(
@@ -91,37 +97,38 @@ async def run_task(task_prompt: str):
                     | RateLimitEvent,
                     message,
                 )
-                if isinstance(message, SystemMessage):
-                    print("System:", message.data)
-                elif isinstance(message, ResultMessage):
-                    print("Result:", message)
-                elif isinstance(message, StreamEvent):
-                    print("StreamEvent:", message)
-                elif isinstance(message, RateLimitEvent):
-                    print("RateLimitEvent:", message)
-                elif isinstance(message, UserMessage):
-                    pass
-                    # content = message.content
-                    # if isinstance(content, str):
-                    #     print(content)
-                    # else:
-                    #     for it in content:
-                    #         print_message_content(it)
-                elif isinstance(message, AssistantMessage):
-                    for it in message.content:
-                        it = cast(
-                            TextBlock
-                            | ThinkingBlock
-                            | ToolUseBlock
-                            | ToolResultBlock
-                            | ServerToolUseBlock
-                            | ServerToolResultBlock,
-                            it,
-                        )
-                        print_message_content(it)
+                await pm.log(
+                    pid,
+                    task.id,
+                    {"type": message.__class__.__name__, "content": dataclasses.asdict(message)},
+                )
 
-                else:
-                    print(message)
+                if isinstance(message, AssistantMessage):
+                    for block in message.content:
+                        if hasattr(block, "text"):
+                            text = cast(str, block.text)
+                            await pm.log(
+                                pid,
+                                task.id,
+                                {"type": "log", "content": f"Thinking: {text.strip()}"},
+                            )
+
+                            logger.info("Thinking: " + text.strip())  # Claude's reasoning
+                        elif hasattr(block, "name"):
+                            logger.info(f"tool: {block.name}, {getattr(block, 'input', {})}")
+                            await pm.log(
+                                pid,
+                                task.id,
+                                {
+                                    "type": "log",
+                                    "content": f"ToolUse: {block.name}, {getattr(block, 'input', {})}",
+                                },
+                            )
+                elif isinstance(message, ResultMessage):
+                    await pm.log(
+                        pid, task.id, {"type": "log", "content": f"Done: {message.subtype}"}
+                    )
+                    logger.success(f"Done: {message.subtype}")
 
 
 HELLO_FILE = pathlib.Path(__file__).parent / "examples/hello.qy"
@@ -150,41 +157,83 @@ async def clean_task():
             file.unlink()
 
 
-async def main():
-    await clean_task()
-    tasks = [
-        "参考 @examples/hello.qy 实现 component 算子",
-        "read @qy/macro, 将旧的 macro 系统迁移到这里并移除旧系统",
-        *[
-            f"read @{i} 完成该模块的迁移工作, 并添加测试"
-            for i in [
-                "qy/environment.py",
-                "qy/eval_runtime.py",
-                "qy/evaluator.py",
-                "qy/literals.py",
-                "qy/lsp.py",
-                "qy/operators.py, @qy/operator_docs.py @qy/operator_runtime.py @qy/operator_signature.py",
-                "qy/register_vm.py",
-                "qy/runtime_values.py",
-                "qy/semantics.py",
-                "qy/values.py",
-                "qy/virtual_stack.py",
-            ]
-        ],
-        "@qy/import_ 现在不是最新的语义, 最新的内容为 ss/ssc 的折叠和展开",
-        *[f"移除该内容 @{i}, 这是过时的内容" for i in ["qy/llvm_codegen.py", "@qy/reader.py"]],
-    ]
-    for task in tasks:
+class Task(BaseModel):
+    id: int
+    prompt: str
+    has_completed: bool
+    create_at: datetime.datetime
+    update_at: datetime.datetime
+
+
+class PM:
+    def __init__(self):
+        self.client = httpx.AsyncClient(
+            base_url="http://host.docker.internal:5555", follow_redirects=True
+        )
+
+    async def ping(self):
+        return (await self.client.get("/api/ping")).json()
+
+    async def ensure_project(self, name: str):
+        resp = await self.client.post("/api/projects", json={"name": name})
+        return resp.json()
+
+    async def get_tasks(self, project_id: str) -> list[Task]:
+        resp = await self.client.get(f"/api/projects/{project_id}/tasks/pending")
+        return [Task.model_validate(t) for t in resp.json()]
+
+    async def log(
+        self, project_id: str | int, task_id: str | int, content: str | dict, level: str = "info"
+    ):
         try:
-            await run_task(task)
-            try:
-                await clean_task()
-                os.system("make lint-fix")
-                os.system('git add . && git commit -m "测试提交" --no-verify')
-            except Exception as e:
-                logger.error(e)
+            if isinstance(content, dict):
+                content = json.dumps(content)
+            resp = await self.client.post(
+                f"/api/projects/{project_id}/tasks/{task_id}/logs",
+                json={
+                    "content": content,
+                    "level": level,
+                },
+            )
+            return resp.json()
         except Exception as e:
             logger.error(e)
+            return {"error": e}
+
+    async def complete(self, project_id: str | int, task_id: str | int):
+        try:
+            resp = await self.client.post(
+                f"/api/projects/{project_id}/tasks/{task_id}/complete",
+            )
+            return resp.json()
+        except Exception as e:
+            logger.error(e)
+            return {"error": e}
+
+
+async def main():
+    pm_client = PM()
+    print(await pm_client.ping())
+    while True:
+        project = await pm_client.ensure_project("qy")
+        pid = project["id"]
+        tasks = await pm_client.get_tasks(pid)
+        print(tasks)
+        await clean_task()
+        for task in tasks:
+            try:
+                await pm_client.log(pid, task.id, {"type": "log", "content": "read the task"})
+                await run_task(task, pm_client, pid)
+                await pm_client.complete(pid, task.id)
+                try:
+                    await clean_task()
+                    os.system("make lint-fix")
+                    os.system('git add . && git commit -m "测试提交" --no-verify')
+                except Exception as e:
+                    logger.error(e)
+            except Exception as e:
+                logger.error(e)
+        await asyncio.sleep(15)
 
 
 if __name__ == "__main__":

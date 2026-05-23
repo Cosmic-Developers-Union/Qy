@@ -24,7 +24,7 @@ cli = ["typer>=0.20.0"]
 lsp = ["pygls>=2.1.1"]
 
 [tool.setuptools.packages.find]
-include = ["qy*"]
+include = ["qy*", "agent.py"]
 
 [project.urls]
 Homepage = "https://github.com/Cosmic-Developers-Union/Qy"
