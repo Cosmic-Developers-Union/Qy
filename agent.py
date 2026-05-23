@@ -224,7 +224,7 @@ async def main():
             try:
                 await pm_client.log(pid, task.id, {"type": "log", "content": "read the task"})
                 await run_task(task, pm_client, pid)
-                await pm_client.complete(pid, task.id)
+                logger.info(await pm_client.complete(pid, task.id))
                 try:
                     await clean_task()
                     os.system("make lint-fix")
