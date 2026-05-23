@@ -3,7 +3,6 @@
 
 """Models Description."""
 
-
 import asyncio
 import contextlib
 import dataclasses
@@ -202,7 +201,7 @@ class PM:
 
     async def complete(self, project_id: str | int, task_id: str | int):
         try:
-            resp = await self.client.post(
+            resp = await self.client.patch(
                 f"/api/projects/{project_id}/tasks/{task_id}/complete",
             )
             return resp.json()
