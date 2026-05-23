@@ -3,7 +3,7 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "devcontainer",
   "workspaceFolder": "/workspaces/Qy",
-  "postCreateCommand": "mkdir -p \"$BUN_INSTALL_CACHE_DIR\" && if [ -n \"${BUN_REGISTRY:-}\" ]; then bun install --registry \"$BUN_REGISTRY\"; else bun install; fi && uv sync --all-extras",
+  "postCreateCommand": "mkdir -p \"$BUN_INSTALL\" \"$BUN_INSTALL_CACHE_DIR\" && if [ -n \"${BUN_REGISTRY:-}\" ]; then bun install --registry \"$BUN_REGISTRY\"; else bun install; fi && uv sync --all-extras",
   "init": true,
   "remoteUser": "ge",
   "updateRemoteUserUID": true,
@@ -40,7 +40,7 @@
       "settings": {
         "com.intellij:app:HttpConfigurable.use_http_proxy": true,
         "com.intellij:app:HttpConfigurable.proxy_type_is_socks": true,
-        "com.intellij:app:HttpConfigurable.proxy_host": "localhost",
+        "com.intellij:app:HttpConfigurable.proxy_host": "host.docker.internal",
         "com.intellij:app:HttpConfigurable.proxy_port": 1080,
         "com.intellij:app:HttpConfigurable.proxy_exceptions": "127.0.0.1, localhost, 192.168.*",
         "com.intellij:app:BaseRefactoringSettings.safe_delete_when_delete": false,

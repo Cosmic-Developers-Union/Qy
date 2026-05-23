@@ -15,6 +15,7 @@ ARG no_proxy
 COPY --from=uv /uv /uvx /usr/local/bin/
 COPY --from=node /usr/local/ /usr/local/
 COPY --from=bun /usr/local/bin/bun /usr/local/bin/bunx /usr/local/bin/
+COPY .devcontainer/entrypoint.sh /usr/local/bin/devcontainer-entrypoint
 
 # use apt-cacher-ng
 RUN if [ -n "$APT_CACHE_PROXY" ]; then \
@@ -56,10 +57,23 @@ RUN set -eux; \
 RUN usermod -s /usr/bin/zsh $USERNAME
 
 ENV BUN_REGISTRY="$BUN_REGISTRY" \
+    BUN_INSTALL="/home/${USERNAME}/.bun" \
+    BUN_INSTALL_CACHE_DIR="/home/${USERNAME}/.bun/install/cache" \
+    HTTP_PROXY="" \
+    HTTPS_PROXY="" \
     NPM_CONFIG_REGISTRY="$BUN_REGISTRY" \
+    NO_PROXY="" \
+    http_proxy="" \
+    https_proxy="" \
+    no_proxy="" \
     npm_config_registry="$BUN_REGISTRY"
 
-USER $USERNAME
+RUN mkdir -p /home/$USERNAME/.bun/bin /home/$USERNAME/.bun/install/cache /home/$USERNAME/.bun/install/global && \
+    chown -R $USERNAME:$(id -gn $USERNAME) /home/$USERNAME/.bun && \
+    chmod +x /usr/local/bin/devcontainer-entrypoint
+
+USER root
 
 ENV PATH="/home/${USERNAME}/.bun/bin:${PATH}"
+ENTRYPOINT ["/usr/local/bin/devcontainer-entrypoint"]
 WORKDIR /workspace/Qy
