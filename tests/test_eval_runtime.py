@@ -1,8 +1,7 @@
 # coding: utf-8
-"""测试 qy.eval_runtime 模块的迁移后功能。.
+"""测试 evaluate_form_async / evaluate_form_body_async 功能。.
 
-这个模块测试 eval_runtime.py 从旧的 evaluator 模块迁移到
-register_vm 后的正确性。
+这些测试验证 VM 管线中的表达式求值正确性。
 """
 
 from __future__ import annotations
@@ -11,13 +10,13 @@ import pytest
 
 from qy.environment import standard_environment
 from qy.errors import QyArityError
-from qy.eval_runtime import evaluate_async
-from qy.eval_runtime import evaluate_body_async
-from qy.eval_runtime import evaluate_tail_body_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.sem.runtime import UserFunction
+from qy.sem.runtime import _evaluate_tail_body as evaluate_tail_body_async
 from qy.values import QY_NIL
+from qy.vm.instance.machine import evaluate_form_async as evaluate_async
+from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 from qy.vm.instance.values import TailCall
 
 

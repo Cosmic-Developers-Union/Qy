@@ -27,7 +27,6 @@ from qy.errors import QyError
 from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.eval_runtime import evaluate_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.macro import MacroDefinition
@@ -38,6 +37,7 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons
 from qy.values import map_qy_cons
+from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.values import HostObjectRef
 
 _PY_FUNCTION_NAME = "__qy_py__"

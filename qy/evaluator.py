@@ -13,7 +13,7 @@
 #      (_evaluate_body_from, _continue_body_after_resume, _compose_effect_continuation).
 #
 # DO NOT add new functionality here.  New code should use the register VM
-# pipeline directly or go through eval_runtime.py for compatibility.
+# pipeline directly (qy.vm.instance.machine).
 
 from __future__ import annotations
 

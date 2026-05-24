@@ -82,7 +82,7 @@ async def test_user_function_tail_call_loop():
     )
 
     # 手动构造一个会触发尾调用循环的场景
-    # 通过 monkey patch evaluate_tail_body_async 来返回 TailCall
+    # 通过 monkey patch _evaluate_tail_body 来返回 TailCall
     original_eval = None
     call_count = [0]
 
@@ -97,17 +97,17 @@ async def test_user_function_tail_call_loop():
             # 第二次调用返回正常值，结束循环
             return 42
 
-    import qy.eval_runtime
+    import qy.sem.runtime
 
-    original_eval = qy.eval_runtime.evaluate_tail_body_async
-    qy.eval_runtime.evaluate_tail_body_async = mock_eval  # ty: ignore[invalid-assignment]
+    original_eval = qy.sem.runtime._evaluate_tail_body
+    qy.sem.runtime._evaluate_tail_body = mock_eval  # ty: ignore[invalid-assignment]
 
     try:
         result = await func(0)
         assert result == 42
         assert call_count[0] == 2  # 确认循环执行了两次
     finally:
-        qy.eval_runtime.evaluate_tail_body_async = original_eval
+        qy.sem.runtime._evaluate_tail_body = original_eval
 
 
 @pytest.mark.asyncio

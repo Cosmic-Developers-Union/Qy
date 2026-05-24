@@ -16,11 +16,11 @@ from qy.errors import QyCancelledError
 from qy.errors import QyError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.eval_runtime import evaluate_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.sem.runtime import EffectDefinition
 from qy.symbol_utils import ensure_symbol
+from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 
 def _cache_key(expression: object) -> object:

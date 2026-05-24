@@ -21,6 +21,7 @@ from qy.core.operators import PureOperator
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
+from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
@@ -42,6 +43,8 @@ __all__ = [
     "evaluate_bytecode_async",
     "evaluate_bytecode_source",
     "evaluate_bytecode_source_async",
+    "evaluate_form_async",
+    "evaluate_form_body_async",
 ]
 
 _COMPILE_TIME_MACRO = object()
@@ -762,6 +765,68 @@ async def call_function_value(
     vm = RegisterVirtualMachine(function_value.program, env)
     result = await vm._run_function(function_value, args)
     return result.value
+
+
+async def evaluate_form_async(expression: object, env: Environment) -> object:
+    """Evaluate a single expression through the register VM pipeline.
+
+    For Symbol resolution, directly uses env.resolve. Otherwise routes through:
+    macroexpand -> lower -> compile -> RegisterVM.
+    """
+    from typing import cast
+
+    from qy.backend.vm.compiler import compile_bytecode
+    from qy.frontend.reader import Form
+    from qy.ir import ProgramIR
+    from qy.macro import macroexpand_async
+    from qy.passes.lower_hir import lower
+
+    if isinstance(expression, Symbol):
+        return env.resolve(expression)
+
+    expansion = await macroexpand_async([cast(Form, expression)], env)
+    program_ir = lower(expansion.forms, env)
+    bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
+    vm = RegisterVirtualMachine(bytecode, env)
+    results = await vm.evaluate_program()
+    return None if not results else results[-1]
+
+
+async def evaluate_form_body_async(body: tuple[object, ...], env: Environment) -> object:
+    """Evaluate a sequence of expressions, returning the last result.
+
+    Supports effect handling by composing continuations across sequential
+    expressions.
+    """
+    from qy.continuation import QyContinuation
+
+    if not body:
+        raise QyArityError("body must contain at least one expression")
+
+    async def _body_from(index: int) -> object:
+        result = None
+        for current in range(index, len(body)):
+            try:
+                result = await evaluate_form_async(body[current], env)
+            except QyEffectSignal as e:
+                _compose(e, current + 1)
+                raise
+        return result
+
+    def _compose(signal: QyEffectSignal, next_index: int) -> None:
+        previous = signal.continuation
+        if not isinstance(previous, QyContinuation):
+            return
+
+        async def resume(value: object) -> object:
+            previous_result = await previous.resume(value)
+            if next_index >= len(body):
+                return previous_result
+            return await _body_from(next_index)
+
+        signal.continuation = QyContinuation(signal.effect, previous.resumable, resume)
+
+    return await _body_from(0)
 
 
 def _raise_for_diagnostics(program: BytecodeProgram) -> None:

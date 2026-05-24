@@ -6,9 +6,9 @@ from qy.core.operators import EffectOperator
 from qy.display import format_value
 from qy.environment import Environment
 from qy.errors import EvaluationError
-from qy.eval_runtime import evaluate_async
 from qy.frontend.reader import Symbol
 from qy.std.module import StandardModule
+from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 
 def module() -> StandardModule:

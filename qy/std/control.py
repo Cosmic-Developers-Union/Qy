@@ -22,14 +22,14 @@ from qy.core.syntax import list_to_chain
 from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.eval_runtime import evaluate_async
-from qy.eval_runtime import evaluate_body_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
 from qy.values import QY_T
+from qy.vm.instance.machine import evaluate_form_async as evaluate_async
+from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 
 
 def _to_list(form: object) -> list[object]:
