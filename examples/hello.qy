@@ -36,6 +36,41 @@
 (assert (= (len (cdr '(alpha beta gamma))) 2) 'quote-cdr-keeps-chain-tail)
 (assert (eq (car (cons 'head '(tail))) 'head) 'cons-builds-chain)
 
+; atom 区分 atom 和非空 cons chain。
+; symbol 是 atom, 空 chain/nil 是 atom, 非空 cons chain 不是 atom。
+; 这个语义只针对 cons chain 的结构判断, 不把高级容器 list 当作 cons chain。
+(assert (atom 'alpha) 'symbol-is-atom)
+(assert (atom '()) 'empty-chain-is-atom)
+(assert (eq (atom '(alpha)) false) 'non-empty-chain-is-not-atom)
+
+; dotted pair 是 cons chain 的经典形态。
+; '((a . 1) (b . 2)) 不是 array list, 而是由 cons cell 组成的 association chain。
+; 每个 entry 本身也是 pair: car 是 key symbol, cdr 是 value symbol。
+(assert (eq (car (car '((a . 1) (b . 2)))) 'a) 'alist-first-key)
+(assert (eq (cdr (car '((a . 1) (b . 2)))) '1) 'alist-first-value)
+(assert (eq (car (car (cdr '((a . 1) (b . 2))))) 'b) 'alist-second-key)
+
+; list 是高级数据容器, 语义上是底层 array, 不等同于 cons chain。
+; (list '(1 2 3)) 把 quoted cons chain 的元素收集到 array/list 容器中。
+; 因此它可以用 len/get 按 array 方式观察, 同时对 atom 来说它不是 cons chain。
+(assert (= (len (list '(1 2 3))) 3) 'list-converts-chain-to-array)
+(assert (eq (get (list '(1 2 3)) 1) '2) 'list-array-indexes-second-item)
+(assert (atom (list '(1 2 3))) 'list-array-is-not-cons-chain)
+
+; map 是高级 key/value 容器示例。
+; 这里用宏把 (map :a 1 :b 2) 展开成底层容器构造, 并显式 quote key,
+; 让 :a 和 :b 保持为 Qy symbol key, 而不是被当成变量 lookup。
+; 这个示例只覆盖两个 key/value pair, 用来展示目标语言形态。
+(macro map (key-a value-a key-b value-b)
+  (cons 'dict
+    (cons
+      (cons 'quote (cons key-a '()))
+      (cons value-a
+        (cons
+          (cons 'quote (cons key-b '()))
+          (cons value-b '()))))))
+(assert (= (get (map :a 1 :b 2) ':b) 2) 'map-container-uses-symbol-keys)
+
 ; let 构造新的局部 symbol-space。
 ; 这里把 + shadow 成一个只返回 left 的函数, 证明当前 symbol-space 的 binding
 ; 会优先于外层 standard profile 中的同名 +。
@@ -45,6 +80,33 @@
       (+ 42 0))
     42)
   'let-can-shadow-outer-plus)
+
+; this 是当前 symbol-space 的显式入口。
+; 它的求值结果不是某个全局环境, 而是当前求值点所在的 ss。
+; 后续 slot/bind/define 都发生在这个 ss 上。
+(assert (this) 'this-returns-current-symbol-space)
+
+; slot 是无参算子, 每次调用都会在当前 ss 中申请一个新的槽位。
+; 这个槽位是 binding 的承载位置, 本质上可以理解为一个 pair 结构:
+; 一侧关联 symbol, 另一侧关联 value。
+; slot 本身不决定名字和值, 它只提供“可以被绑定的空间”。
+(define explicit-slot (slot))
+
+; bind 把 symbol 与 value 绑定到指定 slot。
+; (bind 'slot-bound 10 explicit-slot) 的意思是:
+;   1. symbol slot-bound 指向 explicit-slot
+;   2. value 10 也指向 explicit-slot
+;   3. 后续求值 slot-bound 时, 通过这个 slot 读到 10
+; 这里的第一个参数必须是 symbol datum, 因此使用 quote 写成 'slot-bound。
+(bind 'slot-bound 10 explicit-slot)
+(assert (= slot-bound 10) 'bind-attaches-symbol-and-value-to-slot)
+
+; define 是 bind + slot 的标准语法糖。
+; (define 'defined-through-slot 42) 等价于:
+;   (bind 'defined-through-slot 42 (slot))
+; 也就是说 define 不应该被理解成“修改变量表”, 而是创建 slot 并完成一次 binding。
+(define 'defined-through-slot 42)
+(assert (= defined-through-slot 42) 'define-is-bind-slot-sugar)
 
 ; apply 展示函数值和参数 chain 的动态调用。
 ; + 作为函数值传入, '(20 22) 作为参数 chain 展开后完成调用。
@@ -111,6 +173,12 @@
 ; '(+ 20 22) 首先只是数据, eval 之后才按当前 symbol-space-chain 查找 + 并执行。
 (assert (= (eval '(+ 20 22)) 42) 'quoted-form-can-be-evaluated)
 
+; reify 是 eval 的反向边界: runtime value 可以在目标上下文中重新变成 syntax datum。
+; 这里把 runtime number 42 reify 成 symbol 42, 再用 eq 按 symbol 值比较。
+; 这强调 Qy 的 read/eval/reify 是三段关系, 不是 Python 对象 repr 的直接暴露。
+(assert (eq (reify 42) '42) 'runtime-number-can-be-reified-to-symbol)
+(assert (eq (car (reify '(alpha beta))) 'alpha) 'runtime-chain-can-be-reified)
+
 ; ordering / join: pipeline 固定顺序, parallel/all/race 表达组合控制。
 ; pipeline 返回最后一个表达式, parallel/all 返回多个分支结果, race 返回最先恢复的分支。
 (assert (= (pipeline 1 2 3) 3) 'pipeline-returns-last-value)
@@ -157,6 +225,8 @@
 ; with-temp 在宏展开中构造一个 let, 但不会捕获调用点已有的 tmp。
 ; add-one 使用普通 '+, 因此保持 definition-site 的 +。
 ; call-site-plus 使用 capture '+, 因此显式选择调用点 shadow 后的 +。
+; gensym 可以在宏展开期生成一个不会和调用点冲突的新 symbol。
+; bind-once 先生成私有 binding 名, 再在展开结果中同时用于 let binding 和引用位置。
 (macro with-temp (expr)
   (cons 'let
     (cons
@@ -166,6 +236,11 @@
   (cons '+ (cons value (cons 1 '()))))
 (macro call-site-plus (value)
   (cons (capture '+) (cons value (cons 1 '()))))
+(macro bind-once (value)
+  (let ((name (gensym)))
+    `(let ((,name ,value))
+       ,name)))
 (assert (= (let ((tmp 99)) (with-temp tmp)) 99) 'macro-hygiene-keeps-call-site-tmp)
 (assert (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42) 'macro-keeps-definition-site-plus)
 (assert (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0) 'macro-capture-uses-call-site-plus)
+(assert (= (bind-once (+ 20 22)) 42) 'gensym-creates-private-macro-binding)
