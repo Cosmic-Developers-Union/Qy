@@ -19,56 +19,144 @@
       (+ (/ 1 0) (/ 1 0)))))
 (main)
 (defeffect assert-failed)
-(defun assert (condition)
+
+; assert 是本文件内部使用的最小断言算子。
+; condition 为真时直接返回 condition, 让断言表达式本身保持可组合。
+; condition 为 false/nil 时不借用除零等宿主错误, 而是 perform 一个明确的
+; assert-failed effect, 并把 message 作为失败原因传给 handler 或运行时。
+(defun assert (condition message)
   (cond
     (condition condition)
-    (true (perform assert-failed 'assertion-failed))))
+    (true (perform assert-failed message))))
 
-; quote 返回 syntax datum, chain 算子直接操作它
-(assert (eq (car '(alpha beta gamma)) 'alpha))
-(assert (= (len (cdr '(alpha beta gamma))) 2))
-(assert (eq (car (cons 'head '(tail))) 'head))
+; quote 返回 syntax datum, 不触发 runtime lookup。
+; car/cdr/cons 直接操作 chain, 因此这里展示的是 Qy 的 syntax datum / chain
+; 数据模型, 而不是 Python list。
+(assert (eq (car '(alpha beta gamma)) 'alpha) 'quote-car-keeps-symbol)
+(assert (= (len (cdr '(alpha beta gamma))) 2) 'quote-cdr-keeps-chain-tail)
+(assert (eq (car (cons 'head '(tail))) 'head) 'cons-builds-chain)
 
-; let 构造新的 symbol-space, 可以 shadow 外层 binding
+; let 构造新的局部 symbol-space。
+; 这里把 + shadow 成一个只返回 left 的函数, 证明当前 symbol-space 的 binding
+; 会优先于外层 standard profile 中的同名 +。
 (assert
   (=
     (let ((+ (lambda (left right) left)))
       (+ 42 0))
-    42))
+    42)
+  'let-can-shadow-outer-plus)
 
-; apply 展示函数值和参数 chain 的动态调用
-(assert (= (apply + '(20 22)) 42))
+; apply 展示函数值和参数 chain 的动态调用。
+; + 作为函数值传入, '(20 22) 作为参数 chain 展开后完成调用。
+(assert (= (apply + '(20 22)) 42) 'apply-calls-function-with-chain-args)
 
-; cond + tail call 展示控制流与函数调用路径
+; cond + tail call 展示控制流与函数调用路径。
+; sum-to 的递归调用位于 tail position, 用来覆盖 VM 的函数调用与尾调用路径。
 (defun sum-to (n acc)
   (cond
     ((= n 0) acc)
     (true (sum-to (- n 1) (+ acc n)))))
-(assert (= (sum-to 10 0) 55))
+(assert (= (sum-to 10 0) 55) 'tail-recursive-sum)
 
-; 用户定义 effect + perform + handle + resume
+; 用户定义 effect + perform + handle + resume。
+; perform ask 41 会捕获当前位置的 continuation。
+; handler 收到 value 和 continuation k 后, 用 resume 把 42 注入回 perform 点。
 (defeffect ask)
 (assert
   (=
     (handle
       (on ask (value) k (resume k (+ value 1)))
       (perform ask 41))
-    42))
+    42)
+  'effect-resume-produces-value)
 
-; ordering / join: pipeline 固定顺序, parallel/all/race 表达组合控制
-(assert (= (pipeline 1 2 3) 3))
-(assert (= (len (parallel 1 2 3)) 3))
-(assert (= (len (all 1 2 3)) 3))
-(assert (race true true))
+; 同一个 continuation 可以被多次 resume, 这是 multi-shot continuation 的核心展示。
+; perform choose 20 捕获的 continuation 是 (+ <perform-result> 1)。
+; handler 第一次 resume k 20 得到 21, 第二次 resume k 21 得到 22。
+; handler 把两次恢复结果相加, 因此最终结果是 43。
+(defeffect choose)
+(assert
+  (=
+    (handle
+      (on choose (value) k
+        (+ (resume k value) (resume k (+ value 1))))
+      (+ (perform choose 20) 1))
+    43)
+  'continuation-can-be-resumed-more-than-once)
 
-; module 建立 symbol-space, exports/from 控制 fold 到当前空间
+; assert-failed 本身也是普通 effect, 因此它可以被 handle 捕获。
+; 这个示例故意触发一次失败断言, handler 不 resume, 而是直接返回 message。
+; 外层 assert 再检查这个 message, 证明断言失败不是隐式崩溃, 而是显式 effect。
+(assert
+  (eq
+    (handle
+      (on assert-failed (message) k message)
+      (assert false 'handled-assert-failure))
+    'handled-assert-failure)
+  'assert-failed-can-be-handled)
+
+; failure-like effect 可以选择不恢复 continuation。
+; stop-here 的 handler 忽略 k, 直接返回 value, 这展示了 effect handler 可以把
+; 当前控制流截断为一个显式结果。
+(defeffect stop-here)
+(assert
+  (=
+    (handle
+      (on stop-here (value) k value)
+      (perform stop-here 42))
+    42)
+  'effect-handler-may-not-resume)
+
+; quote / eval 闭环展示 syntax datum 可以重新进入求值。
+; '(+ 20 22) 首先只是数据, eval 之后才按当前 symbol-space-chain 查找 + 并执行。
+(assert (= (eval '(+ 20 22)) 42) 'quoted-form-can-be-evaluated)
+
+; ordering / join: pipeline 固定顺序, parallel/all/race 表达组合控制。
+; pipeline 返回最后一个表达式, parallel/all 返回多个分支结果, race 返回最先恢复的分支。
+(assert (= (pipeline 1 2 3) 3) 'pipeline-returns-last-value)
+(assert (= (len (parallel 1 2 3)) 3) 'parallel-returns-branch-results)
+(assert (= (len (all 1 2 3)) 3) 'all-joins-branch-results)
+(assert (race true true) 'race-returns-one-resumed-result)
+
+; effect 与 all/race 可以组合。
+; join-token 的 handler 会 resume continuation, 因此 all 能等待每个分支恢复后的值。
+; race 同样运行在 handler 的动态范围内, 第一个恢复的分支决定 race 的结果。
+(defeffect join-token)
+(assert
+  (=
+    (handle
+      (on join-token (value) k (resume k (+ value 1)))
+      (len (all (perform join-token 1) (perform join-token 2))))
+    2)
+  'all-can-join-handled-effects)
+(assert
+  (handle
+    (on join-token (value) k (resume k true))
+    (race (perform join-token 1) (perform join-token 2)))
+  'race-can-return-handled-effect)
+
+; module 建立 symbol-space, exports/from 控制 fold 到当前空间。
+; triple 被 exports 暴露后, from 才能把它 fold 到当前 symbol-space。
 (module hello.math
   (defun triple (value) (* value 3))
   (exports triple))
 (from hello.math import triple)
-(assert (= (triple 14) 42))
+(assert (= (triple 14) 42) 'module-export-imports-triple)
 
-; macro hygiene 默认保护 call-site binding, capture 用于显式捕获
+; exports 是选择性视图。
+; hidden-step 留在模块内部, public-answer 才被 exports 暴露。
+; 当前文件只 import public-answer, 因此外部只依赖模块承诺导出的 binding。
+(module hello.exports
+  (defun hidden-step (value) (+ value 1))
+  (defun public-answer (value) (* (hidden-step value) 2))
+  (exports public-answer))
+(from hello.exports import public-answer)
+(assert (= (public-answer 20) 42) 'module-exports-hide-internal-helper)
+
+; macro hygiene 默认保护 call-site binding, capture 用于显式捕获。
+; with-temp 在宏展开中构造一个 let, 但不会捕获调用点已有的 tmp。
+; add-one 使用普通 '+, 因此保持 definition-site 的 +。
+; call-site-plus 使用 capture '+, 因此显式选择调用点 shadow 后的 +。
 (macro with-temp (expr)
   (cons 'let
     (cons
@@ -78,6 +166,6 @@
   (cons '+ (cons value (cons 1 '()))))
 (macro call-site-plus (value)
   (cons (capture '+) (cons value (cons 1 '()))))
-(assert (= (let ((tmp 99)) (with-temp tmp)) 99))
-(assert (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42))
-(assert (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0))
+(assert (= (let ((tmp 99)) (with-temp tmp)) 99) 'macro-hygiene-keeps-call-site-tmp)
+(assert (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42) 'macro-keeps-definition-site-plus)
+(assert (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0) 'macro-capture-uses-call-site-plus)
