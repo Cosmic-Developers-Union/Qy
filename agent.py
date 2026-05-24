@@ -13,6 +13,7 @@ import pathlib
 from typing import Any
 from typing import cast
 
+import click
 import dotenv
 import httpx
 from claude_agent_sdk import AssistantMessage
@@ -108,6 +109,7 @@ async def run_task(task: "Task", pm: "PM", pid: str):
         max_turns=None,
         max_budget_usd=None,
         can_use_tool=can_use_tool,
+        resume=task.session,
     )
     async with ClaudeSDKClient(options=options) as client:
         await client.query(task.prompt)
@@ -185,6 +187,7 @@ async def clean_task():
 class Task(BaseModel):
     id: int
     prompt: str
+    session: str | None
     has_completed: bool
     create_at: datetime.datetime
     update_at: datetime.datetime
@@ -236,16 +239,20 @@ class PM:
             return {"error": e}
 
 
-async def main():
+@click.command()
+@click.option("--dry-run", is_flag=True, default=False)
+async def main(dry_run: bool = False):
     pm_client = PM()
     print(await pm_client.ping())
     while True:
         project = await pm_client.ensure_project("qy")
         pid = project["id"]
         tasks = await pm_client.get_tasks(pid)
-        print(tasks)
         await clean_task()
         for task in tasks:
+            logger.info(task)
+            if dry_run:
+                continue
             try:
                 await pm_client.log(pid, task.id, {"type": "log", "content": "read the task"})
                 await run_task(task, pm_client, pid)
