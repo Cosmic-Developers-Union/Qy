@@ -14,7 +14,6 @@ from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Register
 from qy.backend.vm.compiler import compile_bytecode
-from qy.continuation import QyContinuation
 from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
@@ -33,6 +32,7 @@ from qy.passes.lower_hir import lower
 from qy.sem.runtime import EffectDefinition
 from qy.values import QY_NIL
 from qy.vm.bytecode import BytecodeFunctionValue
+from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame
 from qy.vm.instance.state import VirtualStack
 
@@ -816,7 +816,7 @@ async def evaluate_form_body_async(body: tuple[object, ...], env: Environment) -
     Supports effect handling by composing continuations across sequential
     expressions.
     """
-    from qy.continuation import QyContinuation
+    from qy.vm.instance.frame import QyContinuation
 
     if not body:
         raise QyArityError("body must contain at least one expression")

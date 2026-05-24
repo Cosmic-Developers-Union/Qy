@@ -21,7 +21,6 @@ from qy.backend.vm import compile_bytecode
 from qy.backend.vm import compile_lir_bytecode
 from qy.backend.vm import compile_mir_bytecode
 from qy.backend.vm import dump_bytecode
-from qy.continuation import QyContinuation
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
 from qy.core.operator_signature import OperatorSignature
@@ -127,6 +126,7 @@ from qy.values import QyEmptyList
 from qy.values import QyNil
 from qy.values import QyT
 from qy.vm.bytecode import BytecodeFunctionValue
+from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import RegisterVirtualMachine
 from qy.vm.instance.machine import evaluate_bytecode
 from qy.vm.instance.machine import evaluate_bytecode_async

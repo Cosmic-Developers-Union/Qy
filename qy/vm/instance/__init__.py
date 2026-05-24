@@ -16,6 +16,7 @@
 
 from qy.vm.instance.frame import CapturedFrame
 from qy.vm.instance.frame import FunctionFrame
+from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame
 from qy.vm.instance.host import HostAdapter
 from qy.vm.instance.host import HostCallable
@@ -39,6 +40,7 @@ __all__ = [
     "HostAdapter",
     "HostCallable",
     "HostObjectRef",
+    "QyContinuation",
     "RegisterVirtualMachine",
     "ScheduledTask",
     "TailCall",

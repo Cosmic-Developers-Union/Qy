@@ -1,12 +1,12 @@
 # coding: utf-8
-"""测试 qy.continuation 模块。."""
+"""测试 QyContinuation。."""
 
 from __future__ import annotations
 
 import pytest
 
-from qy.continuation import QyContinuation
-from qy.continuation import _await_if_needed
+from qy.vm.instance.frame import QyContinuation
+from qy.vm.instance.frame import _await_if_needed
 
 
 @pytest.mark.asyncio

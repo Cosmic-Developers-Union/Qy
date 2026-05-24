@@ -246,8 +246,8 @@ async def _evaluate_values(
     env: Environment,
     then: object,
 ) -> object:
-    from qy.continuation import _await_if_needed
     from qy.errors import QyEffectSignal
+    from qy.vm.instance.frame import _await_if_needed
     from qy.vm.instance.machine import evaluate_form_async
 
     values: list[object] = []
@@ -268,9 +268,9 @@ def _compose_values(
     env: Environment,
     then: object,
 ) -> None:
-    from qy.continuation import QyContinuation
-    from qy.continuation import _await_if_needed
     from qy.errors import QyEffectSignal
+    from qy.vm.instance.frame import QyContinuation
+    from qy.vm.instance.frame import _await_if_needed
     from qy.vm.instance.machine import evaluate_form_async
 
     if not isinstance(signal, QyEffectSignal):

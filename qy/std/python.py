@@ -13,7 +13,6 @@ from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import cast
 
-from qy.continuation import QyContinuation
 from qy.core.operators import ControlOperator
 from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
@@ -37,6 +36,7 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyCons
 from qy.values import map_qy_cons
+from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.values import HostObjectRef
 

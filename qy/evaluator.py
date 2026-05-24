@@ -22,9 +22,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from qy.continuation import QyContinuation
-from qy.continuation import _await_if_needed
-
 # Re-export sub-module symbols for backward compatibility.
 from qy.core.operators import ArgumentEvaluator  # noqa: F401
 from qy.core.operators import ControlOperator
@@ -56,6 +53,8 @@ from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.values import QyChain
 from qy.values import QyCons
+from qy.vm.instance.frame import QyContinuation
+from qy.vm.instance.frame import _await_if_needed
 from qy.vm.instance.values import HostObjectRef
 
 __all__ = [
