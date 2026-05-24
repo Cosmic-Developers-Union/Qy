@@ -18,3 +18,66 @@
       (on divide-by-zero () k (resume k 1))
       (+ (/ 1 0) (/ 1 0)))))
 (main)
+(defeffect assert-failed)
+(defun assert (condition)
+  (cond
+    (condition condition)
+    (true (perform assert-failed 'assertion-failed))))
+
+; quote 返回 syntax datum, chain 算子直接操作它
+(assert (eq (car '(alpha beta gamma)) 'alpha))
+(assert (= (len (cdr '(alpha beta gamma))) 2))
+(assert (eq (car (cons 'head '(tail))) 'head))
+
+; let 构造新的 symbol-space, 可以 shadow 外层 binding
+(assert
+  (=
+    (let ((+ (lambda (left right) left)))
+      (+ 42 0))
+    42))
+
+; apply 展示函数值和参数 chain 的动态调用
+(assert (= (apply + '(20 22)) 42))
+
+; cond + tail call 展示控制流与函数调用路径
+(defun sum-to (n acc)
+  (cond
+    ((= n 0) acc)
+    (true (sum-to (- n 1) (+ acc n)))))
+(assert (= (sum-to 10 0) 55))
+
+; 用户定义 effect + perform + handle + resume
+(defeffect ask)
+(assert
+  (=
+    (handle
+      (on ask (value) k (resume k (+ value 1)))
+      (perform ask 41))
+    42))
+
+; ordering / join: pipeline 固定顺序, parallel/all/race 表达组合控制
+(assert (= (pipeline 1 2 3) 3))
+(assert (= (len (parallel 1 2 3)) 3))
+(assert (= (len (all 1 2 3)) 3))
+(assert (race true true))
+
+; module 建立 symbol-space, exports/from 控制 fold 到当前空间
+(module hello.math
+  (defun triple (value) (* value 3))
+  (exports triple))
+(from hello.math import triple)
+(assert (= (triple 14) 42))
+
+; macro hygiene 默认保护 call-site binding, capture 用于显式捕获
+(macro with-temp (expr)
+  (cons 'let
+    (cons
+      (cons (cons 'tmp (cons 1 '())) '())
+      (cons expr '()))))
+(macro add-one (value)
+  (cons '+ (cons value (cons 1 '()))))
+(macro call-site-plus (value)
+  (cons (capture '+) (cons value (cons 1 '()))))
+(assert (= (let ((tmp 99)) (with-temp tmp)) 99))
+(assert (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42))
+(assert (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0))
