@@ -171,8 +171,9 @@ def _scope_from_environment(env: Environment, symbol_space: SymbolSpace) -> Scop
         scope = scope.define(
             Binding(
                 symbol,
-                "global",
+                "builtin",
                 value_type(value),
+                symbol_space,
                 operator_kind_for_value(value),
                 value_uses_eager_arguments(value),
                 value,
@@ -540,12 +541,12 @@ def _lower_macro(
     macro_scope = _define_parameters(scope.child(f"macro:{name.name}"), param_symbols, context)
     macro_scope = _define_local(
         macro_scope,
-        Binding(Symbol("gensym"), "local", "operator", "pure"),
+        Binding(Symbol("gensym"), "builtin", "operator", macro_scope.symbol_space, "pure"),
         context,
     )
     macro_scope = _define_local(
         macro_scope,
-        Binding(Symbol("capture"), "local", "operator", "pure"),
+        Binding(Symbol("capture"), "builtin", "operator", macro_scope.symbol_space, "pure"),
         context,
     )
     lowered_body = _lower_body(tuple(body), macro_scope, context)
@@ -610,7 +611,7 @@ def _lower_let(
         bindings.append(LetBinding(name, value))
         local_scope = _define_local(
             local_scope,
-            Binding(name, "local", _type_of(value)),
+            Binding(name, "let-binding", _type_of(value), local_scope.symbol_space),
             context,
         )
 
@@ -692,7 +693,7 @@ def _lower_defun(
     param_symbols = _parameter_symbols(params, "defun", context)
     function_scope = _define_local(
         scope.child(f"defun:{name.name}"),
-        Binding(name, "local", "function"),
+        Binding(name, "defun", "function", scope.symbol_space),
         context,
     )
     function_scope = _define_parameters(function_scope, param_symbols, context)
@@ -911,7 +912,9 @@ def _auto_declare_on_effects(
     if len(items) >= 3 and isinstance(items[0], Symbol) and items[0].name == "on":
         effect_name = _ensure_symbol(items[1], "handle effect name", context)
         if not _effect_is_declared(effect_name, scope, context):
-            scope = _define_local(scope, Binding(effect_name, "local", "effect"), context)
+            scope = _define_local(
+                scope, Binding(effect_name, "defeffect", "effect", scope.symbol_space), context
+            )
     return scope
 
 
@@ -990,7 +993,7 @@ def _scope_after_form(
     if operator == Symbol("defun") and isinstance(name, Symbol):
         # defun 已经被前向声明，允许覆盖
         return _define_local(
-            scope, Binding(name, "local", "function"), context, allow_redefinition=True
+            scope, Binding(name, "defun", "function", scope.symbol_space), context, allow_redefinition=True
         )
     if operator == Symbol("define") and isinstance(name, Symbol):
         # define 的 binding 类型应该是其 value 的类型，而不是 DefineExpr 本身的类型
@@ -998,19 +1001,19 @@ def _scope_after_form(
         # 如果是 define + lambda 且已前向声明，允许覆盖
         allow_redef = scope.has_local(name) and inferred == "function"
         return _define_local(
-            scope, Binding(name, "local", inferred), context, allow_redefinition=allow_redef
+            scope, Binding(name, "define", inferred, scope.symbol_space), context, allow_redefinition=allow_redef
         )
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
-        return _define_local(scope, Binding(name, "local", "effect"), context)
+        return _define_local(scope, Binding(name, "defeffect", "effect", scope.symbol_space), context)
     if operator == Symbol("macro") and isinstance(name, Symbol):
         return _define_local(
             scope,
-            Binding(name, "local", "operator", "meta", eager_arguments=False),
+            Binding(name, "macro-param", "operator", scope.symbol_space, "meta", eager_arguments=False),
             context,
         )
     if operator == Symbol("module") and isinstance(name, Symbol):
         remember_source_module(form, context.env)
-        return _define_local(scope, Binding(name, "local", "any"), context)
+        return _define_local(scope, Binding(name, "module", "any", scope.symbol_space), context)
     if operator != Symbol("from"):
         return scope
 
@@ -1032,8 +1035,9 @@ def _scope_after_form(
             next_scope,
             Binding(
                 spec.alias,
-                "local",
+                "import",
                 value_type(value),
+                next_scope.symbol_space,
                 operator_kind_for_value(value),
                 value_uses_eager_arguments(value),
                 value,
@@ -1059,14 +1063,18 @@ def _predeclare_callable_definitions(
             name = items[1]
             if isinstance(name, Symbol):
                 # 直接 define，不通过 _define_local（避免重复检查）
-                next_scope = next_scope.define(Binding(name, "local", "function"))
+                next_scope = next_scope.define(
+                    Binding(name, "defun", "function", next_scope.symbol_space)
+                )
         # 处理 (define name (lambda ...))
         elif items[0] == Symbol("define") and len(items) >= 3:
             name = items[1]
             value_form = items[2]
             if isinstance(name, Symbol) and _is_lambda_form(value_form):
                 # 直接 define，不通过 _define_local（避免重复检查）
-                next_scope = next_scope.define(Binding(name, "local", "function"))
+                next_scope = next_scope.define(
+                    Binding(name, "define", "function", next_scope.symbol_space)
+                )
     return next_scope
 
 
@@ -1091,13 +1099,28 @@ def _define_local(
         context.diagnostic(
             f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
         )
+    # Ensure binding has the current scope's symbol_space as owner
+    if binding.owner_space is None and scope.symbol_space is not None:
+        binding = Binding(
+            binding.symbol,
+            binding.source,
+            binding.type_name,
+            scope.symbol_space,
+            binding.operator_kind,
+            binding.eager_arguments,
+            binding.value,
+        )
     return scope.define(binding)
 
 
 def _define_parameters(scope: Scope, params: tuple[Symbol, ...], context: LoweringContext) -> Scope:
     next_scope = scope
     for param in params:
-        next_scope = _define_local(next_scope, Binding(param, "local", "any"), context)
+        next_scope = _define_local(
+            next_scope,
+            Binding(param, "lambda-param", "any", scope.symbol_space),
+            context,
+        )
     return next_scope
 
 

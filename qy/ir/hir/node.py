@@ -55,7 +55,7 @@ __all__ = [
     "UnresolvedSymbolExpr",
 ]
 
-BindingSource = Literal["local", "global", "default-literal", "unresolved"]
+BindingSource = Literal["define", "defun", "lambda-param", "let-binding", "handler-param", "macro-param", "module", "import", "builtin", "default-literal", "unresolved"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,11 +64,27 @@ class SymbolSpace:
 
     Forms a chain via parent pointer, modeling the symbol-space-chain
     described in ir-design.md.
+
+    Each symbol-space represents a distinct scope created by:
+    - module: top-level module scope
+    - lambda: function scope
+    - let: local binding scope
+    - handle: effect handler scope
+    - macro: macro expansion scope
     """
 
     name: str
     bindings: dict[Symbol, int] = field(default_factory=dict)
     parent: SymbolSpace | None = None
+
+    def lookup_chain(self) -> list[SymbolSpace]:
+        """Return the symbol-space-chain from this space to root."""
+        chain = []
+        current: SymbolSpace | None = self
+        while current is not None:
+            chain.append(current)
+            current = current.parent
+        return chain
 
     def child(self, name: str) -> SymbolSpace:
         return SymbolSpace(name=name, parent=self)
@@ -97,14 +113,16 @@ class BindingRef:
 
 @dataclass(frozen=True, slots=True)
 class Binding:
-    """Legacy binding structure, kept for backward compatibility.
+    """Binding structure with symbol-space reference.
 
-    Will be gradually replaced by BindingRef during Phase 2 refactoring.
+    Tracks where a symbol is bound and in which symbol-space it was defined.
+    The symbol-space-chain (ssc) is used for lookup, not a simple local/global flag.
     """
 
     symbol: Symbol
     source: BindingSource
     type_name: TypeName
+    owner_space: SymbolSpace | None = None
     operator_kind: OperatorKind | None = None
     eager_arguments: bool = True
     value: object | None = field(default=None, compare=False, repr=False)

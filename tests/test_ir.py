@@ -39,7 +39,7 @@ def test_lexical_binding_wins_over_default_literal_symbol():
 
     assert isinstance(rebound_one, SymbolRefExpr)
     assert rebound_one.symbol.name == "1"
-    assert rebound_one.binding.source == "local"
+    assert rebound_one.binding.source == "let-binding"
     assert rebound_one.type_name == "number"
 
     assert isinstance(default_two, LiteralExpr)

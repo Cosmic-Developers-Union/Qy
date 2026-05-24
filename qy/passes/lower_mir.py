@@ -1,6 +1,18 @@
 # coding: utf-8
 # QY_DELETE_AFTER_MIGRATION: target=qy/passes/closure + effect + control + mir
 
+"""MIR lowering pass.
+
+Lowers HIR to MIR (Mid-level IR), which is a register-based SSA form with
+explicit control flow.
+
+Symbol Resolution:
+- HIR tracks symbol bindings with their owner symbol-space (ss)
+- MIR uses LOAD_ENV for symbol lookup, which searches the symbol-space-chain (ssc)
+- The VM runtime maintains the ssc and performs lookup at runtime
+- No distinction between "local" and "global" - all symbols are resolved via ssc
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
