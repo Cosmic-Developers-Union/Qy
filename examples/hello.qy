@@ -120,6 +120,14 @@
     (true (sum-to (- n 1) (+ acc n)))))
 (assert (= (sum-to 10 0) 55) 'tail-recursive-sum)
 
+; cond 的核心条件语义是 nil/false 为假, 其它 runtime value 为真。
+; 这里分别展示 false 分支跳过、number 为真、symbol datum 为真、非空 chain 为真。
+; 复杂真值判断可以由 truthy 这类 profile 算子扩展, 但不会改变 cond 的核心规则。
+(assert (= (cond (false 0) (true 42)) 42) 'cond-skips-false)
+(assert (= (cond (0 42) (true 0)) 42) 'cond-treats-number-as-true)
+(assert (= (cond ('symbol-value 42) (true 0)) 42) 'cond-treats-symbol-as-true)
+(assert (= (cond ('(x) 42) (true 0)) 42) 'cond-treats-non-empty-chain-as-true)
+
 ; 用户定义 effect + perform + handle + resume。
 ; perform ask 41 会捕获当前位置的 continuation。
 ; handler 收到 value 和 continuation k 后, 用 resume 把 42 注入回 perform 点。
@@ -169,6 +177,18 @@
     42)
   'effect-handler-may-not-resume)
 
+; defeffect 可以声明不可恢复 effect。
+; :resumable false 表示该 effect 的 continuation 不允许被 resume。
+; handler 可以像这里一样直接返回一个值, 把控制流结束在 handler 中。
+(defeffect abort-now :resumable false)
+(assert
+  (=
+    (handle
+      (on abort-now (value) k value)
+      (perform abort-now 42))
+    42)
+  'non-resumable-effect-returns-from-handler)
+
 ; quote / eval 闭环展示 syntax datum 可以重新进入求值。
 ; '(+ 20 22) 首先只是数据, eval 之后才按当前 symbol-space-chain 查找 + 并执行。
 (assert (= (eval '(+ 20 22)) 42) 'quoted-form-can-be-evaluated)
@@ -185,6 +205,14 @@
 (assert (= (len (parallel 1 2 3)) 3) 'parallel-returns-branch-results)
 (assert (= (len (all 1 2 3)) 3) 'all-joins-branch-results)
 (assert (race true true) 'race-returns-one-resumed-result)
+
+; parallel/all 的结果本身可以继续被数据算子观察。
+; parallel 是 order-insensitive 的求值组, 但它的返回容器仍保留每个分支结果。
+; all 是 barrier continuation, 所有分支完成后才把结果交还给父 continuation。
+; race 在单分支场景下结果确定, 多分支场景只保证 first-resume wins。
+(assert (= (get (parallel 1 2 3) 1) 2) 'parallel-result-content-is-observable)
+(assert (= (get (all 1 2 3) 2) 3) 'all-result-content-is-observable)
+(assert (= (race 42) 42) 'race-single-branch-result-is-observable)
 
 ; effect 与 all/race 可以组合。
 ; join-token 的 handler 会 resume continuation, 因此 all 能等待每个分支恢复后的值。
@@ -211,6 +239,21 @@
 (from hello.math import triple)
 (assert (= (triple 14) 42) 'module-export-imports-triple)
 
+; from import 可以通过 alias 把导出的 binding fold 成当前 ss 中的另一个名字。
+; alias 不改变源模块中的 binding, 只改变当前 symbol-space 接收这个 binding 时的本地名。
+(from hello.math import (triple as times3))
+(assert (= (times3 14) 42) 'from-import-alias-binds-local-name)
+
+; exports 可以一次暴露多个 binding。
+; from import 也可以一次选择多个导出项, 每个导入项都会 fold 到当前 symbol-space。
+(module hello.multi-export
+  (defun inc (value) (+ value 1))
+  (defun double (value) (* value 2))
+  (exports inc double))
+(from hello.multi-export import inc double)
+(assert (= (inc 41) 42) 'module-exports-first-binding)
+(assert (= (double 21) 42) 'module-exports-second-binding)
+
 ; exports 是选择性视图。
 ; hidden-step 留在模块内部, public-answer 才被 exports 暴露。
 ; 当前文件只 import public-answer, 因此外部只依赖模块承诺导出的 binding。
@@ -220,6 +263,16 @@
   (exports public-answer))
 (from hello.exports import public-answer)
 (assert (= (public-answer 20) 42) 'module-exports-hide-internal-helper)
+
+; module 也可以导出宏。
+; 这里 answer-form 是 compile-time macro, from import 后可以在调用点展开。
+; 宏导出只进入宏展开阶段的 namespace, 不应该污染 runtime value namespace。
+(module hello.macro-export
+  (macro answer-form ()
+    '42)
+  (exports answer-form))
+(from hello.macro-export import answer-form)
+(assert (= (answer-form) 42) 'module-can-export-macro)
 
 ; macro hygiene 默认保护 call-site binding, capture 用于显式捕获。
 ; with-temp 在宏展开中构造一个 let, 但不会捕获调用点已有的 tmp。
@@ -244,3 +297,21 @@
 (assert (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42) 'macro-keeps-definition-site-plus)
 (assert (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0) 'macro-capture-uses-call-site-plus)
 (assert (= (bind-once (+ 20 22)) 42) 'gensym-creates-private-macro-binding)
+
+; 以下是错误/effort 的目标语言形态, 它们是工具链和 handler 应该理解的控制点。
+; golden file 主路径不直接执行这些必失败表达式, 但保留它们作为核心语义说明。
+;
+; unresolved-symbol effort:
+;   (handle
+;     (on unresolved-symbol (name) k name)
+;     missing-name)
+;
+; pending-binding / incomplete-value effort:
+;   (pipeline
+;     pending-name
+;     (define pending-name 42))
+;
+; unsupported-operation effort:
+;   (handle
+;     (on unsupported-operation (op) k op)
+;     (+ 'symbol-value 1))
