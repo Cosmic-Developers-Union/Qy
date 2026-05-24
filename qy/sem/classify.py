@@ -1,33 +1,30 @@
 # coding: utf-8
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core + qy/sem semantic model
+# Copyright (C) 2025 Cosmic-Developers-Union (CDU), All rights reserved.
+
+"""Value classification helpers for the Qy semantic model.
+
+These functions map runtime values to their Qy type name or operator kind,
+and are the canonical replacement for the deleted qy/semantics.py shim.
+"""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
-from qy.core import OperatorKind
-from qy.core import TypeName
+from qy.core.operator_signature import TypeName
 from qy.core.operators import ControlOperator
 from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
+from qy.core.operators import OperatorKind
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
 from qy.core.syntax import nil
 from qy.frontend.reader import Symbol
-from qy.macro import MacroDefinition
 from qy.sem.core import T
-from qy.sem.runtime import EffectDefinition
-from qy.sem.runtime import UserFunction
-
-if TYPE_CHECKING:
-    pass
 
 __all__ = [
     "literal_type",
     "operator_kind_for_value",
     "value_type",
-    "value_uses_eager_arguments",
 ]
 
 
@@ -60,6 +57,9 @@ def literal_type(value: object) -> TypeName:
 
 
 def value_type(value: object) -> TypeName:
+    from qy.macro import MacroDefinition
+    from qy.sem.runtime import EffectDefinition
+    from qy.sem.runtime import UserFunction
     from qy.vm.bytecode import BytecodeFunctionValue
 
     if isinstance(
@@ -76,6 +76,8 @@ def value_type(value: object) -> TypeName:
 
 
 def operator_kind_for_value(value: object) -> OperatorKind | None:
+    from qy.macro import MacroDefinition
+
     if isinstance(value, PureOperator):
         return "pure"
     if isinstance(value, ScopeOperator):
@@ -89,7 +91,3 @@ def operator_kind_for_value(value: object) -> OperatorKind | None:
     if isinstance(value, MacroDefinition):
         return "meta"
     return None
-
-
-def value_uses_eager_arguments(value: object) -> bool:
-    return isinstance(value, PureOperator) and value.argument_evaluator is None

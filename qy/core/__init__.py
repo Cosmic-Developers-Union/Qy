@@ -44,6 +44,7 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.operators import SyntaxOperator
+from qy.core.operators import value_uses_eager_arguments
 from qy.core.symbol_space import BindingSlot
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
@@ -100,6 +101,7 @@ __all__ = [
     "runtime_operator_semantics",
     "tuple_to_chain",
     "validate_operator_arity",
+    "value_uses_eager_arguments",
 ]
 
 TypeName = Literal[

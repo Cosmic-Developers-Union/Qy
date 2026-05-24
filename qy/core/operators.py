@@ -22,6 +22,7 @@ __all__ = [
     "PureOperator",
     "ScopeOperator",
     "SyntaxOperator",
+    "value_uses_eager_arguments",
 ]
 
 ArgumentEvaluator = Callable[[tuple[object, ...], "Environment"], object]
@@ -120,6 +121,10 @@ class MetaOperator:
 
 EvaluationOperator = ControlOperator
 SyntaxOperator = MetaOperator
+
+
+def value_uses_eager_arguments(value: object) -> bool:
+    return isinstance(value, PureOperator) and value.argument_evaluator is None
 
 
 def _set_default_signature(operator: object) -> None:
