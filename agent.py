@@ -10,6 +10,7 @@ import datetime
 import json
 import os
 import pathlib
+from typing import Any
 from typing import cast
 
 import dotenv
@@ -17,6 +18,8 @@ import httpx
 from claude_agent_sdk import AssistantMessage
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk import ClaudeSDKClient
+from claude_agent_sdk import PermissionResult
+from claude_agent_sdk import PermissionResultDeny
 from claude_agent_sdk import RateLimitEvent
 from claude_agent_sdk import ResultMessage
 from claude_agent_sdk import ServerToolResultBlock
@@ -25,6 +28,7 @@ from claude_agent_sdk import StreamEvent
 from claude_agent_sdk import SystemMessage
 from claude_agent_sdk import TextBlock
 from claude_agent_sdk import ThinkingBlock
+from claude_agent_sdk import ToolPermissionContext
 from claude_agent_sdk import ToolResultBlock
 from claude_agent_sdk import ToolUseBlock
 from claude_agent_sdk import UserMessage
@@ -74,6 +78,28 @@ def print_message_content(
         print(it)
 
 
+def long_string(content: str) -> str:
+    contents = content.strip().split("\n")
+    contents = [i.strip() for i in contents if i.strip()]
+    return "\n".join(contents)
+
+
+async def can_use_tool(
+    tool_name: str, input_data: dict[str, Any], context: ToolPermissionContext
+) -> PermissionResult:
+    if tool_name == "AskUserQuestion":
+        return PermissionResultDeny(
+            message=long_string("""
+            当前用户无法回答该问题, 如果该问题必须作出选择, 则你终止任务并向用户报告, 如果该问题并不影响最终结果,
+            just 影响路线选择, 则你按照 `第一性原理` `长期主义` `奥卡姆剃刀` 原则, 自主选择一个最优的方案.
+            记住, 简单胜于复杂, 统一高于例外, 在完成目标的基础上, 以低熵为目标.
+            """),
+        )
+    return PermissionResultDeny(
+        message="当前工具调用被系统自动阻止, 不要重复使用完全相同的 tool-use, 尝试使用系统自动允许的工具, 或改变你的行为."
+    )
+
+
 async def run_task(task: "Task", pm: "PM", pid: str):
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
@@ -82,6 +108,7 @@ async def run_task(task: "Task", pm: "PM", pid: str):
         allowed_tools=[],
         max_turns=None,
         max_budget_usd=None,
+        can_use_tool=can_use_tool,
     )
     async with ClaudeSDKClient(options=options) as client:
         await client.query(task.prompt)
