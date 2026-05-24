@@ -284,8 +284,8 @@ def test_mir_dump_shows_raise_effect_for_assert():
 
 
 def test_bytecode_vm_assert_passes_when_condition_is_true():
-    from qy.register_vm import evaluate_bytecode_source
     from qy.values import QY_T
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source("(assert true)")
 
@@ -296,7 +296,7 @@ def test_bytecode_vm_assert_raises_effect_signal_when_condition_is_false():
     import pytest as _pytest
 
     from qy.errors import QyEffectSignal
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     with _pytest.raises(QyEffectSignal) as exc_info:
         evaluate_bytecode_source('(assert false "expected failure")')
@@ -333,7 +333,7 @@ def test_mir_dump_shows_runtime_eval_instruction():
 
 
 def test_bytecode_vm_runtime_eval_evaluates_quoted_form():
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source("(eval '(+ 1 2))")
 
@@ -363,7 +363,7 @@ def test_mir_dump_shows_define_module_and_from_import():
 
 
 def test_bytecode_vm_module_and_from_import_work_end_to_end():
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source(
         "(module math.helpers (defun double (x) (* x 2)))\n"
@@ -405,7 +405,7 @@ def test_bytecode_vm_defeffect_defines_effect_in_env():
 
     from qy.evaluator import EffectDefinition
     from qy.evaluator import standard_environment
-    from qy.register_vm import evaluate_bytecode_source_async
+    from qy.vm.instance.machine import evaluate_bytecode_source_async
 
     env = standard_environment()
     asyncio.run(evaluate_bytecode_source_async("(defeffect my-signal)", env))
@@ -414,7 +414,7 @@ def test_bytecode_vm_defeffect_defines_effect_in_env():
 
 
 def test_bytecode_vm_handle_returns_body_result_when_no_effect():
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source("(defeffect ask)\n(handle 42 ((ask (arg k) 0)))")
 
@@ -422,7 +422,7 @@ def test_bytecode_vm_handle_returns_body_result_when_no_effect():
 
 
 def test_bytecode_vm_handle_routes_to_handler_on_perform():
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source(
         "(defeffect ask)\n(handle (perform ask 99) ((ask (arg k) arg)))"
@@ -432,7 +432,7 @@ def test_bytecode_vm_handle_routes_to_handler_on_perform():
 
 
 def test_bytecode_vm_resume_continues_computation():
-    from qy.register_vm import evaluate_bytecode_source
+    from qy.vm.instance.machine import evaluate_bytecode_source
 
     result = evaluate_bytecode_source(
         "(defeffect ask)\n(handle (+ (perform ask 3) 10) ((ask (arg k) (resume k (* arg 2)))))"

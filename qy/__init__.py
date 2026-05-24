@@ -104,11 +104,6 @@ from qy.passes.lower_hir import lower
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_lir import lower_lir
 from qy.passes.lower_mir import lower_mir
-from qy.register_vm import RegisterVirtualMachine
-from qy.register_vm import evaluate_bytecode
-from qy.register_vm import evaluate_bytecode_async
-from qy.register_vm import evaluate_bytecode_source
-from qy.register_vm import evaluate_bytecode_source_async
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
 from qy.sem.runtime import EffectDefinition
@@ -132,6 +127,11 @@ from qy.values import QyEmptyList
 from qy.values import QyNil
 from qy.values import QyT
 from qy.vm.bytecode import BytecodeFunctionValue
+from qy.vm.instance.machine import RegisterVirtualMachine
+from qy.vm.instance.machine import evaluate_bytecode
+from qy.vm.instance.machine import evaluate_bytecode_async
+from qy.vm.instance.machine import evaluate_bytecode_source
+from qy.vm.instance.machine import evaluate_bytecode_source_async
 from qy.vm.instance.values import HostObjectRef
 
 __version__ = "0.0.4"

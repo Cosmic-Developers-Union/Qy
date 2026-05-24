@@ -3,8 +3,7 @@
 
 验证 RegisterVirtualMachine 从 qy/register_vm.py 迁移到 qy/vm/instance/machine.py 后：
 1. 新位置可以正常导入和使用
-2. 旧位置仍然可以导入（向后兼容）
-3. 两者引用同一个类
+2. 旧位置已被移除（迁移完成）
 """
 
 
@@ -25,32 +24,12 @@ def test_new_location_imports():
     assert evaluate_bytecode_source_async is not None
 
 
-def test_old_location_backward_compatibility():
-    """测试旧位置仍然可以导入（向后兼容）。."""
-    from qy.register_vm import RegisterVirtualMachine
-    from qy.register_vm import call_function_value
-    from qy.register_vm import evaluate_bytecode
-    from qy.register_vm import evaluate_bytecode_async
-    from qy.register_vm import evaluate_bytecode_source
-    from qy.register_vm import evaluate_bytecode_source_async
+def test_old_location_removed():
+    """测试旧位置已被移除（迁移完成）。."""
+    import importlib.util
 
-    assert RegisterVirtualMachine is not None
-    assert call_function_value is not None
-    assert evaluate_bytecode is not None
-    assert evaluate_bytecode_async is not None
-    assert evaluate_bytecode_source is not None
-    assert evaluate_bytecode_source_async is not None
-
-
-def test_both_locations_reference_same_class():
-    """测试新旧位置引用同一个类。."""
-    from qy.register_vm import RegisterVirtualMachine as OldVM
-    from qy.register_vm import call_function_value as old_call
-    from qy.vm.instance.machine import RegisterVirtualMachine as NewVM
-    from qy.vm.instance.machine import call_function_value as new_call
-
-    assert OldVM is NewVM
-    assert old_call is new_call
+    spec = importlib.util.find_spec("qy.register_vm")
+    assert spec is None, "qy.register_vm should be removed after migration"
 
 
 def test_vm_instance_module_exports():

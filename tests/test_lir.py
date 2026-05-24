@@ -6,7 +6,7 @@ from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.frontend.reader import Symbol
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir
-from qy.register_vm import evaluate_bytecode_source
+from qy.vm.instance.machine import evaluate_bytecode_source
 
 
 def test_lower_lir_produces_lir_program():

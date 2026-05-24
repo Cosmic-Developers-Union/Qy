@@ -119,7 +119,7 @@ def test_define_once_opcode_enforced_at_runtime():
     from qy.backend.vm.bytecode import BytecodeProgram
     from qy.backend.vm.bytecode import Instruction
     from qy.errors import QyRuntimeError
-    from qy.register_vm import evaluate_bytecode
+    from qy.vm.instance.machine import evaluate_bytecode
 
     fn = BytecodeFunction(
         name=Symbol("main"),
