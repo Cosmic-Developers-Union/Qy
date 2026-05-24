@@ -13,13 +13,19 @@
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
+from typing import cast
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
+    from qy.environment import Environment
+    from qy.std.module import StandardModule
 
 __all__ = [
     "ModuleLoader",
+    "cache_source_module",
     "load_named_space",
+    "lookup_source_module",
+    "resolve_known_module",
 ]
 
 
@@ -134,3 +140,32 @@ def load_named_space(name: str) -> SymbolSpace:
         SymbolSpace: 加载的符号空间
     """
     return get_global_loader().load(name)
+
+
+_SOURCE_MODULE_CACHE_KEY = ("qy", "source_modules")
+
+
+def cache_source_module(module: StandardModule, env: Environment) -> StandardModule:
+    _source_module_cache(env)[module.name] = module
+    return module
+
+
+def lookup_source_module(name: str, env: Environment) -> StandardModule | None:
+    return _source_module_cache(env).get(name)
+
+
+def resolve_known_module(name: str, env: Environment) -> StandardModule:
+    modules = _source_module_cache(env)
+    if name in modules:
+        return modules[name]
+    from qy.std import load_module
+
+    return load_module(name)
+
+
+def _source_module_cache(env: Environment) -> dict[str, StandardModule]:
+    try:
+        value = env.cache_lookup(_SOURCE_MODULE_CACHE_KEY)
+    except KeyError:
+        value = env.cache_define(_SOURCE_MODULE_CACHE_KEY, {})
+    return cast("dict[str, StandardModule]", value)

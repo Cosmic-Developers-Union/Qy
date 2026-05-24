@@ -542,9 +542,9 @@ class RegisterVirtualMachine:
         *,
         export_names: tuple[Symbol, ...] = (),
     ) -> object:
+        from qy.import_.loader import cache_source_module
+        from qy.import_.loader import lookup_source_module
         from qy.macro import MacroDefinition
-        from qy.source_modules import cache_source_module
-        from qy.source_modules import lookup_source_module
         from qy.std import register_module
         from qy.std.module import StandardModule
 

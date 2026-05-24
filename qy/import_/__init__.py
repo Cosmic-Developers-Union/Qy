@@ -24,8 +24,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from qy.import_.loader import ModuleLoader
+from qy.import_.loader import cache_source_module
 from qy.import_.loader import get_global_loader
 from qy.import_.loader import load_named_space
+from qy.import_.loader import lookup_source_module
+from qy.import_.loader import resolve_known_module
 from qy.import_.loader import set_global_loader
 from qy.import_.resolver import FoldSpec
 from qy.import_.resolver import UnfoldSpec
@@ -46,12 +49,15 @@ __all__ = [
     # Loader
     "ModuleLoader",
     "UnfoldSpec",
+    "cache_source_module",
     "detect_conflicts",
     # Operations
     "fold",
     "get_global_loader",
     "load_named_space",
+    "lookup_source_module",
     "resolve_fold",
+    "resolve_known_module",
     "resolve_unfold",
     "set_global_loader",
     "unfold",

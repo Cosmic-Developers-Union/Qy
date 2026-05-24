@@ -26,6 +26,7 @@ from qy.frontend.reader import SpannedTuple
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.frontend.reader import read
+from qy.import_.loader import resolve_known_module
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -60,11 +61,10 @@ from qy.ir import UnresolvedSymbolExpr
 from qy.literals import default_literal_type
 from qy.literals import try_default_literal
 from qy.macro import CapturedForm
+from qy.project.module import remember_source_module
 from qy.sem.classify import literal_type
 from qy.sem.classify import operator_kind_for_value
 from qy.sem.classify import value_type
-from qy.source_modules import remember_source_module
-from qy.source_modules import resolve_known_module
 from qy.std.imports import parse_from_import
 
 __all__ = [

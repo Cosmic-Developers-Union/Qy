@@ -520,7 +520,7 @@ async def _macroexpand_module_form(
         context.define_module_macros(module_name, exported_macros)
 
         # 缓存 provisional 模块，以便运行时使用
-        from qy.source_modules import remember_source_module
+        from qy.project.module import remember_source_module
 
         remember_source_module(form, context.env)
     return _list_to_form([*prefix, *body], form)

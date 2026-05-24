@@ -31,10 +31,10 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     if not args:
         raise QyArityError("module expects a name and body")
 
+    from qy.import_.loader import cache_source_module
+    from qy.import_.loader import lookup_source_module
     from qy.macro import MacroDefinition
-    from qy.source_modules import build_provisional_module
-    from qy.source_modules import cache_source_module
-    from qy.source_modules import lookup_source_module
+    from qy.project.module import build_provisional_module
 
     name, *body = args
     name = ensure_symbol(name, "module name")
