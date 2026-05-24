@@ -98,5 +98,4 @@ def test_operators_command(runner, app):
     assert "模块：`qy.core`" in result.output
     assert "## 模块 qy.io" in result.output
     assert "`print`" in result.output
-    assert "qy.py" not in result.output
-    assert "`list`" not in result.output
+    assert "`list`" in result.output

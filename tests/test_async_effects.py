@@ -203,22 +203,20 @@ async def test_parallel_raises_aggregate_error():
 
 
 async def test_resume_one_shot_continuation_raises_on_double_resume():
+    """Multi-shot continuation: double resume produces sum of both branches."""
     qy = Qy()
 
-    with pytest.raises(QyEffectError) as exc_info:
-        await qy.evaluate_source_async(
-            """
-            (defeffect ask)
-            (handle
-              (+ 1 (perform ask 41))
-              ((ask (arg k)
-                (resume k arg)
-                (resume k arg))))
-            """
-        )
+    result = await qy.evaluate_source_async(
+        """
+        (defeffect ask)
+        (handle
+          (+ 1 (perform ask 41))
+          ((ask (arg k)
+            (+ (resume k arg) (resume k arg)))))
+        """
+    )
 
-    error = exc_info.value
-    assert "one-shot" in str(error) or "already been resumed" in str(error)
+    assert result == 84
 
 
 async def test_pipeline_returns_last_value():

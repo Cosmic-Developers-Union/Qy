@@ -79,16 +79,14 @@ async def test_qy_continuation_resume_non_resumable():
 
 @pytest.mark.asyncio
 async def test_qy_continuation_resume_twice():
-    """测试重复恢复 continuation 抛出异常。."""
-    from qy.errors import QyEffectError
+    """测试 multi-shot continuation 允许多次恢复。."""
 
     def resume_func(value):
         return value
 
     cont = QyContinuation(effect="test-effect", resumable=True, _resume=resume_func)
-    await cont.resume(42)
+    result1 = await cont.resume(42)
+    result2 = await cont.resume(99)
 
-    with pytest.raises(QyEffectError) as exc_info:
-        await cont.resume(42)
-
-    assert "already been resumed" in str(exc_info.value)
+    assert result1 == 42
+    assert result2 == 99

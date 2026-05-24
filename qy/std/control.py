@@ -267,8 +267,10 @@ async def _define(args: object, env: Environment) -> object:
         raise QyArityError("define expects a name and a value")
     name_form, value_form = args_list
     name = ensure_symbol(name_form, "define name")
+    if name.name.startswith("'") and len(name.name) > 1:
+        name = Symbol(name.name[1:])
     value = await evaluate_async(value_form, env)
-    return env.define_once(name, value)
+    return env.define(name, value)
 
 
 def _defun(args: object, env: Environment) -> object:
@@ -377,6 +379,30 @@ def _component(args: object, env: Environment) -> object:
     )
 
 
+def _this(args: object, env: Environment) -> object:
+    del args
+    return env
+
+
+def _slot(args: object, env: Environment) -> object:
+    del args, env
+    from qy.core.symbol_space import BindingSlot
+
+    return BindingSlot(Symbol("<slot>"))
+
+
+async def _bind(args: object, env: Environment) -> object:
+    args_list = _to_list(args)
+    if len(args_list) != 3:
+        raise QyArityError("bind expects a symbol, value, and slot")
+    name_datum, value, _slot_value = args_list
+    name = ensure_symbol(name_datum, "bind name")
+    if name.name.startswith("'") and len(name.name) > 1:
+        name = Symbol(name.name[1:])
+    env.define(name, value)
+    return value
+
+
 def operators() -> dict[Symbol, object]:
     return {
         Symbol("cond"): ControlOperator("cond", _cond, "求值第一个 truthy 条件分支。"),
@@ -393,6 +419,9 @@ def operators() -> dict[Symbol, object]:
         Symbol("truthy"): PureOperator(
             "truthy", _complex_truthy, "标准 profile 复杂真值判断；返回 T 或 nil。"
         ),
+        Symbol("this"): ScopeOperator("this", _this, "返回当前 symbol-space。"),
+        Symbol("slot"): ScopeOperator("slot", _slot, "创建绑定槽位。"),
+        Symbol("bind"): ScopeOperator("bind", _bind, "将 symbol 与 value 绑定到指定 slot。"),
     }
 
 

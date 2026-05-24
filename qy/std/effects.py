@@ -57,7 +57,7 @@ def _defeffect(args: tuple[object, ...], env: Environment) -> object:
     name = ensure_symbol(name, "defeffect name")
     resumable = _parse_defeffect_resumable(tuple(options))
     effect = EffectDefinition(name, resumable=resumable)
-    return env.define_once(name, effect)
+    return env.define(name, effect)
 
 
 def _parse_defeffect_resumable(options: tuple[object, ...]) -> bool:

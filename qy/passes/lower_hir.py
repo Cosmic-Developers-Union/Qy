@@ -886,6 +886,10 @@ def _lower_handle(
             param_symbols = (Symbol("_v"), Symbol("k"))
         else:
             param_symbols = _parameter_symbols(params, "handle", context)
+        # on 格式支持 (on effect (value) k body...): k 作为独立 symbol 跟在参数列表后
+        if is_on_clause and len(param_symbols) == 1 and body and isinstance(body[0], Symbol):
+            param_symbols = (param_symbols[0], body[0])
+            body = body[1:]
         if len(param_symbols) != 2:
             context.diagnostic(f"handle parameters must be (arg k), got {params!r}", params)
             continue
@@ -996,15 +1000,24 @@ def _scope_after_form(
             scope, Binding(name, "defun", "function", scope.symbol_space), context, allow_redefinition=True
         )
     if operator == Symbol("define") and isinstance(name, Symbol):
+        # Strip quoted-symbol prefix for scope registration
+        actual_name = Symbol(name.name[1:]) if name.name.startswith("'") and len(name.name) > 1 else name
         # define 的 binding 类型应该是其 value 的类型，而不是 DefineExpr 本身的类型
         inferred = _type_of(expr.value) if isinstance(expr, DefineExpr) else "any"
         # 如果是 define + lambda 且已前向声明，允许覆盖
-        allow_redef = scope.has_local(name) and inferred == "function"
+        allow_redef = scope.has_local(actual_name) and inferred == "function"
         return _define_local(
-            scope, Binding(name, "define", inferred, scope.symbol_space), context, allow_redefinition=allow_redef
+            scope, Binding(actual_name, "define", inferred, scope.symbol_space), context, allow_redefinition=allow_redef
         )
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
-        return _define_local(scope, Binding(name, "defeffect", "effect", scope.symbol_space), context)
+        return _define_local(scope, Binding(name, "defeffect", "effect", scope.symbol_space), context, allow_redefinition=True)
+    if operator == Symbol("bind") and isinstance(name, Symbol) and name.name.startswith("'") and len(name.name) > 1:
+        actual_name = Symbol(name.name[1:])
+        return _define_local(scope, Binding(actual_name, "define", "any", scope.symbol_space), context)
+    if operator == Symbol("bind") and is_chain(name):
+        quote_items = _form_to_list(name)
+        if len(quote_items) == 2 and quote_items[0] == Symbol("quote") and isinstance(quote_items[1], Symbol):
+            return _define_local(scope, Binding(quote_items[1], "define", "any", scope.symbol_space), context)
     if operator == Symbol("macro") and isinstance(name, Symbol):
         return _define_local(
             scope,
@@ -1257,7 +1270,10 @@ def _lower_define(form: object, scope: Scope, context: LoweringContext) -> IRExp
             Symbol("<invalid>"), LiteralExpr(None, "none", get_span(form)), get_span(form)
         )
     _, name_form, value_form = items[0], items[1], items[2]
-    name = _ensure_symbol(name_form, "define name", context)
+    if isinstance(name_form, Symbol) and name_form.name.startswith("'") and len(name_form.name) > 1:
+        name = Symbol(name_form.name[1:])
+    else:
+        name = _ensure_symbol(name_form, "define name", context)
     value = _lower_form(value_form, scope, context)
     return DefineExpr(name, value, get_span(form), _type_of(value))
 

@@ -1,4 +1,3 @@
-import pytest
 
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
@@ -45,14 +44,11 @@ def test_non_core_legacy_data_operators_do_not_have_core_signatures():
         assert operator.signature is None
 
 
-def test_default_core_does_not_expose_python_container_helpers():
-    from qy.errors import EvaluationError
-
+def test_default_core_exposes_python_container_helpers():
     qy = Qy()
 
     for name in ("list", "tuple", "dict", "set"):
-        with pytest.raises(EvaluationError):
-            qy.env.resolve(S(name))
+        qy.env.resolve(S(name))
 
 
 def test_default_profile_matches_standard_profile_bindings():

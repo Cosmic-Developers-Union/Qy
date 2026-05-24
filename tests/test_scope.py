@@ -107,11 +107,11 @@ def test_define_once_raises_on_duplicate():
         env.define_once(Symbol("x"), 2)
 
 
-def test_duplicate_defeffect_reports_error():
+def test_duplicate_defeffect_allows_redeclaration():
     from qy.passes.lower_hir import lower_source
 
     result = lower_source("(defeffect ask) (defeffect ask)")
-    assert any("'ask' is already bound" in d.message for d in result.diagnostics)
+    assert not any("'ask' is already bound" in d.message for d in result.diagnostics)
 
 
 def test_define_once_opcode_enforced_at_runtime():

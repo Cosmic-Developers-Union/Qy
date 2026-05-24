@@ -490,7 +490,25 @@ class RegisterVirtualMachine:
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         for t in pending:
             t.cancel()
-        return next(iter(done)).result()
+        for t in pending:
+            try:
+                await t
+            except (asyncio.CancelledError, Exception):
+                pass
+        winner = next(iter(done))
+        exc = winner.exception()
+        if exc is not None:
+            for t in done:
+                if t is not winner:
+                    t.exception()  # mark as retrieved
+            raise exc
+        for t in done:
+            if t is not winner:
+                try:
+                    t.exception()  # mark as retrieved
+                except Exception:
+                    pass
+        return winner.result()
 
     async def _cache_eval(self, cache_key: object, thunk_idx: int, env: Environment) -> object:
         import asyncio
@@ -581,7 +599,7 @@ class RegisterVirtualMachine:
             raise EvaluationError(str(e)) from e
 
     async def _defeffect(self, name: Symbol, resumable: bool, env: Environment) -> None:
-        env.define_once(name, EffectDefinition(name, resumable))
+        env.define(name, EffectDefinition(name, resumable))
 
     async def _perform(
         self,
