@@ -246,11 +246,7 @@ class RegisterVirtualMachine:
                 dest, callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
                 callee = frame.registers[_register(callee_register)]
-                if (
-                    isinstance(callee, PureOperator)
-                    and callee.name == "/"
-                    and len(args) >= 2
-                ):
+                if isinstance(callee, PureOperator) and callee.name == "/" and len(args) >= 2:
                     for divisor in args[1:]:
                         if isinstance(divisor, bool):
                             continue

@@ -898,11 +898,7 @@ def _lower_handle(
 
 def _is_on_form(form: object) -> bool:
     """检查 form 是否为 (on effect-name (arg k) body...) 形式."""
-    return (
-        is_chain(form)
-        and isinstance(car(form), Symbol)
-        and car(form).name == "on"
-    )
+    return is_chain(form) and isinstance(car(form), Symbol) and car(form).name == "on"
 
 
 def _auto_declare_on_effects(
@@ -915,9 +911,7 @@ def _auto_declare_on_effects(
     if len(items) >= 3 and isinstance(items[0], Symbol) and items[0].name == "on":
         effect_name = _ensure_symbol(items[1], "handle effect name", context)
         if not _effect_is_declared(effect_name, scope, context):
-            scope = _define_local(
-                scope, Binding(effect_name, "local", "effect"), context
-            )
+            scope = _define_local(scope, Binding(effect_name, "local", "effect"), context)
     return scope
 
 
