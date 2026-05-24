@@ -8,11 +8,29 @@
   "remoteUser": "${localEnv:USER}",
   "updateRemoteUserUID": true,
   "containerEnv": {
+    "GOROOT": "/usr/local/go",
+    "GOPATH": "/home/${localEnv:USER}/go",
+    "GOPROXY": "https://goproxy.cn,direct",
+    "GOSUMDB": "sum.golang.google.cn",
+    "GOTOOLCHAIN": "local",
+    "LLVM_CONFIG": "llvm-config",
+    "QY_CC": "clang",
+    "QY_LLVM_DIR": "/usr/bin",
+    "QY_LLC": "llc",
     "UV_LINK_MODE": "copy"
   },
   "remoteEnv": {
+    "GOROOT": "/usr/local/go",
+    "GOPATH": "/home/${localEnv:USER}/go",
+    "GOPROXY": "https://goproxy.cn,direct",
+    "GOSUMDB": "sum.golang.google.cn",
+    "GOTOOLCHAIN": "local",
+    "LLVM_CONFIG": "llvm-config",
+    "QY_CC": "clang",
+    "QY_LLVM_DIR": "/usr/bin",
+    "QY_LLC": "llc",
     "SHELL": "/usr/bin/zsh",
-    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:PATH}"
+    "PATH": "${containerWorkspaceFolder}/.venv/bin:${containerWorkspaceFolder}/node_modules/.bin:${containerEnv:GOROOT}/bin:${containerEnv:GOPATH}/bin:${containerEnv:PATH}"
   },
   "customizations": {
     "vscode": {
@@ -20,6 +38,14 @@
         "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
         "python.terminal.activateEnvironment": true,
         "ruff.nativeServer": "on",
+        "go.goproxy": "https://goproxy.cn,direct",
+        "go.toolsManagement.autoUpdate": true,
+        "clangd.arguments": [
+          "--background-index",
+          "--clang-tidy",
+          "--completion-style=detailed"
+        ],
+        "clangd.path": "/usr/bin/clangd",
         "terminal.integrated.defaultProfile.linux": "zsh",
         "terminal.integrated.profiles.linux": {
           "zsh": {
@@ -29,10 +55,12 @@
       },
       "extensions": [
         "charliermarsh.ruff",
+        "golang.go",
         "llvm-vs-code-extensions.vscode-clangd",
         "ms-python.python",
         "ms-python.vscode-pylance",
-        "tamasfe.even-better-toml"
+        "tamasfe.even-better-toml",
+        "vadimcn.vscode-lldb"
       ]
     },
     "jetbrains": {

@@ -2,6 +2,7 @@
 set -euo pipefail
 
 mkdir -p "$BUN_INSTALL" "$BUN_INSTALL_CACHE_DIR"
+mkdir -p "${GOPATH:-$HOME/go}/bin"
 .devcontainer/check-config.sh
 
 if [ -n "${BUN_REGISTRY:-}" ]; then

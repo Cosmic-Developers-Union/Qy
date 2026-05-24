@@ -181,15 +181,14 @@ clean-llvm:
 ## Dev Container
 dc-up:
 	devcontainer up --workspace-folder .
+dc-reup:
+	devcontainer up --workspace-folder . --remove-existing-container
 dc-stop:
 	docker stop $$(docker ps -q --filter label=devcontainer.local_folder=$$(pwd))
 dc-rm:
 	docker rm $$(docker ps -a -q --filter label=devcontainer.local_folder=$$(pwd))
 dc-enter:
 	devcontainer exec --workspace-folder . -- zsh
-dc-reup:
-	$(MAKE) dc-stop
-	$(MAKE) dc-up
 dc-build:
 	devcontainer build --workspace-folder .
 

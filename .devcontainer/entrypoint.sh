@@ -17,10 +17,14 @@ if [ "$(id -u)" = "0" ]; then
   user_group="$(id -gn "$REMOTE_USER")"
   bun_install="${BUN_INSTALL:-$user_home/.bun}"
   bun_cache="${BUN_INSTALL_CACHE_DIR:-$bun_install/install/cache}"
+  go_path="${GOPATH:-$user_home/go}"
   workspace="${WORKSPACE_FOLDER:-/workspaces/Qy}"
 
   mkdir -p "$bun_install/bin" "$bun_install/install/global" "$bun_cache"
   chown -R "$REMOTE_USER:$user_group" "$bun_install"
+
+  mkdir -p "$go_path/bin"
+  chown -R "$REMOTE_USER:$user_group" "$go_path"
 
   mkdir -p "$workspace/.venv" "$workspace/node_modules"
   chown -R "$REMOTE_USER:$user_group" "$workspace/.venv" "$workspace/node_modules"

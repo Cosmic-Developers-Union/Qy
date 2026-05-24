@@ -19,12 +19,29 @@ require_cmd() {
 require_cmd bun
 require_cmd uv
 require_cmd getent
+require_cmd go
+require_cmd gofmt
+require_cmd clang
+require_cmd clang++
+require_cmd clangd
+require_cmd clang-format
+require_cmd clang-tidy
+require_cmd llc
+require_cmd lld
+require_cmd ld.lld
+require_cmd lldb
+require_cmd llvm-ar
+require_cmd llvm-config
+require_cmd llvm-nm
+require_cmd llvm-ranlib
 
 current_user="$(id -un)"
 expected_user="${REMOTE_USER:-$current_user}"
 home_dir="${HOME:-/home/$current_user}"
 bun_install="${BUN_INSTALL:-$home_dir/.bun}"
 bun_cache="${BUN_INSTALL_CACHE_DIR:-$bun_install/install/cache}"
+go_root="${GOROOT:-/usr/local/go}"
+go_path="${GOPATH:-$home_dir/go}"
 workspace="${WORKSPACE_FOLDER:-/workspaces/Qy}"
 
 if [ "$current_user" != "$expected_user" ]; then
@@ -43,6 +60,30 @@ if [ "$bun_cache" != "$bun_install/install/cache" ]; then
   fail "BUN_INSTALL_CACHE_DIR is $bun_cache, expected $bun_install/install/cache"
 fi
 
+if [ "$go_root" != "/usr/local/go" ]; then
+  fail "GOROOT is $go_root, expected /usr/local/go"
+fi
+
+if [ "$go_path" != "$home_dir/go" ]; then
+  fail "GOPATH is $go_path, expected $home_dir/go"
+fi
+
+if [ ! -x "$go_root/bin/go" ]; then
+  fail "missing executable: $go_root/bin/go"
+fi
+
+if [ ! -x "$go_root/bin/gofmt" ]; then
+  fail "missing executable: $go_root/bin/gofmt"
+fi
+
+if [ ! -x /usr/local/bin/go ]; then
+  fail "missing executable: /usr/local/bin/go"
+fi
+
+if [ ! -x /usr/local/bin/gofmt ]; then
+  fail "missing executable: /usr/local/bin/gofmt"
+fi
+
 if [ ! -d "$bun_install" ]; then
   fail "BUN_INSTALL directory does not exist: $bun_install"
 elif [ ! -w "$bun_install" ]; then
@@ -53,6 +94,12 @@ if [ ! -d "$bun_cache" ]; then
   fail "Bun cache directory does not exist: $bun_cache"
 elif [ ! -w "$bun_cache" ]; then
   fail "Bun cache directory is not writable: $bun_cache"
+fi
+
+if [ ! -d "$go_path" ]; then
+  fail "GOPATH directory does not exist: $go_path"
+elif [ ! -w "$go_path" ]; then
+  fail "GOPATH is not writable: $go_path"
 fi
 
 if [ ! -d "$workspace" ]; then
@@ -70,6 +117,16 @@ done
 case ":$PATH:" in
   *":$bun_install/bin:"*) ;;
   *) fail "PATH does not include $bun_install/bin" ;;
+esac
+
+case ":$PATH:" in
+  *":$go_root/bin:"*) ;;
+  *) fail "PATH does not include $go_root/bin" ;;
+esac
+
+case ":$PATH:" in
+  *":$go_path/bin:"*) ;;
+  *) fail "PATH does not include $go_path/bin" ;;
 esac
 
 if ! getent hosts host.docker.internal >/dev/null 2>&1; then
@@ -97,6 +154,54 @@ fi
 
 if [ "${npm_config_registry:-}" != "${BUN_REGISTRY:-}" ]; then
   fail "npm_config_registry does not match BUN_REGISTRY"
+fi
+
+if [ "${GOPROXY:-}" != "https://goproxy.cn,direct" ]; then
+  fail "GOPROXY should be https://goproxy.cn,direct, got: ${GOPROXY:-}"
+fi
+
+if [ "$(go env GOPROXY)" != "https://goproxy.cn,direct" ]; then
+  fail "go env GOPROXY does not match https://goproxy.cn,direct"
+fi
+
+if [ "${GOSUMDB:-}" != "sum.golang.google.cn" ]; then
+  fail "GOSUMDB should be sum.golang.google.cn, got: ${GOSUMDB:-}"
+fi
+
+if [ "$(go env GOSUMDB)" != "sum.golang.google.cn" ]; then
+  fail "go env GOSUMDB does not match sum.golang.google.cn"
+fi
+
+if [ "${GOTOOLCHAIN:-}" != "local" ]; then
+  fail "GOTOOLCHAIN should be local, got: ${GOTOOLCHAIN:-}"
+fi
+
+if [ "$(go env GOTOOLCHAIN)" != "local" ]; then
+  fail "go env GOTOOLCHAIN does not match local"
+fi
+
+if [ "$(go env GOROOT)" != "$go_root" ]; then
+  fail "go env GOROOT does not match GOROOT"
+fi
+
+if [ "$(go env GOPATH)" != "$go_path" ]; then
+  fail "go env GOPATH does not match GOPATH"
+fi
+
+if [ "${QY_LLC:-}" != "llc" ]; then
+  fail "QY_LLC should be llc, got: ${QY_LLC:-}"
+fi
+
+if [ "${QY_CC:-}" != "clang" ]; then
+  fail "QY_CC should be clang, got: ${QY_CC:-}"
+fi
+
+if [ "${QY_LLVM_DIR:-}" != "/usr/bin" ]; then
+  fail "QY_LLVM_DIR should be /usr/bin, got: ${QY_LLVM_DIR:-}"
+fi
+
+if [ "${LLVM_CONFIG:-}" != "llvm-config" ]; then
+  fail "LLVM_CONFIG should be llvm-config, got: ${LLVM_CONFIG:-}"
 fi
 
 if [ -f /usr/local/etc/npmrc ]; then

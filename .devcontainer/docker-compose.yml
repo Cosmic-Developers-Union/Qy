@@ -7,7 +7,7 @@ services:
       extra_hosts:
         - "host.docker.internal:host-gateway"
       args:
-        APT_CACHE_PROXY: ${DEVCONTAINER_APT_CACHE_PROXY-http://host.docker.internal:3142}
+        APT_CACHE_PROXY: ${DEVCONTAINER_APT_CACHE_PROXY:-}
         BUN_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
         HTTP_PROXY: ${DEVCONTAINER_HTTP_PROXY-http://host.docker.internal:1080}
         HTTPS_PROXY: ${DEVCONTAINER_HTTPS_PROXY-http://host.docker.internal:1080}
@@ -22,10 +22,19 @@ services:
       BUN_INSTALL: /home/${USER:-vscode}/.bun
       BUN_INSTALL_CACHE_DIR: /home/${USER:-vscode}/.bun/install/cache
       BUN_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
+      GOROOT: /usr/local/go
+      GOPATH: /home/${USER:-vscode}/go
+      GOPROXY: https://goproxy.cn,direct
+      GOSUMDB: sum.golang.google.cn
+      GOTOOLCHAIN: local
       HTTP_PROXY: ""
       HTTPS_PROXY: ""
+      LLVM_CONFIG: llvm-config
       NPM_CONFIG_REGISTRY: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       NO_PROXY: ""
+      QY_CC: clang
+      QY_LLVM_DIR: /usr/bin
+      QY_LLC: llc
       REMOTE_USER: ${USER:-vscode}
       WORKSPACE_FOLDER: /workspaces/Qy
       http_proxy: ""
@@ -38,6 +47,7 @@ services:
       - dev-venv:/workspaces/Qy/.venv
       - dev-node-modules:/workspaces/Qy/node_modules
       - dev-bun:/home/${USER:-vscode}/.bun
+      - dev-go:/home/${USER:-vscode}/go
       - zsh-history:/home/${USER:-vscode}/.zsh_history
       - type: bind
         source: ${HOME}/.claude
@@ -55,6 +65,7 @@ services:
     command: sleep infinity
 volumes:
   dev-bun:
+  dev-go:
   dev-venv:
   dev-node-modules:
   zsh-history:
