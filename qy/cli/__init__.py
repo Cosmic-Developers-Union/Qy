@@ -248,12 +248,21 @@ def create_app() -> Any:
             typer.Option("--write", "-w", help="Rewrite the file in place."),
         ] = False,
     ) -> None:
-        formatted = format_source(path.read_text(encoding="utf-8"))
-        if write:
-            path.write_text(formatted, encoding="utf-8")
-            typer.secho(f"formatted {path}", fg=typer.colors.GREEN)
-            return
-        typer.echo(formatted, nl=False)
+        """Format Qy source code with syntax checking."""
+        try:
+            source = path.read_text(encoding="utf-8")
+            formatted = format_source(source)
+            if write:
+                path.write_text(formatted, encoding="utf-8")
+                typer.secho(f"formatted {path}", fg=typer.colors.GREEN)
+                return
+            typer.echo(formatted, nl=False)
+        except ReaderSyntaxError as e:
+            typer.secho(f"{path}: syntax error: {e}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from e
+        except OSError as e:
+            typer.secho(f"{path}: {e}", fg=typer.colors.RED, err=True)
+            raise typer.Exit(1) from e
 
     @app.command("ast")
     def ast_command(

@@ -1,6 +1,32 @@
+from qy.frontend.reader import ReaderSyntaxError
 from qy.frontend.reader import read
+from qy.runtime import Qy
 from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_source
+
+
+def test_qy_fmt_method_basic():
+    """Test Qy.fmt() method with basic formatting."""
+    qy = Qy()
+    assert qy.fmt("(+   1   2)") == "(+ 1 2)\n"
+
+
+def test_qy_fmt_method_preserves_comments():
+    """Test Qy.fmt() method preserves comments."""
+    qy = Qy()
+    result = qy.fmt("(+ 1 2) ; comment")
+    assert "(+ 1 2)" in result
+    assert "; comment" in result
+
+
+def test_qy_fmt_method_syntax_error():
+    """Test Qy.fmt() method raises ReaderSyntaxError on invalid syntax."""
+    qy = Qy()
+    try:
+        qy.fmt("(+ 1 2")  # Missing closing paren
+        raise AssertionError("Should have raised ReaderSyntaxError")
+    except ReaderSyntaxError:
+        pass  # Expected
 
 
 def test_format_source_locks_simple_spacing():

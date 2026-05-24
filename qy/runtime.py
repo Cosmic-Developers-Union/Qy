@@ -213,6 +213,22 @@ class Qy(_QyBase):
             return None
         return results[-1]
 
+    def fmt(self, source: str) -> str:
+        """Format Qy source code.
+
+        Args:
+            source: Qy source code string
+
+        Returns:
+            Formatted source code string
+
+        Raises:
+            ReaderSyntaxError: If the source has syntax errors
+        """
+        from qy.tools.fmt import format_source
+
+        return format_source(source)
+
 
 class AsyncQy(_QyBase):
     async def macroexpand(
@@ -269,3 +285,19 @@ class AsyncQy(_QyBase):
             source_name=str(path),
         )
         return None if not results else results[-1]
+
+    def fmt(self, source: str) -> str:
+        """Format Qy source code.
+
+        Args:
+            source: Qy source code string
+
+        Returns:
+            Formatted source code string
+
+        Raises:
+            ReaderSyntaxError: If the source has syntax errors
+        """
+        from qy.tools.fmt import format_source
+
+        return format_source(source)

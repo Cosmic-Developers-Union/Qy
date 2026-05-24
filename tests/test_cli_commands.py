@@ -39,6 +39,27 @@ def test_fmt_command(runner, app):
     assert "(* 6 7)" in result.output
 
 
+def test_fmt_command_with_write_flag(runner, app, tmp_path):
+    test_file = tmp_path / "test.qy"
+    test_file.write_text("(+   1   2)\n")
+
+    result = runner.invoke(app, ["fmt", "-w", str(test_file)])
+
+    assert result.exit_code == 0, result.output
+    assert "formatted" in result.output
+    assert test_file.read_text() == "(+ 1 2)\n"
+
+
+def test_fmt_command_with_syntax_error(runner, app, tmp_path):
+    test_file = tmp_path / "invalid.qy"
+    test_file.write_text("(+ 1 2\n")  # Missing closing paren
+
+    result = runner.invoke(app, ["fmt", str(test_file)])
+
+    assert result.exit_code == 1
+    assert "syntax error" in result.output
+
+
 def test_ast_command(runner, app):
     result = runner.invoke(app, ["ast", "examples/validation/00_host_arithmetic.qy"])
 
