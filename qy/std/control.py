@@ -13,6 +13,7 @@ from qy.core.operators import ControlOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.symbol_utils import ensure_symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -25,7 +26,6 @@ from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.sem.runtime import UserFunction
-from qy.symbol_utils import ensure_symbol
 from qy.values import QY_NIL
 from qy.values import QY_T
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async

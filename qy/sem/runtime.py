@@ -199,9 +199,9 @@ async def _tail_let(
     env: Environment,
     fn: UserFunction,
 ) -> object:
+    from qy.core.symbol_utils import ensure_symbol
     from qy.errors import QyTypeError
     from qy.frontend.reader import get_span
-    from qy.symbol_utils import ensure_symbol
     from qy.vm.instance.machine import evaluate_form_async
 
     if len(args) < 2:

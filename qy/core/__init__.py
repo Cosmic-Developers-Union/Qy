@@ -49,6 +49,7 @@ from qy.core.symbol_space import BindingSlot
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
 from qy.core.symbol_space import SymbolSpaceChain
+from qy.core.symbol_utils import ensure_symbol
 from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
@@ -91,6 +92,7 @@ __all__ = [
     "chain_to_list",
     "chain_to_tuple",
     "cons",
+    "ensure_symbol",
     "format_arity_message",
     "is_chain",
     "is_nil",

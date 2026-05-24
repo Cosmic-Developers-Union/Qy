@@ -1,5 +1,4 @@
 # coding: utf-8
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy/core symbol utilities
 
 from __future__ import annotations
 
