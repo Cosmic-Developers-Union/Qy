@@ -19,6 +19,7 @@ from claude_agent_sdk import AssistantMessage
 from claude_agent_sdk import ClaudeAgentOptions
 from claude_agent_sdk import ClaudeSDKClient
 from claude_agent_sdk import PermissionResult
+from claude_agent_sdk import PermissionResultAllow
 from claude_agent_sdk import PermissionResultDeny
 from claude_agent_sdk import RateLimitEvent
 from claude_agent_sdk import ResultMessage
@@ -95,9 +96,7 @@ async def can_use_tool(
             记住, 简单胜于复杂, 统一高于例外, 在完成目标的基础上, 以低熵为目标.
             """),
         )
-    return PermissionResultDeny(
-        message="当前工具调用被系统自动阻止, 不要重复使用完全相同的 tool-use, 尝试使用系统自动允许的工具, 或改变你的行为."
-    )
+    return PermissionResultAllow()
 
 
 async def run_task(task: "Task", pm: "PM", pid: str):
