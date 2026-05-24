@@ -245,8 +245,59 @@ class RegisterVirtualMachine:
             case "CALL":
                 dest, callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
+                callee = frame.registers[_register(callee_register)]
+                if (
+                    isinstance(callee, PureOperator)
+                    and callee.name == "/"
+                    and len(args) >= 2
+                ):
+                    for divisor in args[1:]:
+                        if isinstance(divisor, bool):
+                            continue
+                        if isinstance(divisor, int | float) and divisor == 0:
+                            saved_registers = tuple(frame.registers)
+                            saved_env = frame.env
+                            saved_pc = frame.pc
+
+                            async def _resume_div_by_zero(
+                                value: object,
+                                _saved_regs=saved_registers,
+                                _saved_env=saved_env,
+                                _saved_pc=saved_pc,
+                            ) -> object:
+                                regs = list(_saved_regs)
+                                regs[_register(dest)] = value
+                                resume_frame = _Frame(
+                                    frame.function_value,
+                                    frame.function,
+                                    _saved_pc,
+                                    regs,
+                                    _saved_env,
+                                    list(frame.parents),
+                                    list(frame.results),
+                                )
+                                while resume_frame.pc < len(resume_frame.function.instructions):
+                                    inst = resume_frame.function.instructions[resume_frame.pc]
+                                    resume_frame.pc += 1
+                                    result = await self._execute_instruction(resume_frame, inst)
+                                    if isinstance(result, _FrameResult):
+                                        return result.value
+                                    if isinstance(result, _Frame):
+                                        resume_frame = result
+                                return None
+
+                            continuation = QyContinuation(
+                                "divide-by-zero", True, _resume_div_by_zero
+                            )
+                            raise QyEffectSignal(
+                                "divide-by-zero",
+                                0,
+                                continuation,
+                                resumable=True,
+                                span=instruction.span,
+                            )
                 frame.registers[_register(dest)] = await self._call(
-                    frame.registers[_register(callee_register)],
+                    callee,
                     args,
                     instruction.span,
                     frame.env,
@@ -599,17 +650,61 @@ class RegisterVirtualMachine:
             result = await self._run_function(body_fn, ())
             return result.value
         except QyEffectSignal as e:
-            for spec in handler_specs:
-                if not isinstance(spec, tuple) or len(spec) != 2:
-                    continue
-                effect_sym, handler_fn_idx = spec
-                if not isinstance(effect_sym, Symbol) or not isinstance(handler_fn_idx, int):
-                    continue
-                if effect_sym.name == e.effect:
-                    handler_fn = BytecodeFunctionValue(self.program.functions[handler_fn_idx], env)
-                    handler_result = await self._run_function(handler_fn, (e.arg, e.continuation))
-                    return handler_result.value
-            raise
+            return await self._dispatch_effect(e, handler_specs, env)
+
+    async def _dispatch_effect(
+        self,
+        signal: QyEffectSignal,
+        handler_specs: tuple[object, ...],
+        env: Environment,
+    ) -> object:
+        """匹配并执行 handler, 并在 handler resume 时保持 handler 活跃."""
+        handler_fn = None
+        for spec in handler_specs:
+            if not isinstance(spec, tuple) or len(spec) != 2:
+                continue
+            effect_sym, handler_fn_idx = spec
+            if not isinstance(effect_sym, Symbol) or not isinstance(handler_fn_idx, int):
+                continue
+            if effect_sym.name == signal.effect:
+                handler_fn = BytecodeFunctionValue(self.program.functions[handler_fn_idx], env)
+                break
+        if handler_fn is None:
+            raise signal
+
+        arg = signal.arg
+        continuation = signal.continuation
+        while True:
+            try:
+                handler_result = await self._run_function(handler_fn, (arg, continuation))
+                result_value = handler_result.value
+                if isinstance(result_value, QyContinuation):
+                    if not result_value.resumable:
+                        return result_value
+                    continuation = result_value
+                    arg = None
+                else:
+                    return result_value
+            except QyEffectSignal as nested:
+                # handler resume 中产生的新 effect, 重新 dispatch
+                signal = nested
+                handler_fn_new = None
+                for spec in handler_specs:
+                    if not isinstance(spec, tuple) or len(spec) != 2:
+                        continue
+                    effect_sym, handler_fn_idx = spec
+                    if not isinstance(effect_sym, Symbol) or not isinstance(handler_fn_idx, int):
+                        continue
+                    if effect_sym.name == nested.effect:
+                        handler_fn_new = BytecodeFunctionValue(
+                            self.program.functions[handler_fn_idx], env
+                        )
+                        break
+                if handler_fn_new is None:
+                    raise
+                handler_fn = handler_fn_new
+                arg = nested.arg
+                continuation = nested.continuation
 
     async def _resume(self, continuation: object, value: object) -> object:
         if not isinstance(continuation, QyContinuation):

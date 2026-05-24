@@ -826,31 +826,65 @@ def _lower_handle(
     if len(args) != 2:
         context.diagnostic(f"handle expects exactly two arguments, got {len(args)}", form)
         return HandleExpr(LiteralExpr(None, "none", get_span(form)), (), get_span(form))
-    expression, handlers_form = args
+
+    # 支持两种 handle 格式:
+    #   标准格式: (handle expression ((effect (arg k) body...) ...))
+    #   on 格式:  (handle (on effect (arg k) body...) expression)
+    first, second = args
+    if _is_on_form(first):
+        # on 格式: 第一个参数是 on 形式的 handler, 第二个是 expression
+        expression = second
+        handlers_form = first
+    else:
+        # 标准格式: 第一个参数是 expression, 第二个是 handler 列表
+        expression = first
+        handlers_form = second
+
+    # 收集 on 格式中的 effect 名并自动声明未声明的 effect
+    if _is_on_form(handlers_form):
+        scope = _auto_declare_on_effects(handlers_form, scope, context)
+
     lowered_expression = _lower_form(expression, scope, context, tail=tail)
     handlers: list[EffectHandler] = []
 
     # 接受 Chain、tuple 或 nil 作为 handler 列表
-    if not (is_chain(handlers_form) or isinstance(handlers_form, tuple) or is_nil(handlers_form)):
+    if _is_on_form(handlers_form):
+        # on 格式: (on effect (arg k) body...) 形式
+        handlers_list = [handlers_form]
+    elif not (is_chain(handlers_form) or isinstance(handlers_form, tuple) or is_nil(handlers_form)):
         context.diagnostic(f"handle clauses must be a list, got {handlers_form!r}", handlers_form)
         return HandleExpr(lowered_expression, (), get_span(form), _type_of(lowered_expression))
+    else:
+        handlers_list = _form_to_list(handlers_form) if not is_nil(handlers_form) else []
 
-    handlers_list = _form_to_list(handlers_form) if not is_nil(handlers_form) else []
     result_type = _type_of(lowered_expression)
     for clause in handlers_list:
         clause_items = _form_to_list(clause)
-        if len(clause_items) < 3:
+        # 检测 on 格式: (on effect-name (arg k) body...)
+        is_on_clause = (
+            len(clause_items) >= 4
+            and isinstance(clause_items[0], Symbol)
+            and clause_items[0].name == "on"
+        )
+        if is_on_clause:
+            _, effect, params, *body = clause_items
+        elif len(clause_items) >= 3:
+            effect, params, *body = clause_items
+        else:
             context.diagnostic(
                 f"handle clause must be (effect (arg k) body...), got {clause!r}", clause
             )
             continue
-        effect, params, *body = clause_items
         effect = _ensure_symbol(effect, "handle effect name", context)
         if not _effect_is_declared(effect, scope, context):
             context.diagnostic(
                 f"effect {effect.name!r} is not declared; add defeffect before handle", effect
             )
-        param_symbols = _parameter_symbols(params, "handle", context)
+        # on 格式中 () 表示使用默认的 (v k) 参数
+        if is_on_clause and is_nil(params):
+            param_symbols = (Symbol("_v"), Symbol("k"))
+        else:
+            param_symbols = _parameter_symbols(params, "handle", context)
         if len(param_symbols) != 2:
             context.diagnostic(f"handle parameters must be (arg k), got {params!r}", params)
             continue
@@ -860,6 +894,31 @@ def _lower_handle(
         result_type = _body_type(lowered_body)
         handlers.append(EffectHandler(effect, param_symbols[0], param_symbols[1], lowered_body))
     return HandleExpr(lowered_expression, tuple(handlers), get_span(form), result_type)
+
+
+def _is_on_form(form: object) -> bool:
+    """检查 form 是否为 (on effect-name (arg k) body...) 形式."""
+    return (
+        is_chain(form)
+        and isinstance(car(form), Symbol)
+        and car(form).name == "on"
+    )
+
+
+def _auto_declare_on_effects(
+    on_form: object,
+    scope: Scope,
+    context: LoweringContext,
+) -> Scope:
+    """从 (on effect-name ...) 形式中收集 effect 名, 自动声明未声明的 effect."""
+    items = _form_to_list(on_form)
+    if len(items) >= 3 and isinstance(items[0], Symbol) and items[0].name == "on":
+        effect_name = _ensure_symbol(items[1], "handle effect name", context)
+        if not _effect_is_declared(effect_name, scope, context):
+            scope = _define_local(
+                scope, Binding(effect_name, "local", "effect"), context
+            )
+    return scope
 
 
 def _lower_resume(
