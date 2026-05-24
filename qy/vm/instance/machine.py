@@ -582,8 +582,7 @@ class RegisterVirtualMachine:
                 if isinstance(result, _FrameResult):
                     return result.value
                 if isinstance(result, _Frame):
-                    frame_result = await vm._run_function(result.function_value, ())
-                    return frame_result.value
+                    resume_frame = result
             return None
 
         continuation = QyContinuation(effect_name, True, resume)

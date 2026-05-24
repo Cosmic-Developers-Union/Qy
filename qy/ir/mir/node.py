@@ -66,24 +66,19 @@ MIRTerminatorOpcode = Literal["BRANCH", "JUMP", "RAISE_EFFECT", "RETURN", "TAIL_
 class MIRConstantPool:
     """Constant pool for MIR: stores Python objects referenced by index.
 
-    Same value always gets the same index (interning).  This makes MIR
-    serialisable and portable -- instructions reference constants by integer
-    index instead of embedding Python objects directly.
+    Each call to ``intern`` appends the value and returns a fresh index.
+    Identity semantics are preserved — the same value may appear at multiple
+    indices.  Instructions reference constants by integer index instead of
+    embedding Python objects directly.
     """
 
     _values: list[object]
-    _index: dict[object, int]
 
     def __init__(self) -> None:
         self._values = []
-        self._index = {}
 
     def intern(self, value: object) -> int:
-        """Insert *value* into the pool and return its index.
-
-        Each call always produces a fresh index — no deduplication.
-        This preserves identity semantics for values like Symbols.
-        """
+        """Insert *value* into the pool and return its index."""
         idx = len(self._values)
         self._values.append(value)
         return idx
