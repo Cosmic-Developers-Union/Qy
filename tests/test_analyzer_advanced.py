@@ -85,7 +85,7 @@ def test_tagged_literals_are_understood_as_operator_calls():
 
 def test_print_and_str_accept_text_symbols():
     assert type_check_source('(print "hello")') == []
-    assert type_check_source('(str-upper "hello")', _str_env()) == []
+    assert type_check_source('(string-upper "hello")', _str_env()) == []
 
 
 def test_legacy_data_operators_are_treated_as_non_core_calls():

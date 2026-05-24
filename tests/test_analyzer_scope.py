@@ -34,7 +34,7 @@ def test_defun_scope_is_understood():
 def test_import_alias_scope_is_understood():
     assert (
         type_check_source("""
-    (from qy.str import str-upper as upper)
+    (from qy.str import string-upper as upper)
     (upper "hello")
     """)
         == []
@@ -45,7 +45,7 @@ def test_local_import_alias_scope_is_understood():
     assert (
         type_check_source("""
     (let ()
-      (from qy.str import str-upper as upper)
+      (from qy.str import string-upper as upper)
       (upper "hello"))
     """)
         == []

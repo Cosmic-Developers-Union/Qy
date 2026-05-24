@@ -1,164 +1,190 @@
 # coding: utf-8
+"""String stdlib module (qy.str).
+
+Operators follow the target API from docs/stdlib-operators.md.
+Internally accepts both Python str and StringValue as string inputs
+during the transition period. Outputs StringValue where applicable.
+"""
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import cast
-
 from qy.core.operators import PureOperator
-from qy.core.syntax import is_chain
-from qy.core.syntax import is_nil
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
-from qy.frontend.reader import TupleForm
-from qy.frontend.reader import write_tuple
+from qy.sem.core import CharValue
+from qy.sem.core import IntValue
+from qy.sem.core import StringValue
 from qy.sem.core import T as QY_T
 from qy.std.module import StandardModule
-from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 
 def module() -> StandardModule:
     return StandardModule(
         "qy.str",
         {
-            Symbol("str"): _text_operator("str", _str, "把值转换为文本 symbol。"),
-            Symbol("str?"): _text_operator("str?", _str_predicate, "判断值是否为文本值。"),
-            Symbol("str-len"): _text_operator("str-len", _str_len, "返回文本长度。"),
-            Symbol("str-empty?"): _text_operator("str-empty?", _str_empty, "判断文本是否为空。"),
-            Symbol("str-concat"): _text_operator("str-concat", _str_concat, "把多个值按文本拼接。"),
-            Symbol("str-upper"): _text_operator("str-upper", _str_upper, "转换为大写文本。"),
-            Symbol("str-lower"): _text_operator("str-lower", _str_lower, "转换为小写文本。"),
-            Symbol("str-strip"): _text_operator("str-strip", _str_strip, "移除两端空白文本。"),
-            Symbol("str-trim"): _text_operator("str-trim", _str_strip, "str-strip 的别名。"),
-            Symbol("str-split"): _text_operator(
-                "str-split", _str_split, "把文本拆分为 symbol tuple。"
-            ),
-            Symbol("str-join"): _text_operator("str-join", _str_join, "用分隔文本连接值。"),
-            Symbol("str-replace"): _text_operator("str-replace", _str_replace, "替换文本。"),
-            Symbol("str-contains?"): _text_operator(
-                "str-contains?", _str_contains, "判断文本是否包含子文本。"
-            ),
-            Symbol("str-starts-with?"): _text_operator(
-                "str-starts-with?", _str_starts_with, "判断文本是否以给定前缀开始。"
-            ),
-            Symbol("str-ends-with?"): _text_operator(
-                "str-ends-with?", _str_ends_with, "判断文本是否以给定后缀结束。"
-            ),
+            Symbol("string?"): PureOperator("string?", _string_predicate),
+            Symbol("string-length"): PureOperator("string-length", _string_length),
+            Symbol("string-concat"): PureOperator("string-concat", _string_concat),
+            Symbol("string="): PureOperator("string=", _string_eq),
+            Symbol("string-slice"): PureOperator("string-slice", _string_slice),
+            Symbol("string-at"): PureOperator("string-at", _string_at),
+            Symbol("string-find"): PureOperator("string-find", _string_find),
+            Symbol("string-split"): PureOperator("string-split", _string_split),
+            Symbol("string-join"): PureOperator("string-join", _string_join),
+            Symbol("string-replace"): PureOperator("string-replace", _string_replace),
+            Symbol("string-empty?"): PureOperator("string-empty?", _string_empty),
+            Symbol("string-starts-with?"): PureOperator("string-starts-with?", _string_starts_with),
+            Symbol("string-ends-with?"): PureOperator("string-ends-with?", _string_ends_with),
+            Symbol("string-contains?"): PureOperator("string-contains?", _string_contains),
+            Symbol("string-upper"): PureOperator("string-upper", _string_upper),
+            Symbol("string-lower"): PureOperator("string-lower", _string_lower),
+            Symbol("string-trim"): PureOperator("string-trim", _string_trim),
+            Symbol("string->list"): PureOperator("string->list", _string_to_list),
+            Symbol("string->symbol"): PureOperator("string->symbol", _string_to_symbol),
+            Symbol("symbol->string"): PureOperator("symbol->string", _symbol_to_string),
         },
     )
 
 
-def _text_operator(name: str, func: Callable[..., object], doc: str) -> PureOperator:
-    return PureOperator(name, func, doc, _evaluate_text_args)
-
-
-async def _evaluate_text_args(args: tuple[object, ...], env: Environment) -> tuple[object, ...]:
-    return tuple([await _evaluate_text_arg(arg, env) for arg in args])
-
-
-async def _evaluate_text_arg(expression: object, env: Environment) -> object:
-    # 如果是 Chain 或 nil，直接返回（通常来自 quote）
-    if is_chain(expression) or is_nil(expression):
-        return expression
-    try:
-        return await evaluate_async(expression, env)
-    except EvaluationError:
-        if isinstance(expression, Symbol):
-            return expression
-        raise
-
-
-def _to_text(value: object) -> str:
-    if value is QY_NIL:
-        return "nil"
-    if value is QY_T:
-        return "T"
-    if isinstance(value, Symbol):
-        return value.name
+def _extract_str(value: object, op: str = "") -> str:
+    if isinstance(value, StringValue):
+        return value.value
     if isinstance(value, str):
         return value
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if value is None:
-        return "none"
-    if isinstance(value, tuple):
-        try:
-            return write_tuple(cast(TupleForm, value))
-        except TypeError:
-            return repr(value)
-    return str(value)
+    if isinstance(value, Symbol):
+        return value.name
+    raise TypeError(f"{op}: expected string, got {type(value).__name__}")
 
 
-def _to_symbol(text: str) -> Symbol:
-    return Symbol(text)
+def _extract_int(value: object, op: str = "") -> int:
+    if isinstance(value, IntValue):
+        return value.value
+    if isinstance(value, int):
+        return value
+    raise TypeError(f"{op}: expected integer, got {type(value).__name__}")
 
 
-def _str(value: object) -> Symbol:
-    return _to_symbol(_to_text(value))
+def _string_predicate(value: object) -> object:
+    return QY_T if isinstance(value, StringValue | str) else QY_NIL
 
 
-def _str_predicate(value: object) -> object:
-    return QY_T if isinstance(value, Symbol | str) else QY_NIL
+def _string_length(s: object) -> IntValue:
+    return IntValue(len(_extract_str(s, "string-length")))
 
 
-def _str_len(value: object) -> int:
-    return len(_to_text(value))
+def _string_concat(*values: object) -> StringValue:
+    return StringValue("".join(_extract_str(v, "string-concat") for v in values))
 
 
-def _str_empty(value: object) -> object:
-    return QY_T if _to_text(value) == "" else QY_NIL
+def _string_eq(a: object, b: object) -> object:
+    return QY_T if _extract_str(a, "string=") == _extract_str(b, "string=") else QY_NIL
 
 
-def _str_concat(*values: object) -> Symbol:
-    return _to_symbol("".join(_to_text(value) for value in values))
+def _string_slice(s: object, start: object, end: object = None) -> StringValue:
+    text = _extract_str(s, "string-slice")
+    i = _extract_int(start, "string-slice")
+    if end is None:
+        return StringValue(text[i:])
+    j = _extract_int(end, "string-slice")
+    return StringValue(text[i:j])
 
 
-def _str_upper(value: object) -> Symbol:
-    return _to_symbol(_to_text(value).upper())
+def _string_at(s: object, index: object) -> CharValue:
+    text = _extract_str(s, "string-at")
+    i = _extract_int(index, "string-at")
+    if i < 0 or i >= len(text):
+        raise EvaluationError(f"string-at: index {i} out of range for string of length {len(text)}")
+    return CharValue(text[i])
 
 
-def _str_lower(value: object) -> Symbol:
-    return _to_symbol(_to_text(value).lower())
+def _string_find(s: object, needle: object) -> object:
+    text = _extract_str(s, "string-find")
+    sub = _extract_str(needle, "string-find")
+    idx = text.find(sub)
+    if idx == -1:
+        return QY_NIL
+    return IntValue(idx)
 
 
-def _str_strip(value: object) -> Symbol:
-    return _to_symbol(_to_text(value).strip())
+def _string_split(s: object, separator: object = None) -> tuple[StringValue, ...]:
+    text = _extract_str(s, "string-split")
+    if separator is None:
+        parts = text.split()
+    else:
+        parts = text.split(_extract_str(separator, "string-split"))
+    return tuple(StringValue(p) for p in parts)
 
 
-def _str_split(value: object, separator: object = None) -> tuple[Symbol, ...]:
-    separator_text = None if separator is None else _to_text(separator)
-    return tuple(_to_symbol(part) for part in _to_text(value).split(separator_text))
+def _string_join(separator: object, *values: object) -> StringValue:
+    sep = _extract_str(separator, "string-join")
+    parts: list[str] = []
+    for v in values:
+        if isinstance(v, tuple):
+            parts.extend(_extract_str(item, "string-join") for item in v)
+        else:
+            parts.append(_extract_str(v, "string-join"))
+    return StringValue(sep.join(parts))
 
 
-def _str_join(separator: object, values: object) -> Symbol:
-    if is_nil(values) or is_chain(values):
-        from qy.core.syntax import chain_to_list
+def _string_replace(s: object, old: object, new: object) -> StringValue:
+    text = _extract_str(s, "string-replace")
+    return StringValue(
+        text.replace(_extract_str(old, "string-replace"), _extract_str(new, "string-replace"))
+    )
 
-        return _to_symbol(
-            _to_text(separator).join(_to_text(value) for value in chain_to_list(values))
+
+def _string_empty(s: object) -> object:
+    return QY_T if _extract_str(s, "string-empty?") == "" else QY_NIL
+
+
+def _string_starts_with(s: object, prefix: object) -> object:
+    return (
+        QY_T
+        if _extract_str(s, "string-starts-with?").startswith(
+            _extract_str(prefix, "string-starts-with?")
         )
-    if not isinstance(values, tuple | list):
-        raise EvaluationError(
-            f"str-join expects a list-like value as the second argument, got {values!r}"
-        )
-    return _to_symbol(_to_text(separator).join(_to_text(value) for value in values))
+        else QY_NIL
+    )
 
 
-def _str_replace(value: object, old: object, new: object) -> Symbol:
-    return _to_symbol(_to_text(value).replace(_to_text(old), _to_text(new)))
+def _string_ends_with(s: object, suffix: object) -> object:
+    return (
+        QY_T
+        if _extract_str(s, "string-ends-with?").endswith(_extract_str(suffix, "string-ends-with?"))
+        else QY_NIL
+    )
 
 
-def _str_contains(value: object, needle: object) -> object:
-    return QY_T if _to_text(needle) in _to_text(value) else QY_NIL
+def _string_contains(s: object, needle: object) -> object:
+    return (
+        QY_T
+        if _extract_str(needle, "string-contains?") in _extract_str(s, "string-contains?")
+        else QY_NIL
+    )
 
 
-def _str_starts_with(value: object, prefix: object) -> object:
-    return QY_T if _to_text(value).startswith(_to_text(prefix)) else QY_NIL
+def _string_upper(s: object) -> StringValue:
+    return StringValue(_extract_str(s, "string-upper").upper())
 
 
-def _str_ends_with(value: object, suffix: object) -> object:
-    return QY_T if _to_text(value).endswith(_to_text(suffix)) else QY_NIL
+def _string_lower(s: object) -> StringValue:
+    return StringValue(_extract_str(s, "string-lower").lower())
+
+
+def _string_trim(s: object) -> StringValue:
+    return StringValue(_extract_str(s, "string-trim").strip())
+
+
+def _string_to_list(s: object) -> tuple[CharValue, ...]:
+    return tuple(CharValue(c) for c in _extract_str(s, "string->list"))
+
+
+def _string_to_symbol(s: object) -> Symbol:
+    return Symbol(_extract_str(s, "string->symbol"))
+
+
+def _symbol_to_string(s: object) -> StringValue:
+    if isinstance(s, Symbol):
+        return StringValue(s.name)
+    raise TypeError(f"symbol->string: expected symbol, got {type(s).__name__}")

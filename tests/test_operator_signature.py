@@ -1,4 +1,3 @@
-
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
 from qy.core.operator_signature import OperatorSignature

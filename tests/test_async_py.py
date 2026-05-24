@@ -5,6 +5,7 @@ from qy.evaluator import HostObjectRef
 from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
 from qy.runtime import AsyncQy as Qy
+from qy.sem.core import StringValue
 from qy.std import load_module
 
 S = Symbol
@@ -78,7 +79,7 @@ return later()
 
 async def test_py_wraps_qy_callables_as_async_python_functions():
     qy = Qy(env=_str_env())
-    await qy.evaluate_source_async("(defun normalize-doc (doc) (str-upper doc))")
+    await qy.evaluate_source_async("(defun normalize-doc (doc) (string-upper doc))")
 
     result = await qy.evaluate_source_async(
         '''
@@ -91,7 +92,10 @@ return await normalize(doc)
         '''
     )
 
-    assert result == S("QY")
+    from qy.evaluator import HostObjectRef
+
+    assert isinstance(result, HostObjectRef)
+    assert result.value == StringValue("QY")
 
 
 async def test_py_converts_quoted_symbolic_literals_to_python_values():

@@ -33,6 +33,8 @@ def test_tagged_literal_calls_user_operator():
     env = standard_environment()
     for sym, val in load_module("qy.str").exports.items():
         env.define(sym, val)
-    evaluate_source('(defun t (source) (str-concat "template:" source))', env)
+    evaluate_source('(defun t (source) (string-concat "template:" source))', env)
 
-    assert evaluate_source('t"hello {name}"', env) == S("template:hello {name}")
+    from qy.sem.core import StringValue
+
+    assert evaluate_source('t"hello {name}"', env) == StringValue("template:hello {name}")

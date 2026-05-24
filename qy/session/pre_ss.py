@@ -23,14 +23,17 @@ if TYPE_CHECKING:
     from qy.frontend.reader import Symbol
 
 __all__ = [
+    "create_char_ss",
     "create_lisp_ss",
     "create_literal_ss",
     "create_number_ss",
     "create_pre_ssc",
     "create_string_ss",
     "create_value_ss",
+    "is_char_literal",
     "is_number_literal",
     "is_string_literal",
+    "parse_char_literal",
     "parse_number_literal",
     "parse_string_literal",
 ]
@@ -57,6 +60,68 @@ def parse_string_literal(name: str) -> object:
     if not isinstance(value, str):
         return _MISSING
     return value
+
+
+_CHAR_NAMED: dict[str, str] = {
+    "space": " ",
+    "newline": "\n",
+    "tab": "\t",
+    "return": "\r",
+    "null": "\x00",
+    "nul": "\x00",
+    "backspace": "\x08",
+    "delete": "\x7f",
+    "escape": "\x1b",
+    "alarm": "\x07",
+    "vtab": "\x0b",
+    "formfeed": "\x0c",
+}
+
+
+def is_char_literal(name: str) -> bool:
+    r"""Check if a symbol name represents a char literal.
+
+    Char literal syntax: #\\<char>, #\\<named>, #\\uXXXX, #\\UXXXXXXXX
+    """
+    return name.startswith("#\\") and len(name) > 2
+
+
+def parse_char_literal(name: str) -> object:
+    """Parse a char literal symbol name into a CharValue.
+
+    Returns _MISSING if the name is not a valid char literal.
+    """
+    from qy.sem.core import CharValue
+
+    if not name.startswith("#\\") or len(name) <= 2:
+        return _MISSING
+
+    body = name[2:]
+
+    if len(body) == 1:
+        return CharValue(body)
+
+    lower = body.lower()
+    if lower in _CHAR_NAMED:
+        return CharValue(_CHAR_NAMED[lower])
+
+    if lower.startswith("u") and len(body) in (5, 9):
+        hex_part = body[1:]
+        try:
+            codepoint = int(hex_part, 16)
+            return CharValue(chr(codepoint))
+        except (ValueError, OverflowError):
+            return _MISSING
+
+    if lower.startswith("x") and len(body) == 3:
+        hex_part = body[1:]
+        try:
+            codepoint = int(hex_part, 16)
+            return CharValue(chr(codepoint))
+        except (ValueError, OverflowError):
+            return _MISSING
+
+    return _MISSING
 
 
 def is_number_literal(name: str) -> bool:
@@ -126,13 +191,26 @@ def create_number_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """
     from qy.core.symbol_space import SymbolSpace
 
-    # Number-ss is a virtual space that dynamically resolves numeric symbols
-    # We create an empty space with a parent, and the actual resolution
-    # happens in the literal resolver layer
     return SymbolSpace(
         {},
         parent=parent,
         name="number-ss",
+        writable=False,
+    )
+
+
+def create_char_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
+    r"""Create the char-ss that resolves character literals.
+
+    Char literal syntax: #\\a, #\\space, #\\newline, #\\uXXXX, etc.
+    Resolution happens in the literal resolver layer.
+    """
+    from qy.core.symbol_space import SymbolSpace
+
+    return SymbolSpace(
+        {},
+        parent=parent,
+        name="char-ss",
         writable=False,
     )
 
@@ -157,15 +235,13 @@ def create_string_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
 
 
 def create_value_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
-    """Create a combined value-ss that includes number-ss and string-ss.
+    """Create a combined value-ss that includes number-ss, char-ss, and string-ss.
 
     This is a convenience function that creates a symbol-space chain
-    containing both numeric and string literal resolution.
+    containing numeric, character, and string literal resolution.
     """
     from qy.core.symbol_space import SymbolSpace
 
-    # Create a combined space that will handle both numbers and strings
-    # The actual resolution happens in the literal resolver
     return SymbolSpace(
         {},
         parent=parent,
@@ -203,7 +279,7 @@ def create_pre_ssc(stdlib_space: SymbolSpace | None = None) -> SymbolSpace:
     This creates the foundational symbol-space chain that includes:
     1. meta-symbol-space (implicit root)
     2. lisp-ss (T, nil, true, false, none)
-    3. value-ss (number and string literal resolution)
+    3. value-ss (number, char, and string literal resolution)
     4. stdlib-space (optional standard library bindings)
 
     The pre-ssc serves as the base for all user code evaluation.
@@ -249,6 +325,12 @@ def resolve_literal_in_pre_ss(symbol: Symbol, pre_ss: SymbolSpace) -> object:
         all_bindings = pre_ss.all_bindings()
         if symbol in all_bindings:
             return None  # Actually bound to None
+
+    # Try char literal
+    if is_char_literal(symbol.name):
+        result = parse_char_literal(symbol.name)
+        if result is not _MISSING:
+            return result
 
     # Try string literal
     if is_string_literal(symbol.name):

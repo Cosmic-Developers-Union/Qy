@@ -30,7 +30,7 @@ __all__ = [
 
 LANGUAGE_CORE_MODULES = ("qy.core",)
 STANDARD_PROFILE_MODULES = ("qy.core", "qy.io")
-OPTIONAL_STDLIB_MODULES = ("qy.num", "qy.str", "qy.py", "qy.testhost", "qy.legacy")
+OPTIONAL_STDLIB_MODULES = ("qy.num", "qy.str", "qy.char", "qy.py", "qy.testhost", "qy.legacy")
 PRELUDE_MODULES = STANDARD_PROFILE_MODULES
 type ModuleLoader = Callable[[], StandardModule]
 
@@ -88,6 +88,7 @@ def _install_builtin_loaders() -> None:
     _MODULE_LOADERS.setdefault("qy.io", _load_io_module)
     _MODULE_LOADERS.setdefault("qy.num", _load_num_module)
     _MODULE_LOADERS.setdefault("qy.str", _load_string_module)
+    _MODULE_LOADERS.setdefault("qy.char", _load_char_module)
     _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
     _MODULE_LOADERS.setdefault("qy.testhost", _load_testhost_module)
     _MODULE_LOADERS.setdefault("qy.legacy", _load_legacy_module)
@@ -113,6 +114,12 @@ def _load_num_module() -> StandardModule:
 
 def _load_string_module() -> StandardModule:
     from qy.std.strings import module
+
+    return module()
+
+
+def _load_char_module() -> StandardModule:
+    from qy.std.chars import module
 
     return module()
 

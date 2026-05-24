@@ -9,6 +9,7 @@ from qy.evaluator import evaluate_source
 from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
+from qy.sem.core import StringValue
 from qy.std import StandardModule
 from qy.std import register_module
 
@@ -34,16 +35,17 @@ def test_module_defines_and_registers_exports():
 
 def test_from_import_as_operator():
     env = standard_environment()
-    assert evaluate_source("(from qy.str import str-upper as upper)", env) is None
-    assert evaluate_source('(upper "hello")', env) == S("HELLO")
+    assert evaluate_source("(from qy.str import string-upper as upper)", env) is None
+
+    assert evaluate_source('(upper "hello")', env) == StringValue("HELLO")
 
 
 def test_from_import_supports_multiple_imports():
     env = standard_environment()
-    evaluate_source("(from qy.str import str-upper as upper str-lower as lower)", env)
+    evaluate_source("(from qy.str import string-upper as upper string-lower as lower)", env)
 
-    assert evaluate_source('(upper "qy")', env) == S("QY")
-    assert evaluate_source('(lower "QY")', env) == S("qy")
+    assert evaluate_source('(upper "qy")', env) == StringValue("QY")
+    assert evaluate_source('(lower "QY")', env) == StringValue("qy")
 
 
 def test_from_import_respects_local_scope():
@@ -53,8 +55,8 @@ def test_from_import_respects_local_scope():
 
     env = standard_environment()
     assert evaluate_source(
-        '(let () (from qy.str import str-upper as upper) (upper "qy"))', env
-    ) == S("QY")
+        '(let () (from qy.str import string-upper as upper) (upper "qy"))', env
+    ) == StringValue("QY")
     with pytest.raises(EvaluationError):
         evaluate_source('(upper "qy")', env)
 
@@ -77,7 +79,7 @@ def test_from_import_cannot_override_existing_binding():
     env.define(S("upper"), 42)
 
     with pytest.raises(EvaluationError, match="already bound in this scope"):
-        evaluate_source("(from qy.str import str-upper as upper)", env)
+        evaluate_source("(from qy.str import string-upper as upper)", env)
 
 
 def test_from_import_supports_compile_time_macro_exports():
