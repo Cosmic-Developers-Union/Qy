@@ -199,9 +199,9 @@ class Qy(_QyBase):
         program = lower(expansion.forms, self.env)
         bytecode = compile_bytecode(program)
         coro = RegisterVirtualMachine(bytecode, self.env).evaluate_program()
-        from qy.evaluator import _run_coro
+        from qy.async_utils import run_coro
 
-        return cast(list[object], _run_coro(coro))
+        return cast(list[object], run_coro(coro))
 
     def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)

@@ -733,9 +733,9 @@ class RegisterVirtualMachine:
 
 
 def evaluate_bytecode(program: BytecodeProgram, env: Environment | None = None) -> object:
-    from qy.evaluator import _run_coro
+    from qy.async_utils import run_coro
 
-    return _run_coro(evaluate_bytecode_async(program, env))
+    return run_coro(evaluate_bytecode_async(program, env))
 
 
 async def evaluate_bytecode_async(
@@ -751,9 +751,9 @@ def evaluate_bytecode_source(
     *,
     source_name: str | None = None,
 ) -> object:
-    from qy.evaluator import _run_coro
+    from qy.async_utils import run_coro
 
-    return _run_coro(evaluate_bytecode_source_async(source, env, source_name=source_name))
+    return run_coro(evaluate_bytecode_source_async(source, env, source_name=source_name))
 
 
 async def evaluate_bytecode_source_async(

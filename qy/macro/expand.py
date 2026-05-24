@@ -193,9 +193,9 @@ def macroexpand(
     *,
     options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
-    from qy.evaluator import _run_coro
+    from qy.async_utils import run_coro
 
-    return cast(MacroExpansion, _run_coro(macroexpand_async(forms, env, options=options)))
+    return cast(MacroExpansion, run_coro(macroexpand_async(forms, env, options=options)))
 
 
 async def macroexpand_async(
@@ -235,11 +235,11 @@ def macroexpand_source(
     source_name: str | None = None,
     options: MacroExpansionOptions | None = None,
 ) -> MacroExpansion:
-    from qy.evaluator import _run_coro
+    from qy.async_utils import run_coro
 
     return cast(
         MacroExpansion,
-        _run_coro(macroexpand_source_async(source, env, source_name=source_name, options=options)),
+        run_coro(macroexpand_source_async(source, env, source_name=source_name, options=options)),
     )
 
 
