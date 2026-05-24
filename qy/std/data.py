@@ -13,12 +13,12 @@ from qy.core.syntax import cons as chain_cons
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
+from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
-from qy.values import QY_NIL
-from qy.values import QY_T
+from qy.sem.core import T as QY_T
 
 
 def _ensure_tuple(value: object) -> tuple[object, ...]:

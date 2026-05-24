@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyTypeError
+from qy.sem.core import T as QY_T
 from qy.std.arithmetic import _add
 from qy.std.arithmetic import _div
 from qy.std.arithmetic import _ensure_number
@@ -13,8 +15,6 @@ from qy.std.arithmetic import _mul
 from qy.std.arithmetic import _num_eq
 from qy.std.arithmetic import _py_eq
 from qy.std.arithmetic import _sub
-from qy.values import QY_NIL
-from qy.values import QY_T
 
 
 def test_ensure_number_with_int():

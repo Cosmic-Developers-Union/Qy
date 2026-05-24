@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import Chain as QyChain
+from qy.core.syntax import nil as QY_NIL
 from qy.sem.bridge import from_sem
 from qy.sem.bridge import to_sem
 from qy.sem.core import NIL
@@ -12,10 +14,8 @@ from qy.sem.core import IntValue
 from qy.sem.core import NilValue
 from qy.sem.core import StringValue
 from qy.sem.core import T
+from qy.sem.core import T as QY_T
 from qy.sem.core import TValue
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyChain
 
 
 def test_to_sem_nil():

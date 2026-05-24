@@ -8,14 +8,14 @@ from typing import cast
 from qy.core.operators import PureOperator
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
+from qy.core.syntax import nil as QY_NIL
 from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import TupleForm
 from qy.frontend.reader import write_tuple
+from qy.sem.core import T as QY_T
 from qy.std.module import StandardModule
-from qy.values import QY_NIL
-from qy.values import QY_T
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 

@@ -17,6 +17,7 @@ from qy.backend.vm.compiler import compile_bytecode
 from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
+from qy.core.syntax import nil as QY_NIL
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
@@ -30,7 +31,6 @@ from qy.ir import ProgramIR
 from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
 from qy.sem.runtime import EffectDefinition
-from qy.values import QY_NIL
 from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame
@@ -424,12 +424,12 @@ class RegisterVirtualMachine:
         from typing import cast
 
         from qy.core.syntax import Chain
+        from qy.core.syntax import Chain as QyCons
+        from qy.core.syntax import chain_to_tuple as qy_cons_to_tuple
         from qy.frontend.reader import Form
         from qy.frontend.reader import Symbol as _Symbol
         from qy.ir import ProgramIR
         from qy.passes.lower_hir import lower
-        from qy.values import QyCons
-        from qy.values import qy_cons_to_tuple
 
         if isinstance(form, QyCons):
             form = qy_cons_to_tuple(form)
@@ -857,13 +857,13 @@ def _raise_for_diagnostics(program: BytecodeProgram) -> None:
 
 def _sequence_to_args(value: object) -> tuple[object, ...]:
     from qy.core.syntax import Chain
+    from qy.core.syntax import Chain as QyCons
+    from qy.core.syntax import QyNil as QyEmptyChain
+    from qy.core.syntax import QyNil as QyEmptyList
     from qy.core.syntax import chain_to_list
     from qy.core.syntax import is_chain
     from qy.literals import default_literal_type
     from qy.literals import try_default_literal
-    from qy.values import QyCons
-    from qy.values import QyEmptyChain
-    from qy.values import QyEmptyList
 
     def _normalize_arg(item: object) -> object:
         if isinstance(item, Symbol) and default_literal_type(item) is not None:

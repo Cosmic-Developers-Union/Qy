@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import Chain as QyCons
 from qy.core.syntax import list_to_chain
+from qy.core.syntax import nil as QY_EMPTY_LIST
+from qy.core.syntax import nil as QY_NIL
 from qy.display import format_value
 from qy.frontend.reader import Symbol
-from qy.values import QY_EMPTY_LIST
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyCons
+from qy.sem.core import T as QY_T
 
 
 def test_format_value_nil():

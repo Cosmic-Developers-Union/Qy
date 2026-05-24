@@ -15,6 +15,8 @@ from pathlib import Path
 
 import pytest
 
+from qy.core.syntax import Chain as QyChain
+from qy.core.syntax import nil as QY_NIL
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import QyArityError
@@ -31,8 +33,6 @@ from qy.evaluator import evaluate_source
 from qy.evaluator import evaluate_source_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
-from qy.values import QY_NIL
-from qy.values import QyChain
 
 # -- evaluate / evaluate_async tests -----------------------------------------
 

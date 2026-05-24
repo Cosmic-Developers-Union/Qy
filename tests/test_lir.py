@@ -267,7 +267,7 @@ def test_peephole_strength_reduces_t():
     """Peephole converts LOAD_HOST r, QY_T → LOAD_T r."""
     from qy.ir.lir import LIRInstruction
     from qy.passes.lower_lir import _peephole
-    from qy.values import QY_T
+    from qy.sem.core import T as QY_T
 
     instructions = [LIRInstruction("LOAD_HOST", (0, QY_T))]
     result = _peephole(instructions)
@@ -415,7 +415,7 @@ def test_lir_peephole_load_t_compiles_to_bytecode():
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram
-    from qy.values import QY_T
+    from qy.sem.core import T as QY_T
 
     program = LIRProgram(
         (

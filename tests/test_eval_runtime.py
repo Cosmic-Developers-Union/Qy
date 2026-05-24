@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import nil as QY_NIL
 from qy.environment import standard_environment
 from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.sem.runtime import UserFunction
 from qy.sem.runtime import _evaluate_tail_body as evaluate_tail_body_async
-from qy.values import QY_NIL
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 from qy.vm.instance.values import TailCall
@@ -343,7 +343,7 @@ async def test_evaluate_body_async_preserves_environment():
 @pytest.mark.asyncio
 async def test_evaluate_async_quote():
     """测试 evaluate_async 评估 quote。."""
-    from qy.values import QyChain
+    from qy.core.syntax import Chain as QyChain
 
     env = standard_environment()
 

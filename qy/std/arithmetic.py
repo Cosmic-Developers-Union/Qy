@@ -16,15 +16,15 @@ def _ensure_number(value: object) -> int | float:
 
 
 def _py_eq(left: object, right: object) -> object:
-    from qy.values import QY_NIL
-    from qy.values import QY_T
+    from qy.core.syntax import nil as QY_NIL
+    from qy.sem.core import T as QY_T
 
     return QY_T if left == right else QY_NIL
 
 
 def _num_eq(left: object, right: object) -> object:
-    from qy.values import QY_NIL
-    from qy.values import QY_T
+    from qy.core.syntax import nil as QY_NIL
+    from qy.sem.core import T as QY_T
 
     if isinstance(left, bool) or isinstance(right, bool):
         return QY_T if left is right else QY_NIL

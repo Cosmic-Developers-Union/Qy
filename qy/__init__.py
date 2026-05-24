@@ -29,6 +29,14 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import Chain as QyChain
+from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import QyNil
+from qy.core.syntax import QyNil as QyEmptyChain
+from qy.core.syntax import QyNil as QyEmptyList
+from qy.core.syntax import nil as QY_EMPTY_CHAIN
+from qy.core.syntax import nil as QY_EMPTY_LIST
+from qy.core.syntax import nil as QY_NIL
 from qy.display import format_value
 from qy.environment import Environment
 from qy.environment import standard_environment
@@ -105,6 +113,8 @@ from qy.passes.lower_lir import lower_lir
 from qy.passes.lower_mir import lower_mir
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
+from qy.sem.core import T as QY_T
+from qy.sem.core import TValue as QyT
 from qy.sem.runtime import EffectDefinition
 from qy.session import ProfileConfig
 from qy.session import RuntimeSpace
@@ -118,16 +128,6 @@ from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_form
 from qy.tools.fmt import format_program
 from qy.tools.fmt import format_source
-from qy.values import QY_EMPTY_CHAIN
-from qy.values import QY_EMPTY_LIST
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyChain
-from qy.values import QyCons
-from qy.values import QyEmptyChain
-from qy.values import QyEmptyList
-from qy.values import QyNil
-from qy.values import QyT
 from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import RegisterVirtualMachine

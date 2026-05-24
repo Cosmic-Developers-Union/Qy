@@ -1,12 +1,12 @@
 import pytest
 
 from qy import Qy
+from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
 from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
-from qy.values import QY_NIL
 
 
 def test_vm_evaluates_core_calls_and_let():

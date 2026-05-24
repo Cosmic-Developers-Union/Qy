@@ -24,6 +24,11 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.operators import SyntaxOperator
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import Chain as QyChain
+from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import nil as QY_EMPTY_CHAIN
+from qy.core.syntax import nil as QY_EMPTY_LIST
+from qy.core.syntax import nil as QY_NIL
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import EvaluationError
@@ -33,14 +38,9 @@ from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.frontend.reader import read
 from qy.macro import MacroDefinition
+from qy.sem.core import T as QY_T
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
-from qy.values import QY_EMPTY_CHAIN
-from qy.values import QY_EMPTY_LIST
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyChain
-from qy.values import QyCons
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.values import HostObjectRef
 

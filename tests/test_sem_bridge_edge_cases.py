@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import nil as QY_NIL
 from qy.sem.bridge import from_sem
 from qy.sem.core import NilValue
-from qy.values import QY_NIL
 
 
 def test_from_sem_nil_value():

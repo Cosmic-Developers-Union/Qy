@@ -4,8 +4,10 @@
 import pytest
 
 from qy.core.symbol_space import SymbolSpace
+from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyResolveError
 from qy.frontend.reader import Symbol
+from qy.sem.core import T as QY_T
 from qy.session.pre_ss import _MISSING
 from qy.session.pre_ss import create_lisp_ss
 from qy.session.pre_ss import create_literal_ss
@@ -18,8 +20,6 @@ from qy.session.pre_ss import is_string_literal
 from qy.session.pre_ss import parse_number_literal
 from qy.session.pre_ss import parse_string_literal
 from qy.session.pre_ss import resolve_literal_in_pre_ss
-from qy.values import QY_NIL
-from qy.values import QY_T
 
 S = Symbol
 

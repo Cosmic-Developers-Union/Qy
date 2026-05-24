@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field
@@ -21,7 +22,9 @@ __all__ = [
     "cons",
     "is_chain",
     "is_nil",
+    "iter_chain",
     "list_to_chain",
+    "map_chain",
     "nil",
     "tuple_to_chain",
 ]
@@ -147,3 +150,23 @@ def tuple_to_chain(t: tuple[object, ...], span: SourceSpan | None = None) -> obj
 def chain_to_tuple(chain: object) -> tuple[object, ...]:
     """将 proper chain 转换为 Python tuple。."""
     return tuple(chain_to_list(chain))
+
+
+def iter_chain(chain: object) -> Iterable[object]:
+    """惰性迭代 proper chain 的元素。."""
+    current = chain
+    while isinstance(current, Chain):
+        yield current.head
+        current = current.tail
+    if not is_nil(current):
+        msg = f"Cannot iterate improper list ending with {current!r}"
+        raise TypeError(msg)
+
+
+def map_chain(chain: object, func: Callable[[object], object]) -> object:
+    """对 chain 每个元素应用 func，返回新 chain。."""
+    if is_nil(chain):
+        return nil
+    if isinstance(chain, Chain):
+        return Chain(func(chain.head), map_chain(chain.tail, func))
+    return func(chain)

@@ -7,6 +7,8 @@ VM 直接操作 sem value 后本模块可删除。
 
 from __future__ import annotations
 
+from qy.core.syntax import Chain
+from qy.core.syntax import nil
 from qy.sem.core import NIL
 from qy.sem.core import ChainValue
 from qy.sem.core import FloatValue
@@ -16,16 +18,13 @@ from qy.sem.core import StringValue
 from qy.sem.core import T
 from qy.sem.core import TValue
 from qy.sem.core import Value
-from qy.values import QY_NIL
-from qy.values import QY_T
-from qy.values import QyChain
 
 
 def to_sem(value: object) -> Value:
     """将 legacy runtime 值转为 sem Value。."""
-    if value is QY_NIL or value is None:
+    if value is nil or value is None:
         return NIL
-    if value is QY_T or value is True:
+    if value is T or value is True:
         return T
     if isinstance(value, Value):
         return value
@@ -35,7 +34,7 @@ def to_sem(value: object) -> Value:
         return FloatValue(value)
     if isinstance(value, str):
         return StringValue(value)
-    if isinstance(value, QyChain):
+    if isinstance(value, Chain):
         return ChainValue(to_sem(value.head), to_sem(value.tail))
     return NIL
 
@@ -43,9 +42,9 @@ def to_sem(value: object) -> Value:
 def from_sem(value: object) -> object:
     """将 sem Value 转回 legacy runtime 表示。."""
     if isinstance(value, NilValue):
-        return QY_NIL
+        return nil
     if isinstance(value, TValue):
-        return QY_T
+        return T
     if isinstance(value, IntValue):
         return value.value
     if isinstance(value, FloatValue):
@@ -53,5 +52,5 @@ def from_sem(value: object) -> object:
     if isinstance(value, StringValue):
         return value.value
     if isinstance(value, ChainValue):
-        return QyChain(from_sem(value.head), from_sem(value.tail))
-    return QY_NIL
+        return Chain(from_sem(value.head), from_sem(value.tail))
+    return nil
