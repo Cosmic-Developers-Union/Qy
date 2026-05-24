@@ -55,7 +55,19 @@ __all__ = [
     "UnresolvedSymbolExpr",
 ]
 
-BindingSource = Literal["define", "defun", "lambda-param", "let-binding", "handler-param", "macro-param", "module", "import", "builtin", "default-literal", "unresolved"]
+BindingSource = Literal[
+    "define",
+    "defun",
+    "lambda-param",
+    "let-binding",
+    "handler-param",
+    "macro-param",
+    "module",
+    "import",
+    "builtin",
+    "default-literal",
+    "unresolved",
+]
 
 
 @dataclass(frozen=True, slots=True)

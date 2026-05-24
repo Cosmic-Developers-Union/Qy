@@ -106,6 +106,9 @@ from qy.passes.lower_mir import lower_mir
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
 from qy.sem.runtime import EffectDefinition
+from qy.session import ProfileConfig
+from qy.session import RuntimeSpace
+from qy.session import create_standard_runtime_space
 from qy.std.profile import OperatorDoc
 from qy.std.profile import OperatorModuleDoc
 from qy.std.profile import collect_supported_operators
@@ -186,6 +189,7 @@ __all__ = [
     "OperatorDoc",
     "OperatorModuleDoc",
     "OperatorSignature",
+    "ProfileConfig",
     "ProgramIR",
     "PureOperator",
     "Qy",
@@ -211,6 +215,7 @@ __all__ = [
     "QyTypeError",
     "ReaderSyntaxError",
     "RegisterVirtualMachine",
+    "RuntimeSpace",
     "ScopeOperator",
     "SourceSpan",
     "Symbol",
@@ -225,6 +230,7 @@ __all__ = [
     "compile_lir_bytecode",
     "compile_mir_bytecode",
     "compile_to_llvm_text",
+    "create_standard_runtime_space",
     "dump_bytecode",
     "dump_form",
     "dump_ir",

@@ -14,8 +14,12 @@
 
 from qy.session.profile import LiteralResolver
 from qy.session.profile import ProfileConfig
+from qy.session.runtime_space import RuntimeSpace
+from qy.session.runtime_space import create_standard_runtime_space
 
 __all__ = [
     "LiteralResolver",
     "ProfileConfig",
+    "RuntimeSpace",
+    "create_standard_runtime_space",
 ]

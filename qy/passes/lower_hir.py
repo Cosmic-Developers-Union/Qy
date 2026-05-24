@@ -997,31 +997,59 @@ def _scope_after_form(
     if operator == Symbol("defun") and isinstance(name, Symbol):
         # defun 已经被前向声明，允许覆盖
         return _define_local(
-            scope, Binding(name, "defun", "function", scope.symbol_space), context, allow_redefinition=True
+            scope,
+            Binding(name, "defun", "function", scope.symbol_space),
+            context,
+            allow_redefinition=True,
         )
     if operator == Symbol("define") and isinstance(name, Symbol):
         # Strip quoted-symbol prefix for scope registration
-        actual_name = Symbol(name.name[1:]) if name.name.startswith("'") and len(name.name) > 1 else name
+        actual_name = (
+            Symbol(name.name[1:]) if name.name.startswith("'") and len(name.name) > 1 else name
+        )
         # define 的 binding 类型应该是其 value 的类型，而不是 DefineExpr 本身的类型
         inferred = _type_of(expr.value) if isinstance(expr, DefineExpr) else "any"
         # 如果是 define + lambda 且已前向声明，允许覆盖
         allow_redef = scope.has_local(actual_name) and inferred == "function"
         return _define_local(
-            scope, Binding(actual_name, "define", inferred, scope.symbol_space), context, allow_redefinition=allow_redef
+            scope,
+            Binding(actual_name, "define", inferred, scope.symbol_space),
+            context,
+            allow_redefinition=allow_redef,
         )
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
-        return _define_local(scope, Binding(name, "defeffect", "effect", scope.symbol_space), context, allow_redefinition=True)
-    if operator == Symbol("bind") and isinstance(name, Symbol) and name.name.startswith("'") and len(name.name) > 1:
+        return _define_local(
+            scope,
+            Binding(name, "defeffect", "effect", scope.symbol_space),
+            context,
+            allow_redefinition=True,
+        )
+    if (
+        operator == Symbol("bind")
+        and isinstance(name, Symbol)
+        and name.name.startswith("'")
+        and len(name.name) > 1
+    ):
         actual_name = Symbol(name.name[1:])
-        return _define_local(scope, Binding(actual_name, "define", "any", scope.symbol_space), context)
+        return _define_local(
+            scope, Binding(actual_name, "define", "any", scope.symbol_space), context
+        )
     if operator == Symbol("bind") and is_chain(name):
         quote_items = _form_to_list(name)
-        if len(quote_items) == 2 and quote_items[0] == Symbol("quote") and isinstance(quote_items[1], Symbol):
-            return _define_local(scope, Binding(quote_items[1], "define", "any", scope.symbol_space), context)
+        if (
+            len(quote_items) == 2
+            and quote_items[0] == Symbol("quote")
+            and isinstance(quote_items[1], Symbol)
+        ):
+            return _define_local(
+                scope, Binding(quote_items[1], "define", "any", scope.symbol_space), context
+            )
     if operator == Symbol("macro") and isinstance(name, Symbol):
         return _define_local(
             scope,
-            Binding(name, "macro-param", "operator", scope.symbol_space, "meta", eager_arguments=False),
+            Binding(
+                name, "macro-param", "operator", scope.symbol_space, "meta", eager_arguments=False
+            ),
             context,
         )
     if operator == Symbol("module") and isinstance(name, Symbol):
