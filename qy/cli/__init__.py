@@ -9,6 +9,7 @@ from typing import Any
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
 from qy.backend.vm.bytecode import dump_bytecode
+from qy.backend.vm.bytecode import serialize_bytecode_json
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
@@ -38,6 +39,7 @@ CLI_COMMANDS = (
     "mir",
     "lir",
     "bytecode",
+    "export",
     "llvm",
     "fmt",
     "ast",
@@ -319,6 +321,38 @@ def create_app() -> Any:
         except ValueError as e:
             typer.secho(str(e), fg=typer.colors.RED, err=True)
             raise typer.Exit(2) from e
+
+    @app.command("export")
+    def export_command(
+        target: Annotated[
+            str,
+            typer.Argument(help="Qy source file to compile and export, or - to read from stdin."),
+        ],
+        output: Annotated[
+            str,
+            typer.Option("--output", "-o", help="Output file path. Defaults to stdout."),
+        ] = "-",
+    ) -> None:
+        """Export bytecode in JSON interchange format for external VMs."""
+        qy = Qy()
+        source, source_name = _read_debug_source(target)
+        expansion = qy.macroexpand_source(source, source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
+        if expansion.forms:
+            program = qy.lower(expansion.forms)
+            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+            mir = qy.lower_mir(program)
+            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+            bytecode = qy.compile_mir_bytecode(mir)
+            has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
+            json_text = serialize_bytecode_json(bytecode, env=qy.env)
+            if output == "-":
+                typer.echo(json_text, nl=False)
+            else:
+                Path(output).write_text(json_text, encoding="utf-8")
+                typer.secho(f"exported to {output}", fg=typer.colors.GREEN, err=True)
+        if has_errors:
+            raise typer.Exit(1)
 
     @app.command("lsp")
     def lsp_command(stdio: bool = typer.Option(False, "--stdio", hidden=True)) -> None:

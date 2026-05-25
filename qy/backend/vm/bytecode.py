@@ -40,6 +40,7 @@ __all__ = [
     "dump_bytecode",
     "pretty_print_bytecode",
     "serialize_bytecode",
+    "serialize_bytecode_json",
 ]
 
 Register = int
@@ -384,6 +385,201 @@ def deserialize_bytecode(data: bytes) -> BytecodeProgram:
         diagnostics.append(Diagnostic(message, severity=severity))  # type: ignore
 
     return BytecodeProgram(tuple(functions), main_index, tuple(diagnostics))
+
+
+def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
+    """Serialize bytecode program to JSON interchange format for external VMs."""
+    import json
+
+    from qy.core.syntax import Chain
+    from qy.core.syntax import QyNil
+    from qy.frontend.reader import Symbol
+    from qy.sem.core import TValue
+    from qy.sem.runtime import EffectDefinition
+    from qy.std.imports import ImportSpec
+
+    def encode_value(value: object) -> dict:
+        if value is None or isinstance(value, QyNil):
+            return {"type": "nil"}
+        if isinstance(value, TValue):
+            return {"type": "t"}
+        if isinstance(value, bool):
+            return {"type": "bool", "value": value}
+        if isinstance(value, int):
+            return {"type": "int", "value": value}
+        if isinstance(value, float):
+            return {"type": "float", "value": value}
+        if isinstance(value, str):
+            return {"type": "string", "value": value}
+        if isinstance(value, Symbol):
+            return {"type": "symbol", "value": value.name}
+        if isinstance(value, Chain):
+            return {"type": "chain", "value": encode_chain(value)}
+        if isinstance(value, EffectDefinition):
+            return {
+                "type": "effect_def",
+                "value": {"name": value.name.name, "resumable": value.resumable},
+            }
+        if isinstance(value, list):
+            return {"type": "list", "value": [encode_value(v) for v in value]}
+        if isinstance(value, tuple):
+            return {"type": "tuple", "value": [encode_value(v) for v in value]}
+        return {"type": "unknown", "value": repr(value)}
+
+    def encode_chain(chain: object) -> object:
+        if chain is None or isinstance(chain, QyNil):
+            return None
+        if isinstance(chain, Chain):
+            return {"head": encode_value(chain.head), "tail": encode_chain(chain.tail)}
+        return encode_value(chain)
+
+    def encode_operands(opcode: str, operands: tuple[object, ...]) -> list[dict]:
+        result = []
+        for i, operand in enumerate(operands):
+            result.append(encode_operand(opcode, i, operand, operands))
+        return result
+
+    def encode_operand(opcode: str, index: int, operand: object, all_operands: tuple) -> dict:
+        if isinstance(operand, Symbol):
+            return {"type": "symbol", "value": operand.name}
+        if isinstance(operand, tuple):
+            return encode_tuple_operand(opcode, index, operand)
+        if isinstance(operand, bool):
+            return {"type": "bool", "value": operand}
+        if isinstance(operand, int):
+            if _is_register_position(opcode, index, all_operands):
+                return {"type": "reg", "value": operand}
+            return {"type": "int", "value": operand}
+        return encode_value(operand)
+
+    def encode_tuple_operand(opcode: str, index: int, value: tuple) -> dict:
+        if opcode == "CALL" and index == 2:
+            return {"type": "reg_tuple", "value": [v for v in value]}
+        if opcode == "TAIL_CALL" and index == 1:
+            return {"type": "reg_tuple", "value": [v for v in value]}
+        if opcode == "HANDLE" and index == 2:
+            specs = []
+            for spec in value:
+                if isinstance(spec, tuple) and len(spec) == 2:
+                    effect_sym, handler_fn_idx = spec
+                    specs.append(
+                        {
+                            "effect": effect_sym.name
+                            if isinstance(effect_sym, Symbol)
+                            else str(effect_sym),
+                            "handler_fn": handler_fn_idx,
+                        }
+                    )
+            return {"type": "handler_specs", "value": specs}
+        if opcode == "FROM_IMPORT" and index == 1:
+            specs = []
+            for spec in value:
+                if isinstance(spec, ImportSpec):
+                    specs.append({"name": spec.name.name, "alias": spec.alias.name})
+                elif isinstance(spec, tuple) and len(spec) == 2:
+                    specs.append(
+                        {
+                            "name": spec[0].name if isinstance(spec[0], Symbol) else str(spec[0]),
+                            "alias": spec[1].name if isinstance(spec[1], Symbol) else str(spec[1]),
+                        }
+                    )
+            return {"type": "import_specs", "value": specs}
+        if opcode == "DEFINE_MODULE" and index == 3:
+            return {
+                "type": "symbol_tuple",
+                "value": [s.name if isinstance(s, Symbol) else str(s) for s in value],
+            }
+        return {"type": "tuple", "value": [encode_value(v) for v in value]}
+
+    def _is_register_position(opcode: str, index: int, all_operands: tuple) -> bool:
+        from qy.backend.vm.spec.opcode import OPCODE_TABLE
+
+        info = OPCODE_TABLE.get(opcode)
+        if info is None:
+            return False
+        if info.has_dest and index == 0:
+            return True
+        if opcode == "MOVE":
+            return True
+        if opcode == "STORE_LOCAL" and index == 1:
+            return True
+        if opcode == "DEFINE_ONCE" and index == 1:
+            return True
+        if opcode == "APPEND_RESULT" and index == 0:
+            return True
+        if opcode == "RETURN" and index == 0:
+            return True
+        if opcode == "JUMP_IF_FALSE" and index == 0:
+            return True
+        if opcode == "PERFORM" and index == 2:
+            return True
+        if opcode == "RESUME" and index in (1, 2):
+            return True
+        if opcode == "RAISE_EFFECT" and index == 1:
+            return True
+        if opcode == "APPLY" and index in (1, 2):
+            return True
+        if opcode == "BUILD_TUPLE" and index > 0:
+            return True
+        if opcode == "CALL" and index == 1:
+            return True
+        if opcode == "TAIL_CALL" and index == 0:
+            return True
+        if opcode in ("PARALLEL_GATHER", "ALL_GATHER", "RACE_FIRST") and index > 0:
+            return True
+        if opcode == "CACHE_EVAL" and index == 1:
+            return True
+        if opcode == "RUNTIME_EVAL" and index == 1:
+            return True
+        if opcode == "LOAD_ENV" and index == 1:
+            return False
+        if opcode == "HANDLE" and index == 1:
+            return False
+        return False
+
+    functions_json = []
+    for func in program.functions:
+        instructions_json = []
+        for instr in func.instructions:
+            instructions_json.append(
+                {
+                    "opcode": instr.opcode,
+                    "operands": encode_operands(instr.opcode, instr.operands),
+                }
+            )
+        functions_json.append(
+            {
+                "name": func.name.name,
+                "params": [p.name for p in func.params],
+                "register_count": func.register_count,
+                "instructions": instructions_json,
+            }
+        )
+
+    program_json = {
+        "version": 1,
+        "main": program.main,
+        "functions": functions_json,
+    }
+
+    if env is not None:
+        hygiene_bindings = {}
+        for func in program.functions:
+            for instr in func.instructions:
+                for op in instr.operands:
+                    if isinstance(op, Symbol) and "__qy_hygiene" in op.name:
+                        if op.name not in hygiene_bindings:
+                            try:
+                                val = env.resolve(op)
+                                base_name = getattr(val, "name", None)
+                                if base_name:
+                                    hygiene_bindings[op.name] = base_name
+                            except Exception:
+                                pass
+        if hygiene_bindings:
+            program_json["hygiene_bindings"] = hygiene_bindings
+
+    return json.dumps(program_json, ensure_ascii=False, separators=(",", ":"))
 
 
 def _format_instruction(instruction: Instruction) -> str:
