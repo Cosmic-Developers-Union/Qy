@@ -13,7 +13,6 @@ from qy.backend.vm.bytecode import BytecodeFunction
 from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Register
-from qy.backend.vm.compiler import compile_bytecode
 from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
@@ -25,9 +24,6 @@ from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.frontend.reader import Symbol
-from qy.ir import ProgramIR
-from qy.macro import macroexpand_source_async
-from qy.passes.lower_hir import lower
 from qy.sem.runtime import EffectDefinition
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
@@ -428,18 +424,23 @@ class RegisterVirtualMachine:
         from qy.core.syntax import chain_to_tuple as qy_cons_to_tuple
         from qy.frontend.reader import Form
         from qy.frontend.reader import Symbol as _Symbol
-        from qy.ir import ProgramIR
-        from qy.passes.lower_hir import lower
+        from qy.passes.build import bytecode_artifact
+        from qy.passes.build import compile_core_forms_to_bytecode_async
+        from qy.passes.pass_base import PipelineSession
 
         if isinstance(form, QyCons):
             form = qy_cons_to_tuple(form)
         if not isinstance(form, _Symbol | tuple | Chain):
             return form
-        program_ir = lower([cast(Form, form)], env)
-        bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
+        session = PipelineSession(env=env)
+        result = await compile_core_forms_to_bytecode_async(
+            [cast(Form, form)],
+            session,
+        )
+        bytecode = bytecode_artifact(result)
         sub_vm = RegisterVirtualMachine(bytecode, env)
-        result = await sub_vm.evaluate_program()
-        return None if not result else result[-1]
+        outcome = await sub_vm.evaluate_program()
+        return None if not outcome else outcome[-1]
 
     async def _parallel_gather(
         self,
@@ -762,11 +763,14 @@ async def evaluate_bytecode_source_async(
     *,
     source_name: str | None = None,
 ) -> object:
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
+
     runtime_env = env or standard_environment()
-    expansion = await macroexpand_source_async(source, runtime_env, source_name=source_name)
-    program_ir = lower(expansion.forms, runtime_env)
-    diagnostics = (*expansion.diagnostics, *program_ir.diagnostics)
-    bytecode = compile_bytecode(ProgramIR(program_ir.body, diagnostics))
+    session = PipelineSession(env=runtime_env, source_name=source_name)
+    result = await compile_source_to_bytecode_async(source, session)
+    bytecode = bytecode_artifact(result)
     return await evaluate_bytecode_async(bytecode, runtime_env)
 
 
@@ -786,25 +790,24 @@ async def call_function_value(
 
 
 async def evaluate_form_async(expression: object, env: Environment) -> object:
-    """Evaluate a single expression through the register VM pipeline.
+    """Evaluate a single expression through the pipeline.
 
-    For Symbol resolution, directly uses env.resolve. Otherwise routes through:
-    macroexpand -> lower -> compile -> RegisterVM.
+    Symbol resolution short-circuits via env.resolve. Otherwise routes through
+    the unified pipeline (frontend.surface_normalize → macro.expand → ... → emit.bytecode).
     """
     from typing import cast
 
-    from qy.backend.vm.compiler import compile_bytecode
     from qy.frontend.reader import Form
-    from qy.ir import ProgramIR
-    from qy.macro import macroexpand_async
-    from qy.passes.lower_hir import lower
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_forms_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
 
     if isinstance(expression, Symbol):
         return env.resolve(expression)
 
-    expansion = await macroexpand_async([cast(Form, expression)], env)
-    program_ir = lower(expansion.forms, env)
-    bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
+    session = PipelineSession(env=env)
+    result = await compile_forms_to_bytecode_async([cast(Form, expression)], session)
+    bytecode = bytecode_artifact(result)
     vm = RegisterVirtualMachine(bytecode, env)
     results = await vm.evaluate_program()
     return None if not results else results[-1]

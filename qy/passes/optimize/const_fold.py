@@ -28,7 +28,7 @@ class ConstFoldPass(Pass):
 
     def run(self, context: PassContext) -> PassResult:
         program = cast(MIRProgram, context.input_artifact)
-        env = context.options.get("env")
+        env = context.session.env
         pure_ops = _collect_pure_ops(env)
         pool = MIRConstantPool()
         for v in program.constants.values:

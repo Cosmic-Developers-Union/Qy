@@ -3,47 +3,71 @@
 
 from __future__ import annotations
 
+import asyncio
+
+import pytest
+
+from qy.diag import Diagnostic
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
+from qy.passes.pass_base import PipelineOptions
+from qy.passes.pass_base import PipelineSession
 from qy.passes.pipeline import Pipeline
 
 
 class MockPass(Pass):
-    """用于测试的 mock pass。."""
+    """Mock pass that appends its name to a string artifact."""
 
-    def __init__(self, name: str, should_fail: bool = False):
-        """初始化 mock pass。."""
-        self.name = name
+    input_kind = ""  # accept any
+    output_kind = ""  # propagate
+
+    def __init__(
+        self,
+        name: str,
+        *,
+        should_fail: bool = False,
+        diagnostics: tuple[Diagnostic, ...] = (),
+    ):
+        super().__init__(name)
         self.should_fail = should_fail
+        self.diagnostics = diagnostics
         self.executed = False
 
     def run(self, context: PassContext) -> PassResult:
-        """执行 pass。."""
         self.executed = True
         if self.should_fail:
             return PassResult(
                 success=False,
                 artifact=context.input_artifact,
-                diagnostics=[],
+                artifact_kind=context.artifact_kind,
+                diagnostics=self.diagnostics,
             )
-        # 简单地将 artifact 加上 pass 名称
         new_artifact = f"{context.input_artifact}+{self.name}"
         return PassResult(
             success=True,
             artifact=new_artifact,
-            diagnostics=[],
+            artifact_kind=context.artifact_kind,
+            diagnostics=self.diagnostics,
         )
 
 
+def _ctx(artifact: object = "initial", **kwargs: object) -> PassContext:
+    return PassContext(
+        input_artifact=artifact,
+        artifact_kind=kwargs.pop("artifact_kind", ""),
+        session=kwargs.pop("session", PipelineSession.minimal()),
+        diagnostics=kwargs.pop("diagnostics", ()),
+        options=kwargs.pop("options", PipelineOptions()),
+    )
+
+
 def test_pipeline_creation():
-    """测试创建 pipeline。."""
     pipeline = Pipeline()
     assert pipeline.passes == []
 
 
 def test_pipeline_add_pass():
-    """测试添加 pass 到 pipeline。."""
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pass2 = MockPass("pass2")
@@ -57,56 +81,42 @@ def test_pipeline_add_pass():
     assert pipeline.passes[1] is pass2
 
 
-def test_pipeline_run_empty():
-    """测试运行空 pipeline。."""
+def test_pipeline_add_pass_chains():
     pipeline = Pipeline()
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
-    )
-    result = pipeline.run(context)
+    pass1 = MockPass("pass1")
+    assert pipeline.add_pass(pass1) is pipeline
+
+
+def test_pipeline_run_empty():
+    pipeline = Pipeline()
+    result = pipeline.run(_ctx("initial"))
     assert result.success is True
     assert result.artifact == "initial"
-    assert result.diagnostics == []
+    assert result.diagnostics == ()
 
 
 def test_pipeline_run_single_pass():
-    """测试运行单个 pass。."""
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pipeline.add_pass(pass1)
 
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
-    )
-    result = pipeline.run(context)
+    result = pipeline.run(_ctx("initial"))
 
     assert pass1.executed is True
     assert result.success is True
     assert result.artifact == "initial+pass1"
-    assert result.diagnostics == []
+    assert result.diagnostics == ()
 
 
 def test_pipeline_run_multiple_passes():
-    """测试运行多个 pass。."""
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pass2 = MockPass("pass2")
     pass3 = MockPass("pass3")
 
-    pipeline.add_pass(pass1)
-    pipeline.add_pass(pass2)
-    pipeline.add_pass(pass3)
+    pipeline.add_pass(pass1).add_pass(pass2).add_pass(pass3)
 
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
-    )
-    result = pipeline.run(context)
+    result = pipeline.run(_ctx("initial"))
 
     assert pass1.executed is True
     assert pass2.executed is True
@@ -116,76 +126,220 @@ def test_pipeline_run_multiple_passes():
 
 
 def test_pipeline_stops_on_failure():
-    """测试 pipeline 在 pass 失败时停止。."""
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pass2 = MockPass("pass2", should_fail=True)
     pass3 = MockPass("pass3")
 
-    pipeline.add_pass(pass1)
-    pipeline.add_pass(pass2)
-    pipeline.add_pass(pass3)
+    pipeline.add_pass(pass1).add_pass(pass2).add_pass(pass3)
 
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
-    )
-    result = pipeline.run(context)
+    result = pipeline.run(_ctx("initial"))
 
     assert pass1.executed is True
     assert pass2.executed is True
-    assert pass3.executed is False  # 不应该执行
+    assert pass3.executed is False
     assert result.success is False
     assert result.artifact == "initial+pass1"
 
 
-def test_pipeline_run_with_target():
-    """测试使用 target 参数运行 pipeline。."""
+def test_pipeline_run_with_target_short_circuits():
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pass2 = MockPass("pass2")
     pass3 = MockPass("pass3")
 
-    pipeline.add_pass(pass1)
-    pipeline.add_pass(pass2)
-    pipeline.add_pass(pass3)
+    pipeline.add_pass(pass1).add_pass(pass2).add_pass(pass3)
 
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
+    result = pipeline.run(
+        _ctx("initial", options=PipelineOptions(target="pass2")),
     )
-    result = pipeline.run(context, target="pass2")
 
     assert pass1.executed is True
     assert pass2.executed is True
-    assert pass3.executed is False  # 应该在 pass2 后停止
+    assert pass3.executed is False
     assert result.success is True
     assert result.artifact == "initial+pass1+pass2"
 
 
-def test_pipeline_run_with_after():
-    """测试使用 after 参数运行 pipeline。."""
+def test_pipeline_dump_sink_called_after_match():
+    pipeline = Pipeline()
+    pipeline.add_pass(MockPass("pass1")).add_pass(MockPass("pass2")).add_pass(MockPass("pass3"))
+
+    captured: list[tuple[str, object]] = []
+
+    def sink(name: str, artifact: object) -> None:
+        captured.append((name, artifact))
+
+    result = pipeline.run(
+        _ctx("initial", options=PipelineOptions(after="pass2", dump_sink=sink)),
+    )
+
+    assert captured == [("pass2", "initial+pass1+pass2")]
+    assert result.success is True
+    assert result.artifact == "initial+pass1+pass2+pass3"
+
+
+def test_pipeline_dump_sink_silent_without_match():
+    pipeline = Pipeline()
+    pipeline.add_pass(MockPass("a")).add_pass(MockPass("b"))
+
+    captured: list[tuple[str, object]] = []
+
+    def sink(name: str, artifact: object) -> None:
+        captured.append((name, artifact))
+
+    pipeline.run(_ctx("x", options=PipelineOptions(after="missing", dump_sink=sink)))
+
+    assert captured == []
+
+
+def test_pipeline_error_threshold_short_circuits():
+    pipeline = Pipeline()
+    diag_error = Diagnostic("oops", "error")
+    pass1 = MockPass("pass1", diagnostics=(diag_error,))
+    pass2 = MockPass("pass2")
+
+    pipeline.add_pass(pass1).add_pass(pass2)
+
+    result = pipeline.run(_ctx("initial"))
+
+    assert pass1.executed is True
+    assert pass2.executed is False
+    assert result.success is False
+    assert any(d.message == "oops" for d in result.diagnostics)
+
+
+def test_pipeline_error_threshold_higher_allows_continue():
+    pipeline = Pipeline()
+    diag_error = Diagnostic("oops", "error")
+    pass1 = MockPass("pass1", diagnostics=(diag_error,))
+    pass2 = MockPass("pass2")
+
+    pipeline.add_pass(pass1).add_pass(pass2)
+
+    result = pipeline.run(
+        _ctx("initial", options=PipelineOptions(error_threshold=2)),
+    )
+
+    assert pass1.executed is True
+    assert pass2.executed is True
+    # Pipeline.run still reports failure when *any* error accumulated by the end,
+    # but threshold gates only short-circuiting.
+    assert any(d.message == "oops" for d in result.diagnostics)
+
+
+def test_pipeline_warning_does_not_short_circuit():
+    pipeline = Pipeline()
+    diag_warn = Diagnostic("careful", "warning")
+    pass1 = MockPass("pass1", diagnostics=(diag_warn,))
+    pass2 = MockPass("pass2")
+
+    pipeline.add_pass(pass1).add_pass(pass2)
+
+    result = pipeline.run(_ctx("initial"))
+
+    assert pass1.executed is True
+    assert pass2.executed is True
+    assert result.success is True
+    assert any(d.severity == "warning" for d in result.diagnostics)
+
+
+def test_pipeline_subset_returns_partial_pipeline():
     pipeline = Pipeline()
     pass1 = MockPass("pass1")
     pass2 = MockPass("pass2")
     pass3 = MockPass("pass3")
 
-    pipeline.add_pass(pass1)
-    pipeline.add_pass(pass2)
-    pipeline.add_pass(pass3)
+    pipeline.add_pass(pass1).add_pass(pass2).add_pass(pass3)
 
-    context = PassContext(
-        input_artifact="initial",
-        diagnostics=[],
-        options={},
-    )
-    # after 参数目前只是占位，不影响执行
-    result = pipeline.run(context, after="pass2")
+    sub = pipeline.subset(start="pass2", end="pass3")
+    assert [p.name for p in sub.passes] == ["pass2", "pass3"]
+    # original is untouched
+    assert [p.name for p in pipeline.passes] == ["pass1", "pass2", "pass3"]
 
-    assert pass1.executed is True
-    assert pass2.executed is True
-    assert pass3.executed is True
+    result = sub.run(_ctx("seed"))
+    assert result.artifact == "seed+pass2+pass3"
+
+
+def test_pipeline_subset_unknown_pass_raises():
+    pipeline = Pipeline()
+    pipeline.add_pass(MockPass("pass1"))
+    with pytest.raises(ValueError, match="unknown pass"):
+        pipeline.subset(start="missing")
+
+
+def test_pipeline_subset_inverted_raises():
+    pipeline = Pipeline()
+    pipeline.add_pass(MockPass("a")).add_pass(MockPass("b"))
+    with pytest.raises(ValueError, match="comes after"):
+        pipeline.subset(start="b", end="a")
+
+
+class _StrictKindPass(Pass):
+    """Pass with strict input/output kinds for kind-mismatch testing."""
+
+    def __init__(self, name: str, input_kind: str, output_kind: str) -> None:
+        super().__init__(name)
+        self.input_kind = input_kind
+        self.output_kind = output_kind
+
+    def run(self, context: PassContext) -> PassResult:
+        return PassResult(
+            success=True,
+            artifact=context.input_artifact,
+            artifact_kind=self.output_kind,
+        )
+
+
+def test_pipeline_artifact_kind_mismatch_fail_fast():
+    pipeline = Pipeline()
+    pipeline.add_pass(_StrictKindPass("a", "source", "raw"))
+    pipeline.add_pass(_StrictKindPass("b", "hir", "mir"))
+
+    result = pipeline.run(_ctx("seed", artifact_kind="source"))
+
+    assert result.success is False
+    assert any("expects artifact kind" in d.message for d in result.diagnostics)
+
+
+def test_pipeline_first_pass_accepts_blank_kind():
+    """First pass runs even when context.artifact_kind is empty (compat path)."""
+    pipeline = Pipeline()
+    pipeline.add_pass(_StrictKindPass("a", "source", "raw"))
+
+    result = pipeline.run(_ctx("seed"))
     assert result.success is True
-    assert result.artifact == "initial+pass1+pass2+pass3"
+
+
+def test_pipeline_run_sync_rejects_async_pass():
+    class AsyncPass(Pass):
+        def __init__(self) -> None:
+            super().__init__("async")
+
+        async def run(self, context: PassContext) -> PassResult:  # type: ignore[override]
+            return PassResult(success=True, artifact=context.input_artifact)
+
+    pipeline = Pipeline()
+    pipeline.add_pass(AsyncPass())
+
+    with pytest.raises(TypeError, match="awaitable"):
+        pipeline.run(_ctx("x"))
+
+
+def test_pipeline_run_async_handles_async_pass():
+    class AsyncPass(Pass):
+        def __init__(self) -> None:
+            super().__init__("a")
+
+        async def run(self, context: PassContext) -> PassResult:  # type: ignore[override]
+            return PassResult(
+                success=True,
+                artifact=f"{context.input_artifact}+async",
+            )
+
+    pipeline = Pipeline()
+    pipeline.add_pass(AsyncPass()).add_pass(MockPass("sync"))
+
+    result = asyncio.run(pipeline.run_async(_ctx("seed")))
+    assert result.success is True
+    assert result.artifact == "seed+async+sync"

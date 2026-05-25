@@ -21,7 +21,11 @@ from qy.passes.mir.lower_pass import LowerMIRPass
 from qy.passes.optimize.const_fold import ConstFoldPass
 from qy.passes.optimize.dce import DCEPass
 from qy.passes.optimize.inline import InlinePass
+from qy.passes.pass_base import PipelineOptions
+from qy.passes.pass_base import PipelineSession
 from qy.session.runtime_space import standard_environment
+
+_TOLERANT_OPTIONS = PipelineOptions(error_threshold=10**6)
 
 
 def _compile_to_mir(source: str) -> MIRProgram:
@@ -30,15 +34,19 @@ def _compile_to_mir(source: str) -> MIRProgram:
     p = Pipeline()
     p.add_pass(LowerHIRPass())
     p.add_pass(LowerMIRPass())
-    ctx = PassContext(input_artifact=forms, options={"env": env})
+    ctx = PassContext(
+        input_artifact=forms,
+        session=PipelineSession(env=env),
+        options=_TOLERANT_OPTIONS,
+    )
     artifact = p.run(ctx).artifact
     assert artifact is not None
     return artifact
 
 
 def _run_pass(pass_obj, artifact, env=None):
-    opts = {"env": env} if env else {}
-    ctx = PassContext(input_artifact=artifact, options=opts)
+    session = PipelineSession(env=env) if env else PipelineSession.minimal()
+    ctx = PassContext(input_artifact=artifact, session=session)
     return pass_obj.run(ctx)
 
 
@@ -57,7 +65,7 @@ class TestPipeline:
     def test_pipeline_simple_expression(self):
         forms = read("(+ 1 2)")
         env = standard_environment()
-        ctx = PassContext(input_artifact=forms, options={"env": env})
+        ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         result = create_pipeline(optimize=False).run(ctx)
         assert result.success
         assert result.artifact is not None
@@ -66,7 +74,7 @@ class TestPipeline:
     def test_pipeline_optimized_folds_constants(self):
         forms = read("(+ 1 2)")
         env = standard_environment()
-        ctx = PassContext(input_artifact=forms, options={"env": env})
+        ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         result = create_pipeline(optimize=True).run(ctx)
         assert result.success
         assert result.artifact is not None
@@ -237,12 +245,12 @@ class TestOptimizationCorrectness:
         forms = read("(+ 1 2)")
         env = standard_environment()
 
-        ctx1 = PassContext(input_artifact=forms, options={"env": env})
+        ctx1 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         r1 = create_pipeline(optimize=False).run(ctx1)
         assert r1.success
         assert r1.artifact is not None
 
-        ctx2 = PassContext(input_artifact=forms, options={"env": env})
+        ctx2 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         r2 = create_pipeline(optimize=True).run(ctx2)
         assert r2.success
         assert r2.artifact is not None

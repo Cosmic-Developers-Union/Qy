@@ -201,9 +201,9 @@ class Qy(_QyBase):
         return evaluate_bytecode_source(source, self.env, source_name=source_name)
 
     def evaluate(self, expression: object) -> object:
-        expansion = macroexpand([cast(Form, expression)], self.env)
-        program = lower(expansion.forms, self.env)
-        return self.evaluate_bytecode(compile_bytecode(program))
+        from qy.async_utils import run_coro
+
+        return run_coro(_evaluate_form_via_pipeline(expression, self.env))
 
     def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
         return self.evaluate_bytecode_source(source, source_name=source_name)
@@ -212,13 +212,12 @@ class Qy(_QyBase):
         return await evaluate_bytecode_source_async(source, self.env, source_name=source_name)
 
     def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
-        expansion = macroexpand(read(source, source_name=source_name), self.env)
-        program = lower(expansion.forms, self.env)
-        bytecode = compile_bytecode(program)
-        coro = RegisterVirtualMachine(bytecode, self.env).evaluate_program()
         from qy.async_utils import run_coro
 
-        return cast(list[object], run_coro(coro))
+        return cast(
+            list[object],
+            run_coro(_evaluate_program_via_pipeline(source, self.env, source_name=source_name)),
+        )
 
     def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)
@@ -276,9 +275,7 @@ class AsyncQy(_QyBase):
         return await evaluate_bytecode_source_async(source, self.env, source_name=source_name)
 
     async def evaluate(self, expression: object) -> object:
-        expansion = await macroexpand_async([cast(Form, expression)], self.env)
-        program = lower(expansion.forms, self.env)
-        return await self.evaluate_bytecode(compile_bytecode(program))
+        return await _evaluate_form_via_pipeline(expression, self.env)
 
     async def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
         return await self.evaluate_bytecode_source(source, source_name=source_name)
@@ -288,12 +285,7 @@ class AsyncQy(_QyBase):
     async def evaluate_program(
         self, source: str, *, source_name: str | None = None
     ) -> list[object]:
-        expansion = await macroexpand_async(read(source, source_name=source_name), self.env)
-        program = lower(expansion.forms, self.env)
-        return await RegisterVirtualMachine(
-            compile_bytecode(program),
-            self.env,
-        ).evaluate_program()
+        return await _evaluate_program_via_pipeline(source, self.env, source_name=source_name)
 
     async def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)
@@ -373,13 +365,14 @@ async def evaluate_source_async(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> object:
     runtime_env = env or standard_environment()
-    expansion = await macroexpand_async(read(source, source_name=source_name), runtime_env)
-    program = lower(expansion.forms, runtime_env)
-    _raise_on_diagnostics((*expansion.diagnostics, *program.diagnostics))
-
-    bytecode = compile_bytecode(program)
+    bytecode, pipeline_diagnostics = await _compile_source_via_pipeline(
+        source, runtime_env, source_name=source_name
+    )
+    _raise_on_diagnostics(pipeline_diagnostics)
+    if bytecode is None:
+        # Pipeline 失败但未抛出 (例如非 error 严重度)
+        return None
     _raise_on_diagnostics(bytecode.diagnostics)
-
     return await evaluate_bytecode_async(bytecode, runtime_env)
 
 
@@ -398,14 +391,60 @@ async def evaluate_program_async(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> list[object]:
     runtime_env = env or standard_environment()
-    expansion = await macroexpand_async(read(source, source_name=source_name), runtime_env)
-    program = lower(expansion.forms, runtime_env)
-    _raise_on_diagnostics((*expansion.diagnostics, *program.diagnostics))
-
-    bytecode = compile_bytecode(program)
+    bytecode, pipeline_diagnostics = await _compile_source_via_pipeline(
+        source, runtime_env, source_name=source_name
+    )
+    _raise_on_diagnostics(pipeline_diagnostics)
+    if bytecode is None:
+        return []
     _raise_on_diagnostics(bytecode.diagnostics)
-
     return await RegisterVirtualMachine(bytecode, runtime_env).evaluate_program()
+
+
+# -- Pipeline-backed evaluation helpers -------------------------------------
+
+
+async def _compile_source_via_pipeline(
+    source: str,
+    env: Environment,
+    *,
+    source_name: str | None = None,
+) -> tuple[BytecodeProgram | None, tuple]:
+    """Run the source-to-bytecode pipeline.
+
+    返回 ``(bytecode_or_none, pipeline_diagnostics)``。当 pipeline 在到达
+    ``emit.bytecode`` 之前因 error 阈值短路时，``bytecode`` 为 ``None``，
+    全部诊断仍包含在 ``pipeline_diagnostics`` 中。
+    """
+    from qy.backend.vm.bytecode import BytecodeProgram as _BP
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
+
+    session = PipelineSession(env=env, source_name=source_name)
+    result = await compile_source_to_bytecode_async(source, session)
+    if isinstance(result.artifact, _BP):
+        return result.artifact, tuple(result.diagnostics)
+    return None, tuple(result.diagnostics)
+
+
+async def _evaluate_program_via_pipeline(
+    source: str,
+    env: Environment,
+    *,
+    source_name: str | None = None,
+) -> list[object]:
+    """``Qy.evaluate_program`` 走的宽松路径：pipeline 诊断不抛错（保持旧行为）。."""
+    bytecode, _ = await _compile_source_via_pipeline(source, env, source_name=source_name)
+    if bytecode is None:
+        return []
+    return await RegisterVirtualMachine(bytecode, env).evaluate_program()
+
+
+async def _evaluate_form_via_pipeline(expression: object, env: Environment) -> object:
+    """单 form 求值入口：复用 ``evaluate_form_async``（machine.py 中已经走 pipeline）。."""
+    from qy.vm.instance.machine import evaluate_form_async
+
+    return await evaluate_form_async(expression, env)
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
