@@ -365,6 +365,10 @@ def create_app() -> Any:
             raise
         raise typer.Exit(lsp_main())
 
+    from qy.cli.commands.pkg import create_pkg_app
+
+    app.add_typer(create_pkg_app(), name="pkg")
+
     return app
 
 

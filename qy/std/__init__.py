@@ -74,6 +74,8 @@ def load_module(name: str) -> StandardModule:
     try:
         return _MODULE_LOADERS[name]()
     except KeyError as e:
+        if _looks_like_package_path(name):
+            return _load_package_module(name)
         if _looks_like_file_module(name):
             return _load_file_module(name)
         raise KeyError(f"unknown module {name!r}") from e
@@ -84,6 +86,8 @@ async def load_module_async(name: str) -> StandardModule:
     try:
         return _MODULE_LOADERS[name]()
     except KeyError as e:
+        if _looks_like_package_path(name):
+            return _load_package_module(name)
         if _looks_like_file_module(name):
             return await _load_file_module_async(name)
         raise KeyError(f"unknown module {name!r}") from e
@@ -251,6 +255,56 @@ def _load_float128_module() -> StandardModule:
 def _looks_like_file_module(name: str) -> bool:
     path = Path(name)
     return path.suffix in {".py", ".qy"} or "/" in name or "\\" in name or name.startswith(".")
+
+
+def _looks_like_package_path(name: str) -> bool:
+    from qy.project.package import is_package_path
+
+    return is_package_path(name)
+
+
+def _load_package_module(name: str) -> StandardModule:
+    """从包缓存加载模块（无 env 上下文时的降级路径）。."""
+    from qy.project.fetch import get_cached
+    from qy.project.manifest import parse_manifest_file
+    from qy.project.package import load_package
+    from qy.project.package import split_package_module
+
+    cwd = Path.cwd()
+    manifest_path = cwd / "qy.toml"
+    if not manifest_path.exists():
+        raise KeyError(f"no qy.toml found, cannot resolve package module {name!r}")
+
+    manifest = parse_manifest_file(manifest_path)
+    known = {dep.path for dep in manifest.dependencies}
+    pkg_path, submodule = split_package_module(name, known)
+
+    # check replace directives
+    for r in manifest.replaces:
+        if r.path == pkg_path:
+            local = (cwd / r.local_path).resolve()
+            pkg = load_package(local)
+            source = pkg.root_module_path if not submodule else pkg.resolve_submodule(submodule)
+            if source is None or not source.exists():
+                raise KeyError(f"module source not found: {name!r}")
+            return _load_file_module(str(source))
+
+    for dep in manifest.dependencies:
+        if dep.path == pkg_path:
+            cached = get_cached(pkg_path, dep.min_version)
+            if cached is None:
+                raise KeyError(
+                    f"package {pkg_path!r}@{dep.min_version} not in cache, run `qy pkg add`"
+                )
+            pkg = load_package(cached.root)
+            if submodule and not pkg.is_exported(submodule):
+                raise KeyError(f"module {submodule!r} is not exported by package {pkg_path!r}")
+            source = pkg.root_module_path if not submodule else pkg.resolve_submodule(submodule)
+            if source is None or not source.exists():
+                raise KeyError(f"module source not found: {name!r}")
+            return _load_file_module(str(source))
+
+    raise KeyError(f"package {pkg_path!r} not declared in dependencies")
 
 
 def _load_file_module(name: str) -> StandardModule:

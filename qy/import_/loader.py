@@ -17,6 +17,7 @@ from typing import cast
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
+    from qy.project.package import Package
     from qy.session.runtime_space import RuntimeSpace as Environment
     from qy.std.module import StandardModule
 
@@ -158,9 +159,110 @@ def resolve_known_module(name: str, env: Environment) -> StandardModule:
     modules = _source_module_cache(env)
     if name in modules:
         return modules[name]
+
+    from qy.project.package import is_package_path
+
+    if is_package_path(name):
+        return _resolve_package_module(name, env)
+
     from qy.std import load_module
 
     return load_module(name)
+
+
+def _resolve_package_module(name: str, env: Environment) -> StandardModule:
+    """从包系统解析模块。."""
+    from qy.project.package import split_package_module
+
+    pkg_cache = _package_registry(env)
+    known_packages = set(pkg_cache.keys())
+
+    if not known_packages:
+        known_packages = _discover_packages_from_manifest(env)
+
+    pkg_path, submodule = split_package_module(name, known_packages)
+
+    if pkg_path in pkg_cache:
+        pkg = pkg_cache[pkg_path]
+    else:
+        pkg = _load_package_for_module(pkg_path, env)
+        if pkg is not None:
+            pkg_cache[pkg_path] = pkg
+
+    if pkg is None:
+        raise KeyError(f"package {pkg_path!r} not found in dependency graph")
+
+    if submodule and not pkg.is_exported(submodule):
+        raise KeyError(f"module {submodule!r} is not exported by package {pkg_path!r}")
+
+    source_path = pkg.root_module_path if not submodule else pkg.resolve_submodule(submodule)
+    if source_path is None or not source_path.exists():
+        raise KeyError(f"module source not found: {name!r}")
+
+    from qy.std import _load_file_module
+
+    module = _load_file_module(str(source_path))
+
+    modules = _source_module_cache(env)
+    modules[name] = module
+    return module
+
+
+def _discover_packages_from_manifest(env: Environment) -> set[str]:
+    """从当前项目的 qy.toml 发现已声明的依赖包路径。."""
+    from pathlib import Path
+
+    from qy.project.manifest import parse_manifest_file
+
+    cwd = Path.cwd()
+    manifest_path = cwd / "qy.toml"
+    if not manifest_path.exists():
+        return set()
+
+    manifest = parse_manifest_file(manifest_path)
+    return {dep.path for dep in manifest.dependencies}
+
+
+def _load_package_for_module(pkg_path: str, env: Environment) -> Package | None:
+    """加载一个包实例（从缓存或本地 replace）。."""
+    from pathlib import Path
+
+    from qy.project.fetch import get_cached
+    from qy.project.manifest import parse_manifest_file
+    from qy.project.package import load_package
+
+    cwd = Path.cwd()
+    manifest_path = cwd / "qy.toml"
+    if not manifest_path.exists():
+        return None
+
+    manifest = parse_manifest_file(manifest_path)
+
+    for r in manifest.replaces:
+        if r.path == pkg_path:
+            local = (cwd / r.local_path).resolve()
+            if local.exists():
+                return load_package(local)
+
+    for dep in manifest.dependencies:
+        if dep.path == pkg_path:
+            cached = get_cached(pkg_path, dep.min_version)
+            if cached is not None:
+                return load_package(cached.root)
+            break
+
+    return None
+
+
+_PACKAGE_REGISTRY_KEY = ("qy", "package_registry")
+
+
+def _package_registry(env: Environment) -> dict[str, Package]:
+    try:
+        value = env.cache_lookup(_PACKAGE_REGISTRY_KEY)
+    except KeyError:
+        value = env.cache_define(_PACKAGE_REGISTRY_KEY, {})
+    return cast("dict[str, Package]", value)
 
 
 def _source_module_cache(env: Environment) -> dict[str, StandardModule]:
