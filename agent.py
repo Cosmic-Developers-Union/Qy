@@ -112,6 +112,7 @@ async def run_task(task: "Task", pm: "PM", pid: str):
         max_budget_usd=None,
         can_use_tool=can_use_tool,
         resume=task.session,
+        fork_session=True,
     )
     async with ClaudeSDKClient(options=options) as client:
         await client.query(task.prompt)
