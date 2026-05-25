@@ -29,11 +29,17 @@ __all__ = [
     "CharValue",
     "ComplexValue",
     "DatumValue",
+    "Float16Value",
     "Float32Value",
+    "Float64Value",
+    "Float128Value",
     "FloatValue",
     "HashMapValue",
+    "Int8Value",
+    "Int16Value",
     "Int32Value",
     "Int64Value",
+    "IntValue",
     "IntegerValue",
     "NilValue",
     "NumberValue",
@@ -43,6 +49,10 @@ __all__ = [
     "SymbolValue",
     "T",
     "TValue",
+    "UInt8Value",
+    "UInt16Value",
+    "UInt32Value",
+    "UInt64Value",
     "Value",
 ]
 
@@ -177,6 +187,96 @@ class Int64Value(IntegerValue):
 
 
 @dataclass(frozen=True, slots=True)
+class Int8Value(IntegerValue):
+    """Signed 8-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "int8"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = -(2**7)
+    max_value: ClassVar[int] = 2**7 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
+class Int16Value(IntegerValue):
+    """Signed 16-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "int16"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = -(2**15)
+    max_value: ClassVar[int] = 2**15 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
+class UInt8Value(IntegerValue):
+    """Unsigned 8-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "uint8"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = 0
+    max_value: ClassVar[int] = 2**8 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
+class UInt16Value(IntegerValue):
+    """Unsigned 16-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "uint16"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = 0
+    max_value: ClassVar[int] = 2**16 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
+class UInt32Value(IntegerValue):
+    """Unsigned 32-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "uint32"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = 0
+    max_value: ClassVar[int] = 2**32 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
+class UInt64Value(IntegerValue):
+    """Unsigned 64-bit integer value."""
+
+    value: int
+
+    type_name: ClassVar[str] = "uint64"
+    fixed_width: ClassVar[bool] = True
+    min_value: ClassVar[int] = 0
+    max_value: ClassVar[int] = 2**64 - 1
+
+    def __post_init__(self) -> None:
+        _require_range(self.value, self.min_value, self.max_value, self.type_name)
+
+
+@dataclass(frozen=True, slots=True)
 class FloatValue(NumberValue):
     """IEEE 754 binary64 floating-point value."""
 
@@ -198,6 +298,38 @@ class Float32Value(NumberValue):
     exact: ClassVar[bool] = False
     fixed_width: ClassVar[bool] = True
     width_bits: ClassVar[int] = 32
+
+
+@dataclass(frozen=True, slots=True)
+class Float16Value(NumberValue):
+    """IEEE 754 binary16 floating-point value (half precision)."""
+
+    value: float
+
+    type_name: ClassVar[str] = "float16"
+    exact: ClassVar[bool] = False
+    fixed_width: ClassVar[bool] = True
+    width_bits: ClassVar[int] = 16
+
+
+# Float64Value is an alias for FloatValue (both are IEEE 754 binary64)
+Float64Value = FloatValue
+
+
+@dataclass(frozen=True, slots=True)
+class Float128Value(NumberValue):
+    """IEEE 754 binary128 floating-point value (quadruple precision).
+
+    Note: Python's native float is binary64. This type defines the semantic
+    model for float128, but the Python VM approximates it using float.
+    """
+
+    value: float
+
+    type_name: ClassVar[str] = "float128"
+    exact: ClassVar[bool] = False
+    fixed_width: ClassVar[bool] = True
+    width_bits: ClassVar[int] = 128
 
 
 @dataclass(frozen=True, slots=True)

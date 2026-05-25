@@ -10,6 +10,7 @@ from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
 from qy.literals import resolve_default_literal
 from qy.passes.lower_hir import lower_source
+from qy.sem.core import IntValue
 
 S = Symbol
 
@@ -17,7 +18,7 @@ S = Symbol
 def test_python_tuple_atoms_are_literals_unless_symbol():
     assert evaluate("1") == "1"
     assert evaluate(1) == 1
-    assert evaluate(S("1")) == 1
+    assert evaluate(S("1")) == IntValue(1)
 
 
 def test_environment_binding_overrides_builtin_literal():

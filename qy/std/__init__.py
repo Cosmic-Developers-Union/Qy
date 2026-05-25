@@ -30,7 +30,26 @@ __all__ = [
 
 LANGUAGE_CORE_MODULES = ("qy.core",)
 STANDARD_PROFILE_MODULES = ("qy.core", "qy.io")
-OPTIONAL_STDLIB_MODULES = ("qy.num", "qy.str", "qy.char", "qy.py", "qy.testhost", "qy.legacy")
+OPTIONAL_STDLIB_MODULES = (
+    "qy.num",
+    "qy.str",
+    "qy.char",
+    "qy.py",
+    "qy.testhost",
+    "qy.legacy",
+    "qy.int8",
+    "qy.int16",
+    "qy.int32",
+    "qy.int64",
+    "qy.uint8",
+    "qy.uint16",
+    "qy.uint32",
+    "qy.uint64",
+    "qy.float16",
+    "qy.float32",
+    "qy.float64",
+    "qy.float128",
+)
 PRELUDE_MODULES = STANDARD_PROFILE_MODULES
 type ModuleLoader = Callable[[], StandardModule]
 
@@ -92,6 +111,19 @@ def _install_builtin_loaders() -> None:
     _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
     _MODULE_LOADERS.setdefault("qy.testhost", _load_testhost_module)
     _MODULE_LOADERS.setdefault("qy.legacy", _load_legacy_module)
+    # Hardware numeric spaces
+    _MODULE_LOADERS.setdefault("qy.int8", _load_int8_module)
+    _MODULE_LOADERS.setdefault("qy.int16", _load_int16_module)
+    _MODULE_LOADERS.setdefault("qy.int32", _load_int32_module)
+    _MODULE_LOADERS.setdefault("qy.int64", _load_int64_module)
+    _MODULE_LOADERS.setdefault("qy.uint8", _load_uint8_module)
+    _MODULE_LOADERS.setdefault("qy.uint16", _load_uint16_module)
+    _MODULE_LOADERS.setdefault("qy.uint32", _load_uint32_module)
+    _MODULE_LOADERS.setdefault("qy.uint64", _load_uint64_module)
+    _MODULE_LOADERS.setdefault("qy.float16", _load_float16_module)
+    _MODULE_LOADERS.setdefault("qy.float32", _load_float32_module)
+    _MODULE_LOADERS.setdefault("qy.float64", _load_float64_module)
+    _MODULE_LOADERS.setdefault("qy.float128", _load_float128_module)
 
 
 def _load_core_module() -> StandardModule:
@@ -141,6 +173,79 @@ def _load_testhost_module() -> StandardModule:
     from qy.std.testhost import module
 
     return module()
+
+
+# Hardware numeric space loaders
+def _load_int8_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_int8_space
+
+    return make_int8_space()
+
+
+def _load_int16_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_int16_space
+
+    return make_int16_space()
+
+
+def _load_int32_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_int32_space
+
+    return make_int32_space()
+
+
+def _load_int64_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_int64_space
+
+    return make_int64_space()
+
+
+def _load_uint8_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_uint8_space
+
+    return make_uint8_space()
+
+
+def _load_uint16_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_uint16_space
+
+    return make_uint16_space()
+
+
+def _load_uint32_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_uint32_space
+
+    return make_uint32_space()
+
+
+def _load_uint64_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_uint64_space
+
+    return make_uint64_space()
+
+
+def _load_float16_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_float16_space
+
+    return make_float16_space()
+
+
+def _load_float32_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_float32_space
+
+    return make_float32_space()
+
+
+def _load_float64_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_float64_space
+
+    return make_float64_space()
+
+
+def _load_float128_module() -> StandardModule:
+    from qy.std.numeric_spaces import make_float128_space
+
+    return make_float128_space()
 
 
 def _looks_like_file_module(name: str) -> bool:

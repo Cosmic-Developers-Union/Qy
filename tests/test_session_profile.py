@@ -2,6 +2,8 @@
 """Tests for session profile configuration."""
 
 from qy.frontend.reader import Symbol
+from qy.sem.core import FloatValue
+from qy.sem.core import IntValue
 from qy.session.profile import ProfileConfig
 
 S = Symbol
@@ -12,8 +14,8 @@ def test_profile_config_default_literal_resolver():
     profile = ProfileConfig()
 
     # Should resolve number literals
-    assert profile.resolve_literal(S("42")) == 42
-    assert profile.resolve_literal(S("3.14")) == 3.14
+    assert profile.resolve_literal(S("42")) == IntValue(42)
+    assert profile.resolve_literal(S("3.14")) == FloatValue(3.14)
 
     # Should resolve string literals
     assert profile.resolve_literal(S('"hello"')) == "hello"
@@ -124,5 +126,5 @@ def test_profile_config_none_literal_resolver():
     profile = ProfileConfig(None)
 
     # Should use default resolver
-    assert profile.resolve_literal(S("42")) == 42
+    assert profile.resolve_literal(S("42")) == IntValue(42)
     assert profile.resolve_literal(S('"test"')) == "test"

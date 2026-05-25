@@ -11,12 +11,23 @@ from qy.core.syntax import Chain
 from qy.core.syntax import nil
 from qy.sem.core import NIL
 from qy.sem.core import ChainValue
+from qy.sem.core import Float16Value
+from qy.sem.core import Float32Value
+from qy.sem.core import Float128Value
 from qy.sem.core import FloatValue
+from qy.sem.core import Int8Value
+from qy.sem.core import Int16Value
+from qy.sem.core import Int32Value
+from qy.sem.core import Int64Value
 from qy.sem.core import IntValue
 from qy.sem.core import NilValue
 from qy.sem.core import StringValue
 from qy.sem.core import T
 from qy.sem.core import TValue
+from qy.sem.core import UInt8Value
+from qy.sem.core import UInt16Value
+from qy.sem.core import UInt32Value
+from qy.sem.core import UInt64Value
 from qy.sem.core import Value
 
 
@@ -45,9 +56,20 @@ def from_sem(value: object) -> object:
         return nil
     if isinstance(value, TValue):
         return T
-    if isinstance(value, IntValue):
+    if isinstance(
+        value,
+        IntValue
+        | Int8Value
+        | Int16Value
+        | Int32Value
+        | Int64Value
+        | UInt8Value
+        | UInt16Value
+        | UInt32Value
+        | UInt64Value,
+    ):
         return value.value
-    if isinstance(value, FloatValue):
+    if isinstance(value, FloatValue | Float16Value | Float32Value | Float128Value):
         return value.value
     if isinstance(value, StringValue):
         return value.value

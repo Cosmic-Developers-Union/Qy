@@ -10,9 +10,25 @@ from qy.frontend.reader import Symbol
 
 
 def _ensure_number(value: object) -> int | float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
+    """Ensure value is a number and return the raw Python int or float.
+
+    Accepts both raw Python numbers and semantic value types (IntValue, FloatValue).
+    """
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
+    if isinstance(value, bool):
         raise QyTypeError(f"expected number, got {value!r}", metadata={"value": value})
-    return value
+
+    # Handle semantic value types
+    if isinstance(value, IntValue | FloatValue):
+        return value.value
+
+    # Handle raw Python numbers
+    if isinstance(value, int | float):
+        return value
+
+    raise QyTypeError(f"expected number, got {value!r}", metadata={"value": value})
 
 
 def _py_eq(left: object, right: object) -> object:

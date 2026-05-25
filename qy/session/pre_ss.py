@@ -140,13 +140,17 @@ def is_number_literal(name: str) -> bool:
 
 
 def parse_number_literal(name: str) -> object:
-    """Parse a number literal symbol name into a Python number.
+    """Parse a number literal symbol name into a semantic number value.
 
+    Returns IntValue for integer literals, FloatValue for float literals.
     Returns _MISSING if the name is not a valid number literal.
     """
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
     try:
         value = int(name)
-        return value
+        return IntValue(value)
     except ValueError:
         pass
     try:
@@ -154,7 +158,7 @@ def parse_number_literal(name: str) -> object:
         # Reject inf and nan as they're not proper literals
         if value != value or abs(value) == float("inf"):  # nan or inf
             return _MISSING
-        return value
+        return FloatValue(value)
     except ValueError:
         pass
     return _MISSING

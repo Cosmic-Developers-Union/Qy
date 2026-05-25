@@ -52,11 +52,26 @@ def test_is_number_literal():
 
 
 def test_parse_number_literal():
-    """Test number literal parsing."""
-    assert parse_number_literal("123") == 123
-    assert parse_number_literal("-456") == -456
-    assert parse_number_literal("3.14") == 3.14
-    assert parse_number_literal("-2.5") == -2.5
+    """Test number literal parsing returns semantic values."""
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
+    result_int = parse_number_literal("123")
+    assert isinstance(result_int, IntValue)
+    assert result_int.value == 123
+
+    result_neg = parse_number_literal("-456")
+    assert isinstance(result_neg, IntValue)
+    assert result_neg.value == -456
+
+    result_float = parse_number_literal("3.14")
+    assert isinstance(result_float, FloatValue)
+    assert result_float.value == 3.14
+
+    result_neg_float = parse_number_literal("-2.5")
+    assert isinstance(result_neg_float, FloatValue)
+    assert result_neg_float.value == -2.5
+
     assert parse_number_literal("hello") is _MISSING
 
 
@@ -152,13 +167,27 @@ def test_resolve_literal_in_pre_ss_lisp_values():
 
 
 def test_resolve_literal_in_pre_ss_numbers():
-    """Test resolving number literals through pre-ss."""
+    """Test resolving number literals through pre-ss returns semantic values."""
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
     pre_ss = create_pre_ssc()
 
-    assert resolve_literal_in_pre_ss(S("123"), pre_ss) == 123
-    assert resolve_literal_in_pre_ss(S("-456"), pre_ss) == -456
-    assert resolve_literal_in_pre_ss(S("3.14"), pre_ss) == 3.14
-    assert resolve_literal_in_pre_ss(S("-2.5"), pre_ss) == -2.5
+    result_int = resolve_literal_in_pre_ss(S("123"), pre_ss)
+    assert isinstance(result_int, IntValue)
+    assert result_int.value == 123
+
+    result_neg = resolve_literal_in_pre_ss(S("-456"), pre_ss)
+    assert isinstance(result_neg, IntValue)
+    assert result_neg.value == -456
+
+    result_float = resolve_literal_in_pre_ss(S("3.14"), pre_ss)
+    assert isinstance(result_float, FloatValue)
+    assert result_float.value == 3.14
+
+    result_neg_float = resolve_literal_in_pre_ss(S("-2.5"), pre_ss)
+    assert isinstance(result_neg_float, FloatValue)
+    assert result_neg_float.value == -2.5
 
 
 def test_resolve_literal_in_pre_ss_strings():
@@ -261,6 +290,7 @@ def test_resolve_literal_priority():
 
 def test_profile_config_with_pre_ss():
     """Test ProfileConfig using pre-ss for literal resolution."""
+    from qy.sem.core import IntValue
     from qy.session.profile import ProfileConfig
 
     profile = ProfileConfig(use_pre_ss=True)
@@ -268,7 +298,7 @@ def test_profile_config_with_pre_ss():
     # Should resolve literals correctly
     assert profile.resolve_literal(S("T")) is QY_T
     assert profile.resolve_literal(S("nil")) is QY_NIL
-    assert profile.resolve_literal(S("123")) == 123
+    assert profile.resolve_literal(S("123")) == IntValue(123)
     assert profile.resolve_literal(S('"hello"')) == "hello"
 
     # Should raise for undefined symbols
@@ -328,10 +358,13 @@ def test_parse_string_literal_edge_cases():
 
 def test_parse_number_literal_edge_cases():
     """Test edge cases in number literal parsing."""
-    assert parse_number_literal("0") == 0
-    assert parse_number_literal("-0") == 0
-    assert parse_number_literal("0.0") == 0.0
-    assert parse_number_literal("1e10") == 1e10
-    assert parse_number_literal("1.5e-3") == 1.5e-3
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
+    assert parse_number_literal("0") == IntValue(0)
+    assert parse_number_literal("-0") == IntValue(0)
+    assert parse_number_literal("0.0") == FloatValue(0.0)
+    assert parse_number_literal("1e10") == FloatValue(1e10)
+    assert parse_number_literal("1.5e-3") == FloatValue(1.5e-3)
     assert parse_number_literal("inf") is _MISSING
     assert parse_number_literal("nan") is _MISSING
