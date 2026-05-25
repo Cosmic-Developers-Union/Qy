@@ -11,9 +11,12 @@ class LowerHIRPass(Pass):
         super().__init__("hir.lower")
 
     def run(self, context: PassContext) -> PassResult:
+        from typing import cast
+
+        from qy.frontend.reader import Form
         from qy.passes.lower_hir import lower
 
-        forms = context.input_artifact
+        forms = cast(list[Form], context.input_artifact)
         env = context.options.get("env")
         program = lower(forms, env)
         return PassResult(

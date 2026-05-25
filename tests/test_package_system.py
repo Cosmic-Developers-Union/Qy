@@ -211,8 +211,9 @@ class TestMVSResolver:
         provider.register(Manifest(pkg_path="dep/a", version="1.0.0"))
 
         bl = resolve(root, provider)
-        assert bl.get("dep/a") is not None
-        assert bl.get("dep/a").version == "1.0.0"
+        dep_a = bl.get("dep/a")
+        assert dep_a is not None
+        assert dep_a.version == "1.0.0"
 
     def test_mvs_selects_maximum_minimum(self):
         from qy.project.manifest import Dependency
@@ -246,7 +247,9 @@ class TestMVSResolver:
         provider.register(shared)
 
         bl = resolve(root, provider)
-        assert bl.get("dep/shared").version == "1.5.0"
+        shared = bl.get("dep/shared")
+        assert shared is not None
+        assert shared.version == "1.5.0"
 
     def test_transitive_dependencies(self):
         from qy.project.manifest import Dependency
@@ -277,9 +280,15 @@ class TestMVSResolver:
         provider.register(dep_c)
 
         bl = resolve(root, provider)
-        assert bl.get("dep/a").version == "1.0.0"
-        assert bl.get("dep/b").version == "2.0.0"
-        assert bl.get("dep/c").version == "0.1.0"
+        dep_a = bl.get("dep/a")
+        dep_b = bl.get("dep/b")
+        dep_c = bl.get("dep/c")
+        assert dep_a is not None
+        assert dep_b is not None
+        assert dep_c is not None
+        assert dep_a.version == "1.0.0"
+        assert dep_b.version == "2.0.0"
+        assert dep_c.version == "0.1.0"
 
     def test_no_dependencies(self):
         from qy.project.manifest import Manifest
@@ -327,7 +336,9 @@ class TestMVSResolver:
         provider.register(shared_v2)
 
         bl = resolve(root, provider)
-        assert bl.get("dep/shared").version == "2.0.0"
+        shared = bl.get("dep/shared")
+        assert shared is not None
+        assert shared.version == "2.0.0"
 
     def test_build_list_as_dict(self):
         from qy.project.manifest import Dependency

@@ -10,6 +10,8 @@ Simplifies MIR control flow graphs:
 
 from __future__ import annotations
 
+from typing import cast
+
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRBlockId
 from qy.ir.mir import MIRFunction
@@ -27,7 +29,7 @@ class CFGSimplifyPass(Pass):
         super().__init__("control.cfg_simplify")
 
     def run(self, context: PassContext) -> PassResult:
-        program: MIRProgram = context.input_artifact
+        program = cast(MIRProgram, context.input_artifact)
         new_functions = tuple(_simplify_function(f) for f in program.functions)
         return PassResult(
             success=True,
@@ -95,10 +97,10 @@ def _find_reachable(entry: MIRBlockId, blocks: dict[MIRBlockId, MIRBlock]) -> se
 def _successors(terminator: MIRTerminator) -> list[MIRBlockId]:
     match terminator.opcode:
         case "JUMP":
-            return [terminator.operands[0]]
+            return [cast(int, terminator.operands[0])]
         case "BRANCH":
             _, true_block, false_block = terminator.operands
-            return [true_block, false_block]
+            return [cast(int, true_block), cast(int, false_block)]
         case _:
             return []
 
@@ -110,7 +112,7 @@ def _thread_jumps(blocks: dict[MIRBlockId, MIRBlock]) -> dict[MIRBlockId, MIRBlo
         block = blocks[bid]
         if block.instructions == () and block.terminator.opcode == "JUMP":
             seen.add(bid)
-            return resolve_target(block.terminator.operands[0], seen)
+            return resolve_target(cast(int, block.terminator.operands[0]), seen)
         return bid
 
     result: dict[MIRBlockId, MIRBlock] = {}
@@ -118,12 +120,12 @@ def _thread_jumps(blocks: dict[MIRBlockId, MIRBlock]) -> dict[MIRBlockId, MIRBlo
         terminator = block.terminator
         match terminator.opcode:
             case "JUMP":
-                target = resolve_target(terminator.operands[0], {bid})
+                target = resolve_target(cast(int, terminator.operands[0]), {bid})
                 terminator = MIRTerminator("JUMP", (target,), terminator.span)
             case "BRANCH":
                 cond, true_b, false_b = terminator.operands
-                true_b = resolve_target(true_b, {bid})
-                false_b = resolve_target(false_b, {bid})
+                true_b = resolve_target(cast(int, true_b), {bid})
+                false_b = resolve_target(cast(int, false_b), {bid})
                 terminator = MIRTerminator("BRANCH", (cond, true_b, false_b), terminator.span)
         result[bid] = MIRBlock(bid, block.instructions, terminator)
     return result
@@ -147,7 +149,7 @@ def _merge_linear(
             block = blocks[bid]
             if block.terminator.opcode != "JUMP":
                 continue
-            succ_id = block.terminator.operands[0]
+            succ_id = cast(int, block.terminator.operands[0])
             if succ_id not in blocks or succ_id == bid:
                 continue
             if len(predecessors.get(succ_id, [])) != 1:
@@ -177,16 +179,19 @@ def _remap_terminator(
 ) -> MIRTerminator:
     match terminator.opcode:
         case "JUMP":
+            target = cast(int, terminator.operands[0])
             return MIRTerminator(
                 "JUMP",
-                (id_map.get(terminator.operands[0], terminator.operands[0]),),
+                (id_map.get(target, target),),
                 terminator.span,
             )
         case "BRANCH":
             cond, true_b, false_b = terminator.operands
+            true_b_int = cast(int, true_b)
+            false_b_int = cast(int, false_b)
             return MIRTerminator(
                 "BRANCH",
-                (cond, id_map.get(true_b, true_b), id_map.get(false_b, false_b)),
+                (cond, id_map.get(true_b_int, true_b_int), id_map.get(false_b_int, false_b_int)),
                 terminator.span,
             )
         case _:

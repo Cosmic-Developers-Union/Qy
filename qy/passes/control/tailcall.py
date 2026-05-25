@@ -23,7 +23,9 @@ class TailCallPass(Pass):
         super().__init__("control.tailcall")
 
     def run(self, context: PassContext) -> PassResult:
-        program: MIRProgram = context.input_artifact
+        from typing import cast
+
+        program = cast(MIRProgram, context.input_artifact)
         new_functions = tuple(_optimize_function(f) for f in program.functions)
         return PassResult(
             success=True,
@@ -44,8 +46,10 @@ def _optimize_function(function: MIRFunction) -> MIRFunction:
             and block.instructions[-1].opcode == "CALL"
         ):
             call = block.instructions[-1]
-            dest_reg = call.operands[0]
-            return_reg = block.terminator.operands[0]
+            from typing import cast
+
+            dest_reg = cast(int, call.operands[0])
+            return_reg = cast(int, block.terminator.operands[0])
 
             if dest_reg == return_reg:
                 _, fn_reg, arg_regs = call.operands

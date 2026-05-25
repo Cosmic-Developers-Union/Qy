@@ -11,9 +11,12 @@ class LowerMIRPass(Pass):
         super().__init__("mir.lower")
 
     def run(self, context: PassContext) -> PassResult:
+        from typing import cast
+
+        from qy.ir.hir.node import ProgramIR
         from qy.passes.lower_mir import lower_mir
 
-        program = lower_mir(context.input_artifact)
+        program = lower_mir(cast(ProgramIR, context.input_artifact))
         return PassResult(
             success=True,
             artifact=program,

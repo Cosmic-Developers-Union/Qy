@@ -6,6 +6,8 @@ Folds calls to pure operators with all-constant arguments into constants.
 
 from __future__ import annotations
 
+from typing import cast
+
 from qy.core.operators import PureOperator
 from qy.frontend.reader import Symbol
 from qy.ir.mir import MIRBlock
@@ -25,7 +27,7 @@ class ConstFoldPass(Pass):
         super().__init__("optimize.const_fold")
 
     def run(self, context: PassContext) -> PassResult:
-        program: MIRProgram = context.input_artifact
+        program = cast(MIRProgram, context.input_artifact)
         env = context.options.get("env")
         pure_ops = _collect_pure_ops(env)
         pool = MIRConstantPool()
@@ -70,7 +72,7 @@ def _fold_function(
         for block in blocks:
             for inst in block.instructions:
                 if inst.operands:
-                    defs[inst.operands[0]] = inst
+                    defs[cast(int, inst.operands[0])] = inst
 
         new_blocks: list[MIRBlock] = []
         for block in blocks:
@@ -107,7 +109,9 @@ def _try_fold(
     if not isinstance(arg_regs, tuple):
         return None
 
-    op_def = defs.get(op_reg)
+    from typing import cast
+
+    op_def = defs.get(cast(int, op_reg))
     if op_def is None or op_def.opcode != "LOAD_ENV":
         return None
 
@@ -119,11 +123,11 @@ def _try_fold(
 
     arg_values: list[object] = []
     for arg_reg in arg_regs:
-        arg_def = defs.get(arg_reg)
+        arg_def = defs.get(cast(int, arg_reg))
         if arg_def is None or arg_def.opcode != "LOAD_CONST":
             return None
         _, const_idx = arg_def.operands
-        arg_values.append(pool.get(const_idx))
+        arg_values.append(pool.get(cast(int, const_idx)))
 
     try:
         result = operator.func(*arg_values)

@@ -31,7 +31,9 @@ def _compile_to_mir(source: str) -> MIRProgram:
     p.add_pass(LowerHIRPass())
     p.add_pass(LowerMIRPass())
     ctx = PassContext(input_artifact=forms, options={"env": env})
-    return p.run(ctx).artifact
+    artifact = p.run(ctx).artifact
+    assert artifact is not None
+    return artifact
 
 
 def _run_pass(pass_obj, artifact, env=None):
@@ -58,6 +60,7 @@ class TestPipeline:
         ctx = PassContext(input_artifact=forms, options={"env": env})
         result = create_pipeline(optimize=False).run(ctx)
         assert result.success
+        assert result.artifact is not None
         assert result.artifact.functions
 
     def test_pipeline_optimized_folds_constants(self):
@@ -66,6 +69,7 @@ class TestPipeline:
         ctx = PassContext(input_artifact=forms, options={"env": env})
         result = create_pipeline(optimize=True).run(ctx)
         assert result.success
+        assert result.artifact is not None
         fn = result.artifact.functions[0]
         opcodes = [i.opcode for i in fn.instructions]
         assert "CALL" not in opcodes
@@ -236,10 +240,12 @@ class TestOptimizationCorrectness:
         ctx1 = PassContext(input_artifact=forms, options={"env": env})
         r1 = create_pipeline(optimize=False).run(ctx1)
         assert r1.success
+        assert r1.artifact is not None
 
         ctx2 = PassContext(input_artifact=forms, options={"env": env})
         r2 = create_pipeline(optimize=True).run(ctx2)
         assert r2.success
+        assert r2.artifact is not None
 
         assert len(r2.artifact.functions[0].instructions) <= len(
             r1.artifact.functions[0].instructions

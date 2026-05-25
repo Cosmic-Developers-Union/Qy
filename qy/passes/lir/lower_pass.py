@@ -11,9 +11,12 @@ class LowerLIRPass(Pass):
         super().__init__("lir.lower")
 
     def run(self, context: PassContext) -> PassResult:
+        from typing import cast
+
+        from qy.ir.mir import MIRProgram
         from qy.passes.lower_lir import lower_lir
 
-        program = lower_lir(context.input_artifact)
+        program = lower_lir(cast(MIRProgram, context.input_artifact))
         return PassResult(
             success=True,
             artifact=program,

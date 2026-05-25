@@ -6,6 +6,8 @@ Inlines small, non-recursive, effect-free functions that are called exactly once
 
 from __future__ import annotations
 
+from typing import cast
+
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
@@ -26,7 +28,7 @@ class InlinePass(Pass):
         super().__init__("optimize.inline")
 
     def run(self, context: PassContext) -> PassResult:
-        program: MIRProgram = context.input_artifact
+        program = cast(MIRProgram, context.input_artifact)
         result = _inline_program(program)
         return PassResult(success=True, artifact=result)
 
@@ -44,7 +46,7 @@ def _inline_program(program: MIRProgram) -> MIRProgram:
     for fn_idx in candidates:
         callee = functions[fn_idx]
         caller_idx, block_idx, inst_idx = _find_call_site(functions, fn_idx)
-        if caller_idx is None:
+        if caller_idx is None or block_idx is None or inst_idx is None:
             continue
 
         caller = functions[caller_idx]
@@ -127,7 +129,7 @@ def _find_call_site(
         for bi, block in enumerate(caller.blocks):
             for ii, inst in enumerate(block.instructions):
                 if inst.opcode == "MAKE_FUNCTION" and inst.operands[1] == target_fn_idx:
-                    make_fn_reg = inst.operands[0]
+                    make_fn_reg = cast(int, inst.operands[0])
 
                 if (
                     inst.opcode == "DEFINE_ONCE"
@@ -139,7 +141,7 @@ def _find_call_site(
                 if inst.opcode == "LOAD_ENV" and defined_symbol is not None:
                     load_sym = inst.operands[1]
                     if _same_symbol(load_sym, defined_symbol):
-                        make_fn_reg = inst.operands[0]
+                        make_fn_reg = cast(int, inst.operands[0])
 
                 if (
                     inst.opcode == "CALL"
@@ -211,7 +213,7 @@ def _inline_into(
             _offset_instruction(inst, reg_offset) for inst in block.instructions
         )
         if block.terminator.opcode == "RETURN":
-            ret_reg = block.terminator.operands[0] + reg_offset
+            ret_reg = cast(int, block.terminator.operands[0]) + reg_offset
             if ret_reg != dest_reg:
                 new_instructions.append(
                     MIRInstruction("MOVE", (dest_reg, ret_reg), block.terminator.span)
@@ -241,29 +243,46 @@ def _offset_instruction(inst: MIRInstruction, reg_offset: int) -> MIRInstruction
     match inst.opcode:
         case "LOAD_CONST" | "LOAD_HOST" | "LOAD_ENV":
             return MIRInstruction(
-                inst.opcode, (inst.operands[0] + reg_offset, *inst.operands[1:]), inst.span
+                inst.opcode,
+                (cast(int, inst.operands[0]) + reg_offset, *inst.operands[1:]),
+                inst.span,
             )
         case "MOVE":
             return MIRInstruction(
-                "MOVE", (inst.operands[0] + reg_offset, inst.operands[1] + reg_offset), inst.span
+                "MOVE",
+                (
+                    cast(int, inst.operands[0]) + reg_offset,
+                    cast(int, inst.operands[1]) + reg_offset,
+                ),
+                inst.span,
             )
         case "CALL":
             dest, op, args = inst.operands
             return MIRInstruction(
                 "CALL",
-                (dest + reg_offset, op + reg_offset, tuple(a + reg_offset for a in args)),
+                (
+                    cast(int, dest) + reg_offset,
+                    cast(int, op) + reg_offset,
+                    tuple(cast(int, a) + reg_offset for a in cast(tuple, args)),
+                ),
                 inst.span,
             )
         case "DEFINE_ONCE":
             return MIRInstruction(
-                "DEFINE_ONCE", (inst.operands[0], inst.operands[1] + reg_offset), inst.span
+                "DEFINE_ONCE",
+                (inst.operands[0], cast(int, inst.operands[1]) + reg_offset),
+                inst.span,
             )
         case "STORE_LOCAL":
             return MIRInstruction(
-                "STORE_LOCAL", (inst.operands[0], inst.operands[1] + reg_offset), inst.span
+                "STORE_LOCAL",
+                (inst.operands[0], cast(int, inst.operands[1]) + reg_offset),
+                inst.span,
             )
         case "APPEND_RESULT":
-            return MIRInstruction("APPEND_RESULT", (inst.operands[0] + reg_offset,), inst.span)
+            return MIRInstruction(
+                "APPEND_RESULT", (cast(int, inst.operands[0]) + reg_offset,), inst.span
+            )
         case "BUILD_TUPLE":
             return MIRInstruction(
                 "BUILD_TUPLE",
@@ -272,7 +291,9 @@ def _offset_instruction(inst: MIRInstruction, reg_offset: int) -> MIRInstruction
             )
         case "MAKE_FUNCTION":
             return MIRInstruction(
-                "MAKE_FUNCTION", (inst.operands[0] + reg_offset, inst.operands[1]), inst.span
+                "MAKE_FUNCTION",
+                (cast(int, inst.operands[0]) + reg_offset, inst.operands[1]),
+                inst.span,
             )
         case _:
             new_ops = tuple(op + reg_offset if isinstance(op, int) else op for op in inst.operands)
@@ -286,19 +307,26 @@ def _offset_terminator(
 ) -> MIRTerminator:
     match term.opcode:
         case "JUMP":
-            return MIRTerminator("JUMP", (term.operands[0] + block_offset,), term.span)
+            return MIRTerminator("JUMP", (cast(int, term.operands[0]) + block_offset,), term.span)
         case "BRANCH":
             cond, true_b, false_b = term.operands
             return MIRTerminator(
                 "BRANCH",
-                (cond + reg_offset, true_b + block_offset, false_b + block_offset),
+                (
+                    cast(int, cond) + reg_offset,
+                    cast(int, true_b) + block_offset,
+                    cast(int, false_b) + block_offset,
+                ),
                 term.span,
             )
         case "TAIL_CALL":
             fn_reg, arg_regs = term.operands
             return MIRTerminator(
                 "TAIL_CALL",
-                (fn_reg + reg_offset, tuple(a + reg_offset for a in arg_regs)),
+                (
+                    cast(int, fn_reg) + reg_offset,
+                    tuple(cast(int, a) + reg_offset for a in cast(tuple, arg_regs)),
+                ),
                 term.span,
             )
         case _:

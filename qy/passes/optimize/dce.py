@@ -36,7 +36,9 @@ class DCEPass(Pass):
         super().__init__("optimize.dce")
 
     def run(self, context: PassContext) -> PassResult:
-        program: MIRProgram = context.input_artifact
+        from typing import cast
+
+        program = cast(MIRProgram, context.input_artifact)
         new_functions = tuple(_eliminate_dead(f) for f in program.functions)
         return PassResult(
             success=True,

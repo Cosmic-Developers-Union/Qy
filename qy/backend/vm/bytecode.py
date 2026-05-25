@@ -556,7 +556,7 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
             }
         )
 
-    program_json = {
+    program_json: dict[str, object] = {
         "version": 1,
         "main": program.main,
         "functions": functions_json,
