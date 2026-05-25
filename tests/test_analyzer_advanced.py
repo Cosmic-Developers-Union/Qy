@@ -1,5 +1,5 @@
 from qy.analysis import type_check_source
-from qy.environment import standard_environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std import load_module
 
 

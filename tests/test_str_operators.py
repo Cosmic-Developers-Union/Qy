@@ -1,10 +1,10 @@
-from qy.environment import standard_environment
 from qy.frontend.reader import Symbol
 from qy.runtime import evaluate_source
 from qy.sem.core import CharValue
 from qy.sem.core import IntValue
 from qy.sem.core import StringValue
 from qy.sem.core import T as QY_T
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std import load_module
 
 S = Symbol

@@ -3,11 +3,11 @@ from io import StringIO
 
 import pytest
 
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.runtime import evaluate
 from qy.runtime import evaluate_source
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
 S = Symbol
 

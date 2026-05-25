@@ -32,7 +32,7 @@ def test_core_operators_expose_static_signatures():
 
 
 def test_non_core_legacy_data_operators_do_not_have_core_signatures():
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
     from qy.std import standard_bindings
 
     qy = Qy(env=Environment(standard_bindings(("qy.core", "qy.io", "qy.py"))))

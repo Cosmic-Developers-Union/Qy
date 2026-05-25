@@ -14,8 +14,6 @@ import pytest
 
 from qy.core.syntax import Chain as QyChain
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import QyArityError
 from qy.errors import QyError
 from qy.errors import QyResolveError
@@ -31,6 +29,8 @@ from qy.runtime import evaluate_program
 from qy.runtime import evaluate_program_async
 from qy.runtime import evaluate_source
 from qy.runtime import evaluate_source_async
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
 # -- evaluate / evaluate_async tests -----------------------------------------
 
@@ -728,9 +728,9 @@ def test_backward_compatibility_imports():
     from qy.core.syntax import nil as QY_EMPTY_CHAIN
     from qy.core.syntax import nil as QY_EMPTY_LIST
     from qy.core.syntax import nil as QY_NIL
-    from qy.environment import Environment
     from qy.sem.core import T as QY_T
     from qy.sem.runtime import UserFunction
+    from qy.session.runtime_space import RuntimeSpace as Environment
     from qy.vm.instance.values import HostObjectRef
 
     assert Environment is not None
@@ -746,7 +746,7 @@ def test_backward_compatibility_imports():
 
 def test_standard_environment_available():
     """测试 standard_environment 可用。."""
-    from qy.environment import standard_environment
+    from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
     env = standard_environment()
     assert isinstance(env, Environment)

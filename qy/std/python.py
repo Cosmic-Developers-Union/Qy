@@ -21,7 +21,6 @@ from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain as QyCons
 from qy.core.syntax import map_chain as map_qy_cons
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
 from qy.errors import QyEffectSignal
@@ -34,6 +33,7 @@ from qy.frontend.reader import get_span
 from qy.macro import MacroDefinition
 from qy.sem.core import T as QY_T
 from qy.sem.runtime import UserFunction
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std.data import python_container_operators
 from qy.std.effects import _await_cached_value
 from qy.vm.instance.frame import QyContinuation

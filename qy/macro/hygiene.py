@@ -15,13 +15,13 @@ from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
-from qy.environment import Environment
 from qy.errors import EvaluationError as QyResolutionError
 from qy.frontend.reader import SpannedTuple
 from qy.frontend.reader import Symbol
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.session.pre_ss import default_literal_type
+from qy.session.runtime_space import RuntimeSpace as Environment
 
 if TYPE_CHECKING:
     from qy.macro.expand import MacroExpansionContext

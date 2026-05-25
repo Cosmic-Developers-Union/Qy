@@ -19,7 +19,7 @@ from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
 
 if TYPE_CHECKING:
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 __all__ = ["ComponentOperator", "EffectDefinition", "UserFunction"]
 

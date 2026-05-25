@@ -76,7 +76,7 @@ def test_let_can_shadow_host_symbol_from_parent_scope():
 
 
 def test_qy_exposes_pre_symbol_space_chain():
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
     env = Environment()
     env.define(Symbol("x"), 1)
@@ -97,9 +97,9 @@ def test_define_in_child_scope_can_shadow_parent_binding():
 
 
 def test_define_once_raises_on_duplicate():
-    from qy.environment import Environment
     from qy.errors import QyRuntimeError
     from qy.frontend.reader import Symbol
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
     env = Environment()
     env.define_once(Symbol("x"), 1)

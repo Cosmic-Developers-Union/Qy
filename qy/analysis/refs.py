@@ -8,8 +8,8 @@ if TYPE_CHECKING:
     from qy.core import OperatorKind
     from qy.core import TypeName
     from qy.core.operator_signature import OperatorSignature
-    from qy.environment import Environment
     from qy.frontend.reader import Symbol
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 from qy.core.operator_signature import format_arity_message
 from qy.core.operators import ControlOperator

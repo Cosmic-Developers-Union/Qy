@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
-from qy.environment import Environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std.imports import parse_from_import
 from qy.std.module import StandardModule
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async

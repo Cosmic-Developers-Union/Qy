@@ -26,8 +26,6 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.diag import Diagnostic
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
@@ -48,6 +46,8 @@ from qy.macro.hygiene import apply_hygiene
 from qy.macro.scope import MacroScope
 from qy.macro.trace import MacroExpansionTrace
 from qy.macro.trace import MacroSourceMapEntry
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std import load_module
 from qy.std.imports import parse_from_import
 

@@ -16,8 +16,6 @@ from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.frontend.reader import DottedTuple
 from qy.frontend.reader import Form
@@ -65,6 +63,8 @@ from qy.sem.classify import operator_kind_for_value
 from qy.sem.classify import value_type
 from qy.session.pre_ss import default_literal_type
 from qy.session.pre_ss import try_default_literal
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std.imports import parse_from_import
 
 __all__ = [

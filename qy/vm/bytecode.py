@@ -20,7 +20,7 @@ from qy.backend.vm.bytecode import Opcode
 from qy.backend.vm.bytecode import Register
 
 if TYPE_CHECKING:
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 __all__ = [
     "BytecodeFunction",

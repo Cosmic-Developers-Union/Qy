@@ -12,7 +12,7 @@ from qy.macro import MacroDefinition
 
 def _make_compile_time_env():
     """创建编译时环境。."""
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
     return Environment()
 

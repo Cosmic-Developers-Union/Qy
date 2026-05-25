@@ -2,11 +2,11 @@ import pytest
 
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.runtime import evaluate_source
 from qy.sem.core import T as QY_T
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std import standard_bindings
 
 S = Symbol

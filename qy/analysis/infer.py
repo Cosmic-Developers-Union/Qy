@@ -27,9 +27,9 @@ from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
-from qy.environment import Environment
 from qy.frontend.reader import Symbol
 from qy.import_.loader import resolve_known_module
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std.imports import parse_from_import
 
 

@@ -21,13 +21,13 @@ from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.sem.core import T as QY_T
 from qy.sem.runtime import UserFunction
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 

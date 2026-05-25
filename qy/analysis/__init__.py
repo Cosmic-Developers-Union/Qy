@@ -11,17 +11,17 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 from qy.analysis.infer import infer
 from qy.analysis.scope import predeclare_callable_definitions
 from qy.analysis.scope import scope_after_form
 from qy.analysis.scope import scope_from_environment
 from qy.diag import Diagnostic
-from qy.environment import standard_environment
 from qy.frontend.reader import Form
 from qy.frontend.reader import ReaderSyntaxError
 from qy.frontend.reader import read
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
 __all__ = [
     "Analysis",

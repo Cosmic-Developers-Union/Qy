@@ -5,12 +5,12 @@ from __future__ import annotations
 
 import pytest
 
-from qy.environment import Environment
 from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
+from qy.session.runtime_space import RuntimeSpace as Environment
 
 
 def test_effect_definition_creation():

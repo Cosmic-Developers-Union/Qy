@@ -12,7 +12,7 @@ __all__ = [
 ]
 
 if TYPE_CHECKING:
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
     type CompileTimeEnvironment = Environment
 else:

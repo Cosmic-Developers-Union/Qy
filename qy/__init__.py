@@ -38,8 +38,6 @@ from qy.core.syntax import nil as QY_EMPTY_CHAIN
 from qy.core.syntax import nil as QY_EMPTY_LIST
 from qy.core.syntax import nil as QY_NIL
 from qy.display import format_value
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
@@ -119,6 +117,8 @@ from qy.sem.runtime import EffectDefinition
 from qy.session import ProfileConfig
 from qy.session import RuntimeSpace
 from qy.session import create_standard_runtime_space
+from qy.session.runtime_space import Environment
+from qy.session.runtime_space import standard_environment
 from qy.std.profile import OperatorDoc
 from qy.std.profile import OperatorModuleDoc
 from qy.std.profile import collect_supported_operators

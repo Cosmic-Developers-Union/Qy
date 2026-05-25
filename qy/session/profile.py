@@ -8,7 +8,6 @@
 
 当前：
 - 完整实现，使用基于 symbol-space 的字面量解析
-- 从 qy/environment.py 迁移相关功能
 
 禁止：
 - 不得包含 VM 执行逻辑

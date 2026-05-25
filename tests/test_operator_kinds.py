@@ -5,10 +5,10 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.sem.runtime import EffectDefinition
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std import load_module
 
 S = Symbol

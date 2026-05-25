@@ -16,7 +16,7 @@ from qy.std.imports import parse_from_import
 from qy.std.module import StandardModule
 
 if TYPE_CHECKING:
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 __all__ = [
     "build_provisional_module",

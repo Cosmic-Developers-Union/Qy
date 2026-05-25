@@ -11,9 +11,7 @@ from qy.backend.vm.compiler import compile_bytecode
 from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import ArgumentEvaluator
-from qy.environment import ChainFrame
-from qy.environment import Environment
-from qy.environment import standard_environment
+from qy.core.symbol_space import ChainFrame
 from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
@@ -32,6 +30,8 @@ from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
 from qy.passes.lower_hir import lower_source
 from qy.passes.lower_mir import lower_mir
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.instance.machine import RegisterVirtualMachine
 from qy.vm.instance.machine import evaluate_bytecode
 from qy.vm.instance.machine import evaluate_bytecode_async

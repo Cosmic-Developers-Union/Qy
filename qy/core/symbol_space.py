@@ -8,7 +8,7 @@
 - 提供 fold 操作用于模块导入
 
 当前：
-- 完整实现，替代 qy/environment.py 的核心功能
+- 完整实现 symbol-space 和 symbol-space-chain 的核心语义
 
 禁止：
 - 不得包含 profile 便利算子

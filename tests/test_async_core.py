@@ -1,8 +1,8 @@
 import asyncio
 from typing import cast
 
-from qy.environment import standard_environment
 from qy.runtime import AsyncQy
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std import load_module
 
 

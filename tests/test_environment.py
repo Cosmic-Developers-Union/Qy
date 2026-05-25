@@ -1,8 +1,6 @@
 import pytest
 
 from qy.analysis import analyze_source
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
 from qy.frontend.reader import Symbol
@@ -11,6 +9,8 @@ from qy.runtime import evaluate
 from qy.runtime import evaluate_source
 from qy.sem.core import IntValue
 from qy.session.pre_ss import resolve_default_literal
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
 S = Symbol
 

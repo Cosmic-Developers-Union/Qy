@@ -2,8 +2,8 @@
 
 import pytest
 
-from qy.environment import Environment
 from qy.runtime import evaluate_source
+from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std import standard_bindings
 
 

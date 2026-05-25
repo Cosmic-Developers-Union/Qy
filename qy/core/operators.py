@@ -9,7 +9,7 @@ from typing import Literal
 
 if TYPE_CHECKING:
     from qy.core.operator_signature import OperatorSignature
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
 
 OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]
 

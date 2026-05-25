@@ -18,8 +18,6 @@ from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
 from qy.core.syntax import nil as QY_NIL
-from qy.environment import Environment
-from qy.environment import standard_environment
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
@@ -31,6 +29,8 @@ from qy.ir import ProgramIR
 from qy.macro import macroexpand_source_async
 from qy.passes.lower_hir import lower
 from qy.sem.runtime import EffectDefinition
+from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame

@@ -17,7 +17,7 @@ from typing import cast
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
-    from qy.environment import Environment
+    from qy.session.runtime_space import RuntimeSpace as Environment
     from qy.std.module import StandardModule
 
 __all__ = [
