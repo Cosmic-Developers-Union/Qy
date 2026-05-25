@@ -277,9 +277,19 @@ def create_app() -> Any:
             bool,
             typer.Option("--expand", help="Show AST after macro expansion."),
         ] = False,
+        cst: Annotated[
+            bool,
+            typer.Option("--cst", help="Show concrete syntax tree (preserves trivia)."),
+        ] = False,
     ) -> None:
         source = path.read_text(encoding="utf-8")
-        if raw:
+        if cst:
+            from qy.frontend.reader import parse_cst
+            from qy.tools.fmt import dump_cst
+
+            program = parse_cst(source, source_name=str(path))
+            typer.echo(dump_cst(program))
+        elif raw:
             forms = read_raw(source)
             typer.echo(dump_program(forms))
         elif expand:

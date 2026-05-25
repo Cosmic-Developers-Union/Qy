@@ -26,6 +26,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field
+from typing import TYPE_CHECKING
 from typing import cast
 
 import lark
@@ -40,6 +41,10 @@ from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.errors import QySyntaxError
 from qy.errors import SourceSpan
+
+if TYPE_CHECKING:
+    from qy.frontend.cst import CstProgram
+    from qy.frontend.reader_macros import ReaderMacroRegistry
 
 __all__ = [
     "GRAMMAR",
@@ -64,7 +69,9 @@ __all__ = [
     "is_nil",
     "list_to_chain",
     "nil",
+    "parse_cst",
     "read",
+    "read_cst",
     "read_one",
     "read_one_tuple",
     "read_raw",
@@ -290,7 +297,9 @@ def expand_surface_dialect(forms: list[Form]) -> list[Form]:
     This is a pure function: it does not parse source, only transforms
     already-parsed raw forms produced by ``read_raw()``.
     """
-    return _expand_surface_program(forms)
+    from qy.frontend.surface import expand_surface_dialect as _impl
+
+    return _impl(forms)
 
 
 def read(source: str, *, source_name: str | None = None) -> list[Form]:
@@ -302,475 +311,6 @@ def read_one(source: str, *, source_name: str | None = None) -> Form:
     if len(forms) != 1:
         raise ReaderSyntaxError(f"expected exactly one form, got {len(forms)}")
     return forms[0]
-
-
-def _expand_surface_program(forms: list[Form]) -> list[Form]:
-    return cast(list[Form], list(_expand_surface_sequence(tuple(forms), in_quasiquote=False)))
-
-
-def _expand_surface_form(form: object, *, in_quasiquote: bool) -> object:
-    if isinstance(form, Symbol):
-        expanded = _expand_surface_symbol(form, in_quasiquote=in_quasiquote)
-        if expanded is not form:
-            return expanded
-        return form
-    if isinstance(form, Chain):
-        return _expand_surface_chain(form, in_quasiquote=in_quasiquote)
-    if isinstance(form, DottedTuple):
-        return _expand_surface_dotted_tuple(form, in_quasiquote=in_quasiquote)
-    if isinstance(form, tuple):
-        return _expand_surface_tuple(form, in_quasiquote=in_quasiquote)
-    return form
-
-
-def _expand_surface_sequence(
-    forms: tuple[object, ...], *, in_quasiquote: bool
-) -> tuple[object, ...]:
-    expanded: list[object] = []
-    index = 0
-    while index < len(forms):
-        form = forms[index]
-        if (
-            isinstance(form, Symbol)
-            and form.name == "'"
-            and index + 1 < len(forms)
-            and _forms_are_adjacent(form, forms[index + 1])
-        ):
-            expanded.append(
-                _surface_call(
-                    "quote",
-                    (_expand_surface_form(forms[index + 1], in_quasiquote=in_quasiquote),),
-                    span=_combine_spans(form, forms[index + 1]),
-                )
-            )
-            index += 2
-            continue
-        if (
-            isinstance(form, Symbol)
-            and form.name == "`"
-            and index + 1 < len(forms)
-            and _forms_are_adjacent(form, forms[index + 1])
-        ):
-            expanded.append(
-                _surface_call(
-                    "quasiquote",
-                    (_expand_surface_form(forms[index + 1], in_quasiquote=True),),
-                    span=_combine_spans(form, forms[index + 1]),
-                )
-            )
-            index += 2
-            continue
-        expanded.append(_expand_surface_form(form, in_quasiquote=in_quasiquote))
-        index += 1
-    return tuple(expanded)
-
-
-def _expand_chain_sequence(chain: object, *, in_quasiquote: bool) -> object:
-    """展开 Chain 序列，处理前缀 quote 和 quasiquote。.
-
-    类似于 _expand_surface_sequence，但处理 Chain 而不是 tuple。
-    """
-    if is_nil(chain):
-        return chain
-
-    span = get_span(chain)
-    expanded: list[object] = []
-    current = chain
-
-    while is_chain(current):
-        head = car(current)
-        tail = cdr(current)
-
-        # 检查是否是前缀 quote: ' 后面跟着另一个 form
-        if (
-            isinstance(head, Symbol)
-            and head.name == "'"
-            and is_chain(tail)
-            and _forms_are_adjacent(head, car(tail))
-        ):
-            # 展开为 (quote form)
-            quoted_form = car(tail)
-            expanded.append(
-                _surface_call(
-                    "quote",
-                    (_expand_surface_form(quoted_form, in_quasiquote=in_quasiquote),),
-                    span=_combine_spans(head, quoted_form),
-                )
-            )
-            # 跳过下一个元素（已经处理过了）
-            current = cdr(tail)
-            continue
-
-        # 检查是否是前缀 quasiquote: ` 后面跟着另一个 form
-        if (
-            isinstance(head, Symbol)
-            and head.name == "`"
-            and is_chain(tail)
-            and _forms_are_adjacent(head, car(tail))
-        ):
-            # 展开为 (quasiquote form)
-            quasiquoted_form = car(tail)
-            expanded.append(
-                _surface_call(
-                    "quasiquote",
-                    (_expand_surface_form(quasiquoted_form, in_quasiquote=True),),
-                    span=_combine_spans(head, quasiquoted_form),
-                )
-            )
-            # 跳过下一个元素（已经处理过了）
-            current = cdr(tail)
-            continue
-
-        # 普通元素：递归展开
-        expanded.append(_expand_surface_form(head, in_quasiquote=in_quasiquote))
-        current = tail
-
-    # 处理 improper list
-    if not is_nil(current):
-        result = _expand_surface_form(current, in_quasiquote=in_quasiquote)
-        for item in reversed(expanded):
-            result = cons(item, result, span=span)
-        return result
-
-    return list_to_chain(expanded, span=span)
-
-
-def _expand_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 Chain 中的 surface dialect。.
-
-    处理 Chain 的递归展开，保持 span 信息。
-    """
-    if is_nil(chain):
-        return chain
-
-    get_span(chain)
-
-    # 检查是否是特殊 form
-    if not is_chain(chain):
-        return chain
-
-    head = car(chain)
-
-    # 如果 head 不是 Symbol，递归展开所有元素（处理前缀 quote）
-    if not isinstance(head, Symbol):
-        return _expand_chain_sequence(chain, in_quasiquote=in_quasiquote)
-
-    # 根据 head 的名称进行特殊处理
-    match head.name:
-        case "define":
-            return _expand_define_surface_chain(chain, in_quasiquote=in_quasiquote)
-        case "defun" | "macro":
-            return _expand_named_body_surface_chain(chain, in_quasiquote=in_quasiquote)
-        case "lambda":
-            return _expand_lambda_surface_chain(chain, in_quasiquote=in_quasiquote)
-        case "let":
-            return _expand_let_surface_chain(chain, in_quasiquote=in_quasiquote)
-        case "defeffect" | "exports" | "from" | "import":
-            return chain
-        case "module":
-            return _expand_module_surface_chain(chain, in_quasiquote=in_quasiquote)
-        case "quasiquote":
-            return _expand_quasiquote_surface_chain(chain, in_quasiquote=in_quasiquote)
-
-    # 默认：递归展开所有元素（处理前缀 quote）
-    return _expand_chain_sequence(chain, in_quasiquote=in_quasiquote)
-
-
-def _chain_to_list_safe(chain: object) -> tuple[list[object], object]:
-    """安全地将 Chain 转换为 list，返回 (items, tail)。.
-
-    对于 proper list，tail 是 nil。
-    对于 improper list，tail 是最后的非 Chain 值。
-    """
-    items = []
-    current = chain
-    while is_chain(current):
-        items.append(car(current))
-        current = cdr(current)
-    return items, current
-
-
-def _expand_define_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (define ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        # Improper list，保持原样
-        return chain
-    if len(items) <= 2:
-        return chain
-    span = get_span(chain)
-    # 只在 quasiquote 内部展开名称（用于 ,name 等）
-    # 在 quasiquote 外部，'x 应该保持为 Symbol("'x")
-    expanded_name = (
-        _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
-    )
-    # 使用 _expand_surface_sequence 来正确处理前缀 quote 和 quasiquote
-    expanded_values = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
-    return list_to_chain([items[0], expanded_name, *list(expanded_values)], span=span)
-
-
-def _expand_named_body_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (defun ...) / (macro ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        return chain
-    if len(items) <= 3:
-        return chain
-    span = get_span(chain)
-    # 使用 _expand_surface_sequence 来正确处理前缀 quote
-    expanded_body = _expand_surface_sequence(tuple(items[3:]), in_quasiquote=in_quasiquote)
-    return list_to_chain([items[0], items[1], items[2], *list(expanded_body)], span=span)
-
-
-def _expand_lambda_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (lambda ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        return chain
-    if len(items) <= 2:
-        return chain
-    span = get_span(chain)
-    # 只在 quasiquote 内部展开参数列表（用于 ,args 等）
-    expanded_args = (
-        _expand_surface_form(items[1], in_quasiquote=in_quasiquote) if in_quasiquote else items[1]
-    )
-    # 使用 _expand_surface_sequence 来正确处理前缀 quote
-    expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
-    return list_to_chain([items[0], expanded_args, *list(expanded_body)], span=span)
-
-
-def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (module ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        return chain
-    if len(items) <= 2:
-        return chain
-    span = get_span(chain)
-    expanded_body = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]]
-    return list_to_chain([items[0], items[1], *expanded_body], span=span)
-
-
-def _expand_quasiquote_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (quasiquote ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        return chain
-    if len(items) != 2:
-        expanded_items = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items]
-        return list_to_chain(expanded_items, span=get_span(chain))
-    span = get_span(chain)
-    return list_to_chain(
-        [items[0], _expand_surface_form(items[1], in_quasiquote=True)],
-        span=span,
-    )
-
-
-def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
-    """展开 (let ...) Chain。."""
-    items, tail = _chain_to_list_safe(chain)
-    if not is_nil(tail):
-        return chain
-    if len(items) <= 2:
-        return chain
-    span = get_span(chain)
-
-    bindings = items[1]
-    if is_chain(bindings):
-        expanded_bindings = []
-        binding_items, binding_tail = _chain_to_list_safe(bindings)
-        if not is_nil(binding_tail):
-            # bindings 是 improper list，保持原样
-            pass
-        else:
-            for binding in binding_items:
-                if is_chain(binding):
-                    b_items, b_tail = _chain_to_list_safe(binding)
-                    if is_nil(b_tail) and len(b_items) > 1:
-                        # 使用 _expand_chain_sequence 处理绑定值，以支持前缀 quote
-                        values_chain = list_to_chain(b_items[1:])
-                        expanded_values_chain = _expand_chain_sequence(
-                            values_chain, in_quasiquote=in_quasiquote
-                        )
-                        expanded_values = (
-                            list(cast(Iterable[object], expanded_values_chain))
-                            if is_chain(expanded_values_chain)
-                            else [expanded_values_chain]
-                        )
-                        expanded_bindings.append(
-                            list_to_chain([b_items[0], *expanded_values], span=get_span(binding))
-                        )
-                    else:
-                        expanded_bindings.append(binding)
-                else:
-                    expanded_bindings.append(binding)
-            bindings = list_to_chain(expanded_bindings, span=get_span(bindings))
-
-    expanded_body = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]]
-    return list_to_chain([items[0], bindings, *expanded_body], span=span)
-
-
-def _expand_surface_tuple(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if not form:
-        return SpannedTuple((), get_span(form))
-    head = form[0]
-    if not isinstance(head, Symbol):
-        return SpannedTuple(
-            _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
-        )
-
-    match head.name:
-        case "define":
-            return _expand_define_surface(form, in_quasiquote=in_quasiquote)
-        case "defun" | "macro":
-            return _expand_named_body_surface(form, in_quasiquote=in_quasiquote)
-        case "lambda":
-            return _expand_lambda_surface(form, in_quasiquote=in_quasiquote)
-        case "let":
-            return _expand_let_surface(form, in_quasiquote=in_quasiquote)
-        case "defeffect" | "exports" | "from" | "import":
-            return SpannedTuple(form, get_span(form))
-        case "module":
-            if len(form) <= 2:
-                return SpannedTuple(form, get_span(form))
-            body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-            return SpannedTuple((form[0], form[1], *body), get_span(form))
-        case "quasiquote":
-            if len(form) != 2:
-                return SpannedTuple(
-                    _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
-                )
-            return SpannedTuple(
-                (
-                    form[0],
-                    _expand_surface_form(form[1], in_quasiquote=True),
-                ),
-                get_span(form),
-            )
-
-    return SpannedTuple(_expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form))
-
-
-def _expand_surface_dotted_tuple(form: DottedTuple, *, in_quasiquote: bool) -> DottedTuple:
-    return DottedTuple(
-        _expand_surface_sequence(tuple(form), in_quasiquote=in_quasiquote),
-        _expand_surface_form(cast(Form, form.tail), in_quasiquote=in_quasiquote),
-        get_span(form),
-    )
-
-
-def _expand_define_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    values = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], *values), get_span(form))
-
-
-def _expand_named_body_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 3:
-        return SpannedTuple(form, get_span(form))
-    body = _expand_surface_sequence(tuple(form[3:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], form[2], *body), get_span(form))
-
-
-def _expand_lambda_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], *body), get_span(form))
-
-
-def _expand_let_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    bindings = form[1]
-    if isinstance(bindings, tuple):
-        bindings = SpannedTuple(
-            (
-                _expand_let_binding_surface(binding, in_quasiquote=in_quasiquote)
-                if isinstance(binding, tuple)
-                else binding
-                for binding in bindings
-            ),
-            get_span(bindings),
-        )
-    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], bindings, *body), get_span(form))
-
-
-def _expand_let_binding_surface(binding: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(binding) <= 1:
-        return SpannedTuple(binding, get_span(binding))
-    values = _expand_surface_sequence(tuple(binding[1:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((binding[0], *values), get_span(binding))
-
-
-def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> object:
-    if symbol.name.startswith("'") and len(symbol.name) > 1:
-        quoted = Symbol(symbol.name[1:], symbol.span)
-        return _surface_call(
-            "quote",
-            (_expand_surface_form(quoted, in_quasiquote=in_quasiquote),),
-            span=symbol.span,
-        )
-    if in_quasiquote and symbol.name.startswith(",@") and len(symbol.name) > 2:
-        return _surface_call(
-            "unquote-splicing",
-            (_expand_surface_form(Symbol(symbol.name[2:], symbol.span), in_quasiquote=False),),
-            span=symbol.span,
-        )
-    if (
-        in_quasiquote
-        and symbol.name.startswith(",")
-        and len(symbol.name) > 1
-        and not symbol.name.startswith(",@")
-    ):
-        return _surface_call(
-            "unquote",
-            (_expand_surface_form(Symbol(symbol.name[1:], symbol.span), in_quasiquote=False),),
-            span=symbol.span,
-        )
-    return symbol
-
-
-def _surface_call(name: str, args: tuple[object, ...], *, span: SourceSpan | None) -> object:
-    return list_to_chain([Symbol(name, span), *args], span=span)
-
-
-def _forms_are_adjacent(left: object, right: object) -> bool:
-    left_span = get_span(left)
-    right_span = get_span(right)
-
-    # 特殊处理：如果右边是 nil（空列表），且没有 span，
-    # 我们假设它紧跟在左边的 form 后面（例如 '() 中的 ()）
-    if is_nil(right) and right_span is None and left_span is not None:
-        return True
-
-    return (
-        left_span is not None
-        and right_span is not None
-        and left_span.source == right_span.source
-        and left_span.end_line == right_span.start_line
-        and left_span.end_column == right_span.start_column
-    )
-
-
-def _combine_spans(left: object, right: object) -> SourceSpan | None:
-    left_span = get_span(left)
-    right_span = get_span(right)
-    if left_span is None:
-        return right_span
-    if right_span is None:
-        return left_span
-    if left_span.source != right_span.source:
-        return left_span
-    return SourceSpan(
-        left_span.source,
-        left_span.start_line,
-        left_span.start_column,
-        right_span.end_line,
-        right_span.end_column,
-    )
 
 
 def read_tuple(source: str) -> list[TupleForm]:
@@ -977,6 +517,103 @@ def _encode_literal(value: TupleAtom) -> str:
             raise TypeError(f"cannot write non-finite float literal {value!r} as qy source")
         return repr(value)
     raise TypeError(f"cannot write literal {type(value).__name__} as qy source")
+
+
+# ============================================================================
+# CST path: Source → CstProgram → list[Form]
+# ============================================================================
+
+
+def parse_cst(source: str, *, source_name: str | None = None) -> CstProgram:
+    """Parse source into a CST (trivia-preserving)."""
+    from qy.frontend.cst_parser import parse_cst as _parse_cst
+
+    return _parse_cst(source, source_name=source_name)
+
+
+def read_cst(
+    cst: CstProgram,
+    *,
+    registry: ReaderMacroRegistry | None = None,
+) -> list[Form]:
+    """Convert a CstProgram into a list of Forms (raw AST).
+
+    Applies reader macros for tagged atoms if a registry is provided.
+    Unregistered tags use the default behavior: tag"lit" → (tag (quote "lit")).
+    """
+    from qy.frontend.cst import AtomKind
+    from qy.frontend.cst import CstAtom
+    from qy.frontend.cst import CstList
+
+    if registry is None:
+        from qy.frontend.reader_macros import default_registry
+
+        registry = default_registry()
+
+    def _convert_node(node: CstAtom | CstList) -> Form:
+        if isinstance(node, CstAtom):
+            return _convert_atom(node)
+        return _convert_list(node)
+
+    def _convert_atom(atom: CstAtom) -> Form:
+        span = atom.span
+        text = atom.text
+        match atom.kind:
+            case AtomKind.BARE:
+                return Symbol(text, span)
+            case AtomKind.QUOTED:
+                return Symbol(text, span)
+            case AtomKind.RAW_QUOTED:
+                return Symbol(text, span)
+            case AtomKind.MULTILINE:
+                return Symbol(text, span)
+            case AtomKind.RAW_MULTILINE:
+                return Symbol(text, span)
+            case AtomKind.TAGGED_QUOTED | AtomKind.TAGGED_MULTILINE:
+                tag, literal = _split_tagged_literal(text, span)
+                entry = registry.lookup(tag)
+                if entry is not None:
+                    return entry.handler(atom)
+                # Default: (tag (quote literal))
+                quote_form = list_to_chain(
+                    [Symbol("quote", span), Symbol(literal, span)],
+                    span=span,
+                )
+                return cast(
+                    Form,
+                    list_to_chain(
+                        [Symbol(tag, span), quote_form],
+                        span=span,
+                    ),
+                )
+            case _:  # pragma: no cover
+                return Symbol(text, span)
+
+    def _convert_list(lst: CstList) -> Form:
+        span = lst.span
+        if lst.tail is not None:
+            # Dotted pair: build improper list
+            heads = [
+                _convert_node(child)
+                for child in lst.children
+                if isinstance(child, (CstAtom, CstList))
+            ]
+            tail_form = _convert_node(lst.tail) if isinstance(lst.tail, (CstAtom, CstList)) else nil
+            result: object = tail_form
+            for head in reversed(heads):
+                result = cons(head, result, span=span)
+            return cast(Form, result)
+        # Proper list
+        items = [
+            _convert_node(child) for child in lst.children if isinstance(child, (CstAtom, CstList))
+        ]
+        return cast(Form, list_to_chain(items, span=span))
+
+    forms: list[Form] = []
+    for node in cst.children:
+        if isinstance(node, (CstAtom, CstList)):
+            forms.append(_convert_node(node))
+    return forms
 
 
 # ============================================================================

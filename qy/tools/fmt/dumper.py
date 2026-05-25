@@ -12,11 +12,14 @@ from typing import cast
 from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
+from qy.frontend.cst import CstAtom
+from qy.frontend.cst import CstList
+from qy.frontend.cst import CstProgram
 from qy.frontend.reader import DottedTuple
 from qy.frontend.reader import Form
 from qy.frontend.reader import Symbol
 
-__all__ = ["dump_form", "dump_program"]
+__all__ = ["dump_cst", "dump_form", "dump_program"]
 
 INDENT = "  "
 
@@ -59,5 +62,39 @@ def dump_form(form: object, indent: int = 0) -> str:
 
     lines: list[str] = [f"{prefix}("]
     lines.extend(f"{dump_form(item, indent + 1)}," for item in cast("Iterable[object]", form))
+    lines.append(f"{prefix})")
+    return "\n".join(lines)
+
+
+def dump_cst(program: CstProgram) -> str:
+    """Dump a CstProgram into a readable representation."""
+    lines: list[str] = ["CstProgram("]
+    for child in program.children:
+        lines.append(_dump_cst_node(child, indent=1))
+    if program.trailing_trivia:
+        lines.append(f"{INDENT}trailing_trivia={program.trailing_trivia!r}")
+    lines.append(")")
+    return "\n".join(lines)
+
+
+def _dump_cst_node(node: CstAtom | CstList, indent: int) -> str:
+    prefix = INDENT * indent
+    if isinstance(node, CstAtom):
+        parts = [f"kind={node.kind.value}", f"text={node.text!r}"]
+        if node.leading_trivia:
+            parts.append(f"leading_trivia={node.leading_trivia!r}")
+        return f"{prefix}CstAtom({', '.join(parts)})"
+    lines: list[str] = [f"{prefix}CstList("]
+    if node.leading_trivia:
+        lines.append(f"{prefix}{INDENT}leading_trivia={node.leading_trivia!r}")
+    for child in node.children:
+        lines.append(_dump_cst_node(child, indent=indent + 1))
+    if node.tail is not None:
+        if node.dot_trivia:
+            lines.append(f"{prefix}{INDENT}dot_trivia={node.dot_trivia!r}")
+        lines.append(f"{prefix}{INDENT}.")
+        lines.append(_dump_cst_node(node.tail, indent=indent + 1))
+    if node.close_trivia:
+        lines.append(f"{prefix}{INDENT}close_trivia={node.close_trivia!r}")
     lines.append(f"{prefix})")
     return "\n".join(lines)

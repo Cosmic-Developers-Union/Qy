@@ -1,31 +1,31 @@
 # coding: utf-8
-"""源码格式化。.
+"""源码格式化（CST-based）。.
 
-处理带 trivia（注释、空行）的源码格式化。
+使用 CST 保留 trivia（注释、空行）信息，再用 format_form 重格式化代码节点。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qy.frontend.reader import Form
-from qy.frontend.reader import get_span
-from qy.frontend.reader import read
+from qy.frontend.cst import CstNode
+from qy.frontend.cst import CstProgram
+from qy.frontend.reader import parse_cst
+from qy.frontend.reader import read_cst
+from qy.frontend.surface import expand_surface_dialect
 from qy.tools.fmt.formatter import format_form
 
 __all__ = ["format_source"]
 
-MAX_INLINE_LENGTH = 80
-
-
-@dataclass(frozen=True, slots=True)
-class _LineParts:
-    code: str
-    comment: str | None = None
-
 
 @dataclass(frozen=True, slots=True)
 class _FormattedLine:
+    """A line in the formatted output.
+
+    `code` is the form code; `comment` (if any) is appended to that line.
+    `raw` represents a stand-alone comment or blank line.
+    """
+
     code: str = ""
     comment: str | None = None
     raw: str | None = None
@@ -40,99 +40,132 @@ def format_source(source: str) -> str:
     Returns:
         格式化后的源码字符串
     """
-    forms = read(source)
-    if not forms:
-        return _format_trivia_only(source)
-    return _format_source_with_trivia(source, forms)
+    from qy.frontend.cst_parser import CstParseError
+    from qy.frontend.reader import ReaderSyntaxError
+
+    try:
+        cst = parse_cst(source)
+    except CstParseError as e:
+        raise ReaderSyntaxError(str(e), span=e.span) from e
+    if not cst.children:
+        return _format_trailing_only(cst.trailing_trivia)
+    return _render_lines(_collect_lines(cst))
 
 
-def _format_source_with_trivia(source: str, forms: list[Form]) -> str:
-    """格式化带 trivia 的源码。."""
-    line_parts = _split_source_lines(source)
+def _collect_lines(cst: CstProgram) -> list[_FormattedLine]:
     lines: list[_FormattedLine] = []
-    previous_end_line = 0
+    children = cst.children
+    for index, node in enumerate(children):
+        # Convert leading trivia → list of raw lines (blank/comment-only)
+        # but skip the same-line trailing comment which belongs to the previous form.
+        leading = node.leading_trivia
+        post_trailing, blank_and_comment = _split_leading_trivia(leading, has_previous=index > 0)
 
-    for form in forms:
-        span = get_span(form)
-        if span is None or span.line is None or span.end_line is None:
-            lines.extend(_format_form_lines(form, None))
-            continue
+        # Apply trailing comment to the previous form (if any)
+        if post_trailing is not None and lines:
+            last = lines[-1]
+            if last.raw is None and last.comment is None:
+                lines[-1] = _FormattedLine(code=last.code, comment=post_trailing)
 
-        start_line = span.line
-        end_line = span.end_line
-        lines.extend(_preserved_lines(line_parts, previous_end_line + 1, start_line - 1))
-        lines.extend(_interior_comment_lines(line_parts, start_line, end_line))
+        # Emit blank lines and standalone comment lines
+        lines.extend(_FormattedLine(raw=line) for line in blank_and_comment)
 
-        trailing_comment = line_parts[end_line - 1].comment if end_line <= len(line_parts) else None
-        lines.extend(_format_form_lines(form, trailing_comment))
-        previous_end_line = end_line
+        # Emit the form
+        form = _node_to_form(node)
+        formatted = format_form(form).splitlines() or [""]
+        for code_line in formatted:
+            lines.append(_FormattedLine(code=code_line))
 
-    lines.extend(_preserved_lines(line_parts, previous_end_line + 1, len(line_parts)))
-    return _render_lines(lines)
-
-
-def _format_form_lines(form: Form, trailing_comment: str | None) -> list[_FormattedLine]:
-    """格式化单个 form 为行列表。."""
-    formatted = format_form(form).splitlines() or [""]
-    lines = [_FormattedLine(code=line) for line in formatted]
-    if trailing_comment:
-        lines[-1] = _FormattedLine(code=lines[-1].code, comment=trailing_comment.strip())
+    # Handle trailing trivia at end of file
+    _, tail_lines = _split_leading_trivia(cst.trailing_trivia, has_previous=True)
+    # The first line of trailing trivia might contain a trailing comment for the last form
+    trailing_comment_for_last = _extract_trailing_comment(cst.trailing_trivia)
+    if trailing_comment_for_last is not None and lines:
+        last = lines[-1]
+        if last.raw is None and last.comment is None:
+            lines[-1] = _FormattedLine(code=last.code, comment=trailing_comment_for_last)
+    lines.extend(_FormattedLine(raw=line) for line in tail_lines)
     return lines
 
 
-def _preserved_lines(
-    line_parts: list[_LineParts],
-    start_line: int,
-    end_line: int,
-) -> list[_FormattedLine]:
-    """保留空行和注释行。."""
-    if start_line > end_line:
-        return []
-
-    lines: list[_FormattedLine] = []
-    for line_no in range(start_line, end_line + 1):
-        if line_no < 1 or line_no > len(line_parts):
-            continue
-        part = line_parts[line_no - 1]
-        raw = _preserve_blank_or_comment(part)
-        if raw is not None:
-            lines.append(_FormattedLine(raw=raw))
-    return lines
+def _node_to_form(node: CstNode) -> object:
+    """Convert a single CstNode to a Form (with surface dialect expansion)."""
+    forms = read_cst(CstProgram(children=(node,), trailing_trivia="", span=node.span))
+    expanded = expand_surface_dialect(forms)
+    return expanded[0]
 
 
-def _interior_comment_lines(
-    line_parts: list[_LineParts],
-    start_line: int,
-    end_line: int,
-) -> list[_FormattedLine]:
-    """提取 form 内部的注释行。."""
-    lines: list[_FormattedLine] = []
-    for line_no in range(start_line, max(start_line, end_line)):
-        if line_no < 1 or line_no > len(line_parts):
-            continue
-        part = line_parts[line_no - 1]
-        if part.comment is not None:
-            lines.append(_FormattedLine(raw=_comment_only(part)))
-    return lines
+def _split_leading_trivia(trivia: str, *, has_previous: bool) -> tuple[str | None, list[str]]:
+    """Process trivia preceding a form.
+
+    Returns (trailing_comment_for_prev, [standalone_lines]).
+
+    If there's a previous form on the same line as the start of trivia,
+    a leading comment on that same line becomes the previous form's
+    trailing comment. Otherwise it's a standalone line.
+
+    All subsequent lines (blank or comment) become standalone entries.
+    """
+    if not trivia:
+        return None, []
+
+    parts = trivia.split("\n")
+    trailing: str | None = None
+    standalone: list[str] = []
+
+    first = parts[0]
+    first_stripped = first.strip()
+    if has_previous and first_stripped.startswith(";"):
+        trailing = first_stripped
+    elif first_stripped:
+        # No previous form on same line: treat as standalone
+        if first_stripped.startswith(";"):
+            standalone.append(first_stripped)
+
+    # Lines in the middle (parts[1..len-2])
+    for line in parts[1:-1]:
+        stripped = line.strip()
+        if not stripped:
+            standalone.append("")
+        elif stripped.startswith(";"):
+            standalone.append(stripped)
+
+    return trailing, standalone
 
 
-def _preserve_blank_or_comment(part: _LineParts) -> str | None:
-    """保留空行或仅注释的行。."""
-    if part.comment is not None and not part.code.strip():
-        return _comment_only(part)
-    if not part.code.strip() and part.comment is None:
-        return ""
+def _extract_trailing_comment(trivia: str) -> str | None:
+    """Extract a same-line trailing comment from the start of trivia."""
+    if not trivia:
+        return None
+    first_line, _, _ = trivia.partition("\n")
+    stripped = first_line.strip()
+    if stripped.startswith(";"):
+        return stripped
     return None
 
 
-def _comment_only(part: _LineParts) -> str:
-    """提取仅注释的行。."""
-    indent = part.code[: len(part.code) - len(part.code.lstrip())]
-    return f"{indent}{part.comment.strip()}" if part.comment else indent.rstrip()
+def _format_trailing_only(trivia: str) -> str:
+    """Format a source consisting only of trivia."""
+    if not trivia:
+        return ""
+    parts = trivia.split("\n")
+    # Drop the final empty fragment if the source ended with newline
+    if parts and parts[-1] == "":
+        parts = parts[:-1]
+    rendered: list[str] = []
+    for line in parts:
+        stripped = line.strip()
+        if not stripped:
+            rendered.append("")
+        elif stripped.startswith(";"):
+            rendered.append(stripped)
+    if not rendered:
+        return "\n" if trivia.endswith("\n") else ""
+    return "\n".join(rendered) + "\n"
 
 
 def _render_lines(lines: list[_FormattedLine]) -> str:
-    """渲染行列表为最终字符串。."""
+    """Render lines to a final string with comment alignment."""
     rendered: list[str] = []
     group: list[_FormattedLine] = []
 
@@ -156,76 +189,3 @@ def _render_lines(lines: list[_FormattedLine]) -> str:
             group.append(line)
     flush_group()
     return "\n".join(rendered).rstrip("\n") + "\n"
-
-
-def _format_trivia_only(source: str) -> str:
-    """格式化仅包含 trivia（注释、空行）的源码。."""
-    line_parts = _split_source_lines(source)
-    rendered: list[str] = []
-    for part in line_parts:
-        line = _preserve_blank_or_comment(part)
-        if line is not None:
-            rendered.append(line)
-    if not rendered:
-        return "\n" if source.endswith("\n") else ""
-    return "\n".join(line.rstrip() for line in rendered) + "\n"
-
-
-def _split_source_lines(source: str) -> list[_LineParts]:
-    """将源码拆分为行，并分离注释。."""
-    lines = source.splitlines()
-    parts: list[_LineParts] = []
-    in_multiline = False
-    for line in lines:
-        comment_index, in_multiline = _comment_start(line, in_multiline)
-        if comment_index is None:
-            parts.append(_LineParts(code=line.rstrip(), comment=None))
-        else:
-            parts.append(
-                _LineParts(
-                    code=line[:comment_index].rstrip(),
-                    comment=line[comment_index:].rstrip(),
-                )
-            )
-    return parts
-
-
-def _comment_start(line: str, in_multiline: bool) -> tuple[int | None, bool]:
-    """查找注释的起始位置。."""
-    index = 0
-    while index < len(line):
-        if in_multiline:
-            end = line.find('"""', index)
-            if end == -1:
-                return None, True
-            index = end + 3
-            in_multiline = False
-            continue
-
-        if line.startswith('"""', index):
-            in_multiline = True
-            index += 3
-            continue
-        char = line[index]
-        if char == ";":
-            return index, in_multiline
-        if char == '"':
-            index = _skip_quoted_symbol(line, index + 1)
-            continue
-        index += 1
-    return None, in_multiline
-
-
-def _skip_quoted_symbol(line: str, index: int) -> int:
-    """跳过引号字符串。."""
-    escaped = False
-    while index < len(line):
-        char = line[index]
-        if escaped:
-            escaped = False
-        elif char == "\\":
-            escaped = True
-        elif char == '"':
-            return index + 1
-        index += 1
-    return index
