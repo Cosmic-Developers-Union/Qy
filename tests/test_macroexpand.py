@@ -2,8 +2,8 @@ import pytest
 
 from qy.core.syntax import Chain
 from qy.core.syntax import list_to_chain
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
-from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionOptions

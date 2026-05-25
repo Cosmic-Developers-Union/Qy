@@ -1,14 +1,14 @@
 import pytest
 
-from qy.evaluator import ControlOperator
-from qy.evaluator import EffectDefinition
-from qy.evaluator import EffectOperator
-from qy.evaluator import EvaluationError
-from qy.evaluator import MetaOperator
-from qy.evaluator import PureOperator
-from qy.evaluator import ScopeOperator
-from qy.evaluator import standard_environment
+from qy.core.operators import ControlOperator
+from qy.core.operators import EffectOperator
+from qy.core.operators import MetaOperator
+from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
+from qy.environment import standard_environment
+from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
+from qy.sem.runtime import EffectDefinition
 from qy.std import load_module
 
 S = Symbol

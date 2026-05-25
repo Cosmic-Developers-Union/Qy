@@ -1,6 +1,6 @@
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_source
 from qy.frontend.reader import Symbol
+from qy.runtime import evaluate
+from qy.runtime import evaluate_source
 
 S = Symbol
 
@@ -19,7 +19,7 @@ def test_arithmetic_from_python_tuple_requires_symbol_operator():
 def test_arithmetic_from_python_tuple_rejects_string_operator():
     import pytest
 
-    from qy.evaluator import EvaluationError
+    from qy.errors import EvaluationError
 
     with pytest.raises(EvaluationError):
         evaluate(("+", 1, 2))

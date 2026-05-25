@@ -409,7 +409,7 @@ async def _macroexpand_form(
                 value_op = _get_operator(value)
                 if value_op == Symbol("component"):
                     # 在宏展开阶段求值 component
-                    from qy.evaluator import evaluate_async
+                    from qy.runtime import evaluate_async
 
                     try:
                         macro_def = await evaluate_async(

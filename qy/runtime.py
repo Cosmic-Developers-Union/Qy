@@ -14,6 +14,10 @@ from qy.core.operators import ArgumentEvaluator
 from qy.environment import ChainFrame
 from qy.environment import Environment
 from qy.environment import standard_environment
+from qy.errors import QyResolveError
+from qy.errors import QyRuntimeError
+from qy.errors import SourceSpan
+from qy.errors import TraceFrame
 from qy.frontend.reader import Form
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
@@ -34,7 +38,20 @@ from qy.vm.instance.machine import evaluate_bytecode_async
 from qy.vm.instance.machine import evaluate_bytecode_source
 from qy.vm.instance.machine import evaluate_bytecode_source_async
 
-__all__ = ["AsyncQy", "Qy"]
+__all__ = [
+    "AsyncQy",
+    "Qy",
+    "evaluate",
+    "evaluate_async",
+    "evaluate_body",
+    "evaluate_body_async",
+    "evaluate_file",
+    "evaluate_file_async",
+    "evaluate_program",
+    "evaluate_program_async",
+    "evaluate_source",
+    "evaluate_source_async",
+]
 
 
 class _QyBase:
@@ -301,3 +318,119 @@ class AsyncQy(_QyBase):
         from qy.tools.fmt import format_source
 
         return format_source(source)
+
+
+# -- Standalone evaluation API ------------------------------------------------
+
+
+def _raise_on_diagnostics(diagnostics: tuple[object, ...]) -> None:
+    from qy.analysis import Diagnostic
+
+    errors = tuple(
+        item for item in diagnostics if isinstance(item, Diagnostic) and item.severity == "error"
+    )
+    if not errors:
+        return
+    if len(errors) == 1 and errors[0].message.startswith("unresolved symbol "):
+        symbol = errors[0].message.removeprefix("unresolved symbol ").strip("'")
+        span = SourceSpan(start_line=errors[0].line, start_column=errors[0].column)
+        raise QyResolveError(
+            errors[0].message,
+            span=span,
+            frames=(TraceFrame("call", None, span),),
+            metadata={"symbol": symbol},
+        )
+    messages = "; ".join(item.message for item in errors)
+    first = errors[0]
+    raise QyRuntimeError(
+        f"cannot evaluate program with diagnostics: {messages}",
+        span=SourceSpan(start_line=first.line, start_column=first.column),
+    )
+
+
+def evaluate(expression: object, env: Environment | None = None) -> object:
+    from qy.async_utils import run_coro
+
+    return run_coro(evaluate_async(expression, env))
+
+
+async def evaluate_async(expression: object, env: Environment | None = None) -> object:
+    from qy.vm.instance.machine import evaluate_form_async
+
+    runtime_env = env or standard_environment()
+    return await evaluate_form_async(expression, runtime_env)
+
+
+def evaluate_source(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> object:
+    from qy.async_utils import run_coro
+
+    return run_coro(evaluate_source_async(source, env, source_name=source_name))
+
+
+async def evaluate_source_async(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> object:
+    runtime_env = env or standard_environment()
+    expansion = await macroexpand_async(read(source, source_name=source_name), runtime_env)
+    program = lower(expansion.forms, runtime_env)
+    _raise_on_diagnostics((*expansion.diagnostics, *program.diagnostics))
+
+    bytecode = compile_bytecode(program)
+    _raise_on_diagnostics(bytecode.diagnostics)
+
+    return await evaluate_bytecode_async(bytecode, runtime_env)
+
+
+def evaluate_program(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> list[object]:
+    from qy.async_utils import run_coro
+
+    return cast(
+        list[object],
+        run_coro(evaluate_program_async(source, env, source_name=source_name)),
+    )
+
+
+async def evaluate_program_async(
+    source: str, env: Environment | None = None, *, source_name: str | None = None
+) -> list[object]:
+    runtime_env = env or standard_environment()
+    expansion = await macroexpand_async(read(source, source_name=source_name), runtime_env)
+    program = lower(expansion.forms, runtime_env)
+    _raise_on_diagnostics((*expansion.diagnostics, *program.diagnostics))
+
+    bytecode = compile_bytecode(program)
+    _raise_on_diagnostics(bytecode.diagnostics)
+
+    return await RegisterVirtualMachine(bytecode, runtime_env).evaluate_program()
+
+
+def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
+    from qy.async_utils import run_coro
+
+    return run_coro(evaluate_file_async(path, env))
+
+
+async def evaluate_file_async(path: str | Path, env: Environment | None = None) -> object:
+    path = Path(path)
+    source = path.read_text(encoding="utf-8")
+    results = await evaluate_program_async(source, env, source_name=str(path))
+    if not results:
+        return None
+    return results[-1]
+
+
+def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
+    from qy.async_utils import run_coro
+    from qy.vm.instance.machine import evaluate_form_body_async
+
+    return run_coro(evaluate_form_body_async(body, env))
+
+
+async def evaluate_body_async(body: tuple[object, ...], env: Environment) -> object:
+    from qy.vm.instance.machine import evaluate_form_body_async
+
+    return await evaluate_form_body_async(body, env)

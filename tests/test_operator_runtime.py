@@ -4,9 +4,9 @@ from qy.core.operator_runtime import operator_uses_raw_args
 from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import OperatorSignature
+from qy.core.operators import ControlOperator
+from qy.core.operators import PureOperator
 from qy.errors import QyArityError
-from qy.evaluator import ControlOperator
-from qy.evaluator import PureOperator
 from qy.runtime import Qy
 
 

@@ -7,10 +7,10 @@ from typing import cast
 
 import pytest
 
-from qy.evaluator import EvaluationError
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_source
+from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
+from qy.runtime import evaluate
+from qy.runtime import evaluate_source
 
 S = Symbol
 

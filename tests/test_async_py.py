@@ -1,12 +1,12 @@
 import pytest
 
-from qy.evaluator import EvaluationError
-from qy.evaluator import HostObjectRef
-from qy.evaluator import standard_environment
+from qy.environment import standard_environment
+from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.runtime import AsyncQy as Qy
 from qy.sem.core import StringValue
 from qy.std import load_module
+from qy.vm.instance.values import HostObjectRef
 
 S = Symbol
 
@@ -92,7 +92,7 @@ return await normalize(doc)
         '''
     )
 
-    from qy.evaluator import HostObjectRef
+    from qy.vm.instance.values import HostObjectRef
 
     assert isinstance(result, HostObjectRef)
     assert result.value == StringValue("QY")

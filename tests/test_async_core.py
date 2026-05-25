@@ -1,7 +1,7 @@
 import asyncio
 from typing import cast
 
-from qy.evaluator import standard_environment
+from qy.environment import standard_environment
 from qy.runtime import AsyncQy
 from qy.std import load_module
 

@@ -3,12 +3,12 @@ from tempfile import TemporaryDirectory
 
 import pytest
 
+from qy.core.operators import PureOperator
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
-from qy.evaluator import PureOperator
-from qy.evaluator import evaluate_source
-from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
+from qy.runtime import evaluate_source
 from qy.sem.core import StringValue
 from qy.std import StandardModule
 from qy.std import register_module
@@ -51,7 +51,7 @@ def test_from_import_supports_multiple_imports():
 def test_from_import_respects_local_scope():
     import pytest
 
-    from qy.evaluator import EvaluationError
+    from qy.errors import EvaluationError
 
     env = standard_environment()
     assert evaluate_source(

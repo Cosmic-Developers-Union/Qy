@@ -403,8 +403,8 @@ def test_mir_dump_shows_defeffect_perform_handle_resume():
 def test_bytecode_vm_defeffect_defines_effect_in_env():
     import asyncio
 
-    from qy.evaluator import EffectDefinition
-    from qy.evaluator import standard_environment
+    from qy.environment import standard_environment
+    from qy.sem.runtime import EffectDefinition
     from qy.vm.instance.machine import evaluate_bytecode_source_async
 
     env = standard_environment()

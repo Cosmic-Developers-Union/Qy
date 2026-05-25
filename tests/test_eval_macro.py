@@ -1,9 +1,9 @@
 import pytest
 
+from qy.environment import standard_environment
 from qy.errors import EvaluationError
-from qy.evaluator import evaluate_source
-from qy.evaluator import standard_environment
 from qy.frontend.reader import Symbol
+from qy.runtime import evaluate_source
 
 S = Symbol
 

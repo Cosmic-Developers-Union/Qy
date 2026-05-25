@@ -1,8 +1,8 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from qy.evaluator import evaluate_file
 from qy.frontend.reader import Symbol
+from qy.runtime import evaluate_file
 from qy.sem.core import StringValue
 
 S = Symbol

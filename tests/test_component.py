@@ -3,7 +3,7 @@
 import pytest
 
 from qy.environment import Environment
-from qy.evaluator import evaluate_source
+from qy.runtime import evaluate_source
 from qy.std import standard_bindings
 
 

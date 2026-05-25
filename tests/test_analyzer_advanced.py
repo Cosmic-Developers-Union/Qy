@@ -1,5 +1,5 @@
 from qy.analysis import type_check_source
-from qy.evaluator import standard_environment
+from qy.environment import standard_environment
 from qy.std import load_module
 
 

@@ -1,11 +1,11 @@
 import pytest
 
+from qy.core.operators import ControlOperator
+from qy.core.operators import MetaOperator
 from qy.errors import QyRuntimeError
-from qy.evaluator import ControlOperator
-from qy.evaluator import MetaOperator
-from qy.evaluator import evaluate
 from qy.frontend.reader import Symbol
 from qy.runtime import Qy
+from qy.runtime import evaluate
 
 S = Symbol
 

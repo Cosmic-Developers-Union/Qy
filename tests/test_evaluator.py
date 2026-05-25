@@ -1,11 +1,8 @@
 # coding: utf-8
-"""测试 qy.evaluator 模块的公共 API。.
+"""测试 qy.runtime 模块的公共评估 API。.
 
-这个模块测试 evaluator.py 的所有公共评估函数，确保它们正确地
-通过 register VM 管线（macroexpand -> lower -> compile -> VM）工作。
-
-evaluator.py 是遗留模块，正在被淘汰，但这些测试确保在迁移期间
-公共 API 保持正确性。
+测试所有公共评估函数，确保它们正确地通过 register VM 管线
+（macroexpand -> lower -> compile -> VM）工作。
 """
 
 from __future__ import annotations
@@ -22,18 +19,18 @@ from qy.environment import standard_environment
 from qy.errors import QyArityError
 from qy.errors import QyError
 from qy.errors import QyResolveError
-from qy.evaluator import evaluate
-from qy.evaluator import evaluate_async
-from qy.evaluator import evaluate_body
-from qy.evaluator import evaluate_body_async
-from qy.evaluator import evaluate_file
-from qy.evaluator import evaluate_file_async
-from qy.evaluator import evaluate_program
-from qy.evaluator import evaluate_program_async
-from qy.evaluator import evaluate_source
-from qy.evaluator import evaluate_source_async
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
+from qy.runtime import evaluate
+from qy.runtime import evaluate_async
+from qy.runtime import evaluate_body
+from qy.runtime import evaluate_body_async
+from qy.runtime import evaluate_file
+from qy.runtime import evaluate_file_async
+from qy.runtime import evaluate_program
+from qy.runtime import evaluate_program_async
+from qy.runtime import evaluate_source
+from qy.runtime import evaluate_source_async
 
 # -- evaluate / evaluate_async tests -----------------------------------------
 
@@ -725,18 +722,17 @@ def test_concurrent_evaluation_with_separate_environments():
 
 
 def test_backward_compatibility_imports():
-    """测试向后兼容的导入。."""
-    from qy.evaluator import QY_EMPTY_CHAIN
-    from qy.evaluator import QY_EMPTY_LIST
-    from qy.evaluator import QY_NIL
-    from qy.evaluator import QY_T
-    from qy.evaluator import Environment
-    from qy.evaluator import HostObjectRef
-    from qy.evaluator import QyChain
-    from qy.evaluator import QyCons
-    from qy.evaluator import UserFunction
+    """测试核心类型可从规范模块导入。."""
+    from qy.core.syntax import Chain as QyChain
+    from qy.core.syntax import Chain as QyCons
+    from qy.core.syntax import nil as QY_EMPTY_CHAIN
+    from qy.core.syntax import nil as QY_EMPTY_LIST
+    from qy.core.syntax import nil as QY_NIL
+    from qy.environment import Environment
+    from qy.sem.core import T as QY_T
+    from qy.sem.runtime import UserFunction
+    from qy.vm.instance.values import HostObjectRef
 
-    # 确保这些导入可用
     assert Environment is not None
     assert HostObjectRef is not None
     assert QY_EMPTY_CHAIN is not None
@@ -750,7 +746,7 @@ def test_backward_compatibility_imports():
 
 def test_standard_environment_available():
     """测试 standard_environment 可用。."""
-    from qy.evaluator import standard_environment
+    from qy.environment import standard_environment
 
     env = standard_environment()
     assert isinstance(env, Environment)
