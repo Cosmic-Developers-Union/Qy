@@ -143,9 +143,14 @@ def _load_io_module() -> StandardModule:
 
 
 def _load_num_module() -> StandardModule:
-    from qy.std.arithmetic import operators as arithmetic_operators
+    """``qy.num`` module: number-ss 算子的可显式 import 形态。.
 
-    return StandardModule("qy.num", arithmetic_operators())
+    与 number-ss 共享同一份 bindings 来源 (``number_ss_bindings``); 这样
+    ``(from qy.num import +)`` 与 number-ss 上的 ``+`` 是同一语义。
+    """
+    from qy.session.number_ops import number_ss_bindings
+
+    return StandardModule("qy.num", number_ss_bindings())
 
 
 def _load_string_module() -> StandardModule:

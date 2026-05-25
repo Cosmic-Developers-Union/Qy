@@ -53,7 +53,14 @@ def test_default_core_exposes_python_container_helpers():
 def test_default_profile_matches_standard_profile_bindings():
     qy = Qy()
 
-    assert set(qy.env.bindings()) == set(standard_profile_bindings(STANDARD_PROFILE_MODULES))
+    # number-ss 持有 ``+ - * / = == < > <= >= mod`` 等数字算子, 它们出现在
+    # ``qy.env.bindings()`` 中但不在 ``standard_profile_bindings`` 中——后者
+    # 只是 stdlib 模块层的合并视图。number-ss 的算子是 chain 上更深的一层。
+    from qy.session.number_ops import number_ss_bindings
+
+    profile = set(standard_profile_bindings(STANDARD_PROFILE_MODULES))
+    profile |= set(number_ss_bindings())
+    assert set(qy.env.bindings()) == profile
 
 
 def test_custom_operator_can_declare_signature():

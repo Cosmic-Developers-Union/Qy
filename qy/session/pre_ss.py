@@ -192,80 +192,83 @@ def create_lisp_ss() -> SymbolSpace:
 
 
 def create_number_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
-    """Create the number-ss that resolves numeric literals.
+    """Create the number-ss with both finite operators and infinite literals.
 
-    The number-ss has no static bindings; it resolves any symbol whose
-    spelling is a number literal (e.g. ``1``, ``-3``, ``2.5``) at lookup time
-    via a ``lookup_hook``. This keeps literal resolution a real ssc walk:
-    the runtime sees ``(+ 1 2)``, walks the chain, finds ``1`` and ``2`` in
-    number-ss, and gets back ``IntValue(1)`` / ``IntValue(2)`` without any
-    HIR-time materialization.
+    number-ss 同时持有两类绑定:
+
+    - **有限部分** (fixed bindings): ``+ - * / = == < > <= >= mod`` 等数字算子,
+      由 ``qy.session.number_ops.number_ss_bindings()`` 提供。
+    - **无限部分** (membership/resolver): 任何符合数字字面量 spelling 的 symbol
+      (``42``, ``-3``, ``2.5``, ...) 通过 ``parse_number_literal`` 解析为
+      ``IntValue`` / ``FloatValue``。
+
+    这与语言模型一致: number-ss 是无限符号空间, 既绑定所有数字, 又包含 add 等
+    算子。``(+ 1 2)`` 在 ssc 上找到 ``+`` 与 ``1`` ``2`` 时, 走的是同一条
+    lookup 路径, 命中同一个空间。
     """
     from qy.core.symbol_space import SymbolSpace
-
-    def _resolve(symbol: Symbol) -> object:
-        result = parse_number_literal(symbol.name)
-        if result is _MISSING:
-            return _MISSING
-        return result
+    from qy.session.number_ops import number_ss_bindings
 
     return SymbolSpace(
-        {},
+        number_ss_bindings(),
         parent=parent,
         name="number-ss",
         writable=False,
-        lookup_hook=_resolve,
+        membership=lambda s: is_number_literal(s.name),
+        resolver=_number_resolver,
     )
+
+
+def _number_resolver(symbol: Symbol) -> object:
+    return parse_number_literal(symbol.name)
 
 
 def create_char_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     r"""Create the char-ss that resolves character literals.
 
     Char literal syntax: #\\a, #\\space, #\\newline, #\\uXXXX, etc.
-    Resolution happens via the symbol-space ``lookup_hook``.
+    Resolution happens via the ``(membership, resolver)`` pair on the space.
     """
     from qy.core.symbol_space import SymbolSpace
-
-    def _resolve(symbol: Symbol) -> object:
-        if not is_char_literal(symbol.name):
-            return _MISSING
-        result = parse_char_literal(symbol.name)
-        if result is _MISSING:
-            return _MISSING
-        return result
 
     return SymbolSpace(
         {},
         parent=parent,
         name="char-ss",
         writable=False,
-        lookup_hook=_resolve,
+        membership=lambda s: is_char_literal(s.name),
+        resolver=_char_resolver,
     )
+
+
+def _char_resolver(symbol: Symbol) -> object:
+    if not is_char_literal(symbol.name):
+        return _MISSING
+    return parse_char_literal(symbol.name)
 
 
 def create_string_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """Create the string-ss that resolves string literals.
 
     String literals are symbols whose spelling starts with ``"`` or ``r"``.
-    The lookup hook parses them on demand.
+    Resolution happens via the ``(membership, resolver)`` pair on the space.
     """
     from qy.core.symbol_space import SymbolSpace
-
-    def _resolve(symbol: Symbol) -> object:
-        if not is_string_literal(symbol.name):
-            return _MISSING
-        result = parse_string_literal(symbol.name)
-        if result is _MISSING:
-            return _MISSING
-        return result
 
     return SymbolSpace(
         {},
         parent=parent,
         name="string-ss",
         writable=False,
-        lookup_hook=_resolve,
+        membership=lambda s: is_string_literal(s.name),
+        resolver=_string_resolver,
     )
+
+
+def _string_resolver(symbol: Symbol) -> object:
+    if not is_string_literal(symbol.name):
+        return _MISSING
+    return parse_string_literal(symbol.name)
 
 
 def create_value_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
@@ -320,20 +323,6 @@ def create_pre_ssc(stdlib_space: SymbolSpace | None = None) -> SymbolSpace:
         return stdlib_child.child(name="pre-ssc-head", writable=True)
 
     return literals.child(name="pre-ssc-head", writable=True)
-
-
-def resolve_literal_in_pre_ss(symbol: Symbol, pre_ss: SymbolSpace) -> object:
-    """Resolve a symbol via the pre-ssc.
-
-    Pure ssc lookup — every hook (number-ss / char-ss / string-ss) lives on
-    the chain itself. Returns the bound value or ``_MISSING``.
-    """
-    value = pre_ss.lookup(symbol)
-    if value is not None:
-        return value
-    if symbol in pre_ss.all_bindings():
-        return None
-    return _MISSING
 
 
 def try_default_literal(symbol: Symbol) -> object:

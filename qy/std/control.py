@@ -384,11 +384,19 @@ def _this(args: object, env: Environment) -> object:
     return env
 
 
+_SLOT_TOKEN = object()
+"""Sentinel returned by the ``(slot)`` operator.
+
+slot 算子是 ``(define name value)`` 的解构形式中可读的占位符——它本身不
+携带状态, ``(bind 'name value <slot>)`` 把绑定写入当前 symbol-space, slot
+仅作为 grammar shape 占位。这里用 module 级单例对象简洁表达这一点;
+重构前是一个 ``BindingSlot`` dataclass 实例, 但它从未被读取过任何字段。
+"""
+
+
 def _slot(args: object, env: Environment) -> object:
     del args, env
-    from qy.core.symbol_space import BindingSlot
-
-    return BindingSlot(Symbol("<slot>"))
+    return _SLOT_TOKEN
 
 
 async def _bind(args: object, env: Environment) -> object:

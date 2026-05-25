@@ -3,12 +3,12 @@
 
 import pytest
 
+from qy.core.symbol_space import MISSING as _MISSING
 from qy.core.symbol_space import SymbolSpace
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyResolveError
 from qy.frontend.reader import Symbol
 from qy.sem.core import T as QY_T
-from qy.session.pre_ss import _MISSING
 from qy.session.pre_ss import create_lisp_ss
 from qy.session.pre_ss import create_literal_ss
 from qy.session.pre_ss import create_number_ss
@@ -19,7 +19,6 @@ from qy.session.pre_ss import is_number_literal
 from qy.session.pre_ss import is_string_literal
 from qy.session.pre_ss import parse_number_literal
 from qy.session.pre_ss import parse_string_literal
-from qy.session.pre_ss import resolve_literal_in_pre_ss
 
 S = Symbol
 
@@ -85,8 +84,8 @@ def test_create_lisp_ss():
     assert lisp.lookup(S("nil")) is QY_NIL
     assert lisp.lookup(S("true")) is QY_T
     assert lisp.lookup(S("false")) is QY_NIL
-    assert lisp.lookup(S("none")) is None
-    assert lisp.lookup(S("undefined")) is None
+    assert lisp.lookup(S("none")) is None  # explicit binding to None
+    assert lisp.lookup(S("undefined")) is _MISSING
 
 
 def test_create_number_ss():
@@ -96,6 +95,39 @@ def test_create_number_ss():
     assert number.name == "number-ss"
     assert not number.writable
     assert number.parent is None
+
+
+def test_number_ss_holds_operators_and_literals():
+    """number-ss 同时持有数字算子 (有限部分) 与数字字面量识别 (无限部分)。.
+
+    这是 Phase 2 的核心契约: ``+ - * / = < > <= >= mod`` 直接绑定在 number-ss
+    内, 与 ``42`` / ``-3`` / ``2.5`` 这类字面量并列。``(+ 1 2)`` 在 ssc 上找
+    ``+`` 与 ``1`` ``2`` 时, 命中同一个空间。
+    """
+    from qy.core.operators import PureOperator
+    from qy.core.symbol_space import MISSING
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
+    number = create_number_ss()
+
+    # 算子 (有限部分)
+    for op in ("+", "-", "*", "/", "=", "==", "<", ">", "<=", ">=", "mod"):
+        assert number.contains(S(op)), f"{op!r} should be in number-ss"
+        binding = number.lookup(S(op))
+        assert isinstance(binding, PureOperator), f"{op!r} should be PureOperator"
+
+    # 字面量 (无限部分)
+    assert number.contains(S("42"))
+    assert number.lookup(S("42")) == IntValue(42)
+    assert number.contains(S("-3"))
+    assert number.lookup(S("-3")) == IntValue(-3)
+    assert number.contains(S("2.5"))
+    assert number.lookup(S("2.5")) == FloatValue(2.5)
+
+    # 非数字非算子: MISSING
+    assert not number.contains(S("foo"))
+    assert number.lookup(S("foo")) is MISSING
 
 
 def test_create_string_ss():
@@ -123,9 +155,9 @@ def test_create_literal_ss():
     # literal-ss exposes the head of the value-ss chain (string-ss).
     assert literal.name == "string-ss"
     assert not literal.writable
-    # Should have lisp-ss in parent chain
-    assert literal.lookup(S("T")) is QY_T
-    assert literal.lookup(S("nil")) is QY_NIL
+    # Should have lisp-ss in parent chain (chain lookup via resolve)
+    assert literal.resolve(S("T")) is QY_T
+    assert literal.resolve(S("nil")) is QY_NIL
 
 
 def test_create_pre_ssc_without_stdlib():
@@ -135,8 +167,8 @@ def test_create_pre_ssc_without_stdlib():
     assert pre_ssc.name == "pre-ssc-head"
     assert pre_ssc.writable
     # Should have lisp-ss in parent chain
-    assert pre_ssc.lookup(S("T")) is QY_T
-    assert pre_ssc.lookup(S("nil")) is QY_NIL
+    assert pre_ssc.resolve(S("T")) is QY_T
+    assert pre_ssc.resolve(S("nil")) is QY_NIL
 
 
 def test_create_pre_ssc_with_stdlib():
@@ -147,25 +179,19 @@ def test_create_pre_ssc_with_stdlib():
     assert pre_ssc.name == "pre-ssc-head"
     assert pre_ssc.writable
     # Should have both lisp-ss and stdlib in parent chain
-    assert pre_ssc.lookup(S("T")) is QY_T
-    assert pre_ssc.lookup(S("foo")) == "bar"
+    assert pre_ssc.resolve(S("T")) is QY_T
+    assert pre_ssc.resolve(S("foo")) == "bar"
 
 
 def test_resolve_literal_in_pre_ss_lisp_values():
-    """Test resolving Lisp values through pre-ss."""
+    """Test resolving Lisp values through pre-ss (chain walk via resolve)."""
     pre_ss = create_pre_ssc()
 
-    result_t = resolve_literal_in_pre_ss(S("T"), pre_ss)
-    result_nil = resolve_literal_in_pre_ss(S("nil"), pre_ss)
-    result_true = resolve_literal_in_pre_ss(S("true"), pre_ss)
-    result_false = resolve_literal_in_pre_ss(S("false"), pre_ss)
-    result_none = resolve_literal_in_pre_ss(S("none"), pre_ss)
-
-    assert result_t is QY_T
-    assert result_nil is QY_NIL
-    assert result_true is QY_T
-    assert result_false is QY_NIL
-    assert result_none is None
+    assert pre_ss.resolve(S("T")) is QY_T
+    assert pre_ss.resolve(S("nil")) is QY_NIL
+    assert pre_ss.resolve(S("true")) is QY_T
+    assert pre_ss.resolve(S("false")) is QY_NIL
+    assert pre_ss.resolve(S("none")) is None
 
 
 def test_resolve_literal_in_pre_ss_numbers():
@@ -175,19 +201,19 @@ def test_resolve_literal_in_pre_ss_numbers():
 
     pre_ss = create_pre_ssc()
 
-    result_int = resolve_literal_in_pre_ss(S("123"), pre_ss)
+    result_int = pre_ss.resolve(S("123"))
     assert isinstance(result_int, IntValue)
     assert result_int.value == 123
 
-    result_neg = resolve_literal_in_pre_ss(S("-456"), pre_ss)
+    result_neg = pre_ss.resolve(S("-456"))
     assert isinstance(result_neg, IntValue)
     assert result_neg.value == -456
 
-    result_float = resolve_literal_in_pre_ss(S("3.14"), pre_ss)
+    result_float = pre_ss.resolve(S("3.14"))
     assert isinstance(result_float, FloatValue)
     assert result_float.value == 3.14
 
-    result_neg_float = resolve_literal_in_pre_ss(S("-2.5"), pre_ss)
+    result_neg_float = pre_ss.resolve(S("-2.5"))
     assert isinstance(result_neg_float, FloatValue)
     assert result_neg_float.value == -2.5
 
@@ -196,17 +222,17 @@ def test_resolve_literal_in_pre_ss_strings():
     """Test resolving string literals through pre-ss."""
     pre_ss = create_pre_ssc()
 
-    assert resolve_literal_in_pre_ss(S('"hello"'), pre_ss) == "hello"
-    assert resolve_literal_in_pre_ss(S('"world\\n"'), pre_ss) == "world\n"
-    assert resolve_literal_in_pre_ss(S('r"raw\\n"'), pre_ss) == "raw\\n"
+    assert pre_ss.resolve(S('"hello"')) == "hello"
+    assert pre_ss.resolve(S('"world\\n"')) == "world\n"
+    assert pre_ss.resolve(S('r"raw\\n"')) == "raw\\n"
 
 
 def test_resolve_literal_in_pre_ss_undefined():
-    """Test resolving undefined symbols returns _MISSING."""
+    """Test resolving undefined symbols returns MISSING."""
     pre_ss = create_pre_ssc()
 
-    assert resolve_literal_in_pre_ss(S("undefined"), pre_ss) is _MISSING
-    assert resolve_literal_in_pre_ss(S("not-a-literal"), pre_ss) is _MISSING
+    assert pre_ss.resolve(S("undefined")) is _MISSING
+    assert pre_ss.resolve(S("not-a-literal")) is _MISSING
 
 
 def test_resolve_literal_in_pre_ss_with_user_bindings():
@@ -214,7 +240,7 @@ def test_resolve_literal_in_pre_ss_with_user_bindings():
     pre_ss = create_pre_ssc()
     pre_ss.define(S("custom"), "custom-value")
 
-    assert resolve_literal_in_pre_ss(S("custom"), pre_ss) == "custom-value"
+    assert pre_ss.resolve(S("custom")) == "custom-value"
 
 
 def test_lisp_ss_immutable():
@@ -249,10 +275,10 @@ def test_literal_ss_with_parent():
     parent = SymbolSpace({S("parent-sym"): "parent-val"}, name="parent")
     literal = create_literal_ss(parent=parent)
 
-    # Should be able to look up parent symbols
-    assert literal.lookup(S("parent-sym")) == "parent-val"
+    # Should be able to look up parent symbols (chain lookup)
+    assert literal.resolve(S("parent-sym")) == "parent-val"
     # And lisp symbols
-    assert literal.lookup(S("T")) is QY_T
+    assert literal.resolve(S("T")) is QY_T
 
 
 def test_number_ss_with_parent():
@@ -261,7 +287,7 @@ def test_number_ss_with_parent():
     number = create_number_ss(parent=parent)
 
     assert number.parent is parent
-    assert number.lookup(S("x")) == 10
+    assert number.resolve(S("x")) == 10
 
 
 def test_string_ss_with_parent():
@@ -270,7 +296,7 @@ def test_string_ss_with_parent():
     string = create_string_ss(parent=parent)
 
     assert string.parent is parent
-    assert string.lookup(S("x")) == 10
+    assert string.resolve(S("x")) == 10
 
 
 def test_value_ss_with_parent():
@@ -279,7 +305,7 @@ def test_value_ss_with_parent():
     value = create_value_ss(parent=parent)
 
     # value-ss is now a 3-layer chain; its tail (number-ss) parents `parent`.
-    assert value.lookup(S("x")) == 10
+    assert value.resolve(S("x")) == 10
 
 
 def test_resolve_literal_priority():
@@ -289,66 +315,53 @@ def test_resolve_literal_priority():
     pre_ss.define(S("123"), "not-a-number")
 
     # Should return the binding, not parse as number
-    assert resolve_literal_in_pre_ss(S("123"), pre_ss) == "not-a-number"
+    assert pre_ss.resolve(S("123")) == "not-a-number"
 
 
 def test_profile_config_with_pre_ss():
-    """Test ProfileConfig using pre-ss for literal resolution."""
+    """ProfileConfig 不再持有内建 pre-ssc; 字面量解析由 standard-space 的 ssc walk 完成。.
+
+    profile.resolve_literal 仅作为 ssc miss 后的 escape hatch。这里通过
+    create_standard_space() 拿到完整 pre-ssc 来验证字面量解析。
+    """
     from qy.sem.core import IntValue
     from qy.session.profile import ProfileConfig
 
-    profile = ProfileConfig(use_pre_ss=True)
+    profile = ProfileConfig()
+    space = profile.create_standard_space()
 
-    # Should resolve literals correctly
-    assert profile.resolve_literal(S("T")) is QY_T
-    assert profile.resolve_literal(S("nil")) is QY_NIL
-    assert profile.resolve_literal(S("123")) == IntValue(123)
-    assert profile.resolve_literal(S('"hello"')) == "hello"
+    assert space.resolve(S("T")) is QY_T
+    assert space.resolve(S("nil")) is QY_NIL
+    assert space.resolve(S("123")) == IntValue(123)
+    assert space.resolve(S('"hello"')) == "hello"
 
-    # Should raise for undefined symbols
+    # profile.resolve_literal alone (without space) raises for any symbol.
     with pytest.raises(QyResolveError) as exc_info:
         profile.resolve_literal(S("undefined"))
     assert "unresolved symbol" in str(exc_info.value)
 
 
-def test_profile_config_legacy_mode():
-    """Test ProfileConfig in legacy mode (use_pre_ss=False)."""
+def test_profile_config_user_literal_resolver_hook():
+    """User-supplied literal_resolver runs after ssc miss as escape hatch."""
     from qy.session.profile import ProfileConfig
 
-    profile = ProfileConfig(use_pre_ss=False)
-
-    # Should still resolve literals using old resolver
-    assert profile.resolve_literal(S("T")) is QY_T
-    assert profile.resolve_literal(S("nil")) is QY_NIL
-    assert profile.resolve_literal(S("123")) == 123
-    assert profile.resolve_literal(S('"hello"')) == "hello"
+    profile = ProfileConfig(literal_resolver=lambda s: f"resolved-{s.name}")
+    assert profile.resolve_literal(S("anything")) == "resolved-anything"
 
 
 def test_profile_config_create_standard_space_with_pre_ss():
-    """Test creating standard space with pre-ss integration."""
+    """Test creating standard space integrates pre-ssc."""
     from qy.session.profile import ProfileConfig
 
-    profile = ProfileConfig(use_pre_ss=True)
+    profile = ProfileConfig()
     space = profile.create_standard_space()
 
-    # Should have lisp values
-    assert space.lookup(S("T")) is QY_T
-    assert space.lookup(S("nil")) is QY_NIL
+    # Should have lisp values (chain lookup via resolve)
+    assert space.resolve(S("T")) is QY_T
+    assert space.resolve(S("nil")) is QY_NIL
 
     # Should be writable at the head
     assert space.writable
-
-
-def test_profile_config_create_standard_space_legacy():
-    """Test creating standard space in legacy mode."""
-    from qy.session.profile import ProfileConfig
-
-    profile = ProfileConfig(use_pre_ss=False)
-    space = profile.create_standard_space()
-
-    # Should be writable
-    assert space.writable
-    assert space.name == "writable-head"
 
 
 def test_parse_string_literal_edge_cases():

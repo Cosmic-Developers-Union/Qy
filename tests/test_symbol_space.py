@@ -3,7 +3,7 @@
 
 import pytest
 
-from qy.core.symbol_space import BindingSlot
+from qy.core.symbol_space import MISSING
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
 from qy.errors import QyRuntimeError
@@ -17,17 +17,20 @@ def test_symbol_space_basic_lookup():
     space = SymbolSpace({S("x"): 10, S("y"): 20})
     assert space.lookup(S("x")) == 10
     assert space.lookup(S("y")) == 20
-    assert space.lookup(S("z")) is None
+    assert space.lookup(S("z")) is MISSING
 
 
 def test_symbol_space_parent_lookup():
-    """Test lookup through parent chain."""
+    """Test resolve through parent chain (lookup is single-layer)."""
     parent = SymbolSpace({S("x"): 10})
     child = parent.child({S("y"): 20})
 
-    assert child.lookup(S("x")) == 10
+    assert child.resolve(S("x")) == 10
+    assert child.resolve(S("y")) == 20
+    assert child.resolve(S("z")) is MISSING
+    # lookup is single-layer
+    assert child.lookup(S("x")) is MISSING
     assert child.lookup(S("y")) == 20
-    assert child.lookup(S("z")) is None
 
 
 def test_symbol_space_shadowing():
@@ -35,8 +38,8 @@ def test_symbol_space_shadowing():
     parent = SymbolSpace({S("x"): 10})
     child = parent.child({S("x"): 20})
 
-    assert parent.lookup(S("x")) == 10
-    assert child.lookup(S("x")) == 20
+    assert parent.resolve(S("x")) == 10
+    assert child.resolve(S("x")) == 20
 
 
 def test_symbol_space_define():
@@ -77,8 +80,8 @@ def test_symbol_space_define_once_allows_shadow():
     child = parent.child()
     child.define_once(S("x"), 20)
 
-    assert parent.lookup(S("x")) == 10
-    assert child.lookup(S("x")) == 20
+    assert parent.resolve(S("x")) == 10
+    assert child.resolve(S("x")) == 20
 
 
 def test_symbol_space_hidden_bindings():
@@ -103,7 +106,7 @@ def test_symbol_space_fold_from():
 
     assert space.lookup(S("a")) == 1
     assert space.lookup(S("b")) == 2
-    assert space.lookup(S("c")) is None
+    assert space.lookup(S("c")) is MISSING
 
 
 def test_symbol_space_fold_from_rejects_duplicate():
@@ -195,38 +198,15 @@ def test_symbol_space_chain_frames():
 
 
 def test_symbol_space_chain_lookup():
-    """Test lookup through chain."""
+    """Test resolve through chain."""
     root = SymbolSpace({S("x"): 10})
     child = root.child({S("y"): 20})
 
     chain = child.chain()
 
-    assert chain.lookup(S("x")) == 10
-    assert chain.lookup(S("y")) == 20
-    assert chain.lookup(S("z")) is None
-
-
-def test_binding_slot_complete():
-    """Test binding slot completion."""
-    slot = BindingSlot(S("x"))
-
-    assert not slot.completed
-    assert slot.value is None
-
-    completed = slot.complete(42)
-
-    assert completed.completed
-    assert completed.value == 42
-
-
-def test_binding_slot_cannot_complete_twice():
-    """Test binding slot cannot be completed twice."""
-    slot = BindingSlot(S("x")).complete(10)
-
-    with pytest.raises(QyRuntimeError) as exc_info:
-        slot.complete(20)
-
-    assert "already completed" in str(exc_info.value)
+    assert chain.resolve(S("x")) == 10
+    assert chain.resolve(S("y")) == 20
+    assert chain.resolve(S("z")) is MISSING
 
 
 def test_chain_frame_immutability():
@@ -284,12 +264,128 @@ def test_symbol_space_deep_chain():
 
     leaf = spaces[-1]
 
-    # All symbols should be accessible
+    # All symbols should be accessible (chain lookup)
     for i in range(10):
-        assert leaf.lookup(S(f"x{i}")) == i
+        assert leaf.resolve(S(f"x{i}")) == i
 
     # Chain should have all frames
     frames = leaf.chain().frames()
     assert len(frames) == 10
     assert frames[0].name == "level0"
     assert frames[-1].name == "level9"
+
+
+# ---------------------------------------------------------------------------
+# Phase 1 additions: contains primitive + MISSING semantics + dynamic spaces
+# ---------------------------------------------------------------------------
+
+
+def test_contains_finite_space():
+    """Contains 检测有限空间的本层成员。."""
+    space = SymbolSpace({S("x"): 10, S("y"): None})
+    assert space.contains(S("x"))
+    assert space.contains(S("y"))  # 绑定到 None 仍然算"在空间内"
+    assert not space.contains(S("z"))
+
+
+def test_contains_does_not_walk_parent():
+    """Contains 仅看本层,不走父链。."""
+    parent = SymbolSpace({S("x"): 10})
+    child = parent.child({S("y"): 20})
+    assert child.contains(S("y"))
+    assert not child.contains(S("x"))  # parent 的不算
+
+
+def test_contains_infinite_space():
+    """Contains 对无限空间通过 membership 判断。."""
+
+    def is_pos_int(s):
+        return s.name.isdigit()
+
+    def resolve(s):
+        return int(s.name) if s.name.isdigit() else MISSING
+
+    space = SymbolSpace({}, membership=is_pos_int, resolver=resolve)
+    assert space.contains(S("42"))
+    assert space.contains(S("0"))
+    assert not space.contains(S("foo"))
+
+
+def test_lookup_returns_missing_for_absent():
+    """Lookup 在缺失时返回 MISSING,不再返回 None。."""
+    space = SymbolSpace({S("x"): 10})
+    assert space.lookup(S("missing")) is MISSING
+
+
+def test_missing_is_distinct_from_none():
+    """绑定到 None 的 symbol lookup 返回 None;不存在的返回 MISSING。."""
+    space = SymbolSpace({S("explicit_none"): None})
+    assert space.lookup(S("explicit_none")) is None
+    assert space.lookup(S("absent")) is MISSING
+    assert space.contains(S("explicit_none"))
+    assert not space.contains(S("absent"))
+
+
+def test_membership_resolver_must_be_paired():
+    """Membership 与 resolver 必须同时提供或同时不提供。."""
+    import pytest
+
+    with pytest.raises(ValueError):
+        SymbolSpace({}, membership=lambda s: True)
+
+    with pytest.raises(ValueError):
+        SymbolSpace({}, resolver=lambda s: MISSING)
+
+
+def test_finite_and_infinite_coexist():
+    """同一个 ss 可同时持有 fixed bindings 和 (membership, resolver)。.
+
+    这是 number-ss 的目标形态: 既有 ``+`` / ``-`` 算子, 又能识别 ``42``。
+    """
+    plus_op = object()
+    space = SymbolSpace(
+        {S("+"): plus_op},
+        membership=lambda s: s.name.isdigit(),
+        resolver=lambda s: int(s.name) if s.name.isdigit() else MISSING,
+    )
+    # fixed binding
+    assert space.contains(S("+"))
+    assert space.lookup(S("+")) is plus_op
+    # dynamic binding
+    assert space.contains(S("42"))
+    assert space.lookup(S("42")) == 42
+    # neither
+    assert not space.contains(S("foo"))
+    assert space.lookup(S("foo")) is MISSING
+
+
+def test_resolve_walks_chain_for_dynamic_space():
+    """Resolve 沿父链查找 (含动态空间)。."""
+    parent = SymbolSpace({S("x"): 10})
+
+    def _dyn_resolver(s):
+        if s.name.startswith("dyn-"):
+            return f"dynamic-{s.name}"
+        return MISSING
+
+    child = parent.child(
+        {},
+        membership=lambda s: s.name.startswith("dyn-"),
+        resolver=_dyn_resolver,
+    )
+    assert child.resolve(S("x")) == 10  # parent 命中
+    assert child.resolve(S("dyn-foo")) == "dynamic-dyn-foo"  # child 动态命中
+    assert child.resolve(S("missing")) is MISSING
+
+
+def test_shadow_in_let_overrides_dynamic_space():
+    """子空间的 fixed binding 可以 shadow 父空间的动态命中。.
+
+    关键场景: ``(let ((+ ...)) ...)`` 在 head 层覆盖 number-ss 的 ``+``。
+    """
+    plus_op = object()
+    user_plus = object()
+    number_ss = SymbolSpace({S("+"): plus_op}, name="number-ss", writable=False)
+    head = number_ss.child({S("+"): user_plus}, name="head")
+    assert head.resolve(S("+")) is user_plus
+    assert number_ss.resolve(S("+")) is plus_op

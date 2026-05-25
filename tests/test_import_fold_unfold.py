@@ -3,6 +3,7 @@
 
 import pytest
 
+from qy.core.symbol_space import MISSING
 from qy.core.symbol_space import SymbolSpace
 from qy.errors import QyRuntimeError
 from qy.frontend.reader import Symbol
@@ -24,7 +25,7 @@ def test_fold_basic():
 
     assert target.lookup(S("x")) == 1
     assert target.lookup(S("y")) == 2
-    assert target.lookup(S("z")) is None
+    assert target.lookup(S("z")) is MISSING
 
 
 def test_fold_with_aliases():
@@ -37,8 +38,8 @@ def test_fold_with_aliases():
 
     assert target.lookup(S("a")) == 1
     assert target.lookup(S("b")) == 2
-    assert target.lookup(S("x")) is None
-    assert target.lookup(S("y")) is None
+    assert target.lookup(S("x")) is MISSING
+    assert target.lookup(S("y")) is MISSING
 
 
 def test_fold_rejects_conflicts():
@@ -84,7 +85,7 @@ def test_unfold_basic():
 
     assert target.lookup(S("x")) == 1
     assert target.lookup(S("y")) == 2
-    assert target.lookup(S("z")) is None
+    assert target.lookup(S("z")) is MISSING
 
 
 def test_unfold_all():
@@ -108,8 +109,8 @@ def test_unfold_with_prefix():
 
     assert target.lookup(S("mod.x")) == 1
     assert target.lookup(S("mod.y")) == 2
-    assert target.lookup(S("x")) is None
-    assert target.lookup(S("y")) is None
+    assert target.lookup(S("x")) is MISSING
+    assert target.lookup(S("y")) is MISSING
 
 
 def test_unfold_selected_with_prefix():
@@ -121,7 +122,7 @@ def test_unfold_selected_with_prefix():
 
     assert target.lookup(S("mod.x")) == 1
     assert target.lookup(S("mod.y")) == 2
-    assert target.lookup(S("mod.z")) is None
+    assert target.lookup(S("mod.z")) is MISSING
 
 
 def test_unfold_rejects_conflicts():
@@ -285,8 +286,8 @@ def test_fold_preserves_symbol_space_semantics():
     assert child.lookup(S("y")) == 2
 
     # Parent should not be affected
-    assert parent.lookup(S("x")) is None
-    assert parent.lookup(S("y")) is None
+    assert parent.lookup(S("x")) is MISSING
+    assert parent.lookup(S("y")) is MISSING
 
-    # Child should still see parent bindings
-    assert child.lookup(S("z")) == 3
+    # Child should still see parent bindings (chain lookup)
+    assert child.resolve(S("z")) == 3

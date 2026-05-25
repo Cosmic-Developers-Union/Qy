@@ -45,7 +45,6 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.operators import SyntaxOperator
 from qy.core.operators import value_uses_eager_arguments
-from qy.core.symbol_space import BindingSlot
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
 from qy.core.symbol_space import SymbolSpaceChain
@@ -68,7 +67,6 @@ __all__ = [
     "ArgumentEvaluator",
     "ArgumentPolicy",
     "Arity",
-    "BindingSlot",
     "Chain",
     "ChainFrame",
     "ControlOperator",
