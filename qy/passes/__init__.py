@@ -18,7 +18,10 @@ from qy.passes.hir.build_cfg import LoweringContext
 from qy.passes.hir.build_cfg import Scope
 from qy.passes.hir.build_cfg import lower
 from qy.passes.hir.build_cfg import lower_source
+from qy.passes.hir.lower_pass import LowerHIRPass
 from qy.passes.lir.lower import lower_lir
+from qy.passes.lir.lower_pass import LowerLIRPass
+from qy.passes.mir.lower_pass import LowerMIRPass
 from qy.passes.mir.normalize import lower_mir
 
 # Pass 基础设施
@@ -28,7 +31,11 @@ from qy.passes.pass_base import PassResult
 from qy.passes.pipeline import Pipeline
 
 __all__ = [
-    # 现有 lowering passes
+    # Pass 类
+    "LowerHIRPass",
+    "LowerLIRPass",
+    "LowerMIRPass",
+    # 现有 lowering 函数
     "LoweringContext",
     # Pass 基础设施
     "Pass",
@@ -36,9 +43,31 @@ __all__ = [
     "PassResult",
     "Pipeline",
     "Scope",
+    "create_pipeline",
     "lower",
-    "lower_hir",
     "lower_lir",
     "lower_mir",
     "lower_source",
 ]
+
+
+def create_pipeline(optimize: bool = False) -> Pipeline:
+    p = Pipeline()
+    p.add_pass(LowerHIRPass())
+    p.add_pass(LowerMIRPass())
+    if optimize:
+        from qy.passes.control.cfg_simplify import CFGSimplifyPass
+        from qy.passes.control.tailcall import TailCallPass
+        from qy.passes.optimize.const_fold import ConstFoldPass
+        from qy.passes.optimize.dce import DCEPass
+        from qy.passes.optimize.inline import InlinePass
+
+        p.add_pass(ConstFoldPass())
+        p.add_pass(DCEPass())
+        p.add_pass(CFGSimplifyPass())
+        p.add_pass(TailCallPass())
+        p.add_pass(InlinePass())
+        p.add_pass(DCEPass())
+        p.add_pass(CFGSimplifyPass())
+    p.add_pass(LowerLIRPass())
+    return p
