@@ -13,7 +13,7 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.passes import PassContext
 from qy.passes import Pipeline
-from qy.passes import create_pipeline
+from qy.passes import build_optimization_pipeline
 from qy.passes.control.cfg_simplify import CFGSimplifyPass
 from qy.passes.control.tailcall import TailCallPass
 from qy.passes.hir.lower_pass import LowerHIRPass
@@ -55,18 +55,18 @@ def _run_pass(pass_obj, artifact, env=None):
 
 class TestPipeline:
     def test_create_pipeline_no_optimize(self):
-        p = create_pipeline(optimize=False)
+        p = build_optimization_pipeline(optimize=False)
         assert len(p.passes) == 3
 
     def test_create_pipeline_with_optimize(self):
-        p = create_pipeline(optimize=True)
+        p = build_optimization_pipeline(optimize=True)
         assert len(p.passes) > 3
 
     def test_pipeline_simple_expression(self):
         forms = read("(+ 1 2)")
         env = standard_environment()
         ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
-        result = create_pipeline(optimize=False).run(ctx)
+        result = build_optimization_pipeline(optimize=False).run(ctx)
         assert result.success
         assert result.artifact is not None
         assert result.artifact.functions
@@ -75,7 +75,7 @@ class TestPipeline:
         forms = read("(+ 1 2)")
         env = standard_environment()
         ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
-        result = create_pipeline(optimize=True).run(ctx)
+        result = build_optimization_pipeline(optimize=True).run(ctx)
         assert result.success
         assert result.artifact is not None
         fn = result.artifact.functions[0]
@@ -246,12 +246,12 @@ class TestOptimizationCorrectness:
         env = standard_environment()
 
         ctx1 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
-        r1 = create_pipeline(optimize=False).run(ctx1)
+        r1 = build_optimization_pipeline(optimize=False).run(ctx1)
         assert r1.success
         assert r1.artifact is not None
 
         ctx2 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
-        r2 = create_pipeline(optimize=True).run(ctx2)
+        r2 = build_optimization_pipeline(optimize=True).run(ctx2)
         assert r2.success
         assert r2.artifact is not None
 

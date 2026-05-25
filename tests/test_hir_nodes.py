@@ -10,7 +10,7 @@ from qy.ir import DefineExpr
 from qy.ir import ParallelExpr
 from qy.ir import PipelineExpr
 from qy.ir import RaceExpr
-from qy.passes.lower_hir import lower_source
+from qy.passes.hir.lower import lower_source
 
 # ---------------------------------------------------------------------------
 # Lowering tests

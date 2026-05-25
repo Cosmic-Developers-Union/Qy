@@ -62,19 +62,27 @@ def test_legacy_operator_registration_names():
 
 
 def test_qy_instance_exposes_pipeline_helpers():
+    from qy.async_utils import run_coro
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.build import compile_source_to_kind_async
+    from qy.passes.build import core_ast_artifact
+    from qy.passes.build import mir_artifact
+    from qy.passes.pass_base import PipelineSession
+
     qy = Qy()
+    source = """
+    (macro twice (form) (cons '+ (cons form (cons form '()))))
+    (twice 21)
+    """
 
-    expansion = qy.macroexpand_source(
-        """
-        (macro twice (form) (cons '+ (cons form (cons form '()))))
-        (twice 21)
-        """
-    )
+    session = PipelineSession(env=qy.env)
+    expansion = run_coro(compile_source_to_kind_async(source, session, kind="core-ast"))
+    program = core_ast_artifact(expansion)
 
-    assert expansion.ok
     # macro 定义被过滤掉，只剩下展开后的宏调用
-    assert len(expansion.forms) == 1
-    expanded = expansion.forms[0]
+    assert len(program.forms) == 1
+    expanded = program.forms[0]
     from qy.core.syntax import Chain
     from qy.core.syntax import car
     from qy.core.syntax import cdr
@@ -84,17 +92,21 @@ def test_qy_instance_exposes_pipeline_helpers():
     assert isinstance(car(expanded), Symbol)
     rest = chain_to_list(cdr(expanded))
     assert rest == [S("21"), S("21")]
-    assert len(expansion.traces) == 1
-    assert expansion.traces[0].renames[0].original == S("+")
-    assert expansion.traces[0].renames[0].kind == "definition-site"
+    assert len(program.traces) == 1
+    assert program.traces[0].renames[0].original == S("+")
+    assert program.traces[0].renames[0].kind == "definition-site"
     first = car(expanded)
     assert isinstance(first, Symbol)
-    assert first.name == expansion.traces[0].renames[0].rewritten.name
+    assert first.name == program.traces[0].renames[0].rewritten.name
 
-    program = qy.lower(expansion.forms)
-    mir = qy.lower_mir(program)
-    bytecode = qy.compile_mir_bytecode(mir)
+    mir_session = PipelineSession(env=qy.env)
+    mir_result = run_coro(compile_source_to_kind_async(source, mir_session, kind="mir"))
+    mir = mir_artifact(mir_result)
+
+    bytecode_session = PipelineSession(env=qy.env)
+    bytecode_result = run_coro(compile_source_to_bytecode_async(source, bytecode_session))
+    bytecode = bytecode_artifact(bytecode_result)
 
     assert mir.ok
     assert bytecode.ok
-    assert qy.evaluate_bytecode(bytecode) == 42
+    assert qy.evaluate_source(source) == 42

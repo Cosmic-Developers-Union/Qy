@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import cast
 
 from qy.ir.hir.node import ProgramIR
-from qy.passes.lower_mir import lower_mir
+from qy.passes.mir.normalize import lower_mir
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult

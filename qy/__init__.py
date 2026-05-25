@@ -1,7 +1,10 @@
 """Public Qy API.
 
-Stable pipeline APIs are centered around `Qy`, `macroexpand`, `lower`, `lower_mir`,
-`compile_mir_bytecode`, `compile_bytecode`, and `RegisterVirtualMachine`.
+Stable pipeline APIs are centered around `Qy`, `RegisterVirtualMachine`, and
+`qy.passes.build` (the only sanctioned way to compile source → bytecode). All
+front-to-back compilation must go through that pipeline; legacy single-stage
+helpers (``lower``/``lower_mir``/``compile_*_bytecode``/``macroexpand*``) have
+been removed.
 """
 
 # coding: utf-8
@@ -17,9 +20,6 @@ from qy.backend.llvm import link
 from qy.backend.vm import BytecodeFunction
 from qy.backend.vm import BytecodeProgram
 from qy.backend.vm import Instruction
-from qy.backend.vm import compile_bytecode
-from qy.backend.vm import compile_lir_bytecode
-from qy.backend.vm import compile_mir_bytecode
 from qy.backend.vm import dump_bytecode
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
@@ -95,20 +95,18 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import dump_mir
 from qy.ir.mir import verify_mir
-from qy.macro import MacroDefinition
-from qy.macro import MacroEffectPolicy
-from qy.macro import MacroExpansion
-from qy.macro import MacroExpansionOptions
-from qy.macro import MacroExpansionTrace
-from qy.macro import MacroSourceMapEntry
-from qy.macro import macroexpand
-from qy.macro import macroexpand_async
-from qy.macro import macroexpand_source
-from qy.macro import macroexpand_source_async
-from qy.passes.lower_hir import lower
-from qy.passes.lower_hir import lower_source
-from qy.passes.lower_lir import lower_lir
-from qy.passes.lower_mir import lower_mir
+from qy.passes.build import build_default_pipeline
+from qy.passes.build import bytecode_artifact
+from qy.passes.build import compile_source_to_bytecode
+from qy.passes.build import compile_source_to_bytecode_async
+from qy.passes.build import compile_source_to_kind
+from qy.passes.build import compile_source_to_kind_async
+from qy.passes.build import core_ast_artifact
+from qy.passes.build import hir_artifact
+from qy.passes.build import lir_artifact
+from qy.passes.build import mir_artifact
+from qy.passes.pass_base import PipelineOptions
+from qy.passes.pass_base import PipelineSession
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
 from qy.sem.core import T as QY_T
@@ -131,10 +129,7 @@ from qy.tools.fmt import format_source
 from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import RegisterVirtualMachine
-from qy.vm.instance.machine import evaluate_bytecode
 from qy.vm.instance.machine import evaluate_bytecode_async
-from qy.vm.instance.machine import evaluate_bytecode_source
-from qy.vm.instance.machine import evaluate_bytecode_source_async
 from qy.vm.instance.values import HostObjectRef
 
 __version__ = "0.0.4"
@@ -179,16 +174,12 @@ __all__ = [
     "MIRInstruction",
     "MIRProgram",
     "MIRTerminator",
-    "MacroDefinition",
-    "MacroEffectPolicy",
-    "MacroExpansion",
-    "MacroExpansionOptions",
-    "MacroExpansionTrace",
-    "MacroSourceMapEntry",
     "MetaOperator",
     "OperatorDoc",
     "OperatorModuleDoc",
     "OperatorSignature",
+    "PipelineOptions",
+    "PipelineSession",
     "ProfileConfig",
     "ProgramIR",
     "PureOperator",
@@ -225,11 +216,15 @@ __all__ = [
     "UnresolvedSymbolExpr",
     "analyze",
     "analyze_source",
+    "build_default_pipeline",
+    "bytecode_artifact",
     "collect_supported_operators",
-    "compile_bytecode",
-    "compile_lir_bytecode",
-    "compile_mir_bytecode",
+    "compile_source_to_bytecode",
+    "compile_source_to_bytecode_async",
+    "compile_source_to_kind",
+    "compile_source_to_kind_async",
     "compile_to_llvm_text",
+    "core_ast_artifact",
     "create_standard_runtime_space",
     "dump_bytecode",
     "dump_form",
@@ -238,11 +233,7 @@ __all__ = [
     "dump_mir",
     "dump_program",
     "emit",
-    "emit_llvm_module",
-    "evaluate_bytecode",
     "evaluate_bytecode_async",
-    "evaluate_bytecode_source",
-    "evaluate_bytecode_source_async",
     "form_to_tuple",
     "format_form",
     "format_operator_docs",
@@ -250,15 +241,10 @@ __all__ = [
     "format_qy_error",
     "format_source",
     "format_value",
+    "hir_artifact",
     "link",
-    "lower",
-    "lower_lir",
-    "lower_mir",
-    "lower_source",
-    "macroexpand",
-    "macroexpand_async",
-    "macroexpand_source",
-    "macroexpand_source_async",
+    "lir_artifact",
+    "mir_artifact",
     "read",
     "read_one",
     "read_one_tuple",

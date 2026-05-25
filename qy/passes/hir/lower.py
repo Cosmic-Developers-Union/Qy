@@ -1,5 +1,10 @@
 # coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/passes/raw + surface + macro + core + resolve + hir
+"""hir.lower — Form → HIR lowering 实现。.
+
+LowerHIRPass 在 ``qy/passes/hir/lower_pass.py`` 中通过调用 ``lower`` 把
+macro-expanded core forms 降为 ``ProgramIR``。这里只放算法实现；任何外部
+""完整源到字节码"调用必须通过 ``qy.passes.build`` 提供的 pipeline 入口。
+"""
 
 from __future__ import annotations
 

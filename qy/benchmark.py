@@ -1,5 +1,4 @@
 # coding: utf-8
-# QY_DELETE_AFTER_MIGRATION: target=qy/tools/bench.py
 
 from __future__ import annotations
 
@@ -14,16 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from qy.async_utils import run_coro
 from qy.backend.vm.bytecode import BytecodeProgram
-from qy.backend.vm.compiler import compile_mir_bytecode
-from qy.frontend.reader import Form
 from qy.frontend.reader import read
-from qy.ir import ProgramIR
-from qy.ir.mir import MIRProgram
-from qy.macro import macroexpand
-from qy.passes.lower_hir import lower
-from qy.passes.lower_lir import lower_lir
-from qy.passes.lower_mir import lower_mir
+from qy.passes.build import bytecode_artifact
+from qy.passes.build import compile_source_to_kind_async
+from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import RegisterVirtualMachine
@@ -242,30 +237,35 @@ def _measure_case(case: BenchmarkCase, phase: BenchmarkPhase) -> float | None:
     if case.setup_source.strip():
         qy.evaluate_program(case.setup_source)
 
-    forms = read(case.source)
+    # 触发 reader 失败的 source 不进入后续 pipeline 阶段
+    read(case.source)
+
     if phase == "source":
         return _elapsed(lambda: _run_source_iterations(qy, case))
     if phase == "macroexpand":
-        return _elapsed(lambda: _run_macroexpand_iterations(qy.env, forms, case.iterations))
-
-    expansion = macroexpand(forms, qy.env)
+        return _elapsed(lambda: _run_pipeline_iterations(qy.env, case, kind="core-ast"))
     if phase == "hir_lower":
-        return _elapsed(lambda: _run_hir_lower_iterations(qy.env, expansion.forms, case.iterations))
-
-    program = lower(expansion.forms, qy.env)
+        return _elapsed(lambda: _run_pipeline_iterations(qy.env, case, kind="hir"))
     if phase == "mir_lower":
-        return _elapsed(lambda: _run_mir_lower_iterations(program, case.iterations))
-
-    mir = lower_mir(program)
+        return _elapsed(lambda: _run_pipeline_iterations(qy.env, case, kind="mir"))
     if phase == "lir_lower":
-        return _elapsed(lambda: _run_lir_lower_iterations(mir, case.iterations))
+        return _elapsed(lambda: _run_pipeline_iterations(qy.env, case, kind="lir"))
     if phase == "bytecode_compile":
-        return _elapsed(lambda: _run_bytecode_compile_iterations(mir, case.iterations))
+        return _elapsed(lambda: _run_pipeline_iterations(qy.env, case, kind="bytecode"))
 
-    bytecode = compile_mir_bytecode(mir)
-    if not bytecode.ok:
+    bytecode = _compile_bytecode(qy.env, case.source)
+    if bytecode is None or not bytecode.ok:
         return None
     return _elapsed(lambda: _run_bytecode_iterations(qy.env, bytecode, case.iterations))
+
+
+def _compile_bytecode(env: Environment, source: str) -> BytecodeProgram | None:
+    session = PipelineSession(env=env)
+    result = run_coro(compile_source_to_kind_async(source, session, kind="bytecode"))
+    try:
+        return bytecode_artifact(result)
+    except TypeError:
+        return None
 
 
 def _run_source_iterations(qy: Qy, case: BenchmarkCase) -> None:
@@ -273,29 +273,16 @@ def _run_source_iterations(qy: Qy, case: BenchmarkCase) -> None:
         qy.evaluate_source(case.source)
 
 
-def _run_macroexpand_iterations(env: Environment, forms: list[Form], iterations: int) -> None:
-    for _ in range(iterations):
-        macroexpand(forms, env)
+def _run_pipeline_iterations(env: Environment, case: BenchmarkCase, *, kind: str) -> None:
+    """Run pipeline subset(end=kind) iterations.
 
-
-def _run_hir_lower_iterations(env: Environment, forms: list[Form], iterations: int) -> None:
-    for _ in range(iterations):
-        lower(forms, env)
-
-
-def _run_mir_lower_iterations(program: ProgramIR, iterations: int) -> None:
-    for _ in range(iterations):
-        lower_mir(program)
-
-
-def _run_lir_lower_iterations(program: MIRProgram, iterations: int) -> None:
-    for _ in range(iterations):
-        lower_lir(program)
-
-
-def _run_bytecode_compile_iterations(program: MIRProgram, iterations: int) -> None:
-    for _ in range(iterations):
-        compile_mir_bytecode(program)
+    Re-uses the same env so macro / module bindings established in setup_source
+    remain visible. Each iteration re-runs the entire pipeline from source up
+    to the requested artifact kind.
+    """
+    for _ in range(case.iterations):
+        session = PipelineSession(env=env)
+        run_coro(compile_source_to_kind_async(case.source, session, kind=kind))
 
 
 def _run_bytecode_iterations(env: Environment, program: BytecodeProgram, iterations: int) -> None:

@@ -4,7 +4,7 @@ from qy.analysis import analyze_source
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
 from qy.frontend.reader import Symbol
-from qy.passes.lower_hir import lower_source
+from qy.passes.hir.lower import lower_source
 from qy.runtime import evaluate
 from qy.runtime import evaluate_source
 from qy.sem.core import IntValue

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from qy.core.program import CoreProgram
 from qy.frontend.reader import Form
-from qy.passes.lower_hir import lower
+from qy.passes.hir.lower import lower
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult

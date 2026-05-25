@@ -5,17 +5,22 @@ from qy import MIRFunction
 from qy import MIRInstruction
 from qy import MIRProgram
 from qy import MIRTerminator
-from qy import compile_mir_bytecode
 from qy import dump_mir
-from qy import lower_mir
 from qy import verify_mir
+from qy.backend.vm.compiler import compile_lir_bytecode
 from qy.frontend.reader import Symbol
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
 from qy.ir.mir import MIROpcode
-from qy.passes.lower_hir import lower_source
+from qy.passes.hir.lower import lower_source
+from qy.passes.lir.lower import lower_lir
+from qy.passes.mir.normalize import lower_mir
+
+
+def compile_mir_bytecode(mir):
+    return compile_lir_bytecode(lower_lir(mir))
 
 
 def test_mir_lowering_emits_cfg_blocks_for_cond():

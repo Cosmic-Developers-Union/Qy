@@ -10,13 +10,16 @@ Public API:
     link(ll_text, ...)        -> CompileResult
 
 Example:
-    from qy import lower, lower_mir, lower_lir, read
+    from qy.async_utils import run_coro
     from qy.backend.llvm import emit, link
+    from qy.passes.build import compile_source_to_kind_async, lir_artifact
+    from qy.passes.pass_base import PipelineSession
 
-    forms = list(read('(echo "hello, world!")'))
-    lir = lower(forms)
-    lir = lower_mir(lir)
-    lir = lower_lir(lir)
+    session = PipelineSession()
+    result = run_coro(
+        compile_source_to_kind_async('(echo "hello, world!")', session, kind="lir")
+    )
+    lir = lir_artifact(result)
 
     result = link(emit(lir), output_name="hello")
     print(result.executable)

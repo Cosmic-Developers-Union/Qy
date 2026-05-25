@@ -6,13 +6,17 @@ from lsprotocol import types
 
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
+from qy.async_utils import run_coro
+from qy.passes.build import compile_source_to_kind_async
+from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance
 
 
 def diagnostics_for_source(source: str, *, qy: Qy | None = None) -> list[types.Diagnostic]:
     runtime = qy or shared_instance()
-    expansion = runtime.macroexpand_source(source)
+    session = PipelineSession(env=runtime.env)
+    expansion = run_coro(compile_source_to_kind_async(source, session, kind="core-ast"))
     diagnostics = list(expansion.diagnostics)
     if not any(d.severity == "error" for d in diagnostics):
         analysis = analyze_source(source, runtime.env)

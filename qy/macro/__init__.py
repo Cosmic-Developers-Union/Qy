@@ -33,10 +33,6 @@ __all__ = [
     "MacroRename",
     "MacroScope",
     "MacroSourceMapEntry",
-    "macroexpand",
-    "macroexpand_async",
-    "macroexpand_source",
-    "macroexpand_source_async",
 ]
 
 
@@ -108,22 +104,21 @@ class MacroDefinition:
                 doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
             )
 
-        from qy.backend.vm.compiler import compile_bytecode
-        from qy.passes.lower_hir import lower
+        from qy.passes.build import bytecode_artifact
+        from qy.passes.build import compile_core_forms_to_bytecode_async
+        from qy.passes.pass_base import PipelineSession
         from qy.vm.instance.machine import RegisterVirtualMachine
 
-        program = lower(list(cast(tuple[Form, ...], self.body)), local_env)
-        bytecode = compile_bytecode(program)
+        forms = list(cast(tuple[Form, ...], self.body))
+        session = PipelineSession(env=local_env)
+        result = await compile_core_forms_to_bytecode_async(forms, session)
+        bytecode = bytecode_artifact(result)
         return await RegisterVirtualMachine(bytecode, local_env).evaluate()
 
 
 from qy.macro.expand import MacroEffectPolicy as MacroEffectPolicy  # noqa: E402
 from qy.macro.expand import MacroExpansion as MacroExpansion  # noqa: E402
 from qy.macro.expand import MacroExpansionOptions as MacroExpansionOptions  # noqa: E402
-from qy.macro.expand import macroexpand as macroexpand  # noqa: E402
-from qy.macro.expand import macroexpand_async as macroexpand_async  # noqa: E402
-from qy.macro.expand import macroexpand_source as macroexpand_source  # noqa: E402
-from qy.macro.expand import macroexpand_source_async as macroexpand_source_async  # noqa: E402
 from qy.macro.hygiene import MacroRename as MacroRename  # noqa: E402
 from qy.macro.scope import MacroScope as MacroScope  # noqa: E402
 from qy.macro.trace import MacroExpansionTrace as MacroExpansionTrace  # noqa: E402

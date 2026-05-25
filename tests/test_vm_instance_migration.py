@@ -51,18 +51,18 @@ def test_vm_instance_module_exports():
 
 def test_register_vm_basic_functionality():
     """测试 RegisterVirtualMachine 基本功能仍然正常。."""
-    from qy.backend.vm.compiler import compile_bytecode
-    from qy.frontend.reader import read
-    from qy.ir import ProgramIR
-    from qy.passes.lower_hir import lower
+    from qy.async_utils import run_coro
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
     from qy.session.runtime_space import create_standard_runtime_space as standard_environment
     from qy.vm.instance.machine import RegisterVirtualMachine
 
     source = "(+ 1 2)"
-    forms = read(source)
     env = standard_environment()
-    program_ir = lower(forms, env)
-    bytecode = compile_bytecode(ProgramIR(program_ir.body, program_ir.diagnostics))
+    session = PipelineSession(env=env)
+    pipeline_result = run_coro(compile_source_to_bytecode_async(source, session))
+    bytecode = bytecode_artifact(pipeline_result)
 
     vm = RegisterVirtualMachine(bytecode, env)
     result = vm.evaluate()
@@ -87,7 +87,4 @@ def test_public_api_still_exports_from_qy():
     import qy
 
     assert hasattr(qy, "RegisterVirtualMachine")
-    assert hasattr(qy, "evaluate_bytecode")
     assert hasattr(qy, "evaluate_bytecode_async")
-    assert hasattr(qy, "evaluate_bytecode_source")
-    assert hasattr(qy, "evaluate_bytecode_source_async")

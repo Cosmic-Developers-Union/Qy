@@ -12,7 +12,7 @@ from qy.ir import LetExpr
 from qy.ir import LiteralExpr
 from qy.ir import QuoteExpr
 from qy.ir import SymbolRefExpr
-from qy.passes.lower_hir import lower_source
+from qy.passes.hir.lower import lower_source
 
 
 def test_lowering_keeps_default_literals_after_symbol_resolution():

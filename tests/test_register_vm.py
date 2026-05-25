@@ -2,15 +2,18 @@ import pytest
 
 from qy import BytecodeProgram
 from qy import Qy
-from qy import compile_bytecode
+from qy.async_utils import run_coro
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
-from qy.passes.lower_hir import lower_source
+from qy.passes.build import bytecode_artifact
+from qy.passes.build import compile_source_to_bytecode_async
+from qy.passes.pass_base import PipelineSession
 
 
 def test_bytecode_compiler_emits_program_for_core_call():
-    program = lower_source("(+ 1 2)")
-    bytecode = compile_bytecode(program)
+    session = PipelineSession()
+    result = run_coro(compile_source_to_bytecode_async("(+ 1 2)", session))
+    bytecode = bytecode_artifact(result)
 
     assert isinstance(bytecode, BytecodeProgram)
     assert bytecode.ok

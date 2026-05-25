@@ -8,6 +8,7 @@ from typing import Any
 
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
+from qy.async_utils import run_coro
 from qy.backend.vm.bytecode import dump_bytecode
 from qy.backend.vm.bytecode import serialize_bytecode_json
 from qy.display import format_value
@@ -19,7 +20,13 @@ from qy.frontend.reader import read_raw
 from qy.ir import dump_ir
 from qy.ir.lir import dump_lir
 from qy.ir.mir import dump_mir
-from qy.passes.lower_lir import lower_lir
+from qy.passes.build import bytecode_artifact
+from qy.passes.build import compile_source_to_kind_async
+from qy.passes.build import core_ast_artifact
+from qy.passes.build import hir_artifact
+from qy.passes.build import lir_artifact
+from qy.passes.build import mir_artifact
+from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.std.profile import format_operator_docs
 from qy.tools.fmt import dump_program
@@ -128,10 +135,17 @@ def create_app() -> Any:
     ) -> None:
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        if expansion.forms:
-            typer.echo(dump_program(expansion.forms), nl=False)
-        if _print_debug_diagnostics(source_name, expansion.diagnostics):
+        result = _compile_source_to(qy, source, kind="core-ast", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            program = core_ast_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        if program.forms:
+            typer.echo(dump_program(program.forms), nl=False)
+        if has_errors:
             raise typer.Exit(1)
 
     @app.command("hir")
@@ -143,12 +157,15 @@ def create_app() -> Any:
     ) -> None:
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            typer.echo(dump_ir(program), nl=False)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
+        result = _compile_source_to(qy, source, kind="hir", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            program = hir_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        typer.echo(dump_ir(program), nl=False)
         if has_errors:
             raise typer.Exit(1)
 
@@ -161,14 +178,15 @@ def create_app() -> Any:
     ) -> None:
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            mir = qy.lower_mir(program)
-            typer.echo(dump_mir(mir), nl=False)
-            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
+        result = _compile_source_to(qy, source, kind="mir", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            mir = mir_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        typer.echo(dump_mir(mir), nl=False)
         if has_errors:
             raise typer.Exit(1)
 
@@ -181,16 +199,15 @@ def create_app() -> Any:
     ) -> None:
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            mir = qy.lower_mir(program)
-            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
-            lir = lower_lir(mir)
-            typer.echo(dump_lir(lir), nl=False)
-            has_errors = _print_debug_diagnostics(source_name, lir.diagnostics) or has_errors
+        result = _compile_source_to(qy, source, kind="lir", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            lir = lir_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        typer.echo(dump_lir(lir), nl=False)
         if has_errors:
             raise typer.Exit(1)
 
@@ -203,16 +220,15 @@ def create_app() -> Any:
     ) -> None:
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            mir = qy.lower_mir(program)
-            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
-            bytecode = qy.compile_mir_bytecode(mir)
-            typer.echo(dump_bytecode(bytecode), nl=False)
-            has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
+        result = _compile_source_to(qy, source, kind="bytecode", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            bytecode = bytecode_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        typer.echo(dump_bytecode(bytecode), nl=False)
         if has_errors:
             raise typer.Exit(1)
 
@@ -227,18 +243,17 @@ def create_app() -> Any:
 
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            mir = qy.lower_mir(program)
-            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
-            lir = lower_lir(mir)
-            has_errors = _print_debug_diagnostics(source_name, lir.diagnostics) or has_errors
-            if lir.ok:
-                ll_text = emit_llvm_module(lir)
-                typer.echo(ll_text, nl=False)
+        result = _compile_source_to(qy, source, kind="lir", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            lir = lir_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        if lir.ok:
+            ll_text = emit_llvm_module(lir)
+            typer.echo(ll_text, nl=False)
         if has_errors:
             raise typer.Exit(1)
 
@@ -272,10 +287,17 @@ def create_app() -> Any:
             typer.echo(dump_program(forms))
         elif expand:
             qy = Qy()
-            expansion = qy.macroexpand_source(source, source_name=str(path))
-            if expansion.forms:
-                typer.echo(dump_program(expansion.forms), nl=False)
-            if _print_debug_diagnostics(str(path), expansion.diagnostics):
+            result = _compile_source_to(qy, source, kind="core-ast", source_name=str(path))
+            has_errors = _print_debug_diagnostics(str(path), result.diagnostics)
+            try:
+                program = core_ast_artifact(result)
+            except TypeError:
+                if has_errors:
+                    raise typer.Exit(1) from None
+                return
+            if program.forms:
+                typer.echo(dump_program(program.forms), nl=False)
+            if has_errors:
                 raise typer.Exit(1)
         else:
             forms = read(source)
@@ -316,21 +338,20 @@ def create_app() -> Any:
         """Export bytecode in JSON interchange format for external VMs."""
         qy = Qy()
         source, source_name = _read_debug_source(target)
-        expansion = qy.macroexpand_source(source, source_name=source_name)
-        has_errors = _print_debug_diagnostics(source_name, expansion.diagnostics)
-        if expansion.forms:
-            program = qy.lower(expansion.forms)
-            has_errors = _print_debug_diagnostics(source_name, program.diagnostics) or has_errors
-            mir = qy.lower_mir(program)
-            has_errors = _print_debug_diagnostics(source_name, mir.diagnostics) or has_errors
-            bytecode = qy.compile_mir_bytecode(mir)
-            has_errors = _print_debug_diagnostics(source_name, bytecode.diagnostics) or has_errors
-            json_text = serialize_bytecode_json(bytecode, env=qy.env)
-            if output == "-":
-                typer.echo(json_text, nl=False)
-            else:
-                Path(output).write_text(json_text, encoding="utf-8")
-                typer.secho(f"exported to {output}", fg=typer.colors.GREEN, err=True)
+        result = _compile_source_to(qy, source, kind="bytecode", source_name=source_name)
+        has_errors = _print_debug_diagnostics(source_name, result.diagnostics)
+        try:
+            bytecode = bytecode_artifact(result)
+        except TypeError:
+            if has_errors:
+                raise typer.Exit(1) from None
+            return
+        json_text = serialize_bytecode_json(bytecode, env=qy.env)
+        if output == "-":
+            typer.echo(json_text, nl=False)
+        else:
+            Path(output).write_text(json_text, encoding="utf-8")
+            typer.secho(f"exported to {output}", fg=typer.colors.GREEN, err=True)
         if has_errors:
             raise typer.Exit(1)
 
@@ -493,6 +514,16 @@ def _read_debug_source(target: str) -> tuple[str, str]:
     except OSError as e:
         typer.secho(str(e), fg=typer.colors.RED, err=True)
         raise typer.Exit(1) from e
+
+
+def _compile_source_to(qy: Qy, source: str, *, kind: str, source_name: str) -> Any:
+    """Run the standard pipeline against ``source`` until ``kind`` is produced.
+
+    Returns the raw ``PassResult`` so callers can inspect ``diagnostics`` together
+    with the typed artifact extractor.
+    """
+    session = PipelineSession(env=qy.env, source_name=source_name)
+    return run_coro(compile_source_to_kind_async(source, session, kind=kind))
 
 
 def _print_debug_diagnostics(source_name: str, diagnostics: tuple[Diagnostic, ...]) -> bool:

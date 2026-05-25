@@ -110,8 +110,14 @@ def demo_compile_and_dump():
           (+ (fib (- n 1)) (fib (- n 2))))))
     """
 
-    program_ir = qy.lower(source)
-    bytecode = qy.compile_bytecode(program_ir)
+    from qy.async_utils import run_coro
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
+
+    session = PipelineSession(env=qy.env)
+    result = run_coro(compile_source_to_bytecode_async(source, session))
+    bytecode = bytecode_artifact(result)
 
     print("Source:")
     print(source)

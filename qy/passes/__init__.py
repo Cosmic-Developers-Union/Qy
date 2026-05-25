@@ -9,49 +9,46 @@
 禁止：
 - pass 不得定义 IR 数据结构（那是 qy/ir/ 的职责）
 - pass 不得直接执行（那是 qy/build/ 的职责）
+
+注意：
+- 完整源到字节码编译入口由 ``qy.passes.build`` 提供
+  （``build_default_pipeline``、``compile_source_to_*``、
+  ``compile_source_to_kind*``）。
+- 这里仅暴露 pass 类与调度基础设施，以及 IR 阶段优化测试用的
+  ``build_optimization_pipeline`` 子流水线。
+- 不再提供绕过 pipeline 的 ``lower``/``lower_mir``/``lower_lir`` 等单段函数。
 """
 
 from __future__ import annotations
 
-# 新子目录路径 —— 这些是正式导入来源
-from qy.passes.hir.build_cfg import LoweringContext
-from qy.passes.hir.build_cfg import Scope
-from qy.passes.hir.build_cfg import lower
-from qy.passes.hir.build_cfg import lower_source
 from qy.passes.hir.lower_pass import LowerHIRPass
-from qy.passes.lir.lower import lower_lir
 from qy.passes.lir.lower_pass import LowerLIRPass
 from qy.passes.mir.lower_pass import LowerMIRPass
-from qy.passes.mir.normalize import lower_mir
-
-# Pass 基础设施
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
 from qy.passes.pipeline import Pipeline
 
 __all__ = [
-    # Pass 类
     "LowerHIRPass",
     "LowerLIRPass",
     "LowerMIRPass",
-    # 现有 lowering 函数
-    "LoweringContext",
-    # Pass 基础设施
     "Pass",
     "PassContext",
     "PassResult",
     "Pipeline",
-    "Scope",
-    "create_pipeline",
-    "lower",
-    "lower_lir",
-    "lower_mir",
-    "lower_source",
+    "build_optimization_pipeline",
 ]
 
 
-def create_pipeline(optimize: bool = False) -> Pipeline:
+def build_optimization_pipeline(*, optimize: bool = False) -> Pipeline:
+    """Build a HIR→MIR→(optionally optimized)→LIR sub-pipeline.
+
+    This sub-pipeline is **not** a substitute for the canonical source→bytecode
+    pipeline in ``qy.passes.build``. It only exists so IR-stage optimization
+    passes (const-fold, DCE, CFG simplify, tail-call, inline) can be exercised
+    in isolation by tests and tooling.
+    """
     p = Pipeline()
     p.add_pass(LowerHIRPass())
     p.add_pass(LowerMIRPass())

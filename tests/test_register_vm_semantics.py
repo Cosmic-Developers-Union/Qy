@@ -79,10 +79,17 @@ def test_vm_runtime_errors_include_virtual_stack_frames():
 
 
 def test_vm_function_is_visible_to_lowering_after_definition():
+    from qy.async_utils import run_coro
+    from qy.passes.build import compile_source_to_kind_async
+    from qy.passes.build import hir_artifact
+    from qy.passes.pass_base import PipelineSession
+
     qy = Qy()
     qy.evaluate_source("(defun identity (x) x)")
 
-    program = qy.lower_source("(identity 42)")
+    session = PipelineSession(env=qy.env)
+    result = run_coro(compile_source_to_kind_async("(identity 42)", session, kind="hir"))
+    program = hir_artifact(result)
 
     assert program.ok
     assert qy.evaluate_source("(identity 42)") == 42

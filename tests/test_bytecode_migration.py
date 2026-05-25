@@ -151,15 +151,19 @@ def test_serialize_with_diagnostics():
 
 
 def test_compile_simple_program():
-    """Test compiling a simple program."""
+    """Test compiling a simple program through the pipeline."""
+    from qy.async_utils import run_coro
+    from qy.passes.build import bytecode_artifact
+    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.passes.pass_base import PipelineSession
     from qy.runtime import Qy
 
     qy = Qy()
     source = "(define x 42)"
 
-    # Compile through the pipeline
-    program_ir = qy.lower_source(source)
-    bytecode_program = qy.compile_bytecode(program_ir)
+    session = PipelineSession(env=qy.env)
+    result = run_coro(compile_source_to_bytecode_async(source, session))
+    bytecode_program = bytecode_artifact(result)
 
     assert isinstance(bytecode_program, BytecodeProgram)
     assert bytecode_program.ok

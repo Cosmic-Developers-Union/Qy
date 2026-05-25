@@ -6,9 +6,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
+from qy.async_utils import run_coro
 from qy.backend.vm.bytecode import BytecodeProgram
-from qy.backend.vm.compiler import compile_bytecode
-from qy.backend.vm.compiler import compile_mir_bytecode
 from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import ArgumentEvaluator
 from qy.core.symbol_space import ChainFrame
@@ -19,24 +18,10 @@ from qy.errors import TraceFrame
 from qy.frontend.reader import Form
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
-from qy.ir import ProgramIR
-from qy.ir.mir import MIRProgram
-from qy.macro import MacroExpansion
-from qy.macro import MacroExpansionOptions
-from qy.macro import macroexpand
-from qy.macro import macroexpand_async
-from qy.macro import macroexpand_source
-from qy.macro import macroexpand_source_async
-from qy.passes.lower_hir import lower
-from qy.passes.lower_hir import lower_source
-from qy.passes.lower_mir import lower_mir
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.instance.machine import RegisterVirtualMachine
-from qy.vm.instance.machine import evaluate_bytecode
 from qy.vm.instance.machine import evaluate_bytecode_async
-from qy.vm.instance.machine import evaluate_bytecode_source
-from qy.vm.instance.machine import evaluate_bytecode_source_async
 
 __all__ = [
     "AsyncQy",
@@ -67,21 +52,6 @@ class _QyBase:
 
     def read_one(self, source: str) -> Form:
         return read_one(source)
-
-    def lower(self, forms: list[Form]) -> ProgramIR:
-        return lower(forms, self.env)
-
-    def lower_source(self, source: str, *, source_name: str | None = None) -> ProgramIR:
-        return lower_source(source, self.env, source_name=source_name)
-
-    def lower_mir(self, program: ProgramIR) -> MIRProgram:
-        return lower_mir(program)
-
-    def compile_bytecode(self, program: ProgramIR) -> BytecodeProgram:
-        return compile_bytecode(program)
-
-    def compile_mir_bytecode(self, program: MIRProgram) -> BytecodeProgram:
-        return compile_mir_bytecode(program)
 
     def register_pure(
         self,
@@ -177,43 +147,16 @@ class _QyBase:
 
 
 class Qy(_QyBase):
-    def macroexpand(
-        self,
-        forms: list[Form],
-        *,
-        options: MacroExpansionOptions | None = None,
-    ) -> MacroExpansion:
-        return macroexpand(forms, self.env, options=options)
-
-    def macroexpand_source(
-        self,
-        source: str,
-        *,
-        source_name: str | None = None,
-        options: MacroExpansionOptions | None = None,
-    ) -> MacroExpansion:
-        return macroexpand_source(source, self.env, source_name=source_name, options=options)
-
-    def evaluate_bytecode(self, program: BytecodeProgram) -> object:
-        return evaluate_bytecode(program, self.env)
-
-    def evaluate_bytecode_source(self, source: str, *, source_name: str | None = None) -> object:
-        return evaluate_bytecode_source(source, self.env, source_name=source_name)
-
     def evaluate(self, expression: object) -> object:
-        from qy.async_utils import run_coro
-
         return run_coro(_evaluate_form_via_pipeline(expression, self.env))
 
     def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
-        return self.evaluate_bytecode_source(source, source_name=source_name)
+        return run_coro(evaluate_source_async(source, self.env, source_name=source_name))
 
     async def evaluate_source_async(self, source: str, *, source_name: str | None = None) -> object:
-        return await evaluate_bytecode_source_async(source, self.env, source_name=source_name)
+        return await evaluate_source_async(source, self.env, source_name=source_name)
 
     def evaluate_program(self, source: str, *, source_name: str | None = None) -> list[object]:
-        from qy.async_utils import run_coro
-
         return cast(
             list[object],
             run_coro(_evaluate_program_via_pipeline(source, self.env, source_name=source_name)),
@@ -230,55 +173,17 @@ class Qy(_QyBase):
         return results[-1]
 
     def fmt(self, source: str) -> str:
-        """Format Qy source code.
-
-        Args:
-            source: Qy source code string
-
-        Returns:
-            Formatted source code string
-
-        Raises:
-            ReaderSyntaxError: If the source has syntax errors
-        """
         from qy.tools.fmt import format_source
 
         return format_source(source)
 
 
 class AsyncQy(_QyBase):
-    async def macroexpand(
-        self,
-        forms: list[Form],
-        *,
-        options: MacroExpansionOptions | None = None,
-    ) -> MacroExpansion:
-        return await macroexpand_async(forms, self.env, options=options)
-
-    async def macroexpand_source(
-        self,
-        source: str,
-        *,
-        source_name: str | None = None,
-        options: MacroExpansionOptions | None = None,
-    ) -> MacroExpansion:
-        return await macroexpand_source_async(
-            source, self.env, source_name=source_name, options=options
-        )
-
-    async def evaluate_bytecode(self, program: BytecodeProgram) -> object:
-        return await evaluate_bytecode_async(program, self.env)
-
-    async def evaluate_bytecode_source(
-        self, source: str, *, source_name: str | None = None
-    ) -> object:
-        return await evaluate_bytecode_source_async(source, self.env, source_name=source_name)
-
     async def evaluate(self, expression: object) -> object:
         return await _evaluate_form_via_pipeline(expression, self.env)
 
     async def evaluate_source(self, source: str, *, source_name: str | None = None) -> object:
-        return await self.evaluate_bytecode_source(source, source_name=source_name)
+        return await evaluate_source_async(source, self.env, source_name=source_name)
 
     evaluate_source_async = evaluate_source
 
@@ -296,17 +201,6 @@ class AsyncQy(_QyBase):
         return None if not results else results[-1]
 
     def fmt(self, source: str) -> str:
-        """Format Qy source code.
-
-        Args:
-            source: Qy source code string
-
-        Returns:
-            Formatted source code string
-
-        Raises:
-            ReaderSyntaxError: If the source has syntax errors
-        """
         from qy.tools.fmt import format_source
 
         return format_source(source)
@@ -341,23 +235,17 @@ def _raise_on_diagnostics(diagnostics: tuple[object, ...]) -> None:
 
 
 def evaluate(expression: object, env: Environment | None = None) -> object:
-    from qy.async_utils import run_coro
-
     return run_coro(evaluate_async(expression, env))
 
 
 async def evaluate_async(expression: object, env: Environment | None = None) -> object:
-    from qy.vm.instance.machine import evaluate_form_async
-
     runtime_env = env or standard_environment()
-    return await evaluate_form_async(expression, runtime_env)
+    return await _evaluate_form_via_pipeline(expression, runtime_env)
 
 
 def evaluate_source(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> object:
-    from qy.async_utils import run_coro
-
     return run_coro(evaluate_source_async(source, env, source_name=source_name))
 
 
@@ -370,7 +258,6 @@ async def evaluate_source_async(
     )
     _raise_on_diagnostics(pipeline_diagnostics)
     if bytecode is None:
-        # Pipeline 失败但未抛出 (例如非 error 严重度)
         return None
     _raise_on_diagnostics(bytecode.diagnostics)
     return await evaluate_bytecode_async(bytecode, runtime_env)
@@ -379,8 +266,6 @@ async def evaluate_source_async(
 def evaluate_program(
     source: str, env: Environment | None = None, *, source_name: str | None = None
 ) -> list[object]:
-    from qy.async_utils import run_coro
-
     return cast(
         list[object],
         run_coro(evaluate_program_async(source, env, source_name=source_name)),
@@ -416,13 +301,12 @@ async def _compile_source_via_pipeline(
     ``emit.bytecode`` 之前因 error 阈值短路时，``bytecode`` 为 ``None``，
     全部诊断仍包含在 ``pipeline_diagnostics`` 中。
     """
-    from qy.backend.vm.bytecode import BytecodeProgram as _BP
     from qy.passes.build import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
 
     session = PipelineSession(env=env, source_name=source_name)
     result = await compile_source_to_bytecode_async(source, session)
-    if isinstance(result.artifact, _BP):
+    if isinstance(result.artifact, BytecodeProgram):
         return result.artifact, tuple(result.diagnostics)
     return None, tuple(result.diagnostics)
 
@@ -441,15 +325,12 @@ async def _evaluate_program_via_pipeline(
 
 
 async def _evaluate_form_via_pipeline(expression: object, env: Environment) -> object:
-    """单 form 求值入口：复用 ``evaluate_form_async``（machine.py 中已经走 pipeline）。."""
     from qy.vm.instance.machine import evaluate_form_async
 
     return await evaluate_form_async(expression, env)
 
 
 def evaluate_file(path: str | Path, env: Environment | None = None) -> object:
-    from qy.async_utils import run_coro
-
     return run_coro(evaluate_file_async(path, env))
 
 
@@ -463,7 +344,6 @@ async def evaluate_file_async(path: str | Path, env: Environment | None = None) 
 
 
 def evaluate_body(body: tuple[object, ...], env: Environment) -> object:
-    from qy.async_utils import run_coro
     from qy.vm.instance.machine import evaluate_form_body_async
 
     return run_coro(evaluate_form_body_async(body, env))
