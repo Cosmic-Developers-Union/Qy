@@ -101,6 +101,8 @@ async def can_use_tool(
 
 
 async def run_task(task: "Task", pm: "PM", pid: str):
+    if task.session:
+        logger.info(f"resume: {task.session}")
     options = ClaudeAgentOptions(
         permission_mode="bypassPermissions",
         tools={"type": "preset", "preset": "claude_code"},
@@ -239,8 +241,6 @@ class PM:
             return {"error": e}
 
 
-@click.command()
-@click.option("--dry-run", is_flag=True, default=False)
 async def main(dry_run: bool = False):
     pm_client = PM()
     print(await pm_client.ping())
@@ -268,6 +268,12 @@ async def main(dry_run: bool = False):
         await asyncio.sleep(15)
 
 
-if __name__ == "__main__":
+@click.command()
+@click.option("--dry-run", is_flag=True, default=False)
+def cli(*args, **kwargs):
     logger.add("agent.log")
-    asyncio.run(main())
+    asyncio.run(main(*args, **kwargs))
+
+
+if __name__ == "__main__":
+    cli()
