@@ -73,7 +73,7 @@ class ProfileConfig:
         if self._use_pre_ss:
             return self._resolve_literal_with_pre_ss(symbol)
 
-        from qy.literals import resolve_default_literal
+        from qy.session.pre_ss import resolve_default_literal
 
         return resolve_default_literal(symbol)
 

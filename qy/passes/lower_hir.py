@@ -58,13 +58,13 @@ from qy.ir import RuntimeEvalExpr
 from qy.ir import SymbolRefExpr
 from qy.ir import SymbolSpace
 from qy.ir import UnresolvedSymbolExpr
-from qy.literals import default_literal_type
-from qy.literals import try_default_literal
 from qy.macro import CapturedForm
 from qy.project.module import remember_source_module
 from qy.sem.classify import literal_type
 from qy.sem.classify import operator_kind_for_value
 from qy.sem.classify import value_type
+from qy.session.pre_ss import default_literal_type
+from qy.session.pre_ss import try_default_literal
 from qy.std.imports import parse_from_import
 
 __all__ = [

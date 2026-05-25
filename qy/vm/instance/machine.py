@@ -862,8 +862,8 @@ def _sequence_to_args(value: object) -> tuple[object, ...]:
     from qy.core.syntax import QyNil as QyEmptyList
     from qy.core.syntax import chain_to_list
     from qy.core.syntax import is_chain
-    from qy.literals import default_literal_type
-    from qy.literals import try_default_literal
+    from qy.session.pre_ss import default_literal_type
+    from qy.session.pre_ss import try_default_literal
 
     def _normalize_arg(item: object) -> object:
         if isinstance(item, Symbol) and default_literal_type(item) is not None:

@@ -29,7 +29,7 @@ def test_profile_config_custom_literal_resolver():
             return 42
         if symbol.name == "pi":
             return 3.14159
-        from qy.literals import resolve_default_literal
+        from qy.session.pre_ss import resolve_default_literal
 
         return resolve_default_literal(symbol)
 
@@ -96,7 +96,7 @@ def test_profile_config_with_custom_resolver_in_standard_space():
     def custom_resolver(symbol: Symbol) -> object:
         if symbol.name == "magic":
             return 999
-        from qy.literals import resolve_default_literal
+        from qy.session.pre_ss import resolve_default_literal
 
         return resolve_default_literal(symbol)
 

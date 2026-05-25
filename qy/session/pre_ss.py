@@ -4,7 +4,7 @@
 目标：
 - 实现基于 symbol-space 的字面量层
 - 提供 lisp-ss、number-ss、string-ss 等预定义符号空间
-- 替代 qy/literals.py 的函数式 resolver
+- 提供 literal resolver 函数 (try_default_literal, resolve_default_literal, default_literal_type)
 
 当前：
 - 完整实现，作为 literal resolver 的 symbol-space 版本
@@ -19,6 +19,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from qy.core.operator_signature import TypeName
     from qy.core.symbol_space import SymbolSpace
     from qy.frontend.reader import Symbol
 
@@ -30,12 +31,15 @@ __all__ = [
     "create_pre_ssc",
     "create_string_ss",
     "create_value_ss",
+    "default_literal_type",
     "is_char_literal",
     "is_number_literal",
     "is_string_literal",
     "parse_char_literal",
     "parse_number_literal",
     "parse_string_literal",
+    "resolve_default_literal",
+    "try_default_literal",
 ]
 
 _MISSING = object()
@@ -348,3 +352,84 @@ def resolve_literal_in_pre_ss(symbol: Symbol, pre_ss: SymbolSpace) -> object:
         return result
 
     return _MISSING
+
+
+def try_default_literal(symbol: Symbol) -> object:
+    """Try to resolve a symbol as a literal value.
+
+    Returns _MISSING if the symbol cannot be resolved.
+    """
+    from qy.core.syntax import nil
+    from qy.sem.core import T
+
+    name = symbol.name
+    if name == "T" or name == "true":
+        return T
+    if name == "nil" or name == "false":
+        return nil
+    if name == "none":
+        return None
+
+    if is_char_literal(name):
+        result = parse_char_literal(name)
+        if result is not _MISSING:
+            return result
+
+    if is_string_literal(name):
+        result = parse_string_literal(name)
+        if result is not _MISSING:
+            return result
+
+    try:
+        return int(name)
+    except ValueError:
+        pass
+    try:
+        return float(name)
+    except ValueError:
+        pass
+
+    return _MISSING
+
+
+def resolve_default_literal(symbol: Symbol) -> object:
+    """Resolve a symbol as a literal, raising QyResolveError if unresolvable."""
+    value = try_default_literal(symbol)
+    if value is not _MISSING:
+        return value
+    from qy.errors import QyResolveError
+
+    raise QyResolveError(
+        f"unresolved symbol {symbol.name!r}",
+        span=symbol.span,
+        metadata={"symbol": symbol.name},
+    )
+
+
+def default_literal_type(symbol: Symbol) -> TypeName | None:
+    """Return the TypeName for a symbol if it's a literal, else None."""
+    name = symbol.name
+    if is_string_literal(name):
+        return "string"
+    if is_char_literal(name):
+        result = parse_char_literal(name)
+        if result is not _MISSING:
+            return "char"
+        return None
+    value = try_default_literal(symbol)
+    if value is _MISSING:
+        return None
+    from qy.core.syntax import nil
+    from qy.sem.core import T
+
+    if value is nil:
+        return "nil"
+    if value is T:
+        return "T"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int | float):
+        return "number"
+    if value is None:
+        return "none"
+    return None
