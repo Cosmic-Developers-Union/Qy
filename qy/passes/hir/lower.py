@@ -67,7 +67,6 @@ from qy.sem.classify import literal_type
 from qy.sem.classify import operator_kind_for_value
 from qy.sem.classify import value_type
 from qy.session.pre_ss import default_literal_type
-from qy.session.pre_ss import try_default_literal
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.std.imports import parse_from_import
@@ -285,7 +284,7 @@ def _lower_form(
 
     # 支持 tuple（向后兼容）
     if not isinstance(form, tuple):
-        return LiteralExpr(form, literal_type(form), get_span(form))
+        return LiteralExpr(_canonicalize_host_value(form), literal_type(form), get_span(form))
     if not form:
         return LiteralExpr(form, "nil", get_span(form))
 
@@ -389,6 +388,26 @@ def _form_length(form: object) -> int:
     return 0
 
 
+def _canonicalize_host_value(value: object) -> object:
+    """Wrap raw Python ``int``/``float`` host literals in ``IntValue``/``FloatValue``.
+
+    Forms constructed directly by the host (i.e. not produced by reader) may
+    contain raw ``int``/``float`` atoms. The canonical Qy runtime number is
+    ``NumberValue``, so we wrap them here at the HIR boundary. ``bool`` is left
+    intact because Python ``bool`` is its own host literal kind.
+    """
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return IntValue(value)
+    if isinstance(value, float):
+        return FloatValue(value)
+    return value
+
+
 def _lower_symbol(
     symbol: Symbol,
     scope: Scope,
@@ -399,24 +418,53 @@ def _lower_symbol(
     if (binding := scope.lookup(symbol)) is not None:
         return SymbolRefExpr(symbol, binding, symbol.span)
 
-    literal_type_name = default_literal_type(symbol)
-    if literal_type_name is not None:
-        value = try_default_literal(symbol)
-        return LiteralExpr(
-            value,
-            literal_type_name,
-            symbol.span,
-            symbol,
-        )
-
+    # ``symbol_as_data`` is set inside quote / quasiquote contexts, where the
+    # symbol must remain a syntax datum and *not* be resolved to a runtime
+    # value. Keep the LiteralExpr(symbol, "symbol") shape for that case.
     if symbol_as_data:
         return LiteralExpr(symbol, "symbol", symbol.span, symbol)
 
+    literal_type_name = default_literal_type(symbol)
+    if literal_type_name is not None:
+        # Literal symbols (numbers, chars, strings, lisp truth values) stay as
+        # ``SymbolRefExpr`` whose binding marks them as ``default-literal``.
+        # Their value is resolved at runtime by walking the symbol-space chain
+        # — number-ss / char-ss / string-ss / lisp-ss are real ssc nodes that
+        # answer ``lookup(symbol)`` directly. No HIR-time materialization.
+        binding = Binding(
+            symbol,
+            "default-literal",
+            literal_type_name,
+            owner_space=None,
+            operator_kind=None,
+            eager_arguments=True,
+            value=None,
+        )
+        return SymbolRefExpr(symbol, binding, symbol.span)
+
+    # Final fallback: the symbol is not a lexical binding and not a known
+    # literal spelling, but the runtime environment may still know how to
+    # resolve it (e.g. host injection via custom ``literal_resolver``).
+    # Emit a SymbolRefExpr so MIR uses LOAD_ENV; the lookup is deferred to
+    # ``RuntimeSpace.resolve`` which walks ssc + literal_resolver.
     try:
         resolved = context.env.resolve(symbol)
-        return LiteralExpr(resolved, value_type(resolved), symbol.span, symbol)
     except EvaluationError:
-        pass
+        resolved = None
+        env_has_binding = False
+    else:
+        env_has_binding = True
+    if env_has_binding:
+        binding = Binding(
+            symbol,
+            "default-literal",
+            value_type(resolved),
+            owner_space=None,
+            operator_kind=operator_kind_for_value(resolved),
+            eager_arguments=value_uses_eager_arguments(resolved),
+            value=resolved,
+        )
+        return SymbolRefExpr(symbol, binding, symbol.span)
 
     context.diagnostic(f"unresolved symbol {symbol.name!r}", symbol)
     return UnresolvedSymbolExpr(symbol, symbol.span)
@@ -961,7 +1009,7 @@ def _lower_assert(
     condition = (
         _lower_form(args[0], scope, context) if args else LiteralExpr(False, "bool", get_span(form))
     )
-    message = _lower_form(args[1], scope, context, symbol_as_data=True) if len(args) > 1 else None
+    message = _lower_form(args[1], scope, context) if len(args) > 1 else None
     return AssertExpr(condition, message, get_span(form), _type_of(condition))
 
 

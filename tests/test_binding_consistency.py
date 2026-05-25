@@ -95,25 +95,28 @@ def test_pre_symbol_space_chain_readable() -> None:
 
 def test_number_literal_spelling_consistent() -> None:
     """Number spelling: literal resolver, analyzer, and runtime agree."""
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+
     qy = Qy()
 
-    # Integer literal
+    # Integer literal: runtime resolves it via the number-ss into IntValue.
     analysis = analyze_source("42", qy.env)
     errors = [d for d in analysis.diagnostics if d.severity == "error"]
     assert not errors
 
     result = qy.evaluate_source("42")
-    assert result == 42
-    assert isinstance(result, int)
+    assert isinstance(result, IntValue)
+    assert result.value == 42
 
-    # Float literal
+    # Float literal: same path with FloatValue.
     analysis = analyze_source("3.14", qy.env)
     errors = [d for d in analysis.diagnostics if d.severity == "error"]
     assert not errors
 
     result = qy.evaluate_source("3.14")
-    assert result == 3.14
-    assert isinstance(result, float)
+    assert isinstance(result, FloatValue)
+    assert result.value == 3.14
 
 
 def test_string_spelling_consistent() -> None:

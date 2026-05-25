@@ -1,143 +1,142 @@
 # coding: utf-8
-"""测试 qy.stdlib.arithmetic 模块。."""
+"""测试 qy.std.arithmetic 模块的新算子语义。.
+
+新设计：``+ - * /`` 要求所有参数为同一 concrete ``NumberValue`` 类型，
+不接受 raw Python int/float；类型不一致触发 ``unsupported-operation`` effect；
+除零触发 ``divide-by-zero`` effect。
+"""
 
 from __future__ import annotations
 
 import pytest
 
 from qy.core.syntax import nil as QY_NIL
-from qy.errors import QyTypeError
+from qy.errors import QyEffectSignal
+from qy.sem.core import FloatValue
+from qy.sem.core import Int32Value
+from qy.sem.core import IntValue
 from qy.sem.core import T as QY_T
 from qy.std.arithmetic import _add
 from qy.std.arithmetic import _div
-from qy.std.arithmetic import _ensure_number
 from qy.std.arithmetic import _mul
 from qy.std.arithmetic import _num_eq
 from qy.std.arithmetic import _py_eq
 from qy.std.arithmetic import _sub
 
 
-def test_ensure_number_with_int():
-    """测试 _ensure_number 接受整数。."""
-    assert _ensure_number(42) == 42
+def _i(n: int) -> IntValue:
+    return IntValue(n)
 
 
-def test_ensure_number_with_float():
-    """测试 _ensure_number 接受浮点数。."""
-    assert _ensure_number(3.14) == 3.14
+def _f(x: float) -> FloatValue:
+    return FloatValue(x)
 
 
-def test_ensure_number_with_bool_raises_error():
-    """测试 _ensure_number 拒绝布尔值。."""
-    with pytest.raises(QyTypeError) as exc_info:
-        _ensure_number(True)
-    assert "expected number" in str(exc_info.value)
+def test_add_int_values_returns_int_value():
+    assert _add(_i(1), _i(2), _i(3), _i(4)) == _i(10)
 
 
-def test_ensure_number_with_string_raises_error():
-    """测试 _ensure_number 拒绝字符串。."""
-    with pytest.raises(QyTypeError):
-        _ensure_number("not a number")
+def test_add_floats_returns_float_value():
+    assert _add(_f(1.5), _f(2.5), _f(3.0)) == _f(7.0)
+
+
+def test_sub_single_arg_negates():
+    assert _sub(_i(5)) == _i(-5)
+
+
+def test_sub_multiple_args():
+    assert _sub(_i(10), _i(3), _i(2)) == _i(5)
+
+
+def test_mul_int_values():
+    assert _mul(_i(2), _i(3), _i(4)) == _i(24)
+
+
+def test_mul_floats():
+    assert _mul(_f(2.5), _f(4.0)) == _f(10.0)
+
+
+def test_div_single_int_value_truncates_to_zero():
+    # 1 // 4 truncates to 0 in integer space.
+    assert _div(_i(4)) == _i(0)
+
+
+def test_div_single_float_returns_reciprocal():
+    assert _div(_f(4.0)) == _f(0.25)
+
+
+def test_div_multiple_int_values():
+    assert _div(_i(20), _i(2), _i(2)) == _i(5)
+
+
+def test_div_multiple_floats():
+    assert _div(_f(10.0), _f(2.5)) == _f(4.0)
+
+
+def test_div_by_zero_raises_effect():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _div(_i(10), _i(0))
+    assert exc_info.value.effect == "divide-by-zero"
+
+
+def test_div_by_zero_float_raises_effect():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _div(_f(10.0), _f(0.0))
+    assert exc_info.value.effect == "divide-by-zero"
+
+
+def test_mixed_concrete_types_trigger_unsupported_operation():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _add(_i(1), _f(2.0))
+    assert exc_info.value.effect == "unsupported-operation"
+
+
+def test_mixed_int_and_int32_trigger_unsupported_operation():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _add(_i(1), Int32Value(2))
+    assert exc_info.value.effect == "unsupported-operation"
+
+
+def test_add_promotes_raw_python_int_to_int_value():
+    # Raw Python int is treated as a host literal and coerced to IntValue
+    # at the operator boundary, so the call still produces NumberValue.
+    assert _add(1, 2) == _i(3)
+
+
+def test_add_rejects_string():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _add(_i(1), "not a number")
+    assert exc_info.value.effect == "unsupported-operation"
 
 
 def test_py_eq_equal_values():
-    """测试 _py_eq 比较相等的值。."""
     assert _py_eq(42, 42) is QY_T
     assert _py_eq("hello", "hello") is QY_T
 
 
 def test_py_eq_unequal_values():
-    """测试 _py_eq 比较不相等的值。."""
     assert _py_eq(42, 43) is QY_NIL
     assert _py_eq("hello", "world") is QY_NIL
 
 
 def test_num_eq_with_bools():
-    """测试 _num_eq 比较布尔值使用 is。."""
     assert _num_eq(True, True) is QY_T
     assert _num_eq(False, False) is QY_T
     assert _num_eq(True, False) is QY_NIL
 
 
-def test_num_eq_with_numbers():
-    """测试 _num_eq 比较数字。."""
-    assert _num_eq(42, 42) is QY_T
-    assert _num_eq(3.14, 3.14) is QY_T
-    assert _num_eq(42, 43) is QY_NIL
+def test_num_eq_with_int_values():
+    assert _num_eq(_i(42), _i(42)) is QY_T
+    assert _num_eq(_i(42), _i(43)) is QY_NIL
 
 
-def test_num_eq_with_non_numbers():
-    """测试 _num_eq 比较非数字使用 is。."""
+def test_num_eq_mixed_concrete_types_triggers_unsupported_operation():
+    with pytest.raises(QyEffectSignal) as exc_info:
+        _num_eq(_i(1), _f(1.0))
+    assert exc_info.value.effect == "unsupported-operation"
+
+
+def test_num_eq_with_non_numbers_uses_is():
     obj = object()
     assert _num_eq(obj, obj) is QY_T
     assert _num_eq(object(), object()) is QY_NIL
-
-
-def test_add_multiple_numbers():
-    """测试 _add 加多个数字。."""
-    assert _add(1, 2, 3, 4) == 10
-
-
-def test_add_no_args():
-    """测试 _add 无参数返回 0。."""
-    assert _add() == 0
-
-
-def test_add_floats():
-    """测试 _add 加浮点数。."""
-    assert _add(1.5, 2.5, 3.0) == 7.0
-
-
-def test_sub_single_arg():
-    """测试 _sub 单参数返回负数。."""
-    assert _sub(5) == -5
-
-
-def test_sub_multiple_args():
-    """测试 _sub 多参数减法。."""
-    assert _sub(10, 3, 2) == 5
-
-
-def test_mul_multiple_numbers():
-    """测试 _mul 乘多个数字。."""
-    assert _mul(2, 3, 4) == 24
-
-
-def test_mul_no_args():
-    """测试 _mul 无参数返回 1。."""
-    assert _mul() == 1
-
-
-def test_mul_with_floats():
-    """测试 _mul 乘浮点数。."""
-    assert _mul(2.5, 4) == 10.0
-
-
-def test_div_single_arg():
-    """测试 _div 单参数返回倒数。."""
-    assert _div(4) == 0.25
-
-
-def test_div_multiple_args():
-    """测试 _div 多参数除法。."""
-    assert _div(20, 2, 2) == 5.0
-
-
-def test_div_with_floats():
-    """测试 _div 除浮点数。."""
-    assert _div(10.0, 2.5) == 4.0
-
-
-def test_arithmetic_with_invalid_type():
-    """测试算术运算拒绝无效类型。."""
-    with pytest.raises(QyTypeError):
-        _add(1, "not a number", 3)
-
-    with pytest.raises(QyTypeError):
-        _sub(10, "invalid")
-
-    with pytest.raises(QyTypeError):
-        _mul(2, None, 4)
-
-    with pytest.raises(QyTypeError):
-        _div(10, [])

@@ -237,11 +237,17 @@ class _ChainWrapper(metaclass=_ChainWrapperMeta):
 def _qy_to_python(value: object, env: Environment) -> object:
     from qy.core.syntax import Chain
     from qy.core.syntax import is_chain
+    from qy.sem.core import NumberValue
 
     if isinstance(value, HostObjectRef):
         return value.value
     if value is QY_NIL or value is QY_T:
         return value
+    # Numbers unwrap to raw Python int/float so host code can iterate /
+    # arithmetic naturally. Strings (StringValue) stay as Qy values; host
+    # code can grab ``.value`` explicitly when it needs the underlying str.
+    if isinstance(value, NumberValue):
+        return value.value
     # Handle AST Chain (from quote) - keep as Chain but convert elements
     if isinstance(value, Chain) or is_chain(value):
         # Return a wrapper that makes Chain iterable in Python

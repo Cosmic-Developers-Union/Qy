@@ -117,6 +117,23 @@ NIL = NilValue()
 T = TValue()
 
 
+_NO_PEER = object()
+
+
+def _peer_value(other: object) -> object:
+    """Extract the underlying Python value for host-level arithmetic.
+
+    Returns ``_NO_PEER`` when *other* is not a host-arithmetic peer.
+    """
+    if isinstance(other, NumberValue):
+        return other.value  # type: ignore[attr-defined]
+    if isinstance(other, bool):
+        return _NO_PEER
+    if isinstance(other, int | float):
+        return other
+    return _NO_PEER
+
+
 class ObjectValue(Value):
     """Base class for Qy runtime objects.
 
@@ -133,11 +150,110 @@ class NumberValue(ObjectValue):
     Family membership does not imply substitutability.  Concrete subclasses are
     distinct semantic types, and arithmetic is only defined by declarations that
     explicitly name those concrete types.
+
+    Python-level ``==`` is intentionally permissive: two ``NumberValue``s with
+    equal underlying values compare equal regardless of concrete type, and a
+    raw Python ``int`` / ``float`` compares equal to a ``NumberValue`` with the
+    same value. This is a host-level convenience for tests / debug output and
+    does *not* affect Qy semantics — Qy's ``=`` operator does its own
+    same-concrete-type check via ``_num_eq``.
     """
 
     type_name: ClassVar[str] = "number"
     exact: ClassVar[bool]
     fixed_width: ClassVar[bool]
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, NumberValue):
+            return self.value == other.value  # type: ignore[attr-defined]
+        if isinstance(other, bool):
+            return False
+        if isinstance(other, int | float):
+            return self.value == other  # type: ignore[attr-defined]
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-number", self.value))  # type: ignore[attr-defined]
+
+    def __int__(self) -> int:
+        return int(self.value)  # type: ignore[attr-defined]
+
+    def __float__(self) -> float:
+        return float(self.value)  # type: ignore[attr-defined]
+
+    def __index__(self) -> int:
+        v = self.value  # type: ignore[attr-defined]
+        if isinstance(v, int) and not isinstance(v, bool):
+            return v
+        raise TypeError(f"{type(self).__name__} cannot be used as an index")
+
+    def __str__(self) -> str:
+        return str(self.value)  # type: ignore[attr-defined]
+
+    def __format__(self, spec: str) -> str:
+        return format(self.value, spec)  # type: ignore[attr-defined]
+
+    def __bool__(self) -> bool:
+        return bool(self.value)  # type: ignore[attr-defined]
+
+    # Python-level numeric protocol. These are *host adapters* — they let
+    # idiomatic Python code (host operators, debug formatters, sequence
+    # indexing) treat ``NumberValue`` like its underlying Python value. They
+    # do not affect Qy semantics: the language's ``+``/``-``/``*``/``/`` go
+    # through ``qy.std.arithmetic`` and require concrete-type consistency.
+    def __add__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value + v  # type: ignore[attr-defined]
+
+    def __radd__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else v + self.value  # type: ignore[attr-defined]
+
+    def __sub__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value - v  # type: ignore[attr-defined]
+
+    def __rsub__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else v - self.value  # type: ignore[attr-defined]
+
+    def __mul__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value * v  # type: ignore[attr-defined]
+
+    def __rmul__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else v * self.value  # type: ignore[attr-defined]
+
+    def __truediv__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value / v  # type: ignore[attr-defined]
+
+    def __rtruediv__(self, other: object) -> object:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else v / self.value  # type: ignore[attr-defined]
+
+    def __neg__(self) -> object:
+        return -self.value  # type: ignore[attr-defined]
+
+    def __pos__(self) -> object:
+        return +self.value  # type: ignore[attr-defined]
+
+    def __lt__(self, other: object) -> bool:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value < v  # type: ignore[attr-defined,return-value]
+
+    def __le__(self, other: object) -> bool:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value <= v  # type: ignore[attr-defined,return-value]
+
+    def __gt__(self, other: object) -> bool:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value > v  # type: ignore[attr-defined,return-value]
+
+    def __ge__(self, other: object) -> bool:
+        v = _peer_value(other)
+        return NotImplemented if v is _NO_PEER else self.value >= v  # type: ignore[attr-defined,return-value]
 
 
 class IntegerValue(NumberValue):
@@ -146,7 +262,7 @@ class IntegerValue(NumberValue):
     exact: ClassVar[bool] = True
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class IntValue(IntegerValue):
     """Arbitrary-precision integer value."""
 
@@ -156,7 +272,7 @@ class IntValue(IntegerValue):
     fixed_width: ClassVar[bool] = False
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Int32Value(IntegerValue):
     """Signed 32-bit integer value."""
 
@@ -171,7 +287,7 @@ class Int32Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Int64Value(IntegerValue):
     """Signed 64-bit integer value."""
 
@@ -186,7 +302,7 @@ class Int64Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Int8Value(IntegerValue):
     """Signed 8-bit integer value."""
 
@@ -201,7 +317,7 @@ class Int8Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Int16Value(IntegerValue):
     """Signed 16-bit integer value."""
 
@@ -216,7 +332,7 @@ class Int16Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class UInt8Value(IntegerValue):
     """Unsigned 8-bit integer value."""
 
@@ -231,7 +347,7 @@ class UInt8Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class UInt16Value(IntegerValue):
     """Unsigned 16-bit integer value."""
 
@@ -246,7 +362,7 @@ class UInt16Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class UInt32Value(IntegerValue):
     """Unsigned 32-bit integer value."""
 
@@ -261,7 +377,7 @@ class UInt32Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class UInt64Value(IntegerValue):
     """Unsigned 64-bit integer value."""
 
@@ -276,7 +392,7 @@ class UInt64Value(IntegerValue):
         _require_range(self.value, self.min_value, self.max_value, self.type_name)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class FloatValue(NumberValue):
     """IEEE 754 binary64 floating-point value."""
 
@@ -288,7 +404,7 @@ class FloatValue(NumberValue):
     width_bits: ClassVar[int] = 64
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Float32Value(NumberValue):
     """IEEE 754 binary32 floating-point value."""
 
@@ -300,7 +416,7 @@ class Float32Value(NumberValue):
     width_bits: ClassVar[int] = 32
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Float16Value(NumberValue):
     """IEEE 754 binary16 floating-point value (half precision)."""
 
@@ -316,7 +432,7 @@ class Float16Value(NumberValue):
 Float64Value = FloatValue
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Float128Value(NumberValue):
     """IEEE 754 binary128 floating-point value (quadruple precision).
 
@@ -332,7 +448,7 @@ class Float128Value(NumberValue):
     width_bits: ClassVar[int] = 128
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class ComplexValue(NumberValue):
     """Complex number with binary64 real and imaginary parts."""
 
@@ -344,7 +460,7 @@ class ComplexValue(NumberValue):
     fixed_width: ClassVar[bool] = True
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class RationalValue(NumberValue):
     """Exact rational number made from arbitrary-precision integers."""
 

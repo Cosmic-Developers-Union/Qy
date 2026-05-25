@@ -44,13 +44,20 @@ def _ensure_sequence(value: object) -> tuple[object, ...] | list[object]:
 
 
 def _ensure_index(value: object) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
+    if isinstance(value, bool):
         raise QyTypeError(
             f"expected integer index, got {value!r}",
             span=get_span(value),
             metadata={"value": value},
         )
-    return value
+    try:
+        return value.__index__()  # type: ignore[union-attr]
+    except (AttributeError, TypeError) as exc:
+        raise QyTypeError(
+            f"expected integer index, got {value!r}",
+            span=get_span(value),
+            metadata={"value": value},
+        ) from exc
 
 
 def _is_qy_chain(value: object) -> bool:
@@ -119,10 +126,15 @@ def _is(left: object, right: object) -> object:
 
 
 def _eq(left: object, right: object) -> object:
+    from qy.sem.core import NumberValue
+    from qy.sem.core import StringValue
+
     if left is right:
         return QY_T
     if type(left) is not type(right):
         return QY_NIL
+    if isinstance(left, NumberValue | StringValue):
+        return QY_T if left.value == right.value else QY_NIL  # type: ignore[union-attr]
     if isinstance(left, int | float | str | bool | Symbol):
         return QY_T if left == right else QY_NIL
     return QY_NIL
@@ -304,18 +316,23 @@ def _set_predicate(value: object) -> object:
     return QY_T if isinstance(value, set) else QY_NIL
 
 
-def _len(value: object) -> int:
+def _len(value: object) -> object:
+    from qy.sem.core import IntValue
+    from qy.sem.core import StringValue
+
     if isinstance(value, Symbol):
-        return len(value.name)
+        return IntValue(len(value.name))
     if is_nil(value):
-        return 0
+        return IntValue(0)
     if is_chain(value):
         try:
-            return len(chain_to_list(value))
+            return IntValue(len(chain_to_list(value)))
         except (TypeError, ValueError) as e:
             raise QyTypeError("len expects a proper Qy chain", cause=e) from e
+    if isinstance(value, StringValue):
+        return IntValue(len(value.value))
     if isinstance(value, str | tuple | list | dict | set):
-        return len(value)
+        return IntValue(len(value))
     raise QyTypeError(
         f"len expects a collection, got {value!r}",
         span=get_span(value),

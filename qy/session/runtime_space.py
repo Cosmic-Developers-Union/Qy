@@ -108,9 +108,18 @@ class RuntimeSpace:
         return self._profile.resolve_literal
 
     def resolve(self, symbol: Symbol) -> object:
-        result = self._space.lookup(symbol)
-        if result is not None:
-            return result
+        """Resolve a symbol via pure ssc lookup.
+
+        The pre-ssc head already chains number-ss / char-ss / string-ss with
+        ``lookup_hook``s, so literal resolution is just a chain walk. A custom
+        ``literal_resolver`` (set via the profile) can still override; this is
+        the only escape hatch and it runs **after** the ssc miss.
+        """
+        value = self._space.lookup(symbol)
+        if value is not None:
+            return value
+        if symbol in self._space.all_bindings():
+            return None
         return self._profile.resolve_literal(symbol)
 
     def define(self, symbol: Symbol, value: object) -> object:

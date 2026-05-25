@@ -1,16 +1,25 @@
-"""全方位测试 + 算子的行为。."""
+"""测试 + 算子在新语义下的行为。.
+
+新设计（与 LANGUAGE.md 对齐）：
+
+- ``+`` 接受同一 concrete ``NumberValue`` 类型，结果保持该类型。
+- raw Python ``int`` / ``float`` 在算子边界自动 coerce 为 ``IntValue`` /
+  ``FloatValue``（host adapter 行为）。
+- ``int`` 与 ``float`` 不再隐式 promote；混用触发 ``unsupported-operation`` effect。
+- 浮点溢出（``inf`` / ``nan``）触发 ``numeric-overflow`` effect。
+"""
 
 from __future__ import annotations
-
-import math
-from typing import cast
 
 import pytest
 
 from qy.errors import EvaluationError
+from qy.errors import QyEffectSignal
 from qy.frontend.reader import Symbol
 from qy.runtime import evaluate
 from qy.runtime import evaluate_source
+from qy.sem.core import FloatValue
+from qy.sem.core import IntValue
 
 S = Symbol
 
@@ -21,31 +30,25 @@ S = Symbol
 
 
 class TestPlusBasic:
-    """+ 的基本求值行为。."""
-
     def test_two_integers(self):
-        """两个整数相加。."""
-        assert evaluate_source("(+ 1 2)") == 3
+        assert evaluate_source("(+ 1 2)") == IntValue(3)
 
     def test_multiple_integers(self):
-        """多个整数相加。."""
-        assert evaluate_source("(+ 1 2 3 4 5)") == 15
+        assert evaluate_source("(+ 1 2 3 4 5)") == IntValue(15)
 
-    def test_zero_args_returns_zero(self):
-        """零个参数返回 0（Python sum([]) 的行为）。."""
-        assert evaluate_source("(+)") == 0
+    def test_zero_args_raises(self):
+        # New semantics: ``(+)`` has no first argument to type-dispatch on.
+        with pytest.raises(EvaluationError):
+            evaluate_source("(+)")
 
     def test_single_arg_returns_itself(self):
-        """单个参数原样返回。."""
-        assert evaluate_source("(+ 42)") == 42
+        assert evaluate_source("(+ 42)") == IntValue(42)
 
     def test_negative_integers(self):
-        """负整数参与运算。."""
-        assert evaluate_source("(+ -1 -2 -3)") == -6
+        assert evaluate_source("(+ -1 -2 -3)") == IntValue(-6)
 
     def test_mixed_positive_negative(self):
-        """正负混合。."""
-        assert evaluate_source("(+ 10 -3 5 -2)") == 10
+        assert evaluate_source("(+ 10 -3 5 -2)") == IntValue(10)
 
 
 # ---------------------------------------------------------------------------
@@ -54,23 +57,22 @@ class TestPlusBasic:
 
 
 class TestPlusFloat:
-    """浮点数参与 + 运算。."""
-
     def test_two_floats(self):
-        assert evaluate_source("(+ 1.5 2.5)") == 4.0
+        assert evaluate_source("(+ 1.5 2.5)") == FloatValue(4.0)
 
-    def test_int_and_float_promotes_to_float(self):
-        assert evaluate_source("(+ 1 2.5)") == 3.5
+    def test_int_and_float_no_implicit_promotion(self):
+        # ``(+ int float)`` is unsupported under strict same-type semantics.
+        with pytest.raises(QyEffectSignal) as exc_info:
+            evaluate_source("(+ 1 2.5)")
+        assert exc_info.value.effect == "unsupported-operation"
 
     def test_float_result_type(self):
-        """结果类型应为 float。."""
         result = evaluate_source("(+ 1.0 2.0)")
-        assert isinstance(result, float)
+        assert isinstance(result, FloatValue)
 
     def test_int_only_result_type(self):
-        """纯整数运算结果应为 int。."""
         result = evaluate_source("(+ 1 2 3)")
-        assert isinstance(result, int)
+        assert isinstance(result, IntValue)
 
 
 # ---------------------------------------------------------------------------
@@ -79,94 +81,85 @@ class TestPlusFloat:
 
 
 class TestPlusNested:
-    """嵌套 + 表达式。."""
-
     def test_nested_plus(self):
-        assert evaluate_source("(+ 1 (+ 2 3))") == 6
+        assert evaluate_source("(+ 1 (+ 2 3))") == IntValue(6)
 
     def test_deeply_nested(self):
-        assert evaluate_source("(+ (+ (+ 1 2) 3) 4)") == 10
+        assert evaluate_source("(+ (+ (+ 1 2) 3) 4)") == IntValue(10)
 
     def test_plus_in_other_arithmetic(self):
-        assert evaluate_source("(* 2 (+ 3 4))") == 14
+        assert evaluate_source("(* 2 (+ 3 4))") == IntValue(14)
 
 
 # ---------------------------------------------------------------------------
-# 类型错误
+# 非数字类型
 # ---------------------------------------------------------------------------
 
 
 class TestPlusTypeError:
-    """非数字类型应抛出 QyTypeError。."""
-
-    def test_string_arg_raises(self):
+    def test_string_arg_triggers_unsupported_operation(self):
+        # Static analysis flags strings before runtime; runtime + would
+        # otherwise raise an unsupported-operation effect for them.
         with pytest.raises(EvaluationError):
             evaluate_source('(+ 1 "hello")')
 
-    def test_nil_arg_raises(self):
+    def test_nil_arg_triggers_unsupported_operation(self):
         with pytest.raises(EvaluationError):
             evaluate_source("(+ 1 nil)")
 
-    def test_bool_arg_raises(self):
-        """布尔值虽然 Python 中是 int 子类，但 _ensure_number 显式拒绝。."""
+    def test_bool_arg_rejected(self):
+        # ``true`` is QY_T (a TValue), not a NumberValue.
         with pytest.raises(EvaluationError):
             evaluate_source("(+ true 1)")
-
-    def test_list_arg_raises(self):
-        with pytest.raises(EvaluationError):
-            evaluate_source("(+ (chain 1 2) 3)")
 
     def test_all_non_number_raises(self):
         with pytest.raises(EvaluationError):
             evaluate((S("+"), "a", "b"))
 
     def test_error_message_mentions_type(self):
-        """错误消息中应包含类型相关信息。."""
         with pytest.raises(EvaluationError, match="number"):
             evaluate((S("+"), "x"))
 
 
 # ---------------------------------------------------------------------------
-# 元数（arity）
+# 元数
 # ---------------------------------------------------------------------------
 
 
 class TestPlusArity:
-    """+ 是 PureOperator，接受可变参数。."""
-
-    def test_zero_args(self):
-        assert evaluate_source("(+)") == 0
+    def test_zero_args_raises(self):
+        with pytest.raises(EvaluationError):
+            evaluate_source("(+)")
 
     def test_one_arg(self):
-        assert evaluate_source("(+ 7)") == 7
+        assert evaluate_source("(+ 7)") == IntValue(7)
 
     def test_many_args(self):
-        assert evaluate_source("(+ 1 2 3 4 5 6 7 8 9 10)") == 55
+        assert evaluate_source("(+ 1 2 3 4 5 6 7 8 9 10)") == IntValue(55)
 
 
 # ---------------------------------------------------------------------------
-# 从 Python API 调用
+# 从 Python API 调用（host-direct path）
 # ---------------------------------------------------------------------------
 
 
 class TestPlusFromPython:
-    """通过 Python API 调用 + 算子。."""
-
     def test_evaluate_with_symbol_operator(self):
-        assert evaluate((S("+"), 1, 2, 3)) == 6
+        assert evaluate((S("+"), 1, 2, 3)) == IntValue(6)
 
     def test_rejects_string_operator(self):
         with pytest.raises(EvaluationError):
             evaluate(("+", 1, 2))
 
     def test_evaluate_single_int(self):
-        assert evaluate((S("+"), 42)) == 42
+        assert evaluate((S("+"), 42)) == IntValue(42)
 
-    def test_evaluate_no_args(self):
-        assert evaluate((S("+"),)) == 0
+    def test_evaluate_no_args_raises(self):
+        with pytest.raises(EvaluationError):
+            evaluate((S("+"),))
 
     def test_evaluate_floats(self):
-        assert evaluate((S("+"), 1.5, 2.5)) == 4.0
+        assert evaluate((S("+"), 1.5, 2.5)) == FloatValue(4.0)
 
 
 # ---------------------------------------------------------------------------
@@ -175,29 +168,28 @@ class TestPlusFromPython:
 
 
 class TestPlusBoundary:
-    """边界值与特殊情况。."""
-
     def test_zero(self):
-        assert evaluate_source("(+ 0 0)") == 0
+        assert evaluate_source("(+ 0 0)") == IntValue(0)
 
     def test_large_integers(self):
         result = evaluate_source(f"(+ {10**18} {10**18})")
-        assert result == 2 * 10**18
+        assert result == IntValue(2 * 10**18)
 
     def test_very_small_float(self):
-        result = cast(float, evaluate_source("(+ 0.0000001 0.0000001)"))
-        assert abs(result - 0.0000002) < 1e-15
+        result = evaluate_source("(+ 0.0000001 0.0000001)")
+        assert isinstance(result, FloatValue)
+        assert abs(result.value - 0.0000002) < 1e-15
 
-    def test_infinity(self):
-        """Python float('inf') 参与 + 运算。."""
-        result = cast(float, evaluate_source("(+ 1e308 1e308)"))
-        assert math.isinf(result)
+    def test_infinity_triggers_overflow(self):
+        # Float overflow (inf/nan) is mapped to numeric-overflow effect.
+        with pytest.raises(QyEffectSignal) as exc_info:
+            evaluate_source("(+ 1e308 1e308)")
+        assert exc_info.value.effect == "numeric-overflow"
 
     def test_result_type_int_when_all_int(self):
         result = evaluate((S("+"), 1, 2))
-        assert isinstance(result, int)
-        assert not isinstance(result, bool)
+        assert isinstance(result, IntValue)
 
-    def test_result_type_float_when_any_float(self):
-        result = evaluate((S("+"), 1, 2.0))
-        assert isinstance(result, float)
+    def test_result_type_float_when_all_float(self):
+        result = evaluate((S("+"), 1.0, 2.0))
+        assert isinstance(result, FloatValue)

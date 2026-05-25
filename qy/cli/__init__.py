@@ -32,6 +32,29 @@ from qy.std.profile import format_operator_docs
 from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_source
 
+
+def _is_definition_artifact(value: object) -> bool:
+    """Skip top-level results coming from binding-form evaluation.
+
+    ``defun`` / ``define`` / ``from`` / ``module`` and the like emit a
+    BytecodeFunctionValue / StandardModule / EffectDefinition / MacroDefinition
+    as a side product of their lowering. They are not user-visible expression
+    values and the CLI ``run`` command should not print them.
+    """
+    from qy.macro import MacroDefinition
+    from qy.sem.runtime import EffectDefinition
+    from qy.std.module import StandardModule
+    from qy.vm.bytecode import BytecodeFunctionValue
+
+    return (
+        isinstance(
+            value,
+            BytecodeFunctionValue | StandardModule | EffectDefinition | MacroDefinition,
+        )
+        or value is None
+    )
+
+
 INSTALL_CLI_MESSAGE = (
     "Qy CLI requires the optional cli dependency. Install with: pip install 'QyLang[cli]'"
 )
@@ -117,7 +140,12 @@ def create_app() -> Any:
                 from qy.std.testhost import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
-            typer.echo(format_value(qy.evaluate_file(path)))
+            source = path.read_text(encoding="utf-8")
+            results = qy.evaluate_program(source, source_name=str(path))
+            for value in results:
+                if _is_definition_artifact(value):
+                    continue
+                typer.echo(format_value(value))
         except QyError as e:
             typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
             raise typer.Exit(1) from e

@@ -108,10 +108,11 @@ def test_create_string_ss():
 
 
 def test_create_value_ss():
-    """Test value-ss creation."""
+    """Test value-ss creation: returns the head of the number/char/string-ss chain."""
     value = create_value_ss()
 
-    assert value.name == "value-ss"
+    # value-ss is now a three-layer chain whose head is string-ss.
+    assert value.name == "string-ss"
     assert not value.writable
 
 
@@ -119,7 +120,8 @@ def test_create_literal_ss():
     """Test literal-ss creation with all literal types."""
     literal = create_literal_ss()
 
-    assert literal.name == "value-ss"
+    # literal-ss exposes the head of the value-ss chain (string-ss).
+    assert literal.name == "string-ss"
     assert not literal.writable
     # Should have lisp-ss in parent chain
     assert literal.lookup(S("T")) is QY_T
@@ -233,9 +235,11 @@ def test_pre_ssc_chain_structure():
     frames = pre_ssc.chain().frames()
     frame_names = [f.name for f in frames]
 
-    # Should have: lisp-ss -> value-ss -> stdlib -> pre-ssc-head
+    # Should have: lisp-ss -> number-ss -> char-ss -> string-ss -> stdlib -> pre-ssc-head
     assert "lisp-ss" in frame_names
-    assert "value-ss" in frame_names
+    assert "number-ss" in frame_names
+    assert "char-ss" in frame_names
+    assert "string-ss" in frame_names
     assert "stdlib" in frame_names
     assert "pre-ssc-head" in frame_names
 
@@ -270,11 +274,11 @@ def test_string_ss_with_parent():
 
 
 def test_value_ss_with_parent():
-    """Test value-ss creation with parent."""
+    """Test value-ss creation with parent: parent reachable through chain."""
     parent = SymbolSpace({S("x"): 10}, name="parent")
     value = create_value_ss(parent=parent)
 
-    assert value.parent is parent
+    # value-ss is now a 3-layer chain; its tail (number-ss) parents `parent`.
     assert value.lookup(S("x")) == 10
 
 

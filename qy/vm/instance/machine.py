@@ -245,52 +245,6 @@ class RegisterVirtualMachine:
                 dest, callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
                 callee = frame.registers[_register(callee_register)]
-                if isinstance(callee, PureOperator) and callee.name == "/" and len(args) >= 2:
-                    for divisor in args[1:]:
-                        if isinstance(divisor, bool):
-                            continue
-                        if isinstance(divisor, int | float) and divisor == 0:
-                            saved_registers = tuple(frame.registers)
-                            saved_env = frame.env
-                            saved_pc = frame.pc
-
-                            async def _resume_div_by_zero(
-                                value: object,
-                                _saved_regs=saved_registers,
-                                _saved_env=saved_env,
-                                _saved_pc=saved_pc,
-                            ) -> object:
-                                regs = list(_saved_regs)
-                                regs[_register(dest)] = value
-                                resume_frame = _Frame(
-                                    frame.function_value,
-                                    frame.function,
-                                    _saved_pc,
-                                    regs,
-                                    _saved_env,
-                                    list(frame.parents),
-                                    list(frame.results),
-                                )
-                                while resume_frame.pc < len(resume_frame.function.instructions):
-                                    inst = resume_frame.function.instructions[resume_frame.pc]
-                                    resume_frame.pc += 1
-                                    result = await self._execute_instruction(resume_frame, inst)
-                                    if isinstance(result, _FrameResult):
-                                        return result.value
-                                    if isinstance(result, _Frame):
-                                        resume_frame = result
-                                return None
-
-                            continuation = QyContinuation(
-                                "divide-by-zero", True, _resume_div_by_zero
-                            )
-                            raise QyEffectSignal(
-                                "divide-by-zero",
-                                0,
-                                continuation,
-                                resumable=True,
-                                span=instruction.span,
-                            )
                 frame.registers[_register(dest)] = await self._call(
                     callee,
                     args,

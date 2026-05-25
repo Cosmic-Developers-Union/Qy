@@ -16,10 +16,17 @@ __all__ = ["format_value"]
 
 
 def format_value(value: object) -> str:
+    from qy.sem.core import NumberValue
+    from qy.sem.core import StringValue
+
     if value is nil:
         return "nil"
     if value is T:
         return "T"
+    if isinstance(value, NumberValue):
+        return str(value)
+    if isinstance(value, StringValue):
+        return value.value
     if isinstance(value, Chain):
         return _format_cons(value)
     # Handle AST Chain
@@ -27,7 +34,9 @@ def format_value(value: object) -> str:
         return _format_chain(value)
     if isinstance(value, str):
         return value
-    if isinstance(value, Symbol | tuple | int | float | bool) or value is None:
+    if isinstance(value, tuple):
+        return f"({' '.join(format_value(item) for item in value)})"
+    if isinstance(value, Symbol | int | float | bool) or value is None:
         try:
             return write_tuple(cast(TupleForm, value))
         except TypeError:

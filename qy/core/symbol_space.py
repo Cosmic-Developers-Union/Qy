@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from collections.abc import Iterable
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -25,11 +26,18 @@ from dataclasses import dataclass
 from qy.frontend.reader import Symbol
 
 __all__ = [
+    "MISSING",
     "BindingSlot",
     "ChainFrame",
+    "LookupHook",
     "SymbolSpace",
     "SymbolSpaceChain",
 ]
+
+
+MISSING = object()
+_MISSING = MISSING  # internal alias kept for clarity in this module
+LookupHook = Callable[[Symbol], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +102,7 @@ class SymbolSpace:
         name: str = "",
         writable: bool = True,
         lazy: bool = False,
+        lookup_hook: LookupHook | None = None,
     ) -> None:
         self._bindings: dict[Symbol, object] = dict(bindings or {})
         self._parent = parent
@@ -101,18 +110,25 @@ class SymbolSpace:
         self._name = name
         self._writable = writable
         self._lazy = lazy
+        self._lookup_hook = lookup_hook
         self._cache: dict[object, object] = parent._cache if parent is not None else {}
 
     def lookup(self, symbol: Symbol) -> object | None:
         """Look up a symbol in this space and its parent chain.
 
-        Returns the bound value if found, None if not found. Does not perform
-        literal resolution - that's the responsibility of the caller.
+        Returns the bound value if found, None if not found. Each space may
+        provide a ``lookup_hook`` that gets a chance to resolve names dynamically
+        before falling through to the parent chain (used by number-ss, char-ss,
+        string-ss to parse literal symbols).
         """
         if symbol in self._bindings:
             return self._bindings[symbol]
         if symbol in self._hidden:
             return self._hidden[symbol]
+        if self._lookup_hook is not None:
+            value = self._lookup_hook(symbol)
+            if value is not _MISSING:
+                return value
         if self._parent is not None:
             return self._parent.lookup(symbol)
         return None
@@ -178,9 +194,17 @@ class SymbolSpace:
         name: str = "",
         writable: bool = True,
         lazy: bool = False,
+        lookup_hook: LookupHook | None = None,
     ) -> SymbolSpace:
         """Create a child symbol-space with this space as parent."""
-        return SymbolSpace(bindings, self, name=name, writable=writable, lazy=lazy)
+        return SymbolSpace(
+            bindings,
+            self,
+            name=name,
+            writable=writable,
+            lazy=lazy,
+            lookup_hook=lookup_hook,
+        )
 
     def chain(self) -> SymbolSpaceChain:
         """Return the symbol-space-chain for this space."""

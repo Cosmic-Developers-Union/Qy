@@ -114,7 +114,9 @@ def test_dump_lir_shows_function_header_and_instructions():
 
     assert "fn#0 <main>() regs=" in rendered
     assert "[main]" in rendered
-    assert "LOAD_HOST" in rendered
+    # Literals (number ``1``, ``2`` and the operator ``+``) are now resolved
+    # at runtime via the symbol-space chain; LIR uses LOAD_ENV for them.
+    assert "LOAD_ENV" in rendered
 
 
 def test_dump_lir_shows_jump_if_false_for_cond():

@@ -9,7 +9,6 @@ from qy.ir import DefeffectExpr
 from qy.ir import DefineExpr
 from qy.ir import LambdaExpr
 from qy.ir import LetExpr
-from qy.ir import LiteralExpr
 from qy.ir import QuoteExpr
 from qy.ir import SymbolRefExpr
 from qy.passes.hir.lower import lower_source
@@ -21,8 +20,13 @@ def test_lowering_keeps_default_literals_after_symbol_resolution():
     assert program.ok
     call = program.body[0]
     assert isinstance(call, CallExpr)
-    assert all(isinstance(arg, LiteralExpr) for arg in call.args)
-    assert [arg.value for arg in call.args if isinstance(arg, LiteralExpr)] == [1, 2]
+    # New semantics: number literals are SymbolRefExpr with a default-literal
+    # binding; their value is resolved at runtime via the symbol-space chain
+    # (number-ss). HIR no longer materialises literal values.
+    assert all(isinstance(arg, SymbolRefExpr) for arg in call.args)
+    refs = [arg for arg in call.args if isinstance(arg, SymbolRefExpr)]
+    assert [ref.symbol.name for ref in refs] == ["1", "2"]
+    assert all(ref.binding.source == "default-literal" for ref in refs)
 
 
 def test_lexical_binding_wins_over_default_literal_symbol():
@@ -37,15 +41,16 @@ def test_lexical_binding_wins_over_default_literal_symbol():
     rebound_one = call.args[0]
     default_two = call.args[1]
 
+    # Both arguments are SymbolRefExpr now; the rebound ``1`` carries the
+    # let-binding source while the un-rebound ``2`` falls through to the
+    # default-literal binding.
     assert isinstance(rebound_one, SymbolRefExpr)
     assert rebound_one.symbol.name == "1"
     assert rebound_one.binding.source == "let-binding"
-    assert rebound_one.type_name == "number"
 
-    assert isinstance(default_two, LiteralExpr)
-    assert default_two.value == 2
-    assert default_two.source_symbol is not None
-    assert default_two.source_symbol.name == "2"
+    assert isinstance(default_two, SymbolRefExpr)
+    assert default_two.symbol.name == "2"
+    assert default_two.binding.source == "default-literal"
 
 
 def test_quote_lowers_to_raw_ast_boundary():

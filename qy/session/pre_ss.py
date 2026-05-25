@@ -23,6 +23,8 @@ if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
     from qy.frontend.reader import Symbol
 
+from qy.core.symbol_space import MISSING as _MISSING
+
 __all__ = [
     "create_char_ss",
     "create_lisp_ss",
@@ -41,8 +43,6 @@ __all__ = [
     "resolve_default_literal",
     "try_default_literal",
 ]
-
-_MISSING = object()
 
 
 def is_string_literal(name: str) -> bool:
@@ -194,16 +194,27 @@ def create_lisp_ss() -> SymbolSpace:
 def create_number_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """Create the number-ss that resolves numeric literals.
 
-    This symbol-space provides dynamic resolution of number literals by
-    implementing a custom lookup that parses symbol names as numbers.
+    The number-ss has no static bindings; it resolves any symbol whose
+    spelling is a number literal (e.g. ``1``, ``-3``, ``2.5``) at lookup time
+    via a ``lookup_hook``. This keeps literal resolution a real ssc walk:
+    the runtime sees ``(+ 1 2)``, walks the chain, finds ``1`` and ``2`` in
+    number-ss, and gets back ``IntValue(1)`` / ``IntValue(2)`` without any
+    HIR-time materialization.
     """
     from qy.core.symbol_space import SymbolSpace
+
+    def _resolve(symbol: Symbol) -> object:
+        result = parse_number_literal(symbol.name)
+        if result is _MISSING:
+            return _MISSING
+        return result
 
     return SymbolSpace(
         {},
         parent=parent,
         name="number-ss",
         writable=False,
+        lookup_hook=_resolve,
     )
 
 
@@ -211,146 +222,117 @@ def create_char_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     r"""Create the char-ss that resolves character literals.
 
     Char literal syntax: #\\a, #\\space, #\\newline, #\\uXXXX, etc.
-    Resolution happens in the literal resolver layer.
+    Resolution happens via the symbol-space ``lookup_hook``.
     """
     from qy.core.symbol_space import SymbolSpace
+
+    def _resolve(symbol: Symbol) -> object:
+        if not is_char_literal(symbol.name):
+            return _MISSING
+        result = parse_char_literal(symbol.name)
+        if result is _MISSING:
+            return _MISSING
+        return result
 
     return SymbolSpace(
         {},
         parent=parent,
         name="char-ss",
         writable=False,
+        lookup_hook=_resolve,
     )
 
 
 def create_string_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """Create the string-ss that resolves string literals.
 
-    This symbol-space provides dynamic resolution of string literals by
-    implementing a custom lookup that parses symbol names as strings.
+    String literals are symbols whose spelling starts with ``"`` or ``r"``.
+    The lookup hook parses them on demand.
     """
     from qy.core.symbol_space import SymbolSpace
 
-    # String-ss is a virtual space that dynamically resolves string symbols
-    # We create an empty space with a parent, and the actual resolution
-    # happens in the literal resolver layer
+    def _resolve(symbol: Symbol) -> object:
+        if not is_string_literal(symbol.name):
+            return _MISSING
+        result = parse_string_literal(symbol.name)
+        if result is _MISSING:
+            return _MISSING
+        return result
+
     return SymbolSpace(
         {},
         parent=parent,
         name="string-ss",
         writable=False,
+        lookup_hook=_resolve,
     )
 
 
 def create_value_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
-    """Create a combined value-ss that includes number-ss, char-ss, and string-ss.
+    """Build the value-ss layers: number-ss → char-ss → string-ss.
 
-    This is a convenience function that creates a symbol-space chain
-    containing numeric, character, and string literal resolution.
+    Returns the head of a 3-node ssc segment that resolves any literal symbol
+    spelling. The order is arbitrary because the three hooks are disjoint.
     """
-    from qy.core.symbol_space import SymbolSpace
-
-    return SymbolSpace(
-        {},
-        parent=parent,
-        name="value-ss",
-        writable=False,
-    )
+    number = create_number_ss(parent=parent)
+    char = create_char_ss(parent=number)
+    string = create_string_ss(parent=char)
+    return string
 
 
 def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """Create the complete literal-ss with all literal types.
 
-    This combines lisp-ss, number-ss, and string-ss into a single
-    symbol-space for literal resolution.
+    Chain: parent (optional) → lisp-ss → number-ss → char-ss → string-ss.
     """
-    if parent is not None:
-        # Chain: parent -> lisp-ss -> literal-ss
-        from qy.core.syntax import nil
-        from qy.frontend.reader import Symbol
-        from qy.sem.core import T
+    from qy.core.syntax import nil
+    from qy.frontend.reader import Symbol
+    from qy.sem.core import T
 
+    if parent is None:
+        lisp = create_lisp_ss()
+    else:
         lisp = parent.child(name="lisp-ss", writable=False)
         lisp.define(Symbol("T"), T)
         lisp.define(Symbol("nil"), nil)
         lisp.define(Symbol("true"), T)
         lisp.define(Symbol("false"), nil)
         lisp.define(Symbol("none"), None)
-    else:
-        lisp = create_lisp_ss()
     return create_value_ss(parent=lisp)
 
 
 def create_pre_ssc(stdlib_space: SymbolSpace | None = None) -> SymbolSpace:
-    """Create the pre-symbol-space-chain (pre-ssc).
+    """Build the pre-symbol-space-chain (pre-ssc).
 
-    This creates the foundational symbol-space chain that includes:
-    1. meta-symbol-space (implicit root)
-    2. lisp-ss (T, nil, true, false, none)
-    3. value-ss (number, char, and string literal resolution)
-    4. stdlib-space (optional standard library bindings)
+    Layered, parent-first:
+      lisp-ss → number-ss → char-ss → string-ss → [stdlib] → pre-ssc-head
 
-    The pre-ssc serves as the base for all user code evaluation.
+    Each layer has a single responsibility. Literal resolution is a real
+    chain walk, not a fallback after the chain is exhausted.
     """
-    # Start with lisp-ss as the foundation
     lisp = create_lisp_ss()
+    literals = create_value_ss(parent=lisp)
 
-    # Add value-ss for literal resolution
-    value = create_value_ss(parent=lisp)
-
-    # Add stdlib if provided
     if stdlib_space is not None:
-        # Chain: lisp -> value -> stdlib -> writable-head
-        stdlib_child = value.child(
+        stdlib_child = literals.child(
             bindings=stdlib_space.local_bindings(), name="stdlib", writable=False
         )
         return stdlib_child.child(name="pre-ssc-head", writable=True)
 
-    return value.child(name="pre-ssc-head", writable=True)
+    return literals.child(name="pre-ssc-head", writable=True)
 
 
 def resolve_literal_in_pre_ss(symbol: Symbol, pre_ss: SymbolSpace) -> object:
-    """Resolve a symbol as a literal using pre-symbol-space.
+    """Resolve a symbol via the pre-ssc.
 
-    This function implements the literal resolution logic that works with
-    the pre-ss architecture. It first checks the symbol-space chain, then
-    attempts to parse the symbol name as a literal.
-
-    Returns _MISSING if the symbol cannot be resolved as a literal.
+    Pure ssc lookup — every hook (number-ss / char-ss / string-ss) lives on
+    the chain itself. Returns the bound value or ``_MISSING``.
     """
-    # First try normal lookup in the symbol-space chain
-    # Note: lookup returns None for both "not found" and "bound to None"
-    # We need to check if the symbol is actually bound
-    if pre_ss.has_local_binding(symbol) or (
-        pre_ss.parent and pre_ss.parent.lookup(symbol) is not None
-    ):
-        return pre_ss.lookup(symbol)
-
-    # Check if it's bound to None specifically
     value = pre_ss.lookup(symbol)
-    if value is None:
-        # Could be bound to None or not found - check all bindings
-        all_bindings = pre_ss.all_bindings()
-        if symbol in all_bindings:
-            return None  # Actually bound to None
-
-    # Try char literal
-    if is_char_literal(symbol.name):
-        result = parse_char_literal(symbol.name)
-        if result is not _MISSING:
-            return result
-
-    # Try string literal
-    if is_string_literal(symbol.name):
-        result = parse_string_literal(symbol.name)
-        if result is not _MISSING:
-            return result
-
-    # Try number literal
-    result = parse_number_literal(symbol.name)
-    if result is not _MISSING:
-        return result
-
+    if value is not None:
+        return value
+    if symbol in pre_ss.all_bindings():
+        return None
     return _MISSING
 
 
