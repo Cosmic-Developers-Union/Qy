@@ -242,29 +242,7 @@ def create_app() -> Any:
         if has_errors:
             raise typer.Exit(1)
 
-    @app.command("fmt")
-    def format_command(
-        path: Annotated[Path, typer.Argument(help="Qy source file to format.")],
-        write: Annotated[
-            bool,
-            typer.Option("--write", "-w", help="Rewrite the file in place."),
-        ] = False,
-    ) -> None:
-        """Format Qy source code with syntax checking."""
-        try:
-            source = path.read_text(encoding="utf-8")
-            formatted = format_source(source)
-            if write:
-                path.write_text(formatted, encoding="utf-8")
-                typer.secho(f"formatted {path}", fg=typer.colors.GREEN)
-                return
-            typer.echo(formatted, nl=False)
-        except ReaderSyntaxError as e:
-            typer.secho(f"{path}: syntax error: {e}", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1) from e
-        except OSError as e:
-            typer.secho(f"{path}: {e}", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1) from e
+    # fmt command is registered below via qy.cli.commands.fmt
 
     @app.command("ast")
     def ast_command(
@@ -303,15 +281,7 @@ def create_app() -> Any:
             forms = read(source)
             typer.echo(dump_program(forms))
 
-    @app.command("check")
-    def check_command(
-        path: Annotated[Path, typer.Argument(help="Qy source file to check.")],
-    ) -> None:
-        _check_path(path)
-
-    @app.command("typecheck")
-    def typecheck_command(path: Annotated[Path, typer.Argument(help="Alias for check.")]) -> None:
-        _check_path(path)
+    # check / typecheck commands are registered below via qy.cli.commands.check
 
     @app.command("operators")
     def operators_command() -> None:
@@ -364,19 +334,16 @@ def create_app() -> Any:
         if has_errors:
             raise typer.Exit(1)
 
-    @app.command("lsp")
-    def lsp_command(stdio: bool = typer.Option(False, "--stdio", hidden=True)) -> None:
-        try:
-            from qy.lsp import main as lsp_main  # ty: ignore[unresolved-import]
-        except ModuleNotFoundError as e:
-            if e.name in {"pygls", "lsprotocol"}:
-                typer.secho(INSTALL_LSP_MESSAGE, fg=typer.colors.RED, err=True)
-                raise typer.Exit(2) from e
-            raise
-        raise typer.Exit(lsp_main())
+    # lsp command is registered below via qy.cli.commands.lsp
 
+    from qy.cli.commands import check as check_cmd
+    from qy.cli.commands import fmt as fmt_cmd
+    from qy.cli.commands import lsp as lsp_cmd
     from qy.cli.commands.pkg import create_pkg_app
 
+    fmt_cmd.register(app)
+    check_cmd.register(app)
+    lsp_cmd.register(app)
     app.add_typer(create_pkg_app(), name="pkg")
 
     return app
@@ -513,19 +480,6 @@ qy_completion_commands() {{
 }}
 """
     raise ValueError("unsupported shell; expected one of: bash, zsh, sh")
-
-
-def _check_path(path: Path) -> None:
-    import typer
-
-    analysis = analyze_source(path.read_text(encoding="utf-8"))
-    for diagnostic in analysis.diagnostics:
-        typer.secho(
-            _format_diagnostic(path, diagnostic), fg=_diagnostic_color(diagnostic), err=True
-        )
-    if not analysis.ok:
-        raise typer.Exit(1)
-    typer.secho(f"{path}: ok", fg=typer.colors.GREEN)
 
 
 def _read_debug_source(target: str) -> tuple[str, str]:
