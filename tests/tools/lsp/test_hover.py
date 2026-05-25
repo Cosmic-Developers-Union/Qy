@@ -7,7 +7,7 @@ def test_hover_for_source_builtin():
     source = "(+ 1 2)"
     hover = hover_for_source(source, 0, 1)
     assert hover is not None
-    assert "+" in hover.contents.value
+    assert "+" in hover.contents.value  # ty: ignore[unresolved-attribute]
 
 
 def test_hover_for_source_undefined():

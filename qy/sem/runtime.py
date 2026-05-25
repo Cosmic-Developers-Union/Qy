@@ -11,6 +11,7 @@ implementation-specific helpers.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -244,7 +245,7 @@ def _is_self_tail_call(expression: object, fn: UserFunction, env: Environment) -
 async def _evaluate_values(
     expressions: tuple[object, ...],
     env: Environment,
-    then: object,
+    then: Callable[[tuple[object, ...]], object],
 ) -> object:
     from qy.errors import QyEffectSignal
     from qy.vm.instance.frame import _await_if_needed
@@ -266,7 +267,7 @@ def _compose_values(
     index: int,
     values: tuple[object, ...],
     env: Environment,
-    then: object,
+    then: Callable[[tuple[object, ...]], object],
 ) -> None:
     from qy.errors import QyEffectSignal
     from qy.vm.instance.frame import QyContinuation

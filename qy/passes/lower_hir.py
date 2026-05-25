@@ -903,7 +903,10 @@ def _lower_handle(
 
 def _is_on_form(form: object) -> bool:
     """检查 form 是否为 (on effect-name (arg k) body...) 形式."""
-    return is_chain(form) and isinstance(car(form), Symbol) and car(form).name == "on"
+    if not is_chain(form):
+        return False
+    head = car(form)
+    return isinstance(head, Symbol) and head.name == "on"
 
 
 def _auto_declare_on_effects(

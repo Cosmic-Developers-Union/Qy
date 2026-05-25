@@ -157,7 +157,7 @@ def test_user_function_immutable():
     )
 
     with pytest.raises(AttributeError):
-        func.name = Symbol("new-name")  # ty: ignore[misc]
+        func.name = Symbol("new-name")  # ty: ignore[invalid-assignment]
 
 
 def test_effect_definition_immutable():
@@ -165,7 +165,7 @@ def test_effect_definition_immutable():
     effect = EffectDefinition(name=Symbol("test-effect"))
 
     with pytest.raises(AttributeError):
-        effect.resumable = False  # ty: ignore[misc]
+        effect.resumable = False  # ty: ignore[invalid-assignment]
 
 
 def test_component_operator_immutable():
@@ -174,4 +174,4 @@ def test_component_operator_immutable():
     comp = ComponentOperator(operators=(Symbol("op1"),), closure=env)
 
     with pytest.raises(AttributeError):
-        comp.operators = (Symbol("op2"),)  # ty: ignore[misc]
+        comp.operators = (Symbol("op2"),)  # ty: ignore[invalid-assignment]

@@ -57,6 +57,7 @@ __all__ = [
 
 BindingSource = Literal[
     "define",
+    "defeffect",
     "defun",
     "lambda-param",
     "let-binding",

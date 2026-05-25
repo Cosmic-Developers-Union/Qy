@@ -158,7 +158,7 @@ def test_compile_simple_program():
     source = "(define x 42)"
 
     # Compile through the pipeline
-    program_ir = qy.lower(source)
+    program_ir = qy.lower_source(source)
     bytecode_program = qy.compile_bytecode(program_ir)
 
     assert isinstance(bytecode_program, BytecodeProgram)

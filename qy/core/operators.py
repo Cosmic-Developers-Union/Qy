@@ -50,7 +50,7 @@ class PureOperator:
 @dataclass(frozen=True, slots=True)
 class ScopeOperator:
     name: str
-    func: Callable[[tuple[object, ...], Environment], object]
+    func: Callable[..., object]
     doc: str = ""
     signature: OperatorSignature | None = None
 
@@ -68,7 +68,7 @@ class ScopeOperator:
 @dataclass(frozen=True, slots=True)
 class ControlOperator:
     name: str
-    func: Callable[[tuple[object, ...], Environment], object]
+    func: Callable[..., object]
     doc: str = ""
     signature: OperatorSignature | None = None
 
@@ -86,7 +86,7 @@ class ControlOperator:
 @dataclass(frozen=True, slots=True)
 class EffectOperator:
     name: str
-    func: Callable[[tuple[object, ...], Environment], object]
+    func: Callable[..., object]
     doc: str = ""
     signature: OperatorSignature | None = None
 
@@ -104,7 +104,7 @@ class EffectOperator:
 @dataclass(frozen=True, slots=True)
 class MetaOperator:
     name: str
-    func: Callable[[tuple[object, ...], Environment], object]
+    func: Callable[..., object]
     doc: str = ""
     signature: OperatorSignature | None = None
 

@@ -323,7 +323,7 @@ def create_app() -> Any:
     @app.command("lsp")
     def lsp_command(stdio: bool = typer.Option(False, "--stdio", hidden=True)) -> None:
         try:
-            from qy.lsp import main as lsp_main
+            from qy.lsp import main as lsp_main  # ty: ignore[unresolved-import]
         except ModuleNotFoundError as e:
             if e.name in {"pygls", "lsprotocol"}:
                 typer.secho(INSTALL_LSP_MESSAGE, fg=typer.colors.RED, err=True)

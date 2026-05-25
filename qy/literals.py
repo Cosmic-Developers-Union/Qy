@@ -25,6 +25,7 @@ TypeName = Literal[
     "any",
     "bool",
     "chain",
+    "char",
     "dict",
     "effect",
     "function",

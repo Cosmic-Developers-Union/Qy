@@ -29,7 +29,7 @@ def test_host_object_ref_wraps_any_object():
         return 42
 
     func_ref = HostObjectRef(value=func)
-    assert func_ref.value() == 42
+    assert func_ref.value() == 42  # ty: ignore[call-non-callable]
 
     # 包装类实例
     class TestClass:
@@ -38,7 +38,7 @@ def test_host_object_ref_wraps_any_object():
 
     obj = TestClass(10)
     obj_ref = HostObjectRef(value=obj)
-    assert obj_ref.value.x == 10
+    assert obj_ref.value.x == 10  # ty: ignore[unresolved-attribute]
 
 
 def test_host_object_ref_equality():
@@ -99,13 +99,13 @@ def test_tail_call_immutable():
     tail_call = TailCall(function=test_func, args=(42,))
 
     try:
-        tail_call.function = lambda x: x + 1  # ty: ignore[misc]
+        tail_call.function = lambda x: x + 1  # ty: ignore[invalid-assignment]
         raise AssertionError("应该抛出 AttributeError")
     except AttributeError:
         pass
 
     try:
-        tail_call.args = (100,)  # ty: ignore[misc]
+        tail_call.args = (100,)  # ty: ignore[invalid-assignment]
         raise AssertionError("应该抛出 AttributeError")
     except AttributeError:
         pass
@@ -152,7 +152,7 @@ def test_host_object_ref_immutable():
     ref = HostObjectRef(value=obj)
 
     try:
-        ref.value = {"new": "value"}  # ty: ignore[misc]
+        ref.value = {"new": "value"}  # ty: ignore[invalid-assignment]
         raise AssertionError("应该抛出 AttributeError")
     except AttributeError:
         pass

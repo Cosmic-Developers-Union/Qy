@@ -20,6 +20,7 @@ from qy.core.syntax import nil as QY_NIL
 from qy.environment import Environment
 from qy.environment import standard_environment
 from qy.errors import QyArityError
+from qy.errors import QyError
 from qy.errors import QyResolveError
 from qy.evaluator import evaluate
 from qy.evaluator import evaluate_async
@@ -688,7 +689,7 @@ def test_evaluate_source_with_syntax_error():
     """测试 evaluate_source 处理语法错误。."""
     source = "(+ 1 2"  # 缺少右括号
 
-    with pytest.raises(Exception):  # 可能是 ParseError 或其他错误
+    with pytest.raises(QyError):
         evaluate_source(source)
 
 
@@ -700,7 +701,7 @@ def test_evaluate_program_preserves_order():
     """
     # 这应该失败，因为 define 不能重新绑定
     # 但如果成功，应该按顺序执行
-    with pytest.raises(Exception):  # 预期会失败
+    with pytest.raises(QyError):
         evaluate_program(source)
 
 

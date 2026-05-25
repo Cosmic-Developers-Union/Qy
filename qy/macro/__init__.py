@@ -115,15 +115,14 @@ class MacroDefinition:
         return await RegisterVirtualMachine(bytecode, local_env).evaluate()
 
 
-# Re-export from submodules
-from qy.macro.expand import MacroEffectPolicy
-from qy.macro.expand import MacroExpansion
-from qy.macro.expand import MacroExpansionOptions
-from qy.macro.expand import macroexpand
-from qy.macro.expand import macroexpand_async
-from qy.macro.expand import macroexpand_source
-from qy.macro.expand import macroexpand_source_async
-from qy.macro.hygiene import MacroRename
-from qy.macro.scope import MacroScope
-from qy.macro.trace import MacroExpansionTrace
-from qy.macro.trace import MacroSourceMapEntry
+from qy.macro.expand import MacroEffectPolicy as MacroEffectPolicy  # noqa: E402
+from qy.macro.expand import MacroExpansion as MacroExpansion  # noqa: E402
+from qy.macro.expand import MacroExpansionOptions as MacroExpansionOptions  # noqa: E402
+from qy.macro.expand import macroexpand as macroexpand  # noqa: E402
+from qy.macro.expand import macroexpand_async as macroexpand_async  # noqa: E402
+from qy.macro.expand import macroexpand_source as macroexpand_source  # noqa: E402
+from qy.macro.expand import macroexpand_source_async as macroexpand_source_async  # noqa: E402
+from qy.macro.hygiene import MacroRename as MacroRename  # noqa: E402
+from qy.macro.scope import MacroScope as MacroScope  # noqa: E402
+from qy.macro.trace import MacroExpansionTrace as MacroExpansionTrace  # noqa: E402
+from qy.macro.trace import MacroSourceMapEntry as MacroSourceMapEntry  # noqa: E402

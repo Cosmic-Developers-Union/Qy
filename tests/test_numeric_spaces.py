@@ -1,6 +1,8 @@
 # coding: utf-8
 """Tests for hardware numeric symbol spaces."""
 
+from typing import Any
+
 import pytest
 
 from qy.core.syntax import nil as QY_NIL
@@ -15,6 +17,10 @@ from qy.std.numeric_spaces import make_int32_space
 from qy.std.numeric_spaces import make_uint8_space
 
 S = Symbol
+
+
+def _op(exports: Any, name: str) -> Any:
+    return exports[S(name)]
 
 
 class TestInt32Space:
@@ -43,7 +49,7 @@ class TestInt32Space:
     def test_constructor_from_int_value(self):
         """Test int32 constructor from IntValue."""
         module = make_int32_space()
-        constructor = module.exports[S("int32")]
+        constructor = _op(module.exports, "int32")
 
         result = constructor.func(IntValue(42))
         assert isinstance(result, Int32Value)
@@ -52,7 +58,7 @@ class TestInt32Space:
     def test_constructor_from_raw_int(self):
         """Test int32 constructor from raw Python int."""
         module = make_int32_space()
-        constructor = module.exports[S("int32")]
+        constructor = _op(module.exports, "int32")
 
         result = constructor.func(100)
         assert isinstance(result, Int32Value)
@@ -61,18 +67,18 @@ class TestInt32Space:
     def test_constructor_overflow(self):
         """Test int32 constructor raises effect on overflow."""
         module = make_int32_space()
-        constructor = module.exports[S("int32")]
+        constructor = _op(module.exports, "int32")
 
         with pytest.raises(QyEffectSignal) as exc_info:
             constructor.func(IntValue(2**31))
 
         assert exc_info.value.effect == "numeric-overflow"
-        assert exc_info.value.arg["type"] == "int32"
+        assert exc_info.value.arg["type"] == "int32"  # ty: ignore[not-subscriptable]
 
     def test_type_predicate(self):
         """Test int32? type predicate."""
         module = make_int32_space()
-        predicate = module.exports[S("int32?")]
+        predicate = _op(module.exports, "int32?")
 
         assert predicate.func(Int32Value(42)) is QY_T
         assert predicate.func(IntValue(42)) is QY_NIL
@@ -81,7 +87,7 @@ class TestInt32Space:
     def test_addition(self):
         """Test typed addition."""
         module = make_int32_space()
-        add = module.exports[S("+")]
+        add = _op(module.exports, "+")
 
         result = add.func(Int32Value(10), Int32Value(20))
         assert isinstance(result, Int32Value)
@@ -90,7 +96,7 @@ class TestInt32Space:
     def test_addition_overflow(self):
         """Test addition overflow raises effect."""
         module = make_int32_space()
-        add = module.exports[S("+")]
+        add = _op(module.exports, "+")
 
         with pytest.raises(QyEffectSignal) as exc_info:
             add.func(Int32Value(2**31 - 1), Int32Value(1))
@@ -100,7 +106,7 @@ class TestInt32Space:
     def test_addition_type_mismatch(self):
         """Test addition rejects wrong types."""
         module = make_int32_space()
-        add = module.exports[S("+")]
+        add = _op(module.exports, "+")
 
         with pytest.raises(QyTypeError) as exc_info:
             add.func(Int32Value(10), IntValue(20))
@@ -110,7 +116,7 @@ class TestInt32Space:
     def test_subtraction(self):
         """Test typed subtraction."""
         module = make_int32_space()
-        sub = module.exports[S("-")]
+        sub = _op(module.exports, "-")
 
         result = sub.func(Int32Value(50), Int32Value(20))
         assert isinstance(result, Int32Value)
@@ -119,7 +125,7 @@ class TestInt32Space:
     def test_negation(self):
         """Test unary negation."""
         module = make_int32_space()
-        sub = module.exports[S("-")]
+        sub = _op(module.exports, "-")
 
         result = sub.func(Int32Value(42))
         assert isinstance(result, Int32Value)
@@ -128,7 +134,7 @@ class TestInt32Space:
     def test_multiplication(self):
         """Test typed multiplication."""
         module = make_int32_space()
-        mul = module.exports[S("*")]
+        mul = _op(module.exports, "*")
 
         result = mul.func(Int32Value(6), Int32Value(7))
         assert isinstance(result, Int32Value)
@@ -137,7 +143,7 @@ class TestInt32Space:
     def test_division(self):
         """Test typed integer division."""
         module = make_int32_space()
-        div = module.exports[S("/")]
+        div = _op(module.exports, "/")
 
         result = div.func(Int32Value(42), Int32Value(6))
         assert isinstance(result, Int32Value)
@@ -146,7 +152,7 @@ class TestInt32Space:
     def test_division_by_zero(self):
         """Test division by zero raises effect."""
         module = make_int32_space()
-        div = module.exports[S("/")]
+        div = _op(module.exports, "/")
 
         with pytest.raises(QyEffectSignal) as exc_info:
             div.func(Int32Value(42), Int32Value(0))
@@ -156,7 +162,7 @@ class TestInt32Space:
     def test_modulus(self):
         """Test modulus operation."""
         module = make_int32_space()
-        mod = module.exports[S("mod")]
+        mod = _op(module.exports, "mod")
 
         result = mod.func(Int32Value(17), Int32Value(5))
         assert isinstance(result, Int32Value)
@@ -165,7 +171,7 @@ class TestInt32Space:
     def test_comparison_less_than(self):
         """Test less than comparison."""
         module = make_int32_space()
-        lt = module.exports[S("<")]
+        lt = _op(module.exports, "<")
 
         assert lt.func(Int32Value(10), Int32Value(20)) is QY_T
         assert lt.func(Int32Value(20), Int32Value(10)) is QY_NIL
@@ -174,7 +180,7 @@ class TestInt32Space:
     def test_comparison_greater_than(self):
         """Test greater than comparison."""
         module = make_int32_space()
-        gt = module.exports[S(">")]
+        gt = _op(module.exports, ">")
 
         assert gt.func(Int32Value(20), Int32Value(10)) is QY_T
         assert gt.func(Int32Value(10), Int32Value(20)) is QY_NIL
@@ -182,7 +188,7 @@ class TestInt32Space:
     def test_equality(self):
         """Test typed equality."""
         module = make_int32_space()
-        eq = module.exports[S("=")]
+        eq = _op(module.exports, "=")
 
         assert eq.func(Int32Value(42), Int32Value(42)) is QY_T
         assert eq.func(Int32Value(42), Int32Value(43)) is QY_NIL
@@ -192,7 +198,7 @@ class TestInt32Space:
     def test_bitwise_and(self):
         """Test bitwise AND."""
         module = make_int32_space()
-        bit_and = module.exports[S("bit-and")]
+        bit_and = _op(module.exports, "bit-and")
 
         result = bit_and.func(Int32Value(0b1100), Int32Value(0b1010))
         assert isinstance(result, Int32Value)
@@ -201,7 +207,7 @@ class TestInt32Space:
     def test_bitwise_or(self):
         """Test bitwise OR."""
         module = make_int32_space()
-        bit_or = module.exports[S("bit-or")]
+        bit_or = _op(module.exports, "bit-or")
 
         result = bit_or.func(Int32Value(0b1100), Int32Value(0b1010))
         assert isinstance(result, Int32Value)
@@ -210,7 +216,7 @@ class TestInt32Space:
     def test_bitwise_xor(self):
         """Test bitwise XOR."""
         module = make_int32_space()
-        bit_xor = module.exports[S("bit-xor")]
+        bit_xor = _op(module.exports, "bit-xor")
 
         result = bit_xor.func(Int32Value(0b1100), Int32Value(0b1010))
         assert isinstance(result, Int32Value)
@@ -219,7 +225,7 @@ class TestInt32Space:
     def test_bitwise_not(self):
         """Test bitwise NOT."""
         module = make_int32_space()
-        bit_not = module.exports[S("bit-not")]
+        bit_not = _op(module.exports, "bit-not")
 
         result = bit_not.func(Int32Value(0))
         assert isinstance(result, Int32Value)
@@ -228,7 +234,7 @@ class TestInt32Space:
     def test_shift_left(self):
         """Test left shift."""
         module = make_int32_space()
-        shl = module.exports[S("shl")]
+        shl = _op(module.exports, "shl")
 
         result = shl.func(Int32Value(1), 3)
         assert isinstance(result, Int32Value)
@@ -237,7 +243,7 @@ class TestInt32Space:
     def test_shift_right(self):
         """Test right shift."""
         module = make_int32_space()
-        shr = module.exports[S("shr")]
+        shr = _op(module.exports, "shr")
 
         result = shr.func(Int32Value(16), 2)
         assert isinstance(result, Int32Value)
@@ -267,7 +273,7 @@ class TestUInt8Space:
     def test_constructor_valid_range(self):
         """Test uint8 constructor accepts valid range."""
         module = make_uint8_space()
-        constructor = module.exports[S("uint8")]
+        constructor = _op(module.exports, "uint8")
 
         result = constructor.func(IntValue(255))
         assert isinstance(result, UInt8Value)
@@ -276,7 +282,7 @@ class TestUInt8Space:
     def test_constructor_rejects_negative(self):
         """Test uint8 constructor rejects negative values."""
         module = make_uint8_space()
-        constructor = module.exports[S("uint8")]
+        constructor = _op(module.exports, "uint8")
 
         with pytest.raises(QyEffectSignal) as exc_info:
             constructor.func(IntValue(-1))
@@ -286,7 +292,7 @@ class TestUInt8Space:
     def test_addition(self):
         """Test uint8 addition."""
         module = make_uint8_space()
-        add = module.exports[S("+")]
+        add = _op(module.exports, "+")
 
         result = add.func(UInt8Value(100), UInt8Value(50))
         assert isinstance(result, UInt8Value)
@@ -295,7 +301,7 @@ class TestUInt8Space:
     def test_addition_overflow(self):
         """Test uint8 addition overflow."""
         module = make_uint8_space()
-        add = module.exports[S("+")]
+        add = _op(module.exports, "+")
 
         with pytest.raises(QyEffectSignal) as exc_info:
             add.func(UInt8Value(200), UInt8Value(100))
