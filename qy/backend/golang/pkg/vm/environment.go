@@ -2,12 +2,14 @@ package vm
 
 import (
 	"strings"
+	"sync"
 )
 
 type SymbolSpace struct {
 	name     string
 	bindings map[string]Value
 	parent   *SymbolSpace
+	mu       sync.RWMutex
 }
 
 func NewSymbolSpace(name string, parent *SymbolSpace) *SymbolSpace {
@@ -21,7 +23,10 @@ func NewSymbolSpace(name string, parent *SymbolSpace) *SymbolSpace {
 func (ss *SymbolSpace) Resolve(name string) (Value, bool) {
 	current := ss
 	for current != nil {
-		if v, ok := current.bindings[name]; ok {
+		current.mu.RLock()
+		v, ok := current.bindings[name]
+		current.mu.RUnlock()
+		if ok {
 			return v, true
 		}
 		current = current.parent
@@ -30,7 +35,10 @@ func (ss *SymbolSpace) Resolve(name string) (Value, bool) {
 	if base != name {
 		current = ss
 		for current != nil {
-			if v, ok := current.bindings[base]; ok {
+			current.mu.RLock()
+			v, ok := current.bindings[base]
+			current.mu.RUnlock()
+			if ok {
 				return v, true
 			}
 			current = current.parent
@@ -40,14 +48,17 @@ func (ss *SymbolSpace) Resolve(name string) (Value, bool) {
 }
 
 func (ss *SymbolSpace) Define(name string, value Value) {
+	ss.mu.Lock()
 	ss.bindings[name] = value
+	ss.mu.Unlock()
 }
 
 func (ss *SymbolSpace) DefineOnce(name string, value Value) error {
-	if _, exists := ss.bindings[name]; exists {
-		return nil
+	ss.mu.Lock()
+	if _, exists := ss.bindings[name]; !exists {
+		ss.bindings[name] = value
 	}
-	ss.bindings[name] = value
+	ss.mu.Unlock()
 	return nil
 }
 
@@ -56,7 +67,13 @@ func (ss *SymbolSpace) Child() *SymbolSpace {
 }
 
 func (ss *SymbolSpace) Bindings() map[string]Value {
-	return ss.bindings
+	ss.mu.RLock()
+	defer ss.mu.RUnlock()
+	result := make(map[string]Value, len(ss.bindings))
+	for k, v := range ss.bindings {
+		result[k] = v
+	}
+	return result
 }
 
 func deHygiene(name string) string {
