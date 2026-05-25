@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 from typing import cast
 
-from qy.compile_time import CompileTimeEnvironment
+if TYPE_CHECKING:
+    from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.errors import QyArityError
 from qy.frontend.reader import Form
 from qy.frontend.reader import Symbol
@@ -54,7 +56,7 @@ class MacroDefinition:
     name: Symbol
     params: tuple[Symbol, ...]
     body: tuple[object, ...]
-    closure: CompileTimeEnvironment
+    closure: Environment
     rest_param: Symbol | None = None  # 可变参数名称（&body 或点对语法）
 
     async def expand(

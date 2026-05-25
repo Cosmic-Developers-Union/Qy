@@ -15,8 +15,6 @@ if TYPE_CHECKING:
     from collections.abc import Sized
 
 
-from qy.compile_time import compile_time_binding_names
-from qy.compile_time import compile_time_environment
 from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
@@ -412,9 +410,7 @@ async def _macroexpand_form(
                     from qy.runtime import evaluate_async
 
                     try:
-                        macro_def = await evaluate_async(
-                            value, compile_time_environment(context.env)
-                        )
+                        macro_def = await evaluate_async(value, context.env)
                         if isinstance(macro_def, MacroDefinition):
                             context.define_macro(name, macro_def)
                     except Exception:
@@ -677,7 +673,9 @@ async def _expand_macro(
             cause=e,
             metadata={
                 "macro": macro.name.name,
-                "available_compile_time_bindings": compile_time_binding_names(macro.closure),
+                "available_compile_time_bindings": tuple(
+                    sorted({s.name for s in macro.closure.bindings()} | {"capture", "gensym"})
+                ),
             },
         ) from e
     return apply_hygiene(_normalize_macro_result(expanded), macro, args, context)
@@ -761,7 +759,7 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
             name,
             tuple(param_symbols),
             tuple(body),
-            compile_time_environment(context.env),
+            context.env,
             rest_param=rest_param,
         ),
     )

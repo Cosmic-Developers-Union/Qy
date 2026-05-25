@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from qy.compile_time import compile_time_environment
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.frontend.reader import Symbol
@@ -90,7 +89,7 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
                 item_list[1],
                 _parameter_symbols(item_list[2]),
                 tuple(item_list[3:]),
-                compile_time_environment(env),
+                env,
             )
             continue
         if (
