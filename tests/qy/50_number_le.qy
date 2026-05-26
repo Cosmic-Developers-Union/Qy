@@ -1,0 +1,2 @@
+; number-ss: less-than-or-equal
+(= (<= 5 5) T)

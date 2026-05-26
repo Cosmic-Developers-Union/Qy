@@ -1,0 +1,2 @@
+; number-ss: subtraction (binary and unary negation)
+(= (- 10 3 2) 5)

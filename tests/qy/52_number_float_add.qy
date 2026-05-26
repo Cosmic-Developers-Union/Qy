@@ -1,0 +1,2 @@
+; number-ss: float arithmetic uses same operators
+(= (+ 1.5 2.5) 4.0)

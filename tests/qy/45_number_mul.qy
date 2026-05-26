@@ -1,0 +1,2 @@
+; number-ss: multiplication
+(= (* 2 3 4) 24)

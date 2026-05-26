@@ -1,0 +1,2 @@
+; number-ss: greater-than is nil for false
+(= (> 1 2) nil)

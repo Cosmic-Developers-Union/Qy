@@ -1,0 +1,2 @@
+; number-ss: addition of multiple integers
+(= (+ 1 2 3 4 5) 15)

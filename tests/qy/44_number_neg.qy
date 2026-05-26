@@ -1,0 +1,2 @@
+; number-ss: unary negation
+(= (- 7) -7)

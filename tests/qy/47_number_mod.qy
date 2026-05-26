@@ -1,0 +1,2 @@
+; number-ss: modulus
+(= (mod 17 5) 2)

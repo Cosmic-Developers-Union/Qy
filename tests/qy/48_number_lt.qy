@@ -1,0 +1,2 @@
+; number-ss: less-than ordering
+(= (< 1 2) T)

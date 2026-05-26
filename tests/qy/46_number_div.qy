@@ -1,0 +1,2 @@
+; number-ss: integer division (truncating)
+(= (/ 20 5 2) 2)
