@@ -97,6 +97,10 @@ class MIRInstruction:
     opcode: MIROpcode
     operands: tuple[object, ...] = ()
     span: SourceSpan | None = None
+    continuous: bool = False
+    """连续算子标记：当 True 时，此指令属于 IR 层不可中断点；
+    pass 不得在它所在的连续区间内插入 terminator/scope/effect-region 切换。
+    通常由对应 HIR ``CallExpr.continuous`` lowering 而来。"""
 
 
 @dataclass(frozen=True, slots=True)

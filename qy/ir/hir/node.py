@@ -112,6 +112,7 @@ class BindingRef:
     - Owner symbol-space (where this binding was created)
     - Binding source (define/defun/lambda param/let binding)
     - Type and operator metadata
+    - Continuous fact: whether this operator is an IR-level uninterruptible point.
     """
 
     id: int
@@ -121,6 +122,7 @@ class BindingRef:
     owner_space: SymbolSpace
     operator_kind: OperatorKind | None = None
     eager_arguments: bool = True
+    continuous: bool = False
     value: object | None = field(default=None, compare=False, repr=False)
 
 
@@ -130,6 +132,9 @@ class Binding:
 
     Tracks where a symbol is bound and in which symbol-space it was defined.
     The symbol-space-chain (ssc) is used for lookup, not a simple local/global flag.
+
+    ``continuous`` propagates ``OperatorSignature.continuous`` so callers
+    don't need to re-resolve the signature.
     """
 
     symbol: Symbol
@@ -138,6 +143,7 @@ class Binding:
     owner_space: SymbolSpace | None = None
     operator_kind: OperatorKind | None = None
     eager_arguments: bool = True
+    continuous: bool = False
     value: object | None = field(default=None, compare=False, repr=False)
 
 
@@ -206,6 +212,9 @@ class CallExpr:
     span: SourceSpan | None = None
     type_name: TypeName = "any"
     tail_position: bool = False
+    continuous: bool = False
+    """连续调用：MIR/LIR pass 不得在求值此 call 时插入 terminator/分支/effect-region 边界，
+    也不得把它的下层指令拆到多个 block。"""
 
 
 @dataclass(frozen=True, slots=True)

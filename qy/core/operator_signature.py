@@ -70,21 +70,25 @@ class OperatorSignature:
     compile_time: bool = False
     runtime_meta: bool = False
     tail_transparent: bool = False
+    continuous: bool = False
+    """连续算子标记：此算子的执行是 IR 层不可中断点，
+    pass 不得在其内部插入 terminator/分支/effect-region 边界，
+    也不得把它的指令拆分到多个 block。常见为纯宿主实现（cons/car/+ 等）。"""
 
 
 CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "all": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
     "apply": OperatorSignature("any", Arity(2, 2), ("eager", "eager"), tail_transparent=True),
-    "atom": OperatorSignature("bool", Arity(1, 1)),
+    "atom": OperatorSignature("bool", Arity(1, 1), continuous=True),
     "capture": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
-    "car": OperatorSignature("any", Arity(1, 1)),
-    "cdr": OperatorSignature("any", Arity(1, 1)),
+    "car": OperatorSignature("any", Arity(1, 1), continuous=True),
+    "cdr": OperatorSignature("any", Arity(1, 1), continuous=True),
     "cond": OperatorSignature("any", Arity(), ("raw",), tail_transparent=True),
-    "cons": OperatorSignature("chain", Arity(2, 2)),
+    "cons": OperatorSignature("chain", Arity(2, 2), continuous=True),
     "define": OperatorSignature("any", Arity(2, 2), ("binding", "eager")),
     "defeffect": OperatorSignature("effect", Arity(1), ("binding", "raw")),
     "defun": OperatorSignature("function", Arity(3), ("binding", "raw", "body")),
-    "eq": OperatorSignature("bool", Arity(2, 2)),
+    "eq": OperatorSignature("bool", Arity(2, 2), continuous=True),
     "from": OperatorSignature("none", Arity(3), ("raw",)),
     "gensym": OperatorSignature("symbol", Arity(0, 1), ("raw",), compile_time=True),
     "handle": OperatorSignature("any", Arity(2, 2), ("raw", "raw"), tail_transparent=True),
@@ -101,7 +105,7 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "perform": OperatorSignature("any", Arity(2, 2), ("effect-name", "eager")),
     "pipeline": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
     "quasiquote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
-    "quote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
+    "quote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True, continuous=True),
     "race": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
     "resume": OperatorSignature("any", Arity(2, 2)),
     "unquote": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
@@ -110,21 +114,21 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
 
 
 STDLIB_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
-    "*": OperatorSignature("number", Arity(), rest_type="number"),
-    "+": OperatorSignature("number", Arity(), rest_type="number"),
-    "-": OperatorSignature("number", Arity(1), rest_type="number"),
-    "/": OperatorSignature("number", Arity(1), rest_type="number"),
-    "=": OperatorSignature("bool", Arity(2, 2)),
-    "==": OperatorSignature("bool", Arity(2, 2)),
+    "*": OperatorSignature("number", Arity(), rest_type="number", continuous=True),
+    "+": OperatorSignature("number", Arity(), rest_type="number", continuous=True),
+    "-": OperatorSignature("number", Arity(1), rest_type="number", continuous=True),
+    "/": OperatorSignature("number", Arity(1), rest_type="number", continuous=True),
+    "=": OperatorSignature("bool", Arity(2, 2), continuous=True),
+    "==": OperatorSignature("bool", Arity(2, 2), continuous=True),
     "assert": OperatorSignature(
         "any",
         Arity(1, 2),
         effects=(EffectSpec("assert-failed", resumable=False),),
     ),
     "eval": OperatorSignature("any", Arity(1, 1), ("eager",), runtime_meta=True),
-    "is": OperatorSignature("bool", Arity(2, 2)),
-    "truthy": OperatorSignature("bool", Arity(1, 1)),
-    "append": OperatorSignature("any", Arity(2, 2)),
+    "is": OperatorSignature("bool", Arity(2, 2), continuous=True),
+    "truthy": OperatorSignature("bool", Arity(1, 1), continuous=True),
+    "append": OperatorSignature("any", Arity(2, 2), continuous=True),
 }
 
 

@@ -107,6 +107,8 @@ def _verify_function(function: MIRFunction, diagnostics: list[Diagnostic]) -> No
         for instruction in block.instructions:
             _verify_instruction(function, block.id, instruction, diagnostics)
 
+        _verify_continuous_run(function, block, diagnostics)
+
         _verify_terminator(function, block.id, block_ids, block.terminator, diagnostics)
 
     _verify_reachability(function, block_ids, diagnostics)
@@ -411,6 +413,84 @@ _DEFINE_OPCODES: frozenset[str] = frozenset(
         "RACE_FIRST",
     }
 )
+
+
+# ---------------------------------------------------------------------------
+# Continuous run verification (IR-level uninterruptible point)
+# ---------------------------------------------------------------------------
+
+# Opcodes whose presence inside (or adjacent to) a continuous instruction would
+# split the IR-level "uninterruptible point" — pass authors must not emit them
+# next to a continuous instruction within the same block.
+_CONTINUOUS_BREAK_OPCODES: frozenset[str] = frozenset(
+    {
+        "ENTER_SCOPE",
+        "EXIT_SCOPE",
+        "HANDLE",
+        "PERFORM",
+        "RESUME",
+        "DEFEFFECT",
+        "DEFINE_MODULE",
+        "FROM_IMPORT",
+        "RUNTIME_EVAL",
+        "CACHE_EVAL",
+        "ALL_GATHER",
+        "PARALLEL_GATHER",
+        "RACE_FIRST",
+    }
+)
+
+
+def _verify_continuous_run(
+    function: MIRFunction,
+    block: MIRBlock,
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Verify that continuous instructions are not split by IR-level breakpoints.
+
+    A continuous instruction marks an uninterruptible point — passes are not
+    allowed to insert a scope/handler/effect-region transition adjacent to it,
+    nor to use it as a non-terminating tail of the block (terminator is fine,
+    but a break-point opcode immediately before/after a continuous instruction
+    indicates the run was split).
+    """
+    instructions = block.instructions
+    for index, instruction in enumerate(instructions):
+        if not instruction.continuous:
+            continue
+
+        if instruction.opcode in _CONTINUOUS_BREAK_OPCODES:
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block.id} marks "
+                    f"breakpoint opcode {instruction.opcode!r} as continuous; "
+                    "continuous instructions must not be break-points themselves"
+                )
+            )
+
+        if index > 0:
+            prev = instructions[index - 1]
+            if prev.opcode in _CONTINUOUS_BREAK_OPCODES:
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block.id} "
+                        f"places break-point {prev.opcode!r} immediately before "
+                        f"continuous instruction {instruction.opcode!r}; "
+                        "the continuous run was split by a pass"
+                    )
+                )
+
+        if index + 1 < len(instructions):
+            nxt = instructions[index + 1]
+            if nxt.opcode in _CONTINUOUS_BREAK_OPCODES:
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block.id} "
+                        f"places break-point {nxt.opcode!r} immediately after "
+                        f"continuous instruction {instruction.opcode!r}; "
+                        "the continuous run was split by a pass"
+                    )
+                )
 
 
 def _verify_reachability(

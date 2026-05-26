@@ -149,11 +149,18 @@ LIROpcode = Literal[
 
 @dataclass(frozen=True, slots=True)
 class LIRInstruction:
-    """One LIR instruction with opcode and operands."""
+    """One LIR instruction with opcode and operands.
+
+    ``continuous`` marks this instruction as part of an IR-level
+    uninterruptible point: linearization, scheduler, peephole and jump-fixup
+    passes must not split a continuous run across blocks or insert
+    scope / handler / effect transitions inside it.
+    """
 
     opcode: LIROpcode
     operands: tuple[object, ...] = ()
     span: SourceSpan | None = None
+    continuous: bool = False
 
 
 @dataclass(frozen=True, slots=True)

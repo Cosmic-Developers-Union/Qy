@@ -22,6 +22,45 @@ _TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT"})
 _LANGUAGE_LEVEL_EFFECT_OPCODES = frozenset({"HANDLE", "PERFORM", "RESUME"})
 _JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
 
+# Opcodes that split an IR-level uninterruptible point in LIR — they must not
+# appear adjacent to a continuous instruction within the same linearized stream.
+_CONTINUOUS_BREAK_OPCODES = frozenset(
+    {
+        "ENTER_SCOPE",
+        "EXIT_SCOPE",
+        "SS_ENTER",
+        "SS_LEAVE",
+        "SS_RESTORE",
+        "FRAME_ENTER",
+        "FRAME_LEAVE",
+        "HANDLE",
+        "PERFORM",
+        "RESUME",
+        "HANDLER_PUSH",
+        "HANDLER_POP",
+        "EFFECT_UNWIND",
+        "EFFECT_DISPATCH",
+        "CONT_CAPTURE",
+        "CONT_COPY",
+        "CONT_RESTORE",
+        "CONT_INJECT",
+        "DEFEFFECT",
+        "DEFINE_MODULE",
+        "FROM_IMPORT",
+        "RUNTIME_EVAL",
+        "CACHE_EVAL",
+        "ALL_GATHER",
+        "PARALLEL_GATHER",
+        "RACE_FIRST",
+        "JUMP",
+        "JUMP_IF_FALSE",
+        "BRANCH_NIL",
+        "RETURN",
+        "TAIL_CALL",
+        "RAISE_EFFECT",
+    }
+)
+
 
 def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
@@ -98,7 +137,58 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                                 severity="error",
                             )
                         )
+
+        _verify_continuous_run(func, diagnostics)
     return tuple(diagnostics)
+
+
+def _verify_continuous_run(func: object, diagnostics: list[Diagnostic]) -> None:
+    """Continuous instructions in LIR must not be adjacent to break-point opcodes.
+
+    Linearization, peephole and jump-fixup passes are allowed to reorder /
+    coalesce regular instructions, but they may not split an IR-level
+    uninterruptible point by inserting (or relocating) a control-flow,
+    scope-chain transition, or effect-frame opcode next to it.
+    """
+    instructions = getattr(func, "instructions", ())
+    name = getattr(getattr(func, "name", None), "name", "<anonymous>")
+    for index, inst in enumerate(instructions):
+        if not getattr(inst, "continuous", False):
+            continue
+
+        if inst.opcode in _CONTINUOUS_BREAK_OPCODES:
+            diagnostics.append(
+                Diagnostic(
+                    f"LIR function {name} marks break-point opcode {inst.opcode} "
+                    f"at {index} as continuous; continuous instructions must not "
+                    "be break-points themselves",
+                    severity="error",
+                )
+            )
+
+        if index > 0:
+            prev = instructions[index - 1]
+            if prev.opcode in _CONTINUOUS_BREAK_OPCODES:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {name} places break-point {prev.opcode} "
+                        f"immediately before continuous instruction {inst.opcode} "
+                        f"at {index}; continuous run was split by a pass",
+                        severity="error",
+                    )
+                )
+
+        if index + 1 < len(instructions):
+            nxt = instructions[index + 1]
+            if nxt.opcode in _CONTINUOUS_BREAK_OPCODES:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {name} places break-point {nxt.opcode} "
+                        f"immediately after continuous instruction {inst.opcode} "
+                        f"at {index}; continuous run was split by a pass",
+                        severity="error",
+                    )
+                )
 
 
 def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[object]:

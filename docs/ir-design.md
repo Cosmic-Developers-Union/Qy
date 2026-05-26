@@ -27,6 +27,21 @@ macroexpanded syntax datum
 - 任何 rewrite 都必须能回答“它唯一属于哪一层”；
 - 如果某个变换必须同时理解两个层级，说明边界还没有切好。
 
+## 1.2 连续算子（continuous operator）
+
+某些算子在 IR 层面是**不可中断点**：它们的求值必须以一个原子段出现，pass 不得在该段内部插入 terminator、分支、scope 切换或 effect-region 边界。这类算子被称为**连续算子**。
+
+- 连续性是一项**算子签名事实**，由 `OperatorSignature.continuous` 声明，并在 HIR 的 `Binding` / `BindingRef` / `CallExpr` 上传播。
+- MIR 与 LIR 的指令携带 `continuous: bool` 标志；它由对应 HIR call lowering 而来，不是新 opcode。
+- 三层 verifier 都对连续段做结构校验：
+  - 连续指令本身不得是 break-point opcode；
+  - 连续指令在同一 block / 线性流中前后相邻位置不得出现 break-point opcode；
+  - 连续段不得跨 block 拆分。
+- "break-point opcode" 是 pass 视角下会割裂控制流或切换执行环境的 opcode，例如 `ENTER_SCOPE` / `EXIT_SCOPE` / `HANDLE` / `PERFORM` / `RESUME` / `CACHE_EVAL` / `RUNTIME_EVAL` / 各 join opcode；LIR 还包括 `SS_ENTER` / `SS_LEAVE` / `FRAME_ENTER` / `FRAME_LEAVE` / `HANDLER_PUSH` / `HANDLER_POP` 等。
+- 连续算子典型来源是宿主提供的纯计算操作（`cons` / `car` / `cdr` / `eq` / `+` / `-` 等）；它们由 VM 一次性执行完毕，pass 没有理由在其中插入控制流。
+
+连续性不是优化提示，而是一项静态结构不变量；任何 pass 引入的 rewrite 必须保留连续段的不可分裂性，否则 verifier 直接报错。
+
 ---
 
 # 2. HIR
