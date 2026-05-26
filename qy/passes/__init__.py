@@ -46,25 +46,84 @@ def build_optimization_pipeline(*, optimize: bool = False) -> Pipeline:
 
     This sub-pipeline is **not** a substitute for the canonical source→bytecode
     pipeline in ``qy.passes.build``. It only exists so IR-stage optimization
-    passes (const-fold, DCE, CFG simplify, tail-call, inline) can be exercised
-    in isolation by tests and tooling.
+    passes can be exercised in isolation by tests and tooling.
+
+    Optimization pipeline stages (when ``optimize=True``):
+
+    MIR-level:
+        1. const_prop  — constant propagation through MOVE/LOAD_ENV chains
+        2. const_fold  — fold pure calls with constant args
+        3. copy_prop   — copy propagation to eliminate redundant MOVEs
+        4. dce         — dead code elimination (side-effect-free, unused results)
+        5. dse         — dead store elimination (unused STORE_LOCAL/DEFINE_ONCE)
+        6. cse         — common subexpression elimination
+        7. strength_reduce — replace expensive pure ops with cheaper equivalents
+        8. cfg_simplify — remove unreachable blocks, merge linear blocks
+        9. tailcall    — detect CALL+RETURN → TAIL_CALL
+       10. licm        — loop-invariant code motion
+       11. loop_opt    — natural loop analysis and peeling
+       12. inline      — basic single-site inlining
+       13. aggressive_inline — multi-site, cross-function inlining
+       14. scalar_replace — expand non-escaping tuples into scalars
+       15. intern      — deduplicate constant pool entries
+       16. reg_alloc   — linear scan register allocation
+       17. dce         — second DCE pass (clean up after transforms)
+       18. cfg_simplify — second CFG simplify (clean up after transforms)
+
+    LIR-level (applied during lowering):
+        - peephole     — MOVE r,r elimination, LOAD_NIL/LOAD_T fusion, copy forwarding
+        - compact_registers — dense register renumbering
+        - instr_sched  — instruction scheduling for ILP and register pressure
     """
     p = Pipeline()
     p.add_pass(LowerHIRPass())
     p.add_pass(LowerMIRPass())
     if optimize:
         from qy.passes.control.cfg_simplify import CFGSimplifyPass
+        from qy.passes.control.loop_opt import LoopOptPass
         from qy.passes.control.tailcall import TailCallPass
+        from qy.passes.optimize.aggressive_inline import AggressiveInlinePass
         from qy.passes.optimize.const_fold import ConstFoldPass
+        from qy.passes.optimize.const_prop import ConstPropagationPass
+        from qy.passes.optimize.copy_prop import CopyPropagationPass
+        from qy.passes.optimize.cse import CSEPass
         from qy.passes.optimize.dce import DCEPass
+        from qy.passes.optimize.dse import DeadStoreEliminationPass
         from qy.passes.optimize.inline import InlinePass
+        from qy.passes.optimize.intern import InternPass
+        from qy.passes.optimize.licm import LICMPass
+        from qy.passes.optimize.reg_alloc import RegisterAllocationPass
+        from qy.passes.optimize.scalar_replace import ScalarReplacePass
+        from qy.passes.optimize.strength_reduce import StrengthReducePass
 
+        # Phase 1: Simplification
+        p.add_pass(ConstPropagationPass())
         p.add_pass(ConstFoldPass())
+        p.add_pass(CopyPropagationPass())
         p.add_pass(DCEPass())
+        p.add_pass(DeadStoreEliminationPass())
+
+        # Phase 2: Algebraic simplification
+        p.add_pass(CSEPass())
+        p.add_pass(StrengthReducePass())
         p.add_pass(CFGSimplifyPass())
+
+        # Phase 3: Control flow optimization
         p.add_pass(TailCallPass())
+        p.add_pass(LICMPass())
+        p.add_pass(LoopOptPass())
+
+        # Phase 4: Inlining
         p.add_pass(InlinePass())
+        p.add_pass(AggressiveInlinePass())
+
+        # Phase 5: Cleanup and preparation
+        p.add_pass(ScalarReplacePass())
+        p.add_pass(InternPass())
         p.add_pass(DCEPass())
         p.add_pass(CFGSimplifyPass())
+
+        # Phase 6: Register allocation
+        p.add_pass(RegisterAllocationPass())
     p.add_pass(LowerLIRPass())
     return p
