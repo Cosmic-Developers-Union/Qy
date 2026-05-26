@@ -577,12 +577,62 @@ def _verify_def_use(
     function: MIRFunction,
     diagnostics: list[Diagnostic],
 ) -> None:
-    """Per-block def-use check: warn if a register is used before definition."""
+    """Flow-sensitive def-use check: warn if a register is used before definition.
+
+    Definitions propagate through the CFG: a block's incoming defined-set is
+    the intersection of every predecessor's exit defined-set (must-defined on
+    all paths). The fall-through edge of ``EFFECT_PERFORM`` carries the
+    perform's destination register into the resume block.
+    """
     param_count = len(function.params) if isinstance(function.params, tuple) else 0
-    param_defined: set[MIRRegister] = set(range(param_count))
+    param_defined: frozenset[MIRRegister] = frozenset(range(param_count))
+
+    incoming: dict[MIRBlockId, frozenset[MIRRegister] | None] = {
+        block.id: None for block in function.blocks
+    }
+    if function.blocks:
+        incoming[function.blocks[0].id] = param_defined
+
+    def block_exit(block: MIRBlock, entry: frozenset[MIRRegister]) -> frozenset[MIRRegister]:
+        defined: set[MIRRegister] = set(entry)
+        for instruction in block.instructions:
+            if instruction.opcode in _DEFINE_OPCODES and instruction.operands:
+                dst = instruction.operands[0]
+                if isinstance(dst, int):
+                    defined.add(dst)
+            elif instruction.opcode == "EFFECT_HANDLE_END" and len(instruction.operands) >= 2:
+                dst = instruction.operands[1]
+                if isinstance(dst, int):
+                    defined.add(dst)
+        terminator = block.terminator
+        if terminator is not None and terminator.opcode == "EFFECT_PERFORM":
+            if terminator.operands and isinstance(terminator.operands[0], int):
+                defined.add(terminator.operands[0])
+        return frozenset(defined)
+
+    changed = True
+    while changed:
+        changed = False
+        for block in function.blocks:
+            entry = incoming[block.id]
+            if entry is None:
+                continue
+            exit_defs = block_exit(block, entry)
+            terminator = block.terminator
+            if terminator is None:
+                continue
+            for target_id in _terminator_targets(terminator):
+                target_entry = incoming.get(target_id)
+                merged = exit_defs if target_entry is None else (target_entry & exit_defs)
+                if merged != target_entry:
+                    incoming[target_id] = merged
+                    changed = True
 
     for block in function.blocks:
-        defined: set[MIRRegister] = set(param_defined)
+        entry = incoming[block.id]
+        if entry is None:
+            entry = param_defined
+        defined: set[MIRRegister] = set(entry)
 
         for instruction in block.instructions:
             _check_uses(function, block.id, instruction, defined, diagnostics)

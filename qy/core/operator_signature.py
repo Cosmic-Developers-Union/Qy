@@ -80,6 +80,7 @@ CORE_OPERATOR_SIGNATURES: dict[str, OperatorSignature] = {
     "all": OperatorSignature("any", Arity(), ("body",), tail_transparent=True),
     "apply": OperatorSignature("any", Arity(2, 2), ("eager", "eager"), tail_transparent=True),
     "atom": OperatorSignature("bool", Arity(1, 1), continuous=True),
+    "bind": OperatorSignature("any", Arity(3, 3), ("binding", "eager", "eager")),
     "capture": OperatorSignature("any", Arity(1, 1), ("raw",), compile_time=True),
     "car": OperatorSignature("any", Arity(1, 1), continuous=True),
     "cdr": OperatorSignature("any", Arity(1, 1), continuous=True),

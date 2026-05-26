@@ -108,6 +108,10 @@ LIROpcode = Literal[
     # -- Effects --
     "DEFEFFECT",
     "RAISE_EFFECT",
+    # -- Effects: language-level (compat dialect, register VM target) --
+    "HANDLE",
+    "PERFORM",
+    "RESUME",
     # -- Effects: MIR-imported placeholders, eliminated by effect-lowering pass --
     "EFFECT_HANDLE_BEGIN",
     "EFFECT_HANDLE_END",
@@ -184,6 +188,7 @@ class LIRProgram:
     functions: tuple[LIRFunction, ...]
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
+    dialect: Literal["compat", "abstract-machine"] = "compat"
 
     @property
     def ok(self) -> bool:

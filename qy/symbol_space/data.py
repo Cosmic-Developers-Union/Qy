@@ -141,6 +141,10 @@ def _eq(left: object, right: object) -> object:
 
 def _reify(value: object) -> object:
     """Convert a runtime value to a syntax datum (Symbol or Chain)."""
+    from qy.sem.core import CharValue
+    from qy.sem.core import NumberValue
+    from qy.sem.core import StringValue
+
     if value is QY_NIL:
         return Symbol("nil")
     if value is QY_T:
@@ -149,6 +153,12 @@ def _reify(value: object) -> object:
         return Symbol("none")
     if isinstance(value, Symbol):
         return value
+    if isinstance(value, NumberValue):
+        return Symbol(str(value.value))
+    if isinstance(value, StringValue):
+        return Symbol(value.value)
+    if isinstance(value, CharValue):
+        return Symbol(value.value)
     if isinstance(value, int | float):
         return Symbol(str(value))
     if isinstance(value, str):

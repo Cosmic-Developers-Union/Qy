@@ -2,7 +2,7 @@
 """Bytecode 编译器：LIR → Bytecode。.
 
 目标：
-- 从 LIR 降低到 bytecode
+- 从 compat LIR 降低到 register VM bytecode
 - 纯结构转换，不重新理解语义
 
 注意：
@@ -10,6 +10,8 @@
   pipeline 末段调用。任何"从更早 IR 起步"的捷径（compile_bytecode/HIR→bytecode、
   compile_mir_bytecode/MIR→bytecode）都已删除——必须经由 ``qy.passes.build``
   提供的 pipeline 入口逐段降级。
+- 仅接受 ``compat`` dialect 的 LIR；``abstract-machine`` dialect 的程序应该走
+  另一条后端路径（VM 抽象机直执行或 LLVM）。
 
 禁止：
 - 不得重新理解 HIR/MIR 语义
@@ -24,6 +26,8 @@ from qy.backend.vm.bytecode import BytecodeFunction
 from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Opcode
+from qy.diag import Diagnostic
+from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
 
@@ -60,20 +64,27 @@ def _encode_instruction(instruction: LIRInstruction) -> Instruction:
     return Instruction(opcode, operands, instruction.span)
 
 
+def _compile_function(function: LIRFunction) -> BytecodeFunction:
+    return BytecodeFunction(
+        function.name,
+        function.params,
+        function.register_count,
+        tuple(_encode_instruction(i) for i in function.instructions),
+    )
+
+
 def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
-    """Compile LIR program to bytecode."""
+    """Compile compat-dialect LIR program to bytecode."""
+    if program.dialect != "compat":
+        diagnostic = Diagnostic(
+            f"compile_lir_bytecode only supports compat LIR, got dialect={program.dialect!r}",
+            severity="error",
+        )
+        return BytecodeProgram((), 0, (*program.diagnostics, diagnostic))
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
     return BytecodeProgram(
-        tuple(
-            BytecodeFunction(
-                f.name,
-                f.params,
-                f.register_count,
-                tuple(_encode_instruction(i) for i in f.instructions),
-            )
-            for f in program.functions
-        ),
+        tuple(_compile_function(f) for f in program.functions),
         program.main,
         program.diagnostics,
     )

@@ -60,6 +60,7 @@ _CONTINUOUS_BREAK_OPCODES = frozenset(
 
 def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
+    abstract_machine = program.dialect == "abstract-machine"
     for func in program.functions:
         if not func.instructions and func.name.name not in ("<lambda>",):
             diagnostics.append(
@@ -92,7 +93,7 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
             )
 
         for idx, inst in enumerate(func.instructions):
-            if inst.opcode in {"PERFORM", "HANDLE", "RESUME"}:
+            if abstract_machine and inst.opcode in {"PERFORM", "HANDLE", "RESUME"}:
                 diagnostics.append(
                     Diagnostic(
                         f"LIR function {func.name.name} retains language-level "

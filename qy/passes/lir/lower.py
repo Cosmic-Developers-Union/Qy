@@ -14,6 +14,7 @@ from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import verify_mir
 from qy.passes.lir.compact import compact_registers
+from qy.passes.lir.compat_effects import lower_compat_effects
 from qy.passes.lir.linearize import linearize_function
 from qy.passes.lir.peephole import peephole
 
@@ -34,6 +35,7 @@ def lower_lir(program: MIRProgram) -> LIRProgram:
 
 def _lower_function(function: MIRFunction, constants: MIRConstantPool) -> LIRFunction:
     instructions = linearize_function(function, constants)
+    instructions = lower_compat_effects(instructions)
     instructions = peephole(instructions)
     instructions, register_count = compact_registers(
         function.params,

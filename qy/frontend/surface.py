@@ -184,6 +184,13 @@ def _expand_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
     if not isinstance(head, Symbol):
         return _expand_chain_sequence(chain, in_quasiquote=in_quasiquote)
 
+    if in_quasiquote:
+        if head.name == "unquote" or head.name == "unquote-splicing":
+            return _expand_chain_sequence(chain, in_quasiquote=False)
+        if head.name == "quasiquote":
+            return _expand_quasiquote_surface_chain(chain, in_quasiquote=in_quasiquote)
+        return _expand_chain_sequence(chain, in_quasiquote=in_quasiquote)
+
     match head.name:
         case "define":
             return _expand_define_surface_chain(chain, in_quasiquote=in_quasiquote)
@@ -258,8 +265,8 @@ def _expand_module_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object
     if len(items) <= 2:
         return chain
     span = get_span(chain)
-    expanded_body = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]]
-    return list_to_chain([items[0], items[1], *expanded_body], span=span)
+    expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
+    return list_to_chain([items[0], items[1], *list(expanded_body)], span=span)
 
 
 def _expand_quasiquote_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
@@ -313,8 +320,8 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
                     expanded_bindings.append(binding)
             bindings = list_to_chain(expanded_bindings, span=get_span(bindings))
 
-    expanded_body = [_expand_surface_form(item, in_quasiquote=in_quasiquote) for item in items[2:]]
-    return list_to_chain([items[0], bindings, *expanded_body], span=span)
+    expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
+    return list_to_chain([items[0], bindings, *list(expanded_body)], span=span)
 
 
 def _expand_surface_tuple(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:

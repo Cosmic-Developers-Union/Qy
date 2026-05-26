@@ -164,5 +164,18 @@ def _map_register_operands(
             return (operands[0], map_register(operands[1]))
         case "EFFECT_RESUME":
             return tuple(map_register(item) for item in operands[:3])
+        case "PERFORM":
+            # compat: (dst_reg, effect_sym, arg_reg)
+            return (
+                map_register(operands[0]),
+                operands[1],
+                map_register(operands[2]),
+            )
+        case "HANDLE":
+            # compat: (dst_reg, body_fn_idx, handler_specs)
+            return (map_register(operands[0]), operands[1], operands[2])
+        case "RESUME":
+            # compat: (dst_reg, cont_reg, value_reg)
+            return tuple(map_register(item) for item in operands[:3])
         case _:
             return operands

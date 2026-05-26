@@ -14,6 +14,7 @@ from typing import cast
 from qy.core import TypeName
 from qy.core.operator_signature import OperatorSignature
 from qy.core.operator_signature import format_arity_message
+from qy.core.operator_signature import lookup_operator_signature
 from qy.core.operators import value_uses_eager_arguments
 from qy.core.syntax import car
 from qy.core.syntax import cdr
@@ -272,7 +273,13 @@ def _lower_form(
 
         args_as_data = _call_uses_non_eager_arguments(operator_expr)
         lowered_args = tuple(
-            _lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args
+            _lower_form(
+                arg,
+                scope,
+                context,
+                symbol_as_data=args_as_data and not _argument_is_eager(operator_expr, idx),
+            )
+            for idx, arg in enumerate(args)
         )
         return CallExpr(
             operator_expr,
@@ -349,7 +356,13 @@ def _lower_form(
 
     args_as_data = _call_uses_non_eager_arguments(operator_expr)
     lowered_args = tuple(
-        _lower_form(arg, scope, context, symbol_as_data=args_as_data) for arg in args
+        _lower_form(
+            arg,
+            scope,
+            context,
+            symbol_as_data=args_as_data and not _argument_is_eager(operator_expr, idx),
+        )
+        for idx, arg in enumerate(args)
     )
     return CallExpr(
         operator_expr,
@@ -1266,6 +1279,22 @@ def _call_uses_non_eager_arguments(operator: IRExpr) -> bool:
     )
 
 
+def _argument_is_eager(operator: IRExpr, index: int) -> bool:
+    """Decide if argument at `index` should be evaluated (vs. passed as datum).
+
+    Per-arg policy comes from the operator signature when available.
+    Fall back to the operator's overall eager_arguments flag.
+    """
+    signature = _operator_signature(operator)
+    if signature is not None and signature.argument_policy:
+        policy = signature.argument_policy
+        if index < len(policy):
+            return policy[index] == "eager"
+    if isinstance(operator, SymbolRefExpr):
+        return operator.binding.eager_arguments
+    return True
+
+
 def _infer_call_type(
     operator: object,
     args: tuple[IRExpr, ...],
@@ -1314,7 +1343,10 @@ def _infer_call_type(
 def _operator_signature(operator: IRExpr) -> OperatorSignature | None:
     if isinstance(operator, SymbolRefExpr):
         value = operator.binding.value
-        return getattr(value, "signature", None)
+        signature = getattr(value, "signature", None) if value is not None else None
+        if signature is None:
+            signature = lookup_operator_signature(operator.symbol.name)
+        return signature
     return None
 
 
