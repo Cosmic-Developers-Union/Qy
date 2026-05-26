@@ -21,7 +21,7 @@ effect。这三个 effect 都是非可恢复 effect 的标准形态。
 调用方:
 
 - ``qy/session/pre_ss.py::create_number_ss`` 通过 ``number_ss_bindings()`` 注入。
-- ``qy/std/__init__.py::_load_num_module`` 把同一份 bindings 暴露为 ``qy.num`` 模块。
+- ``qy/symbol_space/__init__.py::_load_num_module`` 把同一份 bindings 暴露为 ``qy.num`` 模块。
 """
 
 from __future__ import annotations
@@ -385,7 +385,7 @@ def number_ss_bindings() -> dict[Symbol, object]:
     infinite literal recognition. Used by:
 
     - ``qy/session/pre_ss.py::create_number_ss`` — number-ss 自身。
-    - ``qy/std/__init__.py::_load_num_module`` — ``qy.num`` 模块导出 (用户脚本
+    - ``qy/symbol_space/__init__.py::_load_num_module`` — ``qy.num`` 模块导出 (用户脚本
       可显式 ``(from qy.num import +)``)。
     """
     return {

@@ -2,9 +2,9 @@
 
 import pytest
 
+from qy.import_.registry import standard_bindings
 from qy.runtime import evaluate_source
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std import standard_bindings
 
 
 def _env() -> Environment:

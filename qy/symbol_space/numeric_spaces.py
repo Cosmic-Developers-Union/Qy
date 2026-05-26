@@ -25,9 +25,9 @@ from qy.sem.core import IntValue
 from qy.vm.instance.frame import QyContinuation
 
 if TYPE_CHECKING:
+    from qy.import_.module import StandardModule
     from qy.sem.core import IntegerValue
     from qy.sem.core import NumberValue
-    from qy.std.module import StandardModule
 
 __all__ = [
     "make_float16_space",
@@ -54,8 +54,8 @@ def _make_integer_space(
 ) -> StandardModule:
     """Generate a hardware integer space module."""
     from qy.core.syntax import nil as QY_NIL
+    from qy.import_.module import StandardModule
     from qy.sem.core import T as QY_T
-    from qy.std.module import StandardModule
 
     def _non_resumable_continuation(effect_name: str) -> QyContinuation:
         """Create a non-resumable continuation for numeric errors."""
@@ -330,8 +330,8 @@ def _make_float_space(
 ) -> StandardModule:
     """Generate a hardware float space module."""
     from qy.core.syntax import nil as QY_NIL
+    from qy.import_.module import StandardModule
     from qy.sem.core import T as QY_T
-    from qy.std.module import StandardModule
 
     def _non_resumable_continuation(effect_name: str) -> QyContinuation:
         """Create a non-resumable continuation for numeric errors."""

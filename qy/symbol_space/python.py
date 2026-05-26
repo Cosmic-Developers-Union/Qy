@@ -34,8 +34,8 @@ from qy.macro import MacroDefinition
 from qy.sem.core import T as QY_T
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std.data import python_container_operators
-from qy.std.effects import _await_cached_value
+from qy.symbol_space.data import python_container_operators
+from qy.symbol_space.effects import _await_cached_value
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.values import HostObjectRef

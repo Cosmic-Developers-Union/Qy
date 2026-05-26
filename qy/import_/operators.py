@@ -7,9 +7,11 @@ from qy.core.symbol_utils import ensure_symbol
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
+from qy.import_.module import StandardModule
+from qy.import_.parse import parse_from_import
+from qy.import_.registry import load_module_async
+from qy.import_.registry import register_module
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std.imports import parse_from_import
-from qy.std.module import StandardModule
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 
@@ -75,8 +77,6 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
 
     module = StandardModule(name.name, exports, macro_exports)
 
-    from qy.std import register_module
-
     register_module(module)
     cache_source_module(module, env)
     return env.define_once(name, module)
@@ -85,8 +85,6 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
 async def _from_import(args: tuple[object, ...], env: Environment) -> object:
     try:
         module_name, specs = parse_from_import((Symbol("from"), *args))
-        from qy.std import load_module_async
-
         source_module = await load_module_async(module_name.name)
         runtime_specs = [spec for spec in specs if spec.name in source_module.exports]
         macro_only = all(spec.name in source_module.macro_exports for spec in specs)

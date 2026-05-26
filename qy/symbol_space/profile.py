@@ -10,10 +10,10 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.import_.registry import load_module
 from qy.macro import MacroDefinition
 from qy.sem.runtime import EffectDefinition
-from qy.std import STANDARD_PROFILE_MODULES
-from qy.std import load_module
+from qy.symbol_space import STANDARD_PROFILE_MODULES
 
 __all__ = [
     "OperatorDoc",

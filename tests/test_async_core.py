@@ -1,9 +1,9 @@
 import asyncio
 from typing import cast
 
+from qy.import_.registry import load_module
 from qy.runtime import AsyncQy
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.std import load_module
 
 
 async def test_async_api_awaits_python_coroutines():

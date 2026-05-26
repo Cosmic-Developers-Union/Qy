@@ -499,9 +499,9 @@ class RegisterVirtualMachine:
     ) -> object:
         from qy.import_.loader import cache_source_module
         from qy.import_.loader import lookup_source_module
+        from qy.import_.module import StandardModule
+        from qy.import_.registry import register_module
         from qy.macro import MacroDefinition
-        from qy.std import register_module
-        from qy.std.module import StandardModule
 
         module_env = env.child()
         baseline = set(module_env.local_bindings())
@@ -538,8 +538,8 @@ class RegisterVirtualMachine:
     async def _from_import(
         self, module_name: Symbol, specs: tuple[object, ...], env: Environment
     ) -> None:
-        from qy.std import load_module_async
-        from qy.std.imports import ImportSpec
+        from qy.import_.parse import ImportSpec
+        from qy.import_.registry import load_module_async
 
         try:
             module = await load_module_async(module_name.name)

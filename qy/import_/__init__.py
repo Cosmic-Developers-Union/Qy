@@ -30,6 +30,18 @@ from qy.import_.loader import load_named_space
 from qy.import_.loader import lookup_source_module
 from qy.import_.loader import resolve_known_module
 from qy.import_.loader import set_global_loader
+from qy.import_.module import StandardModule
+from qy.import_.parse import ImportSpec
+from qy.import_.parse import parse_from_import
+from qy.import_.registry import load_file_module
+from qy.import_.registry import load_module
+from qy.import_.registry import load_module_async
+from qy.import_.registry import module_names
+from qy.import_.registry import register_default_module_loader
+from qy.import_.registry import register_module
+from qy.import_.registry import register_module_loader
+from qy.import_.registry import standard_bindings
+from qy.import_.registry import standard_profile_bindings
 from qy.import_.resolver import FoldSpec
 from qy.import_.resolver import UnfoldSpec
 from qy.import_.resolver import detect_conflicts
@@ -44,22 +56,31 @@ if TYPE_CHECKING:
     from qy.frontend.reader import Symbol
 
 __all__ = [
-    # Resolver
     "FoldSpec",
-    # Loader
+    "ImportSpec",
     "ModuleLoader",
+    "StandardModule",
     "UnfoldSpec",
     "cache_source_module",
     "detect_conflicts",
-    # Operations
     "fold",
     "get_global_loader",
+    "load_file_module",
+    "load_module",
+    "load_module_async",
     "load_named_space",
     "lookup_source_module",
+    "module_names",
+    "parse_from_import",
+    "register_default_module_loader",
+    "register_module",
+    "register_module_loader",
     "resolve_fold",
     "resolve_known_module",
     "resolve_unfold",
     "set_global_loader",
+    "standard_bindings",
+    "standard_profile_bindings",
     "unfold",
 ]
 

@@ -1,5 +1,5 @@
 # coding: utf-8
-"""测试 qy.stdlib.modules 模块的内部函数。."""
+"""测试 qy.import_.operators 模块的内部函数。."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ import pytest
 
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
-from qy.std.modules import _is_special_form
-from qy.std.modules import _parse_export_names
+from qy.import_.operators import _is_special_form
+from qy.import_.operators import _parse_export_names
 
 
 def test_is_special_form_with_matching_form():

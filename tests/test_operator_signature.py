@@ -6,8 +6,8 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.frontend.reader import Symbol
 from qy.runtime import Qy
-from qy.std import STANDARD_PROFILE_MODULES
-from qy.std import standard_profile_bindings
+from qy.symbol_space import STANDARD_PROFILE_MODULES
+from qy.symbol_space import standard_profile_bindings
 
 S = Symbol
 
@@ -32,8 +32,8 @@ def test_core_operators_expose_static_signatures():
 
 
 def test_non_core_legacy_data_operators_do_not_have_core_signatures():
+    from qy.import_.registry import standard_bindings
     from qy.session.runtime_space import RuntimeSpace as Environment
-    from qy.std import standard_bindings
 
     qy = Qy(env=Environment(standard_bindings(("qy.core", "qy.io", "qy.py"))))
 
@@ -101,7 +101,7 @@ def test_truthy_has_standard_profile_signature():
 
 def test_collect_supported_operators_covers_profile():
     """collect_supported_operators lists all standard profile symbols."""
-    from qy.std.profile import collect_supported_operators
+    from qy.symbol_space.profile import collect_supported_operators
 
     qy = Qy()
     supported_names: set[str] = set()

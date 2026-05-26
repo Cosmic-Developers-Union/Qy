@@ -1,4 +1,13 @@
 # coding: utf-8
+"""模块注册表与按名加载。.
+
+此模块负责"已知模块名 → ``StandardModule`` 工厂"的映射，以及
+对包路径 (``foo/bar``) 与文件路径 (``./mod.qy``、``./mod.py``) 的
+fallback 加载。
+
+它本身不知道任何具体模块的内容；具体加载器在 ``qy.symbol_space`` 与
+``qy.import_.operators`` 启动时调用 ``register_module_loader`` 注入。
+"""
 
 from __future__ import annotations
 
@@ -11,66 +20,62 @@ from pathlib import Path
 from typing import cast
 
 from qy.frontend.reader import Symbol
-from qy.std.module import StandardModule
+from qy.import_.module import StandardModule
 
 __all__ = [
-    "LANGUAGE_CORE_MODULES",
-    "OPTIONAL_STDLIB_MODULES",
-    "PRELUDE_MODULES",
-    "STANDARD_PROFILE_MODULES",
-    "StandardModule",
+    "ModuleLoader",
+    "load_file_module",
     "load_module",
     "load_module_async",
     "module_names",
+    "register_default_module_loader",
     "register_module",
     "register_module_loader",
     "standard_bindings",
     "standard_profile_bindings",
 ]
 
-LANGUAGE_CORE_MODULES = ("qy.core",)
-STANDARD_PROFILE_MODULES = ("qy.core", "qy.io")
-OPTIONAL_STDLIB_MODULES = (
-    "qy.num",
-    "qy.str",
-    "qy.char",
-    "qy.py",
-    "qy.testhost",
-    "qy.legacy",
-    "qy.int8",
-    "qy.int16",
-    "qy.int32",
-    "qy.int64",
-    "qy.uint8",
-    "qy.uint16",
-    "qy.uint32",
-    "qy.uint64",
-    "qy.float16",
-    "qy.float32",
-    "qy.float64",
-    "qy.float128",
-)
-PRELUDE_MODULES = STANDARD_PROFILE_MODULES
 type ModuleLoader = Callable[[], StandardModule]
 
 _MODULE_LOADERS: dict[str, ModuleLoader] = {}
-
-
-def module_names() -> tuple[str, ...]:
-    _install_builtin_loaders()
-    return tuple(sorted(_MODULE_LOADERS))
+_BUILTINS_INSTALLED = False
 
 
 def register_module(module: StandardModule) -> None:
+    """注册一个已构造好的模块；覆盖任何同名已有 loader。."""
     _MODULE_LOADERS[module.name] = lambda: module
 
 
 def register_module_loader(name: str, loader: ModuleLoader) -> None:
+    """注册模块 loader；覆盖任何同名已有 loader。."""
     _MODULE_LOADERS[name] = loader
 
 
+def register_default_module_loader(name: str, loader: ModuleLoader) -> None:
+    """以 ``setdefault`` 语义注册 loader：仅在尚未注册时生效。.
+
+    内置 loader 应使用此函数，使得显式 ``register_module_loader`` 调用
+    总能覆盖默认实现。
+    """
+    _MODULE_LOADERS.setdefault(name, loader)
+
+
+def _ensure_builtins_installed() -> None:
+    global _BUILTINS_INSTALLED
+    if _BUILTINS_INSTALLED:
+        return
+    _BUILTINS_INSTALLED = True
+    # qy.symbol_space 在 import-time 把内置 loader 注入注册表
+    import qy.symbol_space  # noqa: F401
+
+
+def module_names() -> tuple[str, ...]:
+    _ensure_builtins_installed()
+    return tuple(sorted(_MODULE_LOADERS))
+
+
 def load_module(name: str) -> StandardModule:
-    _install_builtin_loaders()
+    _ensure_builtins_installed()
     try:
         return _MODULE_LOADERS[name]()
     except KeyError as e:
@@ -82,7 +87,7 @@ def load_module(name: str) -> StandardModule:
 
 
 async def load_module_async(name: str) -> StandardModule:
-    _install_builtin_loaders()
+    _ensure_builtins_installed()
     try:
         return _MODULE_LOADERS[name]()
     except KeyError as e:
@@ -93,168 +98,15 @@ async def load_module_async(name: str) -> StandardModule:
         raise KeyError(f"unknown module {name!r}") from e
 
 
-def standard_profile_bindings(
-    modules: Iterable[str] = STANDARD_PROFILE_MODULES,
-) -> dict[Symbol, object]:
+def standard_profile_bindings(modules: Iterable[str]) -> dict[Symbol, object]:
     bindings: dict[Symbol, object] = {}
     for name in modules:
         bindings.update(load_module(name).exports)
     return bindings
 
 
-def standard_bindings(modules: Iterable[str] = STANDARD_PROFILE_MODULES) -> dict[Symbol, object]:
+def standard_bindings(modules: Iterable[str]) -> dict[Symbol, object]:
     return standard_profile_bindings(modules)
-
-
-def _install_builtin_loaders() -> None:
-    _MODULE_LOADERS.setdefault("qy.core", _load_core_module)
-    _MODULE_LOADERS.setdefault("qy.io", _load_io_module)
-    _MODULE_LOADERS.setdefault("qy.num", _load_num_module)
-    _MODULE_LOADERS.setdefault("qy.str", _load_string_module)
-    _MODULE_LOADERS.setdefault("qy.char", _load_char_module)
-    _MODULE_LOADERS.setdefault("qy.py", _load_py_module)
-    _MODULE_LOADERS.setdefault("qy.testhost", _load_testhost_module)
-    _MODULE_LOADERS.setdefault("qy.legacy", _load_legacy_module)
-    # Hardware numeric spaces
-    _MODULE_LOADERS.setdefault("qy.int8", _load_int8_module)
-    _MODULE_LOADERS.setdefault("qy.int16", _load_int16_module)
-    _MODULE_LOADERS.setdefault("qy.int32", _load_int32_module)
-    _MODULE_LOADERS.setdefault("qy.int64", _load_int64_module)
-    _MODULE_LOADERS.setdefault("qy.uint8", _load_uint8_module)
-    _MODULE_LOADERS.setdefault("qy.uint16", _load_uint16_module)
-    _MODULE_LOADERS.setdefault("qy.uint32", _load_uint32_module)
-    _MODULE_LOADERS.setdefault("qy.uint64", _load_uint64_module)
-    _MODULE_LOADERS.setdefault("qy.float16", _load_float16_module)
-    _MODULE_LOADERS.setdefault("qy.float32", _load_float32_module)
-    _MODULE_LOADERS.setdefault("qy.float64", _load_float64_module)
-    _MODULE_LOADERS.setdefault("qy.float128", _load_float128_module)
-
-
-def _load_core_module() -> StandardModule:
-    from qy.std.core import module
-
-    return module()
-
-
-def _load_io_module() -> StandardModule:
-    from qy.std.io import module
-
-    return module()
-
-
-def _load_num_module() -> StandardModule:
-    """``qy.num`` module: number-ss 算子的可显式 import 形态。.
-
-    与 number-ss 共享同一份 bindings 来源 (``number_ss_bindings``); 这样
-    ``(from qy.num import +)`` 与 number-ss 上的 ``+`` 是同一语义。
-    """
-    from qy.session.number_ops import number_ss_bindings
-
-    return StandardModule("qy.num", number_ss_bindings())
-
-
-def _load_string_module() -> StandardModule:
-    from qy.std.strings import module
-
-    return module()
-
-
-def _load_char_module() -> StandardModule:
-    from qy.std.chars import module
-
-    return module()
-
-
-def _load_py_module() -> StandardModule:
-    from qy.std.python import operators as python_operators
-
-    return StandardModule("qy.py", python_operators())
-
-
-def _load_legacy_module() -> StandardModule:
-    from qy.std.control import legacy_operators as control_legacy
-    from qy.std.effects import legacy_operators as effects_legacy
-
-    return StandardModule("qy.legacy", {**control_legacy(), **effects_legacy()})
-
-
-def _load_testhost_module() -> StandardModule:
-    from qy.std.testhost import module
-
-    return module()
-
-
-# Hardware numeric space loaders
-def _load_int8_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_int8_space
-
-    return make_int8_space()
-
-
-def _load_int16_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_int16_space
-
-    return make_int16_space()
-
-
-def _load_int32_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_int32_space
-
-    return make_int32_space()
-
-
-def _load_int64_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_int64_space
-
-    return make_int64_space()
-
-
-def _load_uint8_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_uint8_space
-
-    return make_uint8_space()
-
-
-def _load_uint16_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_uint16_space
-
-    return make_uint16_space()
-
-
-def _load_uint32_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_uint32_space
-
-    return make_uint32_space()
-
-
-def _load_uint64_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_uint64_space
-
-    return make_uint64_space()
-
-
-def _load_float16_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_float16_space
-
-    return make_float16_space()
-
-
-def _load_float32_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_float32_space
-
-    return make_float32_space()
-
-
-def _load_float64_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_float64_space
-
-    return make_float64_space()
-
-
-def _load_float128_module() -> StandardModule:
-    from qy.std.numeric_spaces import make_float128_space
-
-    return make_float128_space()
 
 
 def _looks_like_file_module(name: str) -> bool:
@@ -284,7 +136,6 @@ def _load_package_module(name: str) -> StandardModule:
     known = {dep.path for dep in manifest.dependencies}
     pkg_path, submodule = split_package_module(name, known)
 
-    # check replace directives
     for r in manifest.replaces:
         if r.path == pkg_path:
             local = (cwd / r.local_path).resolve()
@@ -326,6 +177,11 @@ def _load_file_module(name: str) -> StandardModule:
 
         return cast(StandardModule, run_coro(_load_qy_file_module_async(path)))
     raise KeyError(f"unsupported module file type {path.suffix!r}")
+
+
+def load_file_module(name: str) -> StandardModule:
+    """通过路径加载 ``.qy`` / ``.py`` 模块文件。."""
+    return _load_file_module(name)
 
 
 async def _load_file_module_async(name: str) -> StandardModule:

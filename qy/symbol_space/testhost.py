@@ -8,9 +8,9 @@ from qy.core.operators import ScopeOperator
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.frontend.reader import Symbol
+from qy.import_.module import StandardModule
 from qy.sem.core import T as QY_T
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std.module import StandardModule
 
 _CLI_ARGS_CACHE_KEY = ("qy", "cli_args")
 _COVERAGE_INSTANCE_KEY = ("qy", "coverage_instance")

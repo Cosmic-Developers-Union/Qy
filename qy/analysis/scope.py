@@ -21,9 +21,9 @@ from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
 from qy.frontend.reader import Symbol
 from qy.import_.loader import resolve_known_module
+from qy.import_.parse import parse_from_import
 from qy.project.module import remember_source_module
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std.imports import parse_from_import
 
 
 @dataclass(frozen=True, slots=True)

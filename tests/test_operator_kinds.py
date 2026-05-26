@@ -7,9 +7,9 @@ from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
+from qy.import_.registry import load_module
 from qy.sem.runtime import EffectDefinition
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.std import load_module
 
 S = Symbol
 

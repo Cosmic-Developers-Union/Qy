@@ -200,7 +200,7 @@ class NumberValue(ObjectValue):
     # idiomatic Python code (host operators, debug formatters, sequence
     # indexing) treat ``NumberValue`` like its underlying Python value. They
     # do not affect Qy semantics: the language's ``+``/``-``/``*``/``/`` go
-    # through ``qy.std.arithmetic`` and require concrete-type consistency.
+    # through ``qy.session.number_ops`` and require concrete-type consistency.
     def __add__(self, other: object) -> object:
         v = _peer_value(other)
         return NotImplemented if v is _NO_PEER else self.value + v  # type: ignore[attr-defined]

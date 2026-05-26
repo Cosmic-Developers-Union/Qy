@@ -28,7 +28,7 @@ def test_print_and_echo():
 
 
 def test_tagged_literal_calls_user_operator():
-    from qy.std import load_module
+    from qy.import_.registry import load_module
 
     env = standard_environment()
     for sym, val in load_module("qy.str").exports.items():

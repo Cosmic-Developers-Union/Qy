@@ -117,10 +117,10 @@ from qy.session import RuntimeSpace
 from qy.session import create_standard_runtime_space
 from qy.session.runtime_space import Environment
 from qy.session.runtime_space import standard_environment
-from qy.std.profile import OperatorDoc
-from qy.std.profile import OperatorModuleDoc
-from qy.std.profile import collect_supported_operators
-from qy.std.profile import format_operator_docs
+from qy.symbol_space.profile import OperatorDoc
+from qy.symbol_space.profile import OperatorModuleDoc
+from qy.symbol_space.profile import collect_supported_operators
+from qy.symbol_space.profile import format_operator_docs
 from qy.tools.fmt import dump_form
 from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_form

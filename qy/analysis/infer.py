@@ -29,8 +29,8 @@ from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
 from qy.frontend.reader import Symbol
 from qy.import_.loader import resolve_known_module
+from qy.import_.parse import parse_from_import
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.std.imports import parse_from_import
 
 
 def infer(form: object, env: Environment, scope: Scope, diagnostics: list[Diagnostic]) -> TypeName:

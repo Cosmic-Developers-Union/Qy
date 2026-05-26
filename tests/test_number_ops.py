@@ -1,7 +1,7 @@
 # coding: utf-8
-"""测试 qy.std.arithmetic 模块的新算子语义。.
+"""测试 number-ss 算子内核 (qy.session.number_ops) 的语义。.
 
-新设计：``+ - * /`` 要求所有参数为同一 concrete ``NumberValue`` 类型，
+``+ - * /`` 要求所有参数为同一 concrete ``NumberValue`` 类型，
 不接受 raw Python int/float；类型不一致触发 ``unsupported-operation`` effect；
 除零触发 ``divide-by-zero`` effect。
 """
@@ -16,12 +16,12 @@ from qy.sem.core import FloatValue
 from qy.sem.core import Int32Value
 from qy.sem.core import IntValue
 from qy.sem.core import T as QY_T
-from qy.std.arithmetic import _add
-from qy.std.arithmetic import _div
-from qy.std.arithmetic import _mul
-from qy.std.arithmetic import _num_eq
-from qy.std.arithmetic import _py_eq
-from qy.std.arithmetic import _sub
+from qy.session.number_ops import _add
+from qy.session.number_ops import _div
+from qy.session.number_ops import _mul
+from qy.session.number_ops import _num_eq
+from qy.session.number_ops import _py_eq
+from qy.session.number_ops import _sub
 
 
 def _i(n: int) -> IntValue:

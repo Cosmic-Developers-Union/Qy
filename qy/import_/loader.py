@@ -17,9 +17,9 @@ from typing import cast
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
+    from qy.import_.module import StandardModule
     from qy.project.package import Package
     from qy.session.runtime_space import RuntimeSpace as Environment
-    from qy.std.module import StandardModule
 
 __all__ = [
     "ModuleLoader",
@@ -165,7 +165,7 @@ def resolve_known_module(name: str, env: Environment) -> StandardModule:
     if is_package_path(name):
         return _resolve_package_module(name, env)
 
-    from qy.std import load_module
+    from qy.import_.registry import load_module
 
     return load_module(name)
 
@@ -199,9 +199,9 @@ def _resolve_package_module(name: str, env: Environment) -> StandardModule:
     if source_path is None or not source_path.exists():
         raise KeyError(f"module source not found: {name!r}")
 
-    from qy.std import _load_file_module
+    from qy.import_.registry import load_file_module
 
-    module = _load_file_module(str(source_path))
+    module = load_file_module(str(source_path))
 
     modules = _source_module_cache(env)
     modules[name] = module

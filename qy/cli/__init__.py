@@ -28,7 +28,7 @@ from qy.passes.build import lir_artifact
 from qy.passes.build import mir_artifact
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
-from qy.std.profile import format_operator_docs
+from qy.symbol_space.profile import format_operator_docs
 from qy.tools.fmt import dump_program
 from qy.tools.fmt import format_source
 
@@ -41,9 +41,9 @@ def _is_definition_artifact(value: object) -> bool:
     as a side product of their lowering. They are not user-visible expression
     values and the CLI ``run`` command should not print them.
     """
+    from qy.import_.module import StandardModule
     from qy.macro import MacroDefinition
     from qy.sem.runtime import EffectDefinition
-    from qy.std.module import StandardModule
     from qy.vm.bytecode import BytecodeFunctionValue
 
     return (
@@ -137,7 +137,7 @@ def create_app() -> Any:
         try:
             qy = Qy()
             if args:
-                from qy.std.testhost import set_cli_args
+                from qy.symbol_space.testhost import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
             source = path.read_text(encoding="utf-8")

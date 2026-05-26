@@ -8,11 +8,11 @@ from qy.core.syntax import is_chain
 from qy.frontend.reader import Symbol
 from qy.import_.loader import cache_source_module
 from qy.import_.loader import resolve_known_module
+from qy.import_.module import StandardModule
+from qy.import_.parse import parse_from_import
 from qy.macro import MacroDefinition
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
-from qy.std.imports import parse_from_import
-from qy.std.module import StandardModule
 
 if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment

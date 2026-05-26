@@ -104,13 +104,13 @@ class ProfileConfig:
         - ``lisp-ss``: ``T``, ``nil``, ``true``, ``false``, ``none``。
         - ``number-ss`` / ``char-ss`` / ``string-ss``: 字面量识别 + number-ss
           的算子。
-        - ``stdlib``: 由 ``qy.std.standard_profile_bindings()`` 提供的 stdlib
+        - ``stdlib``: 由 ``qy.symbol_space.standard_profile_bindings()`` 提供的 stdlib
           模块合并视图。
         - ``pre-ssc-head``: 用户可写的 head 层。
         """
         from qy.core.symbol_space import SymbolSpace
         from qy.session.pre_ss import create_pre_ssc
-        from qy.std import standard_profile_bindings
+        from qy.symbol_space import standard_profile_bindings
 
         stdlib_layer = SymbolSpace(
             standard_profile_bindings(),

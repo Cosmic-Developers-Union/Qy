@@ -1,9 +1,9 @@
 from qy.analysis import type_check_source
 from qy.frontend.reader import Symbol
+from qy.import_.module import StandardModule
+from qy.import_.registry import register_module
 from qy.macro import MacroDefinition
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.std import StandardModule
-from qy.std import register_module
 
 S = Symbol
 

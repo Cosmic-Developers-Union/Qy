@@ -30,6 +30,7 @@ from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.frontend.reader import read
 from qy.import_.loader import resolve_known_module
+from qy.import_.parse import parse_from_import
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -69,7 +70,6 @@ from qy.sem.classify import value_type
 from qy.session.pre_ss import default_literal_type
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.std.imports import parse_from_import
 
 __all__ = [
     "LoweringContext",

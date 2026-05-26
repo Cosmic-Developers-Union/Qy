@@ -1,12 +1,12 @@
 # coding: utf-8
-"""测试 qy.stdlib.module 模块。."""
+"""测试 qy.import_.module 模块。."""
 
 from __future__ import annotations
 
 import pytest
 
 from qy.frontend.reader import Symbol
-from qy.std.module import StandardModule
+from qy.import_.module import StandardModule
 
 
 def test_standard_module_creation():

@@ -159,7 +159,7 @@ def test_module_export_view_consistent() -> None:
     # Module with exports: only exported names visible
     q = Qy()
     q.evaluate_source("(module M (exports pub) (define priv 1) (define pub 2))")
-    from qy.std.module import StandardModule
+    from qy.import_.module import StandardModule
 
     mod = q.env.resolve(Symbol("M"))
     assert isinstance(mod, StandardModule)
