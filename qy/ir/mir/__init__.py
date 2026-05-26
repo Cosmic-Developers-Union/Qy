@@ -203,20 +203,20 @@ def _verify_instruction(
                         f"function {function.name.name!r} block bb{block_id} instruction {instruction.opcode!r} expects bool resumable operand, got {operands[1]!r}"
                     )
                 )
-        case "PERFORM":
+        case "PERFORM" | "HANDLE" | "RESUME":
+            diagnostics.append(
+                Diagnostic(
+                    f"function {function.name.name!r} block bb{block_id} uses legacy effect opcode "
+                    f"{instruction.opcode!r}; effects must lower to EFFECT_HANDLE_BEGIN / "
+                    "EFFECT_HANDLE_END / EFFECT_RESUME / EFFECT_PERFORM(terminator)"
+                )
+            )
+        case "EFFECT_HANDLE_BEGIN":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
             ):
                 return
-            _check_register(function, block_id, operands[0], diagnostics)
-            _check_symbol_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
-            _check_register(function, block_id, operands[2], diagnostics)
-        case "HANDLE":
-            if not _check_operand_arity(
-                function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
-            ):
-                return
-            _check_register(function, block_id, operands[0], diagnostics)
+            _check_int_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
             _check_int_operand(function, block_id, instruction.opcode, operands[1], diagnostics)
             _check_tuple_operand(
                 function,
@@ -226,7 +226,14 @@ def _verify_instruction(
                 operands[2],
                 diagnostics,
             )
-        case "RESUME":
+        case "EFFECT_HANDLE_END":
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 2, diagnostics
+            ):
+                return
+            _check_int_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
+            _check_register(function, block_id, operands[1], diagnostics)
+        case "EFFECT_RESUME":
             if not _check_operand_arity(
                 function, block_id, "instruction", instruction.opcode, operands, 3, diagnostics
             ):
@@ -372,6 +379,21 @@ def _verify_terminator(
                         f"function {function.name.name!r} block bb{block_id} terminator {terminator.opcode!r} expects bool resumable operand, got {operands[2]!r}"
                     )
                 )
+        case "EFFECT_PERFORM":
+            if not _check_operand_arity(
+                function, block_id, "terminator", terminator.opcode, operands, 5, diagnostics
+            ):
+                return
+            _check_register(function, block_id, operands[0], diagnostics)
+            _check_symbol_operand(function, block_id, terminator.opcode, operands[1], diagnostics)
+            _check_register(function, block_id, operands[2], diagnostics)
+            _check_block_target(function, block_id, operands[3], block_ids, diagnostics)
+            if not isinstance(operands[4], bool):
+                diagnostics.append(
+                    Diagnostic(
+                        f"function {function.name.name!r} block bb{block_id} terminator {terminator.opcode!r} expects bool resumable operand, got {operands[4]!r}"
+                    )
+                )
         case "TAIL_CALL":
             if not _check_operand_arity(
                 function, block_id, "terminator", terminator.opcode, operands, 2, diagnostics
@@ -405,9 +427,7 @@ _DEFINE_OPCODES: frozenset[str] = frozenset(
         "RUNTIME_EVAL",
         "CACHE_EVAL",
         "DEFINE_MODULE",
-        "HANDLE",
-        "PERFORM",
-        "RESUME",
+        "EFFECT_RESUME",
         "ALL_GATHER",
         "PARALLEL_GATHER",
         "RACE_FIRST",
@@ -426,9 +446,9 @@ _CONTINUOUS_BREAK_OPCODES: frozenset[str] = frozenset(
     {
         "ENTER_SCOPE",
         "EXIT_SCOPE",
-        "HANDLE",
-        "PERFORM",
-        "RESUME",
+        "EFFECT_HANDLE_BEGIN",
+        "EFFECT_HANDLE_END",
+        "EFFECT_RESUME",
         "DEFEFFECT",
         "DEFINE_MODULE",
         "FROM_IMPORT",
@@ -542,6 +562,10 @@ def _terminator_targets(terminator: MIRTerminator) -> list[MIRBlockId]:
             if len(operands) >= 3 and isinstance(operands[2], int):
                 targets.append(operands[2])
             return targets
+        case "EFFECT_PERFORM":
+            if len(operands) >= 4 and isinstance(operands[3], int):
+                return [operands[3]]
+            return []
         case "RETURN" | "TAIL_CALL" | "RAISE_EFFECT":
             return []
         case _:
@@ -567,9 +591,17 @@ def _verify_def_use(
                 dst = instruction.operands[0]
                 if isinstance(dst, int):
                     defined.add(dst)
+            elif instruction.opcode == "EFFECT_HANDLE_END" and len(instruction.operands) >= 2:
+                dst = instruction.operands[1]
+                if isinstance(dst, int):
+                    defined.add(dst)
 
         if block.terminator is not None:
             _check_terminator_uses(function, block.id, block.terminator, defined, diagnostics)
+            if block.terminator.opcode == "EFFECT_PERFORM" and block.terminator.operands:
+                dst = block.terminator.operands[0]
+                if isinstance(dst, int):
+                    defined.add(dst)
 
 
 def _add_reg(uses: set[MIRRegister], operands: tuple[object, ...], index: int) -> None:
@@ -610,11 +642,11 @@ def _collect_register_uses(
             pass
         case "DEFINE_MODULE":
             pass
-        case "HANDLE":
+        case "EFFECT_HANDLE_BEGIN":
             pass
-        case "PERFORM":
-            _add_reg(uses, operands, 2)
-        case "RESUME":
+        case "EFFECT_HANDLE_END":
+            pass
+        case "EFFECT_RESUME":
             _add_reg(uses, operands, 1)
             _add_reg(uses, operands, 2)
         case "CALL":
@@ -652,6 +684,8 @@ def _collect_register_uses(
             _add_reg_tuple(uses, operands, 1)
         case "RAISE_EFFECT":
             _add_reg(uses, operands, 1)
+        case "EFFECT_PERFORM":
+            _add_reg(uses, operands, 2)
         case _:
             start = 1 if skip_first else 0
             for operand in operands[start:]:
@@ -903,18 +937,21 @@ def _format_instruction(instruction: MIRInstruction) -> str:
             rendered = f"{_format_register(operands[0])} = MOVE {_format_register(operands[1])}"
         case "DEFEFFECT":
             rendered = f"DEFEFFECT {_format_operand(operands[0])}, resumable={operands[1]}"
-        case "PERFORM":
-            rendered = f"{_format_register(operands[0])} = PERFORM {_format_operand(operands[1])} {_format_register(operands[2])}"
-        case "HANDLE":
+        case "EFFECT_HANDLE_BEGIN":
             specs = operands[2]
             specs_str = ", ".join(
                 f"{s[0].name} -> fn#{s[1]}"
                 for s in (specs if isinstance(specs, tuple) else ())
                 if isinstance(s, tuple) and len(s) >= 2 and isinstance(s[0], Symbol)
             )
-            rendered = f"{_format_register(operands[0])} = HANDLE fn#{operands[1]} [{specs_str}]"
-        case "RESUME":
-            rendered = f"{_format_register(operands[0])} = RESUME {_format_register(operands[1])} {_format_register(operands[2])}"
+            rendered = f"EFFECT_HANDLE_BEGIN h{operands[0]} body=fn#{operands[1]} [{specs_str}]"
+        case "EFFECT_HANDLE_END":
+            rendered = f"EFFECT_HANDLE_END h{operands[0]} -> {_format_register(operands[1])}"
+        case "EFFECT_RESUME":
+            rendered = (
+                f"{_format_register(operands[0])} = EFFECT_RESUME "
+                f"{_format_register(operands[1])} {_format_register(operands[2])}"
+            )
         case "RUNTIME_EVAL":
             rendered = (
                 f"{_format_register(operands[0])} = RUNTIME_EVAL {_format_register(operands[1])}"
@@ -937,6 +974,12 @@ def _format_terminator(terminator: MIRTerminator) -> str:
             rendered = f"RETURN {_format_operand(operands[0])}"
         case "RAISE_EFFECT":
             rendered = f"RAISE_EFFECT {_format_operand(operands[0])}, {_format_register(operands[1])}, resumable={operands[2]}"
+        case "EFFECT_PERFORM":
+            rendered = (
+                f"{_format_register(operands[0])} = EFFECT_PERFORM "
+                f"{_format_operand(operands[1])} {_format_register(operands[2])} "
+                f"-> bb{operands[3]} resumable={operands[4]}"
+            )
         case "TAIL_CALL":
             rendered = f"TAIL_CALL {_format_register(operands[0])} {_format_operand(operands[1])}"
         case _:

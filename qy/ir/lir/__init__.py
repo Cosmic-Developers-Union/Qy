@@ -27,7 +27,6 @@ from qy.ir.lir.frame import LIRSymbolSpaceLayout
 from qy.ir.lir.node import LIRBindingAddr
 from qy.ir.lir.node import LIRBindingSlot
 from qy.ir.lir.node import LIRBindingState
-from qy.ir.lir.node import LIRDialect
 from qy.ir.lir.node import LIRFunction
 from qy.ir.lir.node import LIRInstruction
 from qy.ir.lir.node import LIRInstructionIndex
@@ -45,7 +44,6 @@ __all__ = [
     "LIRBindingSlot",
     "LIRBindingState",
     "LIRContinuationLayout",
-    "LIRDialect",
     "LIRFrameKind",
     "LIRFrameLayout",
     "LIRFunction",

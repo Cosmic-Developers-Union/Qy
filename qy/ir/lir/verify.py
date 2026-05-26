@@ -18,8 +18,7 @@ from qy.ir.lir.node import LIRProgram
 
 __all__ = ["verify_lir"]
 
-_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT"})
-_LANGUAGE_LEVEL_EFFECT_OPCODES = frozenset({"HANDLE", "PERFORM", "RESUME"})
+_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT", "CONT_RESTORE", "EFFECT_UNWIND"})
 _JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
 
 # Opcodes that split an IR-level uninterruptible point in LIR — they must not
@@ -33,9 +32,6 @@ _CONTINUOUS_BREAK_OPCODES = frozenset(
         "SS_RESTORE",
         "FRAME_ENTER",
         "FRAME_LEAVE",
-        "HANDLE",
-        "PERFORM",
-        "RESUME",
         "HANDLER_PUSH",
         "HANDLER_POP",
         "EFFECT_UNWIND",
@@ -64,8 +60,6 @@ _CONTINUOUS_BREAK_OPCODES = frozenset(
 
 def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
     diagnostics: list[Diagnostic] = []
-    if program.dialect not in {"compat", "abstract-machine"}:
-        diagnostics.append(Diagnostic(f"unknown LIR dialect {program.dialect!r}", severity="error"))
     for func in program.functions:
         if not func.instructions and func.name.name not in ("<lambda>",):
             diagnostics.append(
@@ -98,14 +92,27 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
             )
 
         for idx, inst in enumerate(func.instructions):
-            if (
-                program.dialect == "abstract-machine"
-                and inst.opcode in _LANGUAGE_LEVEL_EFFECT_OPCODES
-            ):
+            if inst.opcode in {"PERFORM", "HANDLE", "RESUME"}:
                 diagnostics.append(
                     Diagnostic(
                         f"LIR function {func.name.name} retains language-level "
-                        f"effect opcode {inst.opcode} at {idx}",
+                        f"effect opcode {inst.opcode} at {idx}; effects must be "
+                        "lowered to abstract-machine opcodes (HANDLER_PUSH/POP, "
+                        "CONT_*, EFFECT_UNWIND/DISPATCH)",
+                        severity="error",
+                    )
+                )
+            if inst.opcode in {
+                "EFFECT_HANDLE_BEGIN",
+                "EFFECT_HANDLE_END",
+                "EFFECT_PERFORM",
+                "EFFECT_RESUME",
+            }:
+                diagnostics.append(
+                    Diagnostic(
+                        f"LIR function {func.name.name} retains MIR-level effect "
+                        f"placeholder {inst.opcode} at {idx}; the effect-lowering "
+                        "pass must eliminate all EFFECT_HANDLE_*/EFFECT_PERFORM/EFFECT_RESUME",
                         severity="error",
                     )
                 )
@@ -217,35 +224,69 @@ def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[obj
             return regs
         case "BUILD_TUPLE":
             return list(operands)
-        case "APPLY" | "RUNTIME_EVAL" | "RESUME":
+        case "APPLY" | "RUNTIME_EVAL":
             return list(operands)
         case "JUMP_IF_FALSE":
-            return [operands[0]] if operands else []
-        case "PERFORM":
-            return (
-                [operands[0], operands[2]]
-                if len(operands) >= 3
-                else [operands[0]]
-                if operands
-                else []
-            )
-        case "HANDLE":
             return [operands[0]] if operands else []
         case "RAISE_EFFECT":
             return [operands[1]] if len(operands) >= 2 else []
         case "CONT_CAPTURE":
+            # operands: (dst_cont_reg, cont_layout_id, resume_target_idx,
+            #            saved_regs_tuple, dst_reg_for_resume, multi_shot)
             regs = [operands[0]] if operands else []
             if len(operands) >= 4 and isinstance(operands[3], tuple):
                 regs.extend(operands[3])
+            if len(operands) >= 5:
+                regs.append(operands[4])
             return regs
         case "CONT_COPY":
             return [operands[0], operands[1]] if len(operands) >= 2 else list(operands)
         case "CONT_RESTORE":
-            return [operands[0]] if operands else []
+            # operands: (cont_reg, dst_reg_after_resume, value_reg)
+            return list(operands[:3]) if len(operands) >= 3 else list(operands)
         case "CONT_INJECT":
             return [operands[0], operands[1]] if len(operands) >= 2 else list(operands)
-        case "EFFECT_UNWIND" | "EFFECT_DISPATCH":
-            return list(operands)
+        case "EFFECT_UNWIND":
+            # operands: (effect_sym, arg_reg, cont_reg)
+            regs: list[object] = []
+            if len(operands) >= 2:
+                regs.append(operands[1])
+            if len(operands) >= 3:
+                regs.append(operands[2])
+            return regs
+        case "EFFECT_DISPATCH":
+            # operands: (dst_handler_fn_reg, handler_id, arg_dst_reg, cont_dst_reg)
+            regs: list[object] = []
+            if operands:
+                regs.append(operands[0])
+            if len(operands) >= 3:
+                regs.append(operands[2])
+            if len(operands) >= 4:
+                regs.append(operands[3])
+            return regs
+        case "HANDLER_PUSH" | "HANDLER_POP":
+            return []
+        case "FRAME_ENTER" | "FRAME_LEAVE":
+            return []
+        case "SS_ENTER" | "SS_LEAVE" | "SS_RESTORE" | "SS_COPY":
+            return []
+        case "EFFECT_PERFORM":
+            # placeholder: (dst_reg, effect_sym, arg_reg, resume_idx, resumable)
+            regs: list[object] = []
+            if operands:
+                regs.append(operands[0])
+            if len(operands) >= 3:
+                regs.append(operands[2])
+            return regs
+        case "EFFECT_HANDLE_BEGIN":
+            # placeholder: (handle_id, body_fn_idx, handler_specs)
+            return []
+        case "EFFECT_HANDLE_END":
+            # placeholder: (handle_id, dst_reg)
+            return [operands[1]] if len(operands) >= 2 else []
+        case "EFFECT_RESUME":
+            # placeholder: (dst_reg, cont_reg, value_reg)
+            return list(operands[:3])
         case "CACHE_EVAL":
             return [operands[0]] if operands else []
         case "DEFINE_MODULE":

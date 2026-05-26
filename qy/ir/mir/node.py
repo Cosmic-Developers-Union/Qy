@@ -41,10 +41,12 @@ MIROpcode = Literal[
     "DEFEFFECT",
     "DEFINE_MODULE",
     "DEFINE_ONCE",
+    "EFFECT_HANDLE_BEGIN",
+    "EFFECT_HANDLE_END",
+    "EFFECT_RESUME",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
     "FROM_IMPORT",
-    "HANDLE",
     "LOAD_CONST",
     "LOAD_HOST",
     "LOAD_ENV",
@@ -52,14 +54,19 @@ MIROpcode = Literal[
     "MAKE_MACRO",
     "MOVE",
     "PARALLEL_GATHER",
-    "PERFORM",
     "RACE_FIRST",
-    "RESUME",
     "RUNTIME_EVAL",
     "STORE_LOCAL",
 ]
 
-MIRTerminatorOpcode = Literal["BRANCH", "JUMP", "RAISE_EFFECT", "RETURN", "TAIL_CALL"]
+MIRTerminatorOpcode = Literal[
+    "BRANCH",
+    "EFFECT_PERFORM",
+    "JUMP",
+    "RAISE_EFFECT",
+    "RETURN",
+    "TAIL_CALL",
+]
 
 
 @dataclass(slots=True)

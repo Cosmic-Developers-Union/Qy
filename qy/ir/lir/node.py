@@ -31,7 +31,6 @@ __all__ = [
     "LIRBindingAddr",
     "LIRBindingSlot",
     "LIRBindingState",
-    "LIRDialect",
     "LIRFunction",
     "LIRInstruction",
     "LIRInstructionIndex",
@@ -47,7 +46,6 @@ LIRRegister = int
 LIRInstructionIndex = int
 LIRSymbolSpaceId = int
 LIRSlotIndex = int
-LIRDialect = Literal["compat", "abstract-machine"]
 LIRBindingState = Literal["declared", "pending", "completed", "poisoned"]
 
 
@@ -109,10 +107,12 @@ LIROpcode = Literal[
     "RETURN",
     # -- Effects --
     "DEFEFFECT",
-    "PERFORM",
-    "HANDLE",
-    "RESUME",
     "RAISE_EFFECT",
+    # -- Effects: MIR-imported placeholders, eliminated by effect-lowering pass --
+    "EFFECT_HANDLE_BEGIN",
+    "EFFECT_HANDLE_END",
+    "EFFECT_PERFORM",
+    "EFFECT_RESUME",
     # -- Concurrency --
     "PARALLEL_GATHER",
     "ALL_GATHER",
@@ -184,7 +184,6 @@ class LIRProgram:
     functions: tuple[LIRFunction, ...]
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
-    dialect: LIRDialect = "compat"
 
     @property
     def ok(self) -> bool:

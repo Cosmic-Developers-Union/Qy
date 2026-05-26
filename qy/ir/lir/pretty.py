@@ -28,8 +28,6 @@ __all__ = ["dump_lir"]
 
 def dump_lir(program: LIRProgram) -> str:
     lines: list[str] = []
-    if program.dialect != "compat":
-        lines.append(f"dialect: {program.dialect}")
     for index, function in enumerate(program.functions):
         params = ", ".join(param.name for param in function.params)
         suffix = " [main]" if index == program.main else ""

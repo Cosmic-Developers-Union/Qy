@@ -48,7 +48,6 @@ from qy.ir.lir import LIRBindingAddr
 from qy.ir.lir import LIRBindingSlot
 from qy.ir.lir import LIRBindingState
 from qy.ir.lir import LIRContinuationLayout
-from qy.ir.lir import LIRDialect
 from qy.ir.lir import LIRFrameKind
 from qy.ir.lir import LIRFrameLayout
 from qy.ir.lir import LIRFunction
@@ -100,7 +99,6 @@ __all__ = [
     "LIRBindingSlot",
     "LIRBindingState",
     "LIRContinuationLayout",
-    "LIRDialect",
     "LIRFrameKind",
     "LIRFrameLayout",
     "LIRFunction",

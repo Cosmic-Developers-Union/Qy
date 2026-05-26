@@ -67,6 +67,19 @@ def _emit_terminator(
             instructions.append(
                 LIRInstruction("RAISE_EFFECT", terminator.operands, terminator.span)
             )
+        case "EFFECT_PERFORM":
+            # MIR EFFECT_PERFORM(dst, eff, arg, resume_block, resumable) →
+            # LIR placeholder EFFECT_PERFORM(dst, eff, arg, resume_idx, resumable)
+            # (instruction-index for resume_idx is patched after linearization).
+            dst, effect_sym, arg_reg, resume_block, resumable = terminator.operands
+            patches.append(_Patch(len(instructions), _block_id(resume_block)))
+            instructions.append(
+                LIRInstruction(
+                    "EFFECT_PERFORM",
+                    (dst, effect_sym, arg_reg, None, resumable),
+                    terminator.span,
+                )
+            )
 
 
 def _patch_jumps(
@@ -76,7 +89,14 @@ def _patch_jumps(
 ) -> None:
     for patch in patches:
         instruction = instructions[patch.instruction_index]
-        operands = (*instruction.operands[:-1], block_offsets[patch.target_block])
+        target = block_offsets[patch.target_block]
+        if instruction.opcode == "EFFECT_PERFORM":
+            # operand layout: (dst, eff, arg, resume_idx, resumable)
+            ops = list(instruction.operands)
+            ops[3] = target
+            operands = tuple(ops)
+        else:
+            operands = (*instruction.operands[:-1], target)
         instructions[patch.instruction_index] = LIRInstruction(
             instruction.opcode, operands, instruction.span
         )

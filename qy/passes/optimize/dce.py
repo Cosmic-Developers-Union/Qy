@@ -120,11 +120,11 @@ def _collect_uses_from_instruction(inst: MIRInstruction, used: set[int]) -> None
         case "BUILD_TUPLE":
             for op in inst.operands[1:]:
                 _add_reg(op, used)
-        case "PERFORM":
-            _add_reg(inst.operands[2], used)
-        case "HANDLE":
+        case "EFFECT_HANDLE_BEGIN":
             pass
-        case "RESUME":
+        case "EFFECT_HANDLE_END":
+            pass
+        case "EFFECT_RESUME":
             for op in inst.operands[1:]:
                 _add_reg(op, used)
         case "RUNTIME_EVAL":
@@ -159,6 +159,10 @@ def _collect_uses_from_terminator(term: MIRTerminator, used: set[int]) -> None:
             _add_reg(term.operands[0], used)
         case "RAISE_EFFECT":
             _add_reg(term.operands[1], used)
+        case "EFFECT_PERFORM":
+            # operand layout: (dst, eff_sym, arg_reg, resume_block, resumable)
+            if len(term.operands) >= 3:
+                _add_reg(term.operands[2], used)
         case _:
             pass
 

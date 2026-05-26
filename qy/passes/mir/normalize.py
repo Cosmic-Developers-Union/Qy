@@ -359,6 +359,7 @@ class _FunctionLowerer:
         return _LoweredExpression(None)
 
     def lower_defeffect(self, expression: DefeffectExpr) -> _LoweredExpression:
+        self.owner.register_effect(expression.name, expression.resumable)
         self.emit("DEFEFFECT", expression.name, expression.resumable, span=expression.span)
         return _LoweredExpression(None)
 
@@ -367,7 +368,18 @@ class _FunctionLowerer:
         if arg.register is None:
             return _LoweredExpression(None)
         result = self.register()
-        self.emit("PERFORM", result, expression.effect, arg.register, span=expression.span)
+        resumable = self.owner.resolve_resumable(expression.effect)
+        resume_block = self.new_block()
+        self.terminate(
+            "EFFECT_PERFORM",
+            result,
+            expression.effect,
+            arg.register,
+            resume_block.id,
+            resumable,
+            span=expression.span,
+        )
+        self.switch_to(resume_block)
         return _LoweredExpression(result)
 
     def lower_handle(self, expression: HandleExpr) -> _LoweredExpression:
@@ -384,12 +396,19 @@ class _FunctionLowerer:
                 handler.body,
             )
             handler_specs.append((handler.effect, handler_fn_idx))
+        handle_id = self.owner.alloc_handle_id()
         result = self.register()
         self.emit(
-            "HANDLE",
-            result,
+            "EFFECT_HANDLE_BEGIN",
+            handle_id,
             body_fn_idx,
             tuple(handler_specs),
+            span=expression.span,
+        )
+        self.emit(
+            "EFFECT_HANDLE_END",
+            handle_id,
+            result,
             span=expression.span,
         )
         return _LoweredExpression(result)
@@ -400,7 +419,13 @@ class _FunctionLowerer:
         if cont.register is None or value.register is None:
             return _LoweredExpression(None)
         result = self.register()
-        self.emit("RESUME", result, cont.register, value.register, span=expression.span)
+        self.emit(
+            "EFFECT_RESUME",
+            result,
+            cont.register,
+            value.register,
+            span=expression.span,
+        )
         return _LoweredExpression(result)
 
     def lower_pipeline(self, expression: PipelineExpr, *, tail: bool) -> _LoweredExpression:
@@ -469,6 +494,7 @@ class _FunctionLowerer:
         register = self.register()
 
         if isinstance(expression.value, DefeffectExpr):
+            self.owner.register_effect(expression.name, expression.value.resumable)
             self.emit(
                 "DEFEFFECT", expression.name, expression.value.resumable, span=expression.span
             )
@@ -548,6 +574,21 @@ class _MIRLowerer:
         self.diagnostics = list(diagnostics)
         self.functions: list[MIRFunction | None] = []
         self.constants = MIRConstantPool()
+        # Effect resumability table populated when DefeffectExpr is lowered.
+        # Used by EFFECT_PERFORM lowering to inject the resumable bit.
+        self.effect_table: dict[str, bool] = {}
+        self._next_handle_id: int = 0
+
+    def alloc_handle_id(self) -> int:
+        handle_id = self._next_handle_id
+        self._next_handle_id += 1
+        return handle_id
+
+    def register_effect(self, name: Symbol, resumable: bool) -> None:
+        self.effect_table[name.name] = resumable
+
+    def resolve_resumable(self, name: Symbol) -> bool:
+        return self.effect_table.get(name.name, True)
 
     def lower(self, program: ProgramIR) -> MIRProgram:
         main_index = self.reserve_function()
