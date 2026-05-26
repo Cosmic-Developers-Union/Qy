@@ -64,21 +64,6 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
     """Compile LIR program to bytecode."""
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
-    if program.dialect != "compat":
-        from qy.diag import Diagnostic
-
-        return BytecodeProgram(
-            (),
-            0,
-            (
-                *program.diagnostics,
-                Diagnostic(
-                    "bytecode compiler only supports compat LIR; abstract-machine LIR "
-                    "must be lowered through the new LIR encoding path",
-                    severity="error",
-                ),
-            ),
-        )
     return BytecodeProgram(
         tuple(
             BytecodeFunction(
