@@ -10,7 +10,7 @@
 
 当前：
 - 占位包
-- 实现仍主要位于 analyzer.py、formatter.py、lsp.py、benchmark.py
+- 实现仍主要位于 analyzer.py、formatter.py、lsp.py、benchmark/
 
 禁止：
 - 不承载语言语义

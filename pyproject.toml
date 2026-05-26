@@ -31,7 +31,7 @@ Homepage = "https://github.com/Cosmic-Developers-Union/Qy"
 
 [project.scripts]
 qy = "qy.cli:main"
-qy-bench = "qy.benchmark:main"
+qy-bench = "qy.benchmark.cli:main"
 
 [tool.ruff]
 line-length = 100
