@@ -304,54 +304,118 @@ func typeOf(args []vm.Value) (vm.Value, error) {
 }
 
 func reify(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return vm.QyNil, nil
+	if len(args) != 1 {
+		return nil, fmt.Errorf("reify expects exactly 1 argument, got %d", len(args))
 	}
-	return reifyValue(args[0]), nil
+	return reifyValue(args[0])
 }
 
-func reifyValue(v vm.Value) vm.Value {
+func reifyValue(v vm.Value) (vm.Value, error) {
+	if vm.IsNil(v) {
+		return &vm.Symbol{Name: "nil"}, nil
+	}
+	if v == vm.QyT {
+		return &vm.Symbol{Name: "T"}, nil
+	}
 	switch val := v.(type) {
-	case int:
-		return &vm.Symbol{Name: fmt.Sprintf("%d", val)}
-	case float64:
-		return &vm.Symbol{Name: fmt.Sprintf("%g", val)}
-	case string:
-		return &vm.Symbol{Name: val}
 	case *vm.Symbol:
-		return val
+		return val, nil
+	case int:
+		return &vm.Symbol{Name: fmt.Sprintf("%d", val)}, nil
+	case float64:
+		return &vm.Symbol{Name: fmt.Sprintf("%g", val)}, nil
+	case string:
+		// String literals: wrap in quotes so string-ss can resolve them back
+		return &vm.Symbol{Name: fmt.Sprintf("%q", val)}, nil
 	case *vm.Chain:
-		return &vm.Chain{
-			Head: reifyValue(val.Head),
-			Tail: reifyTail(val.Tail),
+		items, tail, err := reifyChainItems(val)
+		if err != nil {
+			return nil, err
 		}
+		return chainFromItemsWithTail(items, tail), nil
 	case []vm.Value:
 		if len(val) == 0 {
-			return vm.QyNil
+			return vm.QyNil, nil
 		}
-		result := vm.Value(vm.QyNil)
-		for i := len(val) - 1; i >= 0; i-- {
-			result = &vm.Chain{Head: reifyValue(val[i]), Tail: result}
+		items := make([]vm.Value, len(val))
+		for i, item := range val {
+			reified, err := reifyValue(item)
+			if err != nil {
+				return nil, err
+			}
+			items[i] = reified
 		}
-		return result
+		return chainFromItems(items), nil
 	}
-	if vm.IsNil(v) {
-		return vm.QyNil
-	}
-	return v
+	return nil, fmt.Errorf("cannot reify value of type %T", v)
 }
 
-func reifyTail(v vm.Value) vm.Value {
-	if vm.IsNil(v) {
-		return vm.QyNil
-	}
-	if c, ok := v.(*vm.Chain); ok {
-		return &vm.Chain{
-			Head: reifyValue(c.Head),
-			Tail: reifyTail(c.Tail),
+// reifyChainItems walks a Chain collecting reified heads, returning (items, improperTail, error).
+func reifyChainItems(c *vm.Chain) ([]vm.Value, vm.Value, error) {
+	var items []vm.Value
+	node := vm.Value(c)
+	for {
+		if vm.IsNil(node) {
+			return items, nil, nil
 		}
+		chain, ok := node.(*vm.Chain)
+		if !ok {
+			reified, err := reifyValue(node)
+			if err != nil {
+				return nil, nil, err
+			}
+			return items, reified, nil
+		}
+		reified, err := reifyValue(chain.Head)
+		if err != nil {
+			return nil, nil, err
+		}
+		items = append(items, reified)
+		node = chain.Tail
 	}
-	return reifyValue(v)
+}
+
+func chainFromItemsWithTail(items []vm.Value, tail vm.Value) vm.Value {
+	if tail == nil || vm.IsNil(tail) {
+		return chainFromItems(items)
+	}
+	// Improper chain: build the proper prefix, then cons the tail
+	result := vm.Value(vm.QyNil)
+	for i := len(items) - 1; i >= 0; i-- {
+		result = &vm.Chain{Head: items[i], Tail: result}
+	}
+	if len(items) == 0 {
+		return tail
+	}
+	// Walk to the last cell and set its tail to the improper tail
+	last := result.(*vm.Chain)
+	for c := last; ; {
+		t, ok := c.Tail.(*vm.Chain)
+		if !ok {
+			break
+		}
+		last = t
+	}
+	// last is the final proper cell; set its Tail to the reified improper tail
+	// Since Chain is immutable, rebuild the final cell
+	return setLastTail(result, tail)
+}
+
+func chainFromItems(items []vm.Value) *vm.Chain {
+	result := vm.Value(vm.QyNil)
+	for i := len(items) - 1; i >= 0; i-- {
+		result = &vm.Chain{Head: items[i], Tail: result}
+	}
+	return result.(*vm.Chain)
+}
+
+// setLastTail rebuilds a proper chain list replacing the final nil tail with a new tail.
+func setLastTail(chain vm.Value, newTail vm.Value) vm.Value {
+	c := chain.(*vm.Chain)
+	if vm.IsNil(c.Tail) {
+		return &vm.Chain{Head: c.Head, Tail: newTail}
+	}
+	return &vm.Chain{Head: c.Head, Tail: setLastTail(c.Tail, newTail)}
 }
 
 func chainOp(args []vm.Value) (vm.Value, error) {

@@ -1,5 +1,22 @@
 ; reify: runtime value -> syntax datum
+; contract: (eval (reify v)) should yield a value equivalent to v
+
+; nil, T, none
 (eq (reify nil) 'nil)
 (eq (reify T) 'T)
+(eq (reify none) 'none)
+
+; number literals: reify produces the symbol spelling
 (eq (reify 42) '42)
-(eq (reify "hello") 'hello)
+(eq (reify 3.14) '3.14)
+
+; chain: reify preserves structure
+(eq (car (reify '(alpha beta))) 'alpha)
+(eq (car (cdr (reify '(alpha beta)))) 'beta)
+
+; round-trip: eval (reify v) should be equivalent to v
+(= (eval (reify 42)) 42)
+(= (eval (reify 3.14)) 3.14)
+(eq (eval (reify "hello")) "hello")
+(eq (eval (reify nil)) nil)
+(eq (eval (reify T)) T)

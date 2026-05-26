@@ -178,7 +178,7 @@ source
 - LIR 仍较薄，未完全承担低层职责；
 - register VM 仍承担较多 host-call compatibility；
 - `evaluator.py`、`eval_runtime.py`、legacy operator dispatch 仍活跃；
-- `io`、`truthy`、`reify`、runtime identity 仍未落地。
+- `io`、`truthy`、runtime identity 仍未落地；`reify` 已有最小实现（partial、ScopeOperator、无 effect 路径）。
 
 ## 2.3 当前主要事实漂移
 
@@ -193,7 +193,7 @@ source
 9. `cond` 仍把 `False` / `None` / `()` 当作 false；
 10. `truthy` 仅在文档中存在，尚无正式 operator；
 11. `io` 仍只是 `print/echo` 模块，不是 Qy runtime model；
-12. `reify` 尚未实现；
+12. `reify` 已有最小实现（ScopeOperator、partial-failure、无 effect 路径）；
 13. `HostObjectRef` 尚未演化成完整 host reference / runtime identity 容器；
 14. compile-time namespace 仍未真正与 runtime namespace 分离；
 15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；

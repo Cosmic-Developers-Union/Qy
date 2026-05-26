@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from qy.core.operators import PureOperator
+from qy.core.operators import ScopeOperator
 from qy.core.syntax import car as chain_car
 from qy.core.syntax import cdr as chain_cdr
 from qy.core.syntax import chain_to_list
@@ -139,11 +140,23 @@ def _eq(left: object, right: object) -> object:
     return QY_NIL
 
 
-def _reify(value: object) -> object:
-    """Convert a runtime value to a syntax datum (Symbol or Chain)."""
+def _reify(args: tuple[object, ...], env: object) -> object:
+    """Convert a runtime value to a syntax datum (Symbol or Chain).
+
+    Partial operation: raises QyReifyError on types that cannot be represented
+    as a syntax datum in the target symbol-space-chain (``env``).
+    """
+    from qy.errors import QyReifyError
     from qy.sem.core import CharValue
     from qy.sem.core import NumberValue
     from qy.sem.core import StringValue
+
+    if len(args) != 1:
+        raise QyReifyError(
+            f"reify expects exactly 1 argument, got {len(args)}",
+            metadata={"actual": len(args)},
+        )
+    value = args[0]
 
     if value is QY_NIL:
         return Symbol("nil")
@@ -153,27 +166,45 @@ def _reify(value: object) -> object:
         return Symbol("none")
     if isinstance(value, Symbol):
         return value
+    # Number literals: produce the symbol spelling (e.g. "42", "3.14")
     if isinstance(value, NumberValue):
         return Symbol(str(value.value))
-    if isinstance(value, StringValue):
-        return Symbol(value.value)
-    if isinstance(value, CharValue):
-        return Symbol(value.value)
     if isinstance(value, int | float):
         return Symbol(str(value))
+    # String literals: wrap in quotes so the reader/string-ss can resolve them back
+    if isinstance(value, StringValue):
+        return Symbol(f'"{value.value}"')
     if isinstance(value, str):
-        return Symbol(value)
+        return Symbol(f'"{value}"')
+    # Char literals: wrap in #\ prefix
+    if isinstance(value, CharValue):
+        return Symbol(f"#\\{value.value}")
     if is_chain(value):
+        # Proper chain: recurse and reconstruct
         items: list[object] = []
         node: object = value
         while is_chain(node):
-            items.append(_reify(chain_car(node)))
+            items.append(_reify_value(chain_car(node), env))
             node = chain_cdr(node)
         if is_nil(node):
             return list_to_chain(items)
-        # Improper list
-        return list_to_chain([*items, Symbol("."), _reify(node)])
-    return Symbol(repr(value))
+        # Improper chain: preserve cons-cell structure
+        tail = _reify_value(node, env)
+        if is_chain(tail) or is_nil(tail):
+            # reified tail is itself a chain/nil → splice as proper chain
+            return list_to_chain([*items, *chain_to_list(tail)])
+        return chain_cons(list_to_chain(items) if items else QY_NIL, tail)
+    # Unknown type: partial-failure
+    raise QyReifyError(
+        f"cannot reify value of type {type(value).__name__}",
+        span=get_span(value),
+        metadata={"value": value, "type": type(value).__name__},
+    )
+
+
+def _reify_value(value: object, env: object) -> object:
+    """Reify a single runtime value (helper for recursive chain walking)."""
+    return _reify((value,), env)
 
 
 def _type(value: object) -> Symbol:
@@ -447,7 +478,7 @@ def operators() -> dict[Symbol, object]:
         Symbol("eq"): PureOperator(
             "eq", _eq, "Lisp 风格 eq；atom 按值比较，chain 按 identity 比较。"
         ),
-        Symbol("reify"): PureOperator("reify", _reify, "将 runtime 值转为 syntax datum。"),
+        Symbol("reify"): ScopeOperator("reify", _reify, "将 runtime 值转为 syntax datum。"),
         Symbol("get"): PureOperator("get", _get, "从 chain/tuple/list/dict 获取项。"),
         Symbol("has?"): PureOperator("has?", _has, "判断 collection 是否包含 key、index 或成员。"),
         Symbol("is"): PureOperator("is", _is, "按 Python is 语义比较 identity。"),

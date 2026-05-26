@@ -26,6 +26,7 @@ __all__ = [
     "QyEffectSignal",
     "QyError",
     "QyPythonError",
+    "QyReifyError",
     "QyResolveError",
     "QyRuntimeError",
     "QySyntaxError",
@@ -135,6 +136,10 @@ class QyArityError(EvaluationError):
 
 class QyCapabilityError(EvaluationError):
     default_code = "QY_CAPABILITY_ERROR"
+
+
+class QyReifyError(EvaluationError):
+    default_code = "QY_REIFY_ERROR"
 
 
 class QyEffectError(EvaluationError):
