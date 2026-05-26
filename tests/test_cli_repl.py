@@ -4,8 +4,8 @@ pytest.importorskip("typer")
 
 from typer.testing import CliRunner
 
-from qy.cli import _repl_completions
 from qy.cli import create_app
+from qy.cli.commands.repl import _repl_completions
 from qy.runtime import Qy
 
 

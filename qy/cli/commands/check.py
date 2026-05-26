@@ -24,15 +24,15 @@ from qy.tools.check import analyze_source
 
 def register(app: Any) -> None:
     """将 check / typecheck 命令注册到给定的 typer 应用。."""
-    from qy.cli import _diagnostic_color
-    from qy.cli import _format_diagnostic
+    from qy.cli._common import diagnostic_color
+    from qy.cli._common import format_diagnostic
 
     def _check_path(path: Path) -> None:
         analysis = analyze_source(path.read_text(encoding="utf-8"))
         for diagnostic in analysis.diagnostics:
             typer.secho(
-                _format_diagnostic(path, diagnostic),
-                fg=_diagnostic_color(diagnostic),
+                format_diagnostic(path, diagnostic),
+                fg=diagnostic_color(diagnostic),
                 err=True,
             )
         if not analysis.ok:
