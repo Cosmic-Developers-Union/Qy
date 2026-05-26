@@ -29,9 +29,9 @@
 
 ## B2. `define` / fold / 初始 root 边界仍未显式
 
-**位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/register_vm.py`
+**位置**：`qy/passes/hir/lower.py`、`qy/core/symbol_space.py`、`qy/vm/instance/machine.py`
 
-`define_once` 已存在，但当前实现仍倾向把初始环境展平成一个 root scope，再附加 literal resolver。这样只能表达“当前 root 已有 / 没有某名字”，还不能显式表达：
+`define_once` 已存在，但当前实现仍倾向把初始环境展平成一个 root scope，再附加 literal resolver。这样只能表达”当前 root 已有 / 没有某名字”，还不能显式表达：
 
 - 哪些空间只参与 lookup chain；
 - 哪些 binding 已经 fold 到当前 root，成为本地 binding；
@@ -50,42 +50,42 @@
 
 ## B3. 初始 profile 与 host interop 边界未清
 
-**位置**：`qy/stdlib/__init__.py`、`qy/stdlib/core.py`、`qy/stdlib/python.py`
+**位置**：`qy/symbol_space/__init__.py`、`qy/symbol_space/core.py`、`qy/symbol_space/python.py`
 
-默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。剩余问题是 `pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界；analyzer/LSP 仍不能消费实例化配置。
+默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。`pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界；analyzer/LSP 仍不能消费实例化配置。
 
 **偏差**：默认数字/字符串链段、默认是否预装算术等都可以是 standard profile 策略；但 profile 不能和语言核混写，Python host interop 也不应被误当成语言核心。analyzer/LSP 需要能读取当前 Qy 实例的完整初始链配置。
 
-`qy.stdlib.STANDARD_PROFILE_MODULES` 已作为默认 profile 的显式事实，由 `standard_environment()` 和 operator docs 共享；这只是边界命名的第一步，不代表 `qy.num` / `qy.str` / `qy.py` 已完成正式拆层。
+`STANDARD_PROFILE_MODULES` 已作为默认 profile 的显式事实，由 `create_standard_runtime_space()` 和 profile 初始化共享。`qy.num` / `qy.str` / `qy.char` / `qy.py` 已从 legacy `qy/stdlib/` 迁入 `qy/symbol_space/`。
 
 **处置方向**：
 
 - 明确 `pre-symbol-space-chain` API：链节点、相对顺序、lazy layer、可写 head、fold 计划、profile 组合都要能表达；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
 - 明确区分语言核、standard profile、optional stdlib。standard profile 可以预装常用能力，但这不把它们提升为核心 form。
 - 默认 profile 是否加载 arithmetic 由实现策略决定；Python host interop 仍应保持显式 opt-in。
-- `qy.py`、Python container helper、string helper、legacy async helper 全部改为显式 import 或显式 host injection。
+- `qy.py`、Python container helper、string helper 全部改为显式 import 或显式 host injection。
 - 示例和测试中需要 host interop 时显式构造 env 或 import module。
 
 ---
 
-## B4. 新 HIR 节点接入 register VM 主路径
+## B4. 新 HIR 节点接入 register VM 主路径（基本完成）
 
-**位置**：`qy/mir_lowering.py`、`qy/register_vm.py`
+**位置**：`qy/passes/mir/normalize.py`、`qy/vm/instance/machine.py`
 
-`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr`、`CacheExpr` 已有 lowering 和 VM 路径。当前残留点主要是 legacy operator dispatch 与少量 runtime helper 的共存，而非 backend 分叉。
+`PipelineExpr`、`ParallelExpr`、`AllExpr`、`RaceExpr`、`ApplyExpr`、`CacheExpr` 已有 lowering 和 VM 路径。legacy evaluator 和 IR VM 的重复实现已删除。
 
 **处置方向**：
 
 - 保持这些节点的 MIR/LIR/bytecode 路径稳定。
-- 逐步移除 legacy evaluator / IR VM 对同类语义的重复实现。
+- LIR effect lowering 已实现（`qy/passes/lir/effects.py`），effect placeholder 已可 lower 为 abstract machine ops。
 
 ---
 
-## B5. `component` / legacy API 残留
+## B5. `component` / legacy API 残留（已缓解）
 
-**位置**：`qy/lowering.py`、`qy/analyzer.py`、`qy/lsp.py`、`qy/operator_signature.py`、`docs/op.md`、`tests/*`
+**位置**：`docs/op.md`、`tests/*`
 
-`component` 已从默认环境移到 legacy module，且已从 lowering、analyzer、macro hygiene、source module 建模、LSP snippet 与核心测试路径中移除专门分支。当前只保留 legacy module 显式引入兼容语义。
+`component` 已从默认环境移到 legacy module，且已从 lowering、analyzer、macro hygiene、source module 建模、LSP snippet 与核心测试路径中移除专门分支。legacy evaluator、lsp.py、analyzer.py 等文件已删除。
 
 **处置方向**：
 
@@ -106,29 +106,24 @@
 
 ---
 
-## B7. 遗留 operator dispatch 体系
+## B7. 遗留 operator dispatch 体系（部分完成）
 
-**位置**：`qy/operators.py`、`qy/evaluator.py`、`qy/stdlib/`
+**位置**：`qy/core/operators.py`、`qy/vm/instance/machine.py`
 
-`PureOperator`、`ScopeOperator`、`ControlOperator`、`EffectOperator`、`MetaOperator` 仍承载大量 stdlib 和核心行为。
+`PureOperator`、`ScopeOperator`、`ControlOperator`、`EffectOperator`、`MetaOperator` 仍承载大量核心行为。`evaluator.py`、`eval_runtime.py`、`async_runtime.py`、`runtime_values.py` 已删除。
 
-**当前状态**：`_apply_operator`（死代码）已从 `evaluator.py` 删除（450→376 行）。`ensure_symbol` 重复已移除，改为从 `qy/symbol_utils.py` 导入。剩余的 evaluator 函数（尾调用路径、body 评估、effect 续延组合）均被 stdlib 通过 `eval_runtime.py` 活跃使用。
+**当前状态**：
 
-**迁移依赖链**：
-
-```
-stdlib/control.py (_defun, _lambda) → UserFunction
-UserFunction.__call__ → eval_runtime.evaluate_tail_body_async
-eval_runtime → evaluator._evaluate_tail_body_async
-```
-
-要完全移除 evaluator 的尾调用路径，必须先将 `lambda`/`defun` 的运行时表示从 `UserFunction`（Python callable）迁移到 bytecode function。这需要修改 `control.py`、`runtime_values.py` 和约 55 个测试文件。
+- legacy evaluator 和 eval_runtime 已删除，compile-time 执行路径已不再通过 evaluator 模块。
+- `UserFunction`（`qy/sem/runtime.py`）仍是 `lambda`/`defun` 的运行时表示。
+- register VM 通过 `_call` 方法处理 `PureOperator` 和 `BytecodeFunctionValue`。
+- operator 类型层级已迁入 `qy/core/operators.py`，签名模型在 `qy/core/operator_signature.py`。
 
 **处置方向**：
 
 - 新核心语义不得继续通过 legacy operator dispatch 实现。
-- operator metadata + MIR/LIR/register VM host-call ABI 接管后，legacy dispatch 删除或降级为外部 host adapter。
-- 最小迁移集：`lambda`/`defun`（创建 `UserFunction` 的 stdlib operators）。
+- operator metadata + MIR/LIR/register VM host-call ABI 接管后，legacy dispatch 逐步减少。
+- `lambda`/`defun` 的运行时表示仍为 `UserFunction`（Python callable），后续应迁移到 bytecode function。
 
 ---
 
@@ -144,11 +139,11 @@ eval_runtime → evaluator._evaluate_tail_body_async
 
 | 编号 | 偏差 | 优先级 | 状态 |
 | --- | --- | --- | --- |
-| B1 | 多 backend / 兼容 API 残留 | P0 | 已完成 |
-| B2 | `define` 查 parent，不能 shadow 外层 | P0 | 已完成（fold 语义已落地） |
-| B3 | 默认环境加载 host interop | P0 | 部分完成 |
-| B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 部分完成 |
-| B5 | `component` / legacy API 残留 | P1 | 已缓解（仅 legacy 显式引入）；`_apply_operator` 已删除 |
-| B6 | `RuntimeMetaCallExpr` | P1 | 已完成（节点与 opcode 已删除） |
-| B7 | 遗留 operator dispatch | P1 | 待处理 |
-| B8 | Python codegen 绕过 MIR/LIR | P2 | 已完成 |
+| B1 | 多 backend / 兼容 API 残留 | P0 | ✅ 已完成 |
+| B2 | `define` 查 parent，不能 shadow 外层 | P0 | ✅ 已完成（fold 语义已落地） |
+| B3 | 默认环境加载 host interop | P0 | 部分完成（stdlib 已迁入 symbol_space） |
+| B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 基本完成（legacy 重复实现已删除） |
+| B5 | `component` / legacy API 残留 | P1 | ✅ 已缓解（仅 legacy 显式引入） |
+| B6 | `RuntimeMetaCallExpr` | P1 | ✅ 已完成（节点与 opcode 已删除） |
+| B7 | 遗留 operator dispatch | P1 | 部分完成（evaluator 已删除，UserFunction 仍为 Python callable） |
+| B8 | Python codegen 绕过 MIR/LIR | P2 | ✅ 已完成（`qy/python_codegen.py` 已删除） |

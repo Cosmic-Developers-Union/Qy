@@ -6,62 +6,37 @@
 
 ## 当前状态
 
-**位置**：`qy/register_vm.py` 第 49-64 行
+**位置**：`qy/vm/instance/machine.py`
 
-`_EffectFrame` 是一个 frozen dataclass，在 `PERFORM` 指令执行时捕获当前帧的状态：
+`_EffectFrame` 在 `PERFORM` 指令执行时捕获当前帧状态。
 
-```python
-@dataclass(frozen=True)
-class _EffectFrame:
-    registers: list[object]
-    env: Environment
-    pc: int
-    parents: list[_ParentFrame]
-    results: list[object]
-    function_value: object
-    function: BytecodeFunctionValue
-```
+### LIR effect lowering 已实现
 
-当 `resume` 被调用时，一个 Python async closure 恢复帧状态并从 `pc+1` 继续执行。
+`qy/passes/lir/effects.py` 已实现从 effect placeholder 到 abstract machine ops 的 lowering：
 
-## 设计
+- `EFFECT_HANDLE_BEGIN/END` → `HANDLER_PUSH` / `HANDLER_POP` + dispatch
+- `EFFECT_PERFORM` → `CONT_CAPTURE` + `EFFECT_UNWIND`
+- `EFFECT_RESUME` → `CONT_COPY` + `CONT_RESTORE`
 
-### 新 LIR 指令
+配套数据结构已实现：
 
-| 指令 | 操作数 | 语义 |
-| --- | --- | --- |
-| `SAVE_FRAME` | `dest_reg` | 将当前帧状态（registers、env、pc）保存到 dest_reg |
-| `RESTORE_FRAME` | `src_reg` | 从 src_reg 恢复帧状态，继续执行 |
+- `LIRHandlerLayout`：handler frame layout
+- `LIRContinuationLayout`：continuation frame layout（含 multi_shot 标志）
 
-### ABI
+LIR 指令集已包含抽象机器指令：
 
-- `SAVE_FRAME` 产出一个 VM-private host reference（等价于当前 `_EffectFrame`），存入 dest_reg
-- `RESTORE_FRAME` 消费该 host reference，恢复执行到 save 点的下一条指令
-- `PERFORM` 的 handler 接收 `SAVE_FRAME` 产出的 frame value 作为 continuation 的底层表示
+- `FRAME_ENTER` / `FRAME_LEAVE`
+- `CONT_CAPTURE` / `CONT_COPY` / `CONT_RESTORE` / `CONT_INJECT`
+- `HANDLER_PUSH` / `HANDLER_POP`
+- `EFFECT_UNWIND` / `EFFECT_DISPATCH`
+- `SS_ENTER` / `SS_LEAVE` / `SS_COPY` / `SS_RESTORE`
+- `SLOT_READ` / `SLOT_COMPLETE` / `SLOT_PENDING_EFFORT`
 
-### 编译时 lowering
+### 剩余工作
 
-`mir_lowering.py` 中 `PERFORM` 的 lowering 改为：
-
-```
-SAVE_FRAME r_frame          ; 捕获当前帧
-PERFORM r_result, effect, r_arg  ; 执行效应
-```
-
-handler 函数接收 continuation（即 frame value），`resume` 的 lowering 改为：
-
-```
-WRITE_REG r_resumed, r_value  ; 设置恢复值
-RESTORE_FRAME r_frame         ; 跳回 save 点
-```
-
-### 阻塞点
-
-1. **`mir.py`（冻结文件）**：需要新增 `SAVE_FRAME` / `RESTORE_FRAME` MIROpcode
-2. **`bytecode.py`**：需要新增对应 Opcode
-3. **`register_vm.py`（冻结文件）**：需要新增指令处理器
-
-在不修改冻结文件的前提下，此设计只能作为规范文档存在，无法直接实现。
+1. bytecode compiler（`qy/backend/vm/compiler.py`）当前只做薄映射，尚未处理 abstract machine ops → bytecode 的转换
+2. register VM（`qy/vm/instance/machine.py`）当前仍通过 Python `_EffectFrame` dataclass 实现 effect，尚未消费 LIR lowering 产出的 frame layout
+3. `compat LIR` → `abstract-machine LIR` 的完全切换尚未完成
 
 ## parallel / all / race 与 effect 合流
 
@@ -94,7 +69,7 @@ first-resume-wins——第一个 resume 的分支胜出，其他分支被取消�
 
 ### 自尾递归
 
-已通过 `TAIL_CALL` opcode 实现。VM 在 `register_vm.py` 第 249-255 行检测自我尾调用并重用当前帧。
+已通过 `TAIL_CALL` opcode 实现。
 
 ### 互递归
 
@@ -106,7 +81,7 @@ first-resume-wins——第一个 resume 的分支胜出，其他分支被取消�
 
 ## 下一步
 
-1. 解冻 `mir.py` 时，新增 `SAVE_FRAME` / `RESTORE_FRAME` opcode
-2. 在 `lir_lowering.py` 中实现 PERFORM 的 frame save lowering
-3. 在 `register_vm.py` 中实现新指令处理器
-4. 迁移 `_EffectFrame` 从 Python dataclass 到 LIR 指令序列
+1. bytecode compiler 处理 abstract machine ops → bytecode 的转换
+2. register VM 消费 LIR lowering 产出的 frame layout，替代 Python `_EffectFrame` dataclass
+3. 完成 `compat LIR` → `abstract-machine LIR` 的切换
+4. 实现互递归蹦床化

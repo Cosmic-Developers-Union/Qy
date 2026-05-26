@@ -5,34 +5,34 @@
 ## 管线概览
 
 ```text
-source
-  -> raw AST
-  -> surface dialect
-  -> macro expand
+source (文本)
+  -> CST (Concrete Syntax Tree, trivia-preserving)
+  -> raw forms (reader macros applied)
+  -> surface forms (quote/quasiquote sugar expanded)
+  -> macro expand (with hygiene)
   -> HIR
   -> MIR
   -> LIR
   -> bytecode
-  -> register VM
 ```
 
-`Qy.evaluate_source(...)` 与 `Qy.evaluate_bytecode(...)` 是当前稳定执行入口，统一以 register VM 为执行目标。
+管线在 `emit.bytecode` pass 处结束。register VM 在管线外部执行 bytecode：`Qy.evaluate_source(...)` 内部调用 `build_default_pipeline().run(source)` 得到 bytecode，再交给 `RegisterVirtualMachine` 执行。
 
 ## 分层边界
 
 每层有且只有一个职责；禁止跨层解释语义。
 
-| 层 | 输入 | 输出 | 产生 diagnostics | 是否依赖 Environment |
-| --- | --- | --- | --- | --- |
-| source | 文本文件 / stdin | 源码字符串 | 否 | 否 |
-| ast / reader | 源码字符串 | raw syntax datum forest；每个 form 只能是 `symbol` 或不可变 `chain` | 是，reader syntax error | 否 |
-| surface dialect | raw `list[Form]` | default-dialect `list[Form]`，如 `'x`、quasiquote 内 `,x` / `,@x` | 否 | 否 |
-| expand / macroexpand | surface-dialect-expanded `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
-| HIR / lower | macroexpanded forms | 高层语义 IR（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
-| MIR / lower_mir | verified HIR | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
-| LIR / lower_lir | verified MIR | `LIRProgram`（Qy abstract machine IR，显式 virtual stack / continuation / handler / ss-chain transition / lookup / slot / ABI / fixup） | 是 | 否 |
-| bytecode | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
-| register VM | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期异常 | 是，执行时需要 runtime environment |
+| 层 | Pass 名称 | 输入 | 输出 | 产生 diagnostics | 是否依赖 RuntimeSpace |
+| --- | --- | --- | --- | --- | --- |
+| CST 解析 | `frontend.cst_parse` | 源码字符串 | `CstProgram`（trivia-preserving CST） | 是，parser error | 否 |
+| Reader Macro | `frontend.reader_macro` | `CstProgram` | raw `list[Form]`；每个 form 是 `symbol` 或不可变 `chain` | 是，reader macro error | 否 |
+| Surface Normalize | `frontend.surface_normalize` | raw `list[Form]` | default-dialect `list[Form]`，如 `'x` → `(quote x)` | 否 | 否 |
+| Macro Expand | `macro.expand` | surface-dialect `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
+| HIR Lower | `hir.lower` | macroexpanded `CoreProgram` | `ProgramIR`（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
+| MIR Lower | `mir.lower` | `ProgramIR` | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
+| LIR Lower | `lir.lower` | `MIRProgram` | `LIRProgram`（Qy abstract machine IR，显式 frame / ss-chain / slot / continuation / handler） | 是 | 否 |
+| Bytecode Emit | `emit.bytecode` | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
+| Register VM | *(管线外部)* | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期异常 | 是，执行时需要 runtime environment |
 
 **跨层禁止规则**：
 
@@ -74,23 +74,39 @@ source
 
 ## 稳定 API 与删除对象
 
-推荐稳定入口：
+### Qy 类稳定 API
 
-- `Qy.read`
-- `Qy.macroexpand` / `Qy.macroexpand_source`
-- `Qy.lower` / `Qy.lower_source`
-- `Qy.lower_mir`
-- `Qy.compile_bytecode`
-- `Qy.evaluate_source` / `Qy.evaluate_bytecode`
-- `lower_lir`
-- `RegisterVirtualMachine`
+- `Qy.read` / `Qy.read_one` — 解析源码为 Form 序列
+- `Qy.evaluate(expression)` — 求值单个表达式
+- `Qy.evaluate_source(source)` / `Qy.evaluate_source_async(source)` — 求值源码字符串
+- `Qy.evaluate_program(source)` — 求值多 form 程序，返回结果列表
+- `Qy.evaluate_file(path)` — 求值文件
+- `Qy.fmt(source)` — 格式化源码
+- `Qy.register_pure` / `register_scope` / `register_control` / `register_effect` / `register_meta` — 注册自定义算子
 
-已删除对象（禁止回归）：
+### 管线 API
 
-- `Qy.evaluate_ir` / `Qy.evaluate_ir_source`
-- `qy.ir_vm/` 目录与 `qy.ir_vm.*` public execution API
-- `Qy(backend=...)` 与 `EvaluationBackend`
-- 直接从 `qy.evaluator` 引入运行时类型或 legacy evaluator helper
+- `build_default_pipeline()` — 唯一管线工厂，返回 `Pipeline` 对象
+- `compile_source_to_bytecode(source)` — 源码到 bytecode 的完整管线
+- `compile_source_to_kind(source, kind)` — 源码到指定中间产物
+
+### 运行时 API
+
+- `RegisterVirtualMachine` — Python 寄存器 VM
+- `RuntimeSpace`（`Environment` 为其类型别名） — 运行时符号空间
+
+### 已删除对象（禁止回归）
+
+- `Qy.macroexpand` / `Qy.macroexpand_source` — 已从 Qy 类移除（`macro/expand.py` 中仍有独立函数）
+- `Qy.lower` / `Qy.lower_source` — 已从 Qy 类移除
+- `Qy.lower_mir` / `Qy.compile_bytecode` / `Qy.evaluate_bytecode` — 已从 Qy 类移除
+- `Qy.evaluate_ir` / `Qy.evaluate_ir_source` — 已删除
+- `qy.ir_vm/` 目录与 `qy.ir_vm.*` public execution API — 已删除
+- `Qy(backend=...)` 与 `EvaluationBackend` — 已删除
+- `qy/evaluator.py` — 已删除
+- `qy/register_vm.py`、`qy/virtual_stack.py` — 已删除
+- `qy/lowering.py`、`qy/mir_lowering.py`、`qy/lir_lowering.py` — 已删除
+- `qy/environment.py` — 已删除（`Environment` 现为 `RuntimeSpace` 的类型别名）
 
 ## CLI 调试命令
 
@@ -136,11 +152,12 @@ printf '(+ 1 2)\n' | qy bytecode -
 
 ## Compile-Time Runtime 现状
 
-macro body 的 compile-time facade 仍然是过渡实现，但已经不再把 evaluator 当作主执行面：
+macro body 的 compile-time facade 仍是过渡实现：
 
-- macro 定义捕获的是 compile-time environment facade，不直接依赖 `Environment` 类型。
+- macro 定义捕获的是 compile-time environment facade（`MacroExpansionServices`），不直接依赖 `RuntimeSpace` 类型。
 - compile-time 可用 binding 当前等于定义时环境中的现有 binding 快照，加上展开期注入的 `gensym` 与 `capture`。
 - compile-time effect 受 `effect_policy` 控制；macro body 失败统一包装成 `failed during compile-time evaluation` diagnostics。
+- legacy `qy/evaluator.py` 已删除，compile-time 执行路径已不再通过 evaluator 模块。
 
 这仍是过渡实现，compile-time/runtime 能力未完全隔离，但边界已比直接暴露 evaluator 类型更清晰。
 

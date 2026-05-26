@@ -100,8 +100,8 @@ qy/
 - `passes -> ir/core/sem/session/diag`；不得把语义补丁写进 CLI 或 VM。
 - `backend/vm/spec -> lir/core/sem/errors`；不得依赖 `qy/vm`。
 - `backend/vm/emit -> backend/vm/spec/lir/diag`；不得重新解释 HIR/MIR 语义。
-- `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`；不得依赖 legacy evaluator。
-- `std -> public runtime adapters`；不得直接依赖 `qy.evaluator`。
+- `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`。
+- `std -> public runtime adapters`。
 - `tools/cli -> public API`；不得定义私有语言语义。
 
 # 3.1 Pass 组织与顺序
@@ -120,65 +120,90 @@ backend/  只放目标后端输出
 passes/
   pipeline.py
   pass_base.py
+  build.py
+  frontend/cst_parse.py          # 已实现
+  frontend/reader_macro.py       # 已实现
+  frontend/surface_normalize.py  # 已实现
   raw/validate.py
   surface/normalize.py
-  macro/expand.py
-  macro/hygiene.py
+  macro/expand.py                # 已实现
+  macro/hygiene.py               # 已实现
   core/desugar.py
   core/validate.py
   resolve/symbols.py
   resolve/spaces.py
   resolve/imports.py
-  hir/build_cfg.py
+  hir/lower.py                   # 已实现
+  hir/lower_pass.py              # 已实现
   hir/validate.py
   closure/convert.py
   effect/lower.py
-  effect/analyze.py
+  effect/analyze.py              # 已实现
   effect/flatten.py
-  control/tailcall.py
+  control/tailcall.py            # 已实现
   control/loop.py
   control/cfg_simplify.py
-  mir/normalize.py
+  mir/lower_pass.py              # 已实现
+  mir/normalize.py               # 已实现
   mir/validate.py
-  lir/lower.py
-  lir/verify.py
+  lir/lower.py                   # 已实现
+  lir/lower_pass.py              # 已实现
+  lir/linearize.py               # 已实现
+  lir/compact.py                 # 已实现
+  lir/peephole.py                # 已实现
+  lir/effects.py                 # 已实现
   lir/normalize.py
+  lir/verify.py                  # 已实现
   optimize/const_fold.py
   optimize/dce.py
   optimize/inline.py
-  emit/bytecode.py
+  emit/bytecode.py               # 已实现
   emit/llvm_prepare.py
 ```
 
-目标 pass 顺序：
+当前实际管线 pass 顺序（`build_default_pipeline()`）：
 
 ```text
-raw.validate
--> surface.normalize
+frontend.cst_parse
+-> frontend.reader_macro
+-> frontend.surface_normalize
 -> macro.expand
+-> hir.lower
+-> mir.lower
+-> lir.lower（内部: linearize -> effects -> peephole -> compact）
+-> emit.bytecode
+```
+
+目标 pass 顺序（完整管线）：
+
+```text
+frontend.cst_parse          # 已实现
+-> frontend.reader_macro    # 已实现
+-> frontend.surface_normalize  # 已实现
+-> macro.expand             # 已实现
 -> macro.hygiene
 -> core.desugar
 -> core.validate
 -> resolve.imports
 -> resolve.spaces
 -> resolve.symbols
--> hir.build_cfg
+-> hir.lower                # 已实现
 -> hir.validate
 -> closure.convert
--> effect.lower
 -> effect.analyze
+-> effect.lower
 -> effect.flatten
 -> control.tailcall
 -> control.loop
 -> control.cfg_simplify
--> mir.normalize
+-> mir.normalize            # 内部工具模块，由 mir.lower 调用
 -> mir.validate
--> lir.lower
+-> lir.lower                # 已实现
 -> lir.verify
 -> lir.normalize
 -> optimize.const_fold / optimize.dce / optimize.inline
--> emit.bytecode 或 emit.llvm_prepare
--> backend
+-> emit.bytecode            # 已实现
+-> backend（LLVM / VM）
 ```
 
 最重要的 pass：
@@ -198,23 +223,23 @@ qy emit main.qy --target=lir
 
 `--after=<pass-id>` 表示运行到该 pass 后 dump artifact；`--target=<artifact>` 表示运行到目标产物后停止。
 
-# 4. 同名模块冲突
+# 4. 同名模块冲突（已全部解决）
 
 同一目录下不得长期同时存在 `name.py` 与 `name/`。Python import 会优先解析其中一个，导致另一个实现被静默遮蔽。
 
-当前必须收口的冲突：
+已解决的冲突（全部 ✅）：
 
-- `qy/macro.py` -> `qy/macro/__init__.py`，旧文件删除。
-- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*`，旧文件删除。
-- `qy/ir.py` -> `qy/ir/__init__.py`，旧文件删除。
-- `qy/mir.py` -> `qy/ir/mir/__init__.py`，旧文件删除。
-- `qy/lir.py` -> `qy/ir/lir/__init__.py`，旧文件删除。
-- `qy/errors.py` -> `qy/errors/__init__.py`，旧文件删除。
-- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` 或 `qy/ir/hir/node.py`，旧文件删除。
-- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` 或 `qy/ir/mir/node.py`，旧文件删除。
-- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` 或 `qy/ir/lir/node.py`，旧文件删除。
+- ~~`qy/macro.py`~~ → `qy/macro/__init__.py` ✅
+- ~~`qy/cli.py`~~ → `qy/cli/__init__.py` + `qy/cli/commands/*` ✅
+- ~~`qy/ir.py`~~ → `qy/ir/__init__.py` ✅
+- ~~`qy/mir.py`~~ → `qy/ir/mir/__init__.py` ✅
+- ~~`qy/lir.py`~~ → `qy/ir/lir/__init__.py` ✅
+- ~~`qy/errors.py`~~ → `qy/errors/__init__.py` ✅
+- ~~`qy/ir/hir.py`~~ → `qy/ir/hir/__init__.py` / `node.py` ✅
+- ~~`qy/ir/mir.py`~~ → `qy/ir/mir/__init__.py` / `node.py` ✅
+- ~~`qy/ir/lir.py`~~ → `qy/ir/lir/__init__.py` / `node.py` ✅
 
-迁移规则：
+迁移规则（仍适用）：
 
 - 第一阶段可以把旧 `.py` 的 public 内容搬进目标 package `__init__.py`，确保 import 语义先稳定。
 - 第二阶段再把 `__init__.py` 中的实现拆到 `node.py`、`build.py`、`verify.py`、`pretty.py` 等内部模块。
@@ -266,49 +291,50 @@ qy emit main.qy --target=lir
 - `*.py.original`
 - `*.py.restored`
 
-## 迁移后删除
+## 迁移后删除（已完成）
 
-这些文件仍可能被 public API 引用，必须先完成目标包迁移与 import 更新：
+以下文件已全部完成迁移并删除，禁止回归：
 
-- `qy/macro.py` -> `qy/macro/__init__.py` 后删除。
-- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*` 后删除。
-- `qy/errors.py` -> `qy/errors/__init__.py` 后删除。
-- `qy/diagnostics.py` -> `qy/diag/diagnostic.py` 后删除。
-- `qy/reader.py` -> `qy/frontend/` + `qy/source/` 边界稳定后删除或改为短期 public shim。
-- `qy/ir.py` -> `qy/ir/__init__.py` 后删除。
-- `qy/mir.py` -> `qy/ir/mir/__init__.py` 后删除。
-- `qy/lir.py` -> `qy/ir/lir/__init__.py` 后删除。
-- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` / `node.py` 后删除。
-- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` / `node.py` 后删除。
-- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` / `node.py` 后删除。
-- `qy/lowering.py` -> `qy/passes/lower_hir.py` 后删除。
-- `qy/mir_lowering.py` -> `qy/passes/lower_mir.py` 后删除。
-- `qy/lir_lowering.py` -> `qy/passes/lower_lir.py` 后删除。
-- `qy/passes/lower_hir.py` -> staged passes 后删除。
-- `qy/passes/lower_mir.py` -> `closure/` + `effect/` + `control/` + `mir/` 后删除。
-- `qy/passes/lower_lir.py` -> `lir/lower.py` 后删除。
-- `qy/bytecode.py` -> `qy/backend/vm/spec/bytecode.py` 后删除。
-- `qy/bytecode_compiler.py` -> `qy/vm/emit.py` 后删除。
-- `qy/register_vm.py` -> `qy/vm/instance/machine.py` 后删除。
-- `qy/virtual_stack.py` -> `qy/vm/instance/frame.py` / `state.py` 后删除。
-- `qy/analyzer.py` -> `qy/analysis/` + `qy/tools/check/` 后删除。
-- `qy/formatter.py` -> `qy/tools/fmt/` 后删除。
-- `qy/lsp.py` -> `qy/tools/lsp/` 后删除。
-- `qy/benchmark.py` -> `qy/tools/bench.py` 或 `bench/` 后删除。
-- `qy/source_modules.py` -> `qy/import_/loader.py` + `qy/project/module.py` 后删除。
-- `qy/llvm_codegen.py` -> `qy/backend/llvm/` 后删除。
-- `qy/types.py` -> `qy/core/` 或 `qy/sem/` 后删除；这是修复 console-script 启动时遮蔽 stdlib `types` 的结构前提。
+- ~~`qy/macro.py`~~ → `qy/macro/__init__.py` ✅
+- ~~`qy/cli.py`~~ → `qy/cli/__init__.py` + `qy/cli/commands/*` ✅
+- ~~`qy/errors.py`~~ → `qy/errors/__init__.py` ✅
+- ~~`qy/diagnostics.py`~~ → `qy/diag/diagnostic.py` ✅
+- ~~`qy/reader.py`~~ → `qy/frontend/` + `qy/source/` ✅
+- ~~`qy/ir.py`~~ → `qy/ir/__init__.py` ✅
+- ~~`qy/mir.py`~~ → `qy/ir/mir/__init__.py` ✅
+- ~~`qy/lir.py`~~ → `qy/ir/lir/__init__.py` ✅
+- ~~`qy/ir/hir.py`~~ → `qy/ir/hir/__init__.py` / `node.py` ✅
+- ~~`qy/ir/mir.py`~~ → `qy/ir/mir/__init__.py` / `node.py` ✅
+- ~~`qy/ir/lir.py`~~ → `qy/ir/lir/__init__.py` / `node.py` ✅
+- ~~`qy/lowering.py`~~ → `qy/passes/hir/lower.py` ✅
+- ~~`qy/mir_lowering.py`~~ → `qy/passes/mir/normalize.py` ✅
+- ~~`qy/lir_lowering.py`~~ → `qy/passes/lir/lower.py` ✅
+- ~~`qy/passes/lower_hir.py`~~ → staged passes ✅
+- ~~`qy/passes/lower_mir.py`~~ → `mir/normalize.py` ✅
+- ~~`qy/passes/lower_lir.py`~~ → `lir/lower.py` ✅
+- ~~`qy/bytecode.py`~~ → `qy/backend/vm/bytecode.py` ✅
+- ~~`qy/bytecode_compiler.py`~~ → `qy/backend/vm/compiler.py` ✅
+- ~~`qy/register_vm.py`~~ → `qy/vm/instance/machine.py` ✅
+- ~~`qy/virtual_stack.py`~~ → `qy/vm/instance/frame.py` / `state.py` ✅
+- ~~`qy/analyzer.py`~~ → `qy/analysis/` + `qy/tools/check/` ✅
+- ~~`qy/formatter.py`~~ → `qy/tools/fmt/` ✅
+- ~~`qy/lsp.py`~~ → `qy/tools/lsp/` ✅
+- ~~`qy/source_modules.py`~~ → `qy/import_/loader.py` + `qy/project/module.py` ✅
+- ~~`qy/llvm_codegen.py`~~ → `qy/backend/llvm/` ✅
+- ~~`qy/types.py`~~ → `qy/core/` 或 `qy/sem/` ✅
 
-## 语义替代后删除
+## 语义替代后删除（部分已完成）
 
-这些是 legacy 语义承载点，不能只靠搬文件删除，必须先完成新语义：
-
-- `qy/evaluator.py`：register VM 与 macro compile-time 执行完全接管后删除。
-- `qy/eval_runtime.py`、`qy/async_runtime.py`、`qy/symbol_utils.py`：`std` 不再通过 legacy evaluator helper 后删除。
-- `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`、`qy/operator_docs.py`：operator metadata/schema 进入 core/std/profile 统一模型后删除或拆迁。
-- `qy/runtime_values.py`、`qy/environment.py`、`qy/continuation.py`：runtime value、symbol-space、continuation frame 进入 core/sem/vm spec/instance 后删除或拆迁。
-- `qy/values.py`、`qy/literals.py`、`qy/semantics.py`：syntax/runtime value 分层完成后迁入 `core/` 或 `sem/`，旧文件删除。
-- `qy/stdlib/`：迁入 `qy/std/` 且 compat import 期结束后删除。
+- ~~`qy/evaluator.py`~~：已删除。register VM 与 macro compile-time 执行已完全接管 ✅。
+- ~~`qy/eval_runtime.py`~~：已删除 ✅。
+- ~~`qy/async_runtime.py`~~：已删除 ✅。
+- ~~`qy/runtime_values.py`~~：已删除 ✅。
+- ~~`qy/environment.py`~~：已删除。`Environment` 现为 `RuntimeSpace` 的类型别名 ✅。
+- ~~`qy/operator_docs.py`~~：已删除 ✅。
+- ~~`qy/stdlib/`~~：已删除，功能已迁入 `qy/symbol_space/` ✅。
+- ~~`qy/python_codegen.py`~~：已删除 ✅。
+- `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`：operator metadata/schema 进入 core/std/profile 统一模型后删除或拆迁。**当前状态**：`qy/core/operators.py` 已承载 operator 类型层级，`qy/core/operator_signature.py` 已承载签名模型；legacy 迁移完成。
+- `qy/symbol_utils.py`：当前仍在 `qy/core/symbol_utils.py`，承载符号工具函数。**当前状态**：已迁移至 core，不再是 legacy 文件。
 
 # 5.2 VM target spec / Python VM implementation 分层
 
@@ -419,14 +445,17 @@ debug/
 
 # 7. 当前推进顺序
 
-1. 固定本文档、`AGENTS.md`、`CLAUDE.md`、`todo.md` 中的目标结构。
-2. 建立 compiler infrastructure 包：`diag/source/session/build/project/import_/analysis/debug/errors`。
-3. 建立 VM 分层：`qy/backend/vm/spec/` 与 `qy/vm/instance/`。
-4. 建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。
-5. 修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。
-6. 解决同名 `macro`、`cli`、`errors` 冲突。
-7. 解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。
-8. 迁移 source/diag/session/project/import/build 的 legacy 文件。
-9. 按 VM target spec / Python VM implementation 分层迁移 VM 文件，再删除 top-level 旧文件。
-10. 迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。
-11. 迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。
+1. ~~固定本文档、`AGENTS.md`、`CLAUDE.md`、`todo.md` 中的目标结构。~~ ✅
+2. ~~建立 compiler infrastructure 包：`diag/source/session/build/project/import_/analysis/debug/errors`。~~ ✅
+3. ~~建立 VM 分层：`qy/backend/vm/spec/` 与 `qy/vm/instance/`。~~ ✅
+4. ~~建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。~~ ✅（`qy/stdlib/` 已删除，功能迁入 `qy/symbol_space/`）
+5. ~~修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。~~ ✅
+6. ~~解决同名 `macro`、`cli`、`errors` 冲突。~~ ✅
+7. ~~解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。~~ ✅
+8. ~~迁移 source/diag/session/project/import/build 的 legacy 文件。~~ ✅
+9. ~~按 VM target spec / Python VM implementation 分层迁移 VM 文件，再删除 top-level 旧文件。~~ ✅
+10. ~~迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。~~ ✅
+11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅
+12. LIR effect lowering 落地：`passes/lir/effects.py` 已实现从 effect placeholder 到 abstract machine ops 的 lowering ✅。
+13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes。
+14. 待推进：abstract-machine LIR dialect 收口，compat LIR 逐步减少。
