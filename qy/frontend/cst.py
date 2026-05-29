@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-from qy.errors import SourceSpan
+from qy.source.span import SourceSpan
 
 __all__ = [
     "AtomKind",

@@ -221,6 +221,7 @@ async def macroexpand_async(
                     e.message,
                     line=e.line,
                     column=e.column,
+                    span=e.span,
                 )
             )
     return MacroExpansion(expanded_forms, tuple(context.diagnostics), tuple(context.traces))
@@ -253,7 +254,7 @@ async def macroexpand_source_async(
     except ReaderSyntaxError as e:
         return MacroExpansion(
             [],
-            (Diagnostic(str(e), "error", line=e.line, column=e.column),),
+            (Diagnostic(str(e), "error", line=e.line, column=e.column, span=e.span),),
         )
     return await macroexpand_async(forms, env, options=options)
 
@@ -808,14 +809,21 @@ def _import_macros_from_form(form: object, context: MacroExpansionContext) -> No
     try:
         module_name, specs = parse_from_import(form)
     except ValueError as e:
-        context.diagnostics.append(Diagnostic(str(e), line=_line_of(form), column=_column_of(form)))
+        context.diagnostics.append(
+            Diagnostic(str(e), line=_line_of(form), column=_column_of(form), span=get_span(form))
+        )
         return
 
     try:
         macros = _resolve_module_macros(module_name, context)
     except KeyError as e:
         context.diagnostics.append(
-            Diagnostic(str(e), line=_line_of(module_name), column=_column_of(module_name))
+            Diagnostic(
+                str(e),
+                line=_line_of(module_name),
+                column=_column_of(module_name),
+                span=get_span(module_name),
+            )
         )
         return
 

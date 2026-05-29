@@ -48,7 +48,7 @@ def analyze_source(source: str, env: Environment | None = None) -> Analysis:
     except ReaderSyntaxError as e:
         return Analysis(
             [],
-            [Diagnostic(str(e), "error", line=e.line, column=e.column)],
+            [Diagnostic(str(e), "error", line=e.line, column=e.column, span=e.span)],
         )
     return analyze(forms, env)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from qy.frontend.reader import Form
+from qy.frontend.form import Form
 
 SOURCE = "source"
 CST = "cst"

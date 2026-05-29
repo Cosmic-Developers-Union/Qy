@@ -5,7 +5,7 @@ from collections.abc import Iterable
 from typing import cast
 
 from qy.core.program import CoreProgram
-from qy.frontend.reader import Form
+from qy.frontend.form import Form
 from qy.passes.hir.lower import lower
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext

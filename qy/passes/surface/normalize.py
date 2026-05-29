@@ -1,10 +1,6 @@
 # coding: utf-8
-"""surface.normalize pass。.
+"""surface.normalize 兼容入口。."""
 
-目标：
-- 执行 default surface dialect 规范化。
-- 处理 `'`、quasiquote、unquote、unquote-splicing 等有限 spelling rewrite。
+from qy.passes.frontend.surface_normalize import SurfaceNormalizePass
 
-当前：
-- 占位 pass。
-"""
+__all__ = ["SurfaceNormalizePass"]

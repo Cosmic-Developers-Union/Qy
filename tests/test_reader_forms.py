@@ -1,5 +1,7 @@
 import pytest
 
+from qy.build.artifact import RawFormProgram
+from qy.build.artifact import SurfaceProgram
 from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
@@ -11,6 +13,8 @@ from qy.frontend.reader import get_span
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
 from qy.frontend.reader import read_raw
+from qy.passes.frontend.surface_normalize import SurfaceNormalizePass
+from qy.passes.pass_base import PassContext
 
 S = Symbol
 
@@ -69,7 +73,15 @@ def test_expand_surface_dialect_is_pure_function():
     assert result == [L(S("quote"), S("abc")), L(S("+"), S("1"), S("2"))]
 
 
-def test_dotted_pair_forms():
+def test_surface_normalize_pass_matches_expand_surface_dialect():
+    raw = read_raw("'abc (+ 1 2)")
+    result = SurfaceNormalizePass().run(
+        PassContext(input_artifact=RawFormProgram(forms=tuple(raw)), artifact_kind="raw-forms")
+    )
+
+    assert result.success is True
+    assert result.artifact == SurfaceProgram(forms=tuple(expand_surface_dialect(raw)))
+
     form = read_one("(a . b)")
 
     # Improper list 现在是 Chain，不是 DottedTuple

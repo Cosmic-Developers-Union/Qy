@@ -10,7 +10,7 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from qy.errors import SourceSpan
+    from qy.source.span import SourceSpan
 
 __all__ = [
     "Chain",

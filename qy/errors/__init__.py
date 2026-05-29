@@ -16,6 +16,8 @@ import traceback
 from dataclasses import dataclass
 from typing import Any
 
+from qy.source.span import SourceSpan
+
 __all__ = [
     "EvaluationError",
     "QyAggregateError",
@@ -36,29 +38,6 @@ __all__ = [
     "TraceFrame",
     "format_qy_error",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class SourceSpan:
-    source: str | None = None
-    start_line: int | None = None
-    start_column: int | None = None
-    end_line: int | None = None
-    end_column: int | None = None
-
-    @property
-    def line(self) -> int | None:
-        return self.start_line
-
-    @property
-    def column(self) -> int | None:
-        return self.start_column
-
-    def format(self) -> str:
-        location = self.source or "<source>"
-        if self.start_line is None or self.start_column is None:
-            return location
-        return f"{location}:{self.start_line}:{self.start_column}"
 
 
 @dataclass(frozen=True, slots=True)

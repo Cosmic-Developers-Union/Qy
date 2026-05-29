@@ -9,9 +9,12 @@ from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
 from qy.errors import format_qy_error
+from qy.source import SourceSpan as CanonicalSourceSpan
 
 
-def test_source_span_format_without_line_column():
+def test_errors_source_span_is_canonical_source_span():
+    assert SourceSpan is CanonicalSourceSpan
+
     """测试 SourceSpan.format() 在没有行列信息时只返回源文件名。."""
     span = SourceSpan(source="test.qy")
     assert span.format() == "test.qy"

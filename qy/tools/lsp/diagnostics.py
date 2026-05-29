@@ -11,6 +11,7 @@ from qy.build.pipeline import compile_source_to_kind_async
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance
+from qy.tools.lsp.utils import span_to_range
 
 
 def diagnostics_for_source(source: str, *, qy: Qy | None = None) -> list[types.Diagnostic]:
@@ -25,13 +26,17 @@ def diagnostics_for_source(source: str, *, qy: Qy | None = None) -> list[types.D
 
 
 def diagnostic_to_lsp(diagnostic: Diagnostic) -> types.Diagnostic:
-    line = max((diagnostic.line or 1) - 1, 0)
-    character = max((diagnostic.column or 1) - 1, 0)
-    return types.Diagnostic(
-        range=types.Range(
+    if diagnostic.span is not None:
+        diagnostic_range = span_to_range(diagnostic.span)
+    else:
+        line = max((diagnostic.effective_line or 1) - 1, 0)
+        character = max((diagnostic.effective_column or 1) - 1, 0)
+        diagnostic_range = types.Range(
             start=types.Position(line=line, character=character),
             end=types.Position(line=line, character=character + 1),
-        ),
+        )
+    return types.Diagnostic(
+        range=diagnostic_range,
         message=diagnostic.message,
         severity=severity_to_lsp(diagnostic.severity),
         source="qy",

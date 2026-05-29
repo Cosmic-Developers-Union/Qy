@@ -132,6 +132,7 @@ class LoweringContext:
                 message,
                 line=None if span is None else span.line,
                 column=None if span is None else span.column,
+                span=span,
             )
         )
 
@@ -150,7 +151,7 @@ def lower_source(
     except ReaderSyntaxError as e:
         return ProgramIR(
             (),
-            (Diagnostic(str(e), "error", line=e.line, column=e.column),),
+            (Diagnostic(str(e), "error", line=e.line, column=e.column, span=e.span),),
         )
     return lower(forms, env)
 

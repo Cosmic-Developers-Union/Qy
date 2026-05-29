@@ -39,6 +39,7 @@ class ReaderMacroPass(Pass):
                 "error",
                 line=getattr(e, "line", None),
                 column=getattr(e, "column", None),
+                span=getattr(e, "span", None),
             )
             return PassResult(
                 success=False,

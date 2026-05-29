@@ -26,12 +26,12 @@ from qy.core.syntax import cons
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
-from qy.errors import SourceSpan
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
-from qy.frontend.reader import SpannedTuple
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
+from qy.frontend.form import DottedTuple
+from qy.frontend.form import Form
+from qy.frontend.form import SpannedTuple
+from qy.frontend.form import Symbol
+from qy.frontend.form import get_span
+from qy.source.span import SourceSpan
 
 __all__ = ["expand_surface_dialect"]
 

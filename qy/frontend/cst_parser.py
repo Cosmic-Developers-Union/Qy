@@ -13,12 +13,12 @@
 from __future__ import annotations
 
 from qy.errors import QySyntaxError
-from qy.errors import SourceSpan
 from qy.frontend.cst import AtomKind
 from qy.frontend.cst import CstAtom
 from qy.frontend.cst import CstList
 from qy.frontend.cst import CstNode
 from qy.frontend.cst import CstProgram
+from qy.source.span import SourceSpan
 
 __all__ = ["CstParseError", "parse_cst"]
 

@@ -24,8 +24,6 @@ import ast
 import json
 import math
 from collections.abc import Iterable
-from dataclasses import dataclass
-from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import cast
 
@@ -40,7 +38,16 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.errors import QySyntaxError
-from qy.errors import SourceSpan
+from qy.frontend.form import DottedTuple
+from qy.frontend.form import Form
+from qy.frontend.form import SpannedTuple
+from qy.frontend.form import Symbol
+from qy.frontend.form import TupleAtom
+from qy.frontend.form import TupleForm
+from qy.frontend.form import chain_to_spanned_tuple
+from qy.frontend.form import get_span
+from qy.frontend.form import spanned_tuple_to_chain
+from qy.source.span import SourceSpan
 
 if TYPE_CHECKING:
     from qy.frontend.cst import CstProgram
@@ -83,47 +90,6 @@ __all__ = [
     "write_tuple",
     "write_tuple_program",
 ]
-
-
-@dataclass(frozen=True, slots=True)
-class Symbol:
-    name: str
-    span: SourceSpan | None = field(default=None, compare=False, repr=False)
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class SpannedTuple(tuple):
-    span: SourceSpan | None
-
-    def __new__(cls, items: Iterable[object] = (), span: SourceSpan | None = None) -> SpannedTuple:
-        value = super().__new__(cls, items)
-        value.span = span
-        return value
-
-
-class DottedTuple(tuple):
-    tail: object
-    span: SourceSpan | None
-
-    def __new__(
-        cls,
-        items: Iterable[object] = (),
-        tail: object = None,
-        span: SourceSpan | None = None,
-    ) -> DottedTuple:
-        value = super().__new__(cls, items)
-        value.tail = tail
-        value.span = span
-        return value
-
-
-# 新的 Form 定义：目标是 Symbol | Chain
-# 迁移期间保留 tuple 类型以支持兼容层
-type Form = Symbol | Chain | SpannedTuple | DottedTuple | tuple["Form", ...]
-type TupleAtom = Symbol | str | int | float | bool | bytes | None
-type TupleForm = TupleAtom | tuple["TupleForm", ...]
 
 
 GRAMMAR = r'''
@@ -420,14 +386,6 @@ def write_tuple_program(forms: Iterable[TupleForm]) -> str:
     return "\n".join(write_tuple(form) for form in forms)
 
 
-def get_span(value: object) -> SourceSpan | None:
-    if isinstance(value, Symbol):
-        return value.span
-    if isinstance(value, Chain):
-        return value.span
-    return getattr(value, "span", None)
-
-
 def _decode_quoted_symbol(token: str, span: SourceSpan | None = None) -> str:
     try:
         value = ast.literal_eval(token)
@@ -619,16 +577,3 @@ def read_cst(
 # ============================================================================
 # 兼容层函数（迁移期使用）
 # ============================================================================
-
-
-def chain_to_spanned_tuple(chain: Chain) -> tuple:
-    """兼容层：Chain -> SpannedTuple（迁移期使用）。."""
-    items = list(chain)
-    span = get_span(chain)
-    return SpannedTuple(items, span)
-
-
-def spanned_tuple_to_chain(t: tuple) -> object:
-    """兼容层：tuple -> Chain（迁移期使用）。."""
-    span = get_span(t)
-    return list_to_chain(list(t), span=span)

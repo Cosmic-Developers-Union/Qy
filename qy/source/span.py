@@ -43,5 +43,5 @@ def get_span(value: object) -> SourceSpan | None:
     if hasattr(value, "span") and not isinstance(value, Chain):
         return cast("SourceSpan | None", value.span)
     if isinstance(value, Chain):
-        return cast("SourceSpan | None", value.span)
+        return value.span
     return None
