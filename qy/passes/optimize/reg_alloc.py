@@ -106,62 +106,52 @@ def _remap_instruction(inst: MIRInstruction, reg_map: dict[int, int]) -> MIRInst
     match inst.opcode:
         case "LOAD_CONST" | "LOAD_HOST" | "LOAD_ENV":
             dest = inst.operands[0]
-            new_dest = reg_map.get(cast(int, dest), dest) if isinstance(dest, int) else dest
+            new_dest = reg_map.get(dest, dest) if isinstance(dest, int) else dest
             return MIRInstruction(inst.opcode, (new_dest, *inst.operands[1:]), inst.span)
         case "MOVE":
             dst, src = inst.operands
-            new_dst = reg_map.get(cast(int, dst), dst) if isinstance(dst, int) else dst
-            new_src = reg_map.get(cast(int, src), src) if isinstance(src, int) else src
+            new_dst = reg_map.get(dst, dst) if isinstance(dst, int) else dst
+            new_src = reg_map.get(src, src) if isinstance(src, int) else src
             return MIRInstruction("MOVE", (new_dst, new_src), inst.span)
         case "MAKE_FUNCTION":
             dest = inst.operands[0]
-            new_dest = reg_map.get(cast(int, dest), dest) if isinstance(dest, int) else dest
+            new_dest = reg_map.get(dest, dest) if isinstance(dest, int) else dest
             return MIRInstruction("MAKE_FUNCTION", (new_dest, inst.operands[1]), inst.span)
         case "MAKE_MACRO":
             dest = inst.operands[0]
-            new_dest = reg_map.get(cast(int, dest), dest) if isinstance(dest, int) else dest
+            new_dest = reg_map.get(dest, dest) if isinstance(dest, int) else dest
             return MIRInstruction("MAKE_MACRO", (new_dest, *inst.operands[1:]), inst.span)
         case "CALL":
             dest, op_reg, arg_regs = inst.operands
-            new_dest = reg_map.get(cast(int, dest), dest) if isinstance(dest, int) else dest
-            new_op = reg_map.get(cast(int, op_reg), op_reg) if isinstance(op_reg, int) else op_reg
+            new_dest = reg_map.get(dest, dest) if isinstance(dest, int) else dest
+            new_op = reg_map.get(op_reg, op_reg) if isinstance(op_reg, int) else op_reg
             new_args: tuple[object, ...] = ()
             if isinstance(arg_regs, tuple):
-                new_args = tuple(
-                    reg_map.get(cast(int, a), a) if isinstance(a, int) else a for a in arg_regs
-                )
+                new_args = tuple(reg_map.get(a, a) if isinstance(a, int) else a for a in arg_regs)
             return MIRInstruction("CALL", (new_dest, new_op, new_args), inst.span)
         case "APPLY":
-            new_ops = tuple(
-                reg_map.get(cast(int, o), o) if isinstance(o, int) else o for o in inst.operands
-            )
+            new_ops = tuple(reg_map.get(o, o) if isinstance(o, int) else o for o in inst.operands)
             return MIRInstruction("APPLY", new_ops, inst.span)
         case "DEFINE_ONCE":
             sym, val = inst.operands
-            new_val = reg_map.get(cast(int, val), val) if isinstance(val, int) else val
+            new_val = reg_map.get(val, val) if isinstance(val, int) else val
             return MIRInstruction("DEFINE_ONCE", (sym, new_val), inst.span)
         case "STORE_LOCAL":
             sym, val = inst.operands
-            new_val = reg_map.get(cast(int, val), val) if isinstance(val, int) else val
+            new_val = reg_map.get(val, val) if isinstance(val, int) else val
             return MIRInstruction("STORE_LOCAL", (sym, new_val), inst.span)
         case "BUILD_TUPLE":
-            new_ops = tuple(
-                reg_map.get(cast(int, o), o) if isinstance(o, int) else o for o in inst.operands
-            )
+            new_ops = tuple(reg_map.get(o, o) if isinstance(o, int) else o for o in inst.operands)
             return MIRInstruction("BUILD_TUPLE", new_ops, inst.span)
         case "APPEND_RESULT":
             val = inst.operands[0]
-            new_val = reg_map.get(cast(int, val), val) if isinstance(val, int) else val
+            new_val = reg_map.get(val, val) if isinstance(val, int) else val
             return MIRInstruction("APPEND_RESULT", (new_val,), inst.span)
         case "RUNTIME_EVAL":
-            new_ops = tuple(
-                reg_map.get(cast(int, o), o) if isinstance(o, int) else o for o in inst.operands
-            )
+            new_ops = tuple(reg_map.get(o, o) if isinstance(o, int) else o for o in inst.operands)
             return MIRInstruction("RUNTIME_EVAL", new_ops, inst.span)
         case "EFFECT_RESUME":
-            new_ops = tuple(
-                reg_map.get(cast(int, o), o) if isinstance(o, int) else o for o in inst.operands
-            )
+            new_ops = tuple(reg_map.get(o, o) if isinstance(o, int) else o for o in inst.operands)
             return MIRInstruction("EFFECT_RESUME", new_ops, inst.span)
         case _:
             return inst
@@ -171,7 +161,7 @@ def _remap_terminator(term: MIRTerminator, reg_map: dict[int, int]) -> MIRTermin
     """Remap register references in a terminator."""
 
     def _r(val: object) -> object:
-        return reg_map.get(cast(int, val), val) if isinstance(val, int) else val
+        return reg_map.get(val, val) if isinstance(val, int) else val
 
     match term.opcode:
         case "RETURN":

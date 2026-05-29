@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
@@ -116,5 +117,5 @@ class Pass:
     def __init__(self, name: str) -> None:
         self.name = name
 
-    def run(self, context: PassContext) -> PassResult:
+    def run(self, context: PassContext) -> PassResult | Awaitable[PassResult]:
         raise NotImplementedError(f"Pass {self.name!r} 未实现 run 方法")

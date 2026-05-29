@@ -108,12 +108,10 @@ def _substitute_instruction(inst: MIRInstruction, copies: dict[int, int]) -> MIR
             return inst
         case "CALL":
             dest, op_reg, arg_regs = inst.operands
-            new_op = copies.get(cast(int, op_reg), op_reg) if isinstance(op_reg, int) else op_reg
+            new_op = copies.get(op_reg, op_reg) if isinstance(op_reg, int) else op_reg
             new_args: tuple[object, ...] = ()
             if isinstance(arg_regs, tuple):
-                new_args = tuple(
-                    copies.get(cast(int, a), a) if isinstance(a, int) else a for a in arg_regs
-                )
+                new_args = tuple(copies.get(a, a) if isinstance(a, int) else a for a in arg_regs)
             if new_op != op_reg or new_args != arg_regs:
                 return MIRInstruction("CALL", (dest, new_op, new_args), inst.span)
             return inst
@@ -133,7 +131,7 @@ def _substitute_instruction(inst: MIRInstruction, copies: dict[int, int]) -> MIR
             return inst
         case "BUILD_TUPLE":
             new_ops = tuple(
-                copies.get(cast(int, op), op) if isinstance(op, int) else op for op in inst.operands
+                copies.get(op, op) if isinstance(op, int) else op for op in inst.operands
             )
             if new_ops != inst.operands:
                 return MIRInstruction(inst.opcode, new_ops, inst.span)
@@ -147,7 +145,7 @@ def _substitute_instruction(inst: MIRInstruction, copies: dict[int, int]) -> MIR
             return inst
         case "EFFECT_RESUME":
             new_ops = tuple(
-                copies.get(cast(int, op), op) if isinstance(op, int) else op for op in inst.operands
+                copies.get(op, op) if isinstance(op, int) else op for op in inst.operands
             )
             if new_ops != inst.operands:
                 return MIRInstruction(inst.opcode, new_ops, inst.span)

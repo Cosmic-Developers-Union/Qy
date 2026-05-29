@@ -26,7 +26,7 @@ class MacroExpandPass(Pass):
     def __init__(self) -> None:
         super().__init__("macro.expand")
 
-    async def run(self, context: PassContext) -> PassResult:  # type: ignore[override]
+    async def run(self, context: PassContext) -> PassResult:
         forms = cast(list[Form], context.input_artifact)
         options = context.session.macro_options
         if options is None:

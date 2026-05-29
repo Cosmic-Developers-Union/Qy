@@ -27,6 +27,7 @@ effect。这三个 effect 都是非可恢复 effect 的标准形态。
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import cast
 
 from qy.core.operators import PureOperator
 from qy.core.syntax import nil as QY_NIL
@@ -136,6 +137,22 @@ def _check_float_finite(value: float, type_name: str, op: str) -> float:
             {"type": type_name, "operation": op, "result": value},
         )
     return value
+
+
+def _integer_payload(value: IntegerValue) -> int:
+    return cast(int, value.value)
+
+
+def _number_payload(value: NumberValue) -> int | float:
+    return cast(int | float, value.value)
+
+
+def _make_integer(value_type: type[IntegerValue], value: int) -> IntegerValue:
+    return cast(Callable[[int], IntegerValue], value_type)(value)
+
+
+def _make_number(value_type: type[NumberValue], value: int | float) -> NumberValue:
+    return cast(Callable[[int | float], NumberValue], value_type)(value)
 
 
 def _coerce_host_number(value: object) -> object:

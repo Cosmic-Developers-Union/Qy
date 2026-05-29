@@ -10,6 +10,7 @@ from typing import cast
 
 from qy.diag import Diagnostic
 from qy.errors import QySyntaxError
+from qy.errors import SourceSpan
 from qy.frontend.cst import CstProgram
 from qy.frontend.cst_parser import parse_cst
 from qy.passes.pass_base import Pass
@@ -40,7 +41,7 @@ class CstParsePass(Pass):
             )
             return PassResult(
                 success=False,
-                artifact=CstProgram(children=(), trailing_trivia="", span=None),
+                artifact=CstProgram(children=(), trailing_trivia="", span=SourceSpan(source_name)),
                 artifact_kind=self.output_kind,
                 diagnostics=(diag,),
             )

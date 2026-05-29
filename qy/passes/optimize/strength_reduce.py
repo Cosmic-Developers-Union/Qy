@@ -103,7 +103,7 @@ def _try_reduce(
     sym_name = sym.name if isinstance(sym, Symbol) else str(sym)
 
     # Try to reduce based on the operator
-    if sym_name == "*" and len(arg_regs) == 2:
+    if sym_name == "*" and len(arg_regs) == 2 and isinstance(dest, int):
         return _reduce_multiply(dest, arg_regs, defs, pool)
 
     return None
@@ -128,12 +128,10 @@ def _reduce_multiply(
             a_val = _get_const_value(a_def, pool)
             b_val = _get_const_value(b_def, pool)
             if a_val is not None and b_val is not None:
-                try:
+                if isinstance(a_val, int | float) and isinstance(b_val, int | float):
                     result = a_val * b_val
                     idx = pool.intern(result)
                     return MIRInstruction("LOAD_CONST", (dest, idx), None)
-                except Exception:
-                    pass
     return None
 
 

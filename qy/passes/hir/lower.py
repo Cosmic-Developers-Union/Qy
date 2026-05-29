@@ -179,9 +179,9 @@ def _scope_from_environment(env: Environment, symbol_space: SymbolSpace) -> Scop
                 "builtin",
                 value_type(value),
                 symbol_space,
-                operator_kind_for_value(value),
-                value_uses_eager_arguments(value),
-                value,
+                operator_kind=operator_kind_for_value(value),
+                eager_arguments=value_uses_eager_arguments(value),
+                value=value,
             )
         )
     return scope
@@ -1148,9 +1148,9 @@ def _scope_after_form(
                 "import",
                 value_type(value),
                 next_scope.symbol_space,
-                operator_kind_for_value(value),
-                value_uses_eager_arguments(value),
-                value,
+                operator_kind=operator_kind_for_value(value),
+                eager_arguments=value_uses_eager_arguments(value),
+                value=value,
             ),
             context,
         )
@@ -1216,9 +1216,10 @@ def _define_local(
             binding.source,
             binding.type_name,
             scope.symbol_space,
-            binding.operator_kind,
-            binding.eager_arguments,
-            binding.value,
+            operator_kind=binding.operator_kind,
+            eager_arguments=binding.eager_arguments,
+            continuous=binding.continuous,
+            value=binding.value,
         )
     return scope.define(binding)
 

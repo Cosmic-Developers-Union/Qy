@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import ClassVar
+from typing import cast
 
 __all__ = [
     "NIL",
@@ -120,13 +121,13 @@ T = TValue()
 _NO_PEER = object()
 
 
-def _peer_value(other: object) -> object:
+def _peer_value(other: object) -> int | float | object:
     """Extract the underlying Python value for host-level arithmetic.
 
     Returns ``_NO_PEER`` when *other* is not a host-arithmetic peer.
     """
     if isinstance(other, NumberValue):
-        return other.value  # type: ignore[attr-defined]
+        return other.value
     if isinstance(other, bool):
         return _NO_PEER
     if isinstance(other, int | float):
@@ -162,39 +163,40 @@ class NumberValue(ObjectValue):
     type_name: ClassVar[str] = "number"
     exact: ClassVar[bool]
     fixed_width: ClassVar[bool]
+    value: int | float
 
     def __eq__(self, other: object) -> bool:
         if isinstance(other, NumberValue):
-            return self.value == other.value  # type: ignore[attr-defined]
+            return self.value == other.value
         if isinstance(other, bool):
             return False
         if isinstance(other, int | float):
-            return self.value == other  # type: ignore[attr-defined]
+            return self.value == other
         return NotImplemented
 
     def __hash__(self) -> int:
-        return hash(("qy-number", self.value))  # type: ignore[attr-defined]
+        return hash(("qy-number", self.value))
 
     def __int__(self) -> int:
-        return int(self.value)  # type: ignore[attr-defined]
+        return int(self.value)
 
     def __float__(self) -> float:
-        return float(self.value)  # type: ignore[attr-defined]
+        return float(self.value)
 
     def __index__(self) -> int:
-        v = self.value  # type: ignore[attr-defined]
+        v = self.value
         if isinstance(v, int) and not isinstance(v, bool):
             return v
         raise TypeError(f"{type(self).__name__} cannot be used as an index")
 
     def __str__(self) -> str:
-        return str(self.value)  # type: ignore[attr-defined]
+        return str(self.value)
 
     def __format__(self, spec: str) -> str:
-        return format(self.value, spec)  # type: ignore[attr-defined]
+        return format(self.value, spec)
 
     def __bool__(self) -> bool:
-        return bool(self.value)  # type: ignore[attr-defined]
+        return bool(self.value)
 
     # Python-level numeric protocol. These are *host adapters* — they let
     # idiomatic Python code (host operators, debug formatters, sequence
@@ -203,57 +205,61 @@ class NumberValue(ObjectValue):
     # through ``qy.session.number_ops`` and require concrete-type consistency.
     def __add__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value + v  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else self.value + cast(int | float, v)
 
     def __radd__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else v + self.value  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else cast(int | float, v) + self.value
 
     def __sub__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value - v  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else self.value - cast(int | float, v)
 
     def __rsub__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else v - self.value  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else cast(int | float, v) - self.value
 
     def __mul__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value * v  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else self.value * cast(int | float, v)
 
     def __rmul__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else v * self.value  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else cast(int | float, v) * self.value
 
     def __truediv__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value / v  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else self.value / cast(int | float, v)
 
     def __rtruediv__(self, other: object) -> object:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else v / self.value  # type: ignore[attr-defined]
+        return NotImplemented if v is _NO_PEER else cast(int | float, v) / self.value
 
     def __neg__(self) -> object:
-        return -self.value  # type: ignore[attr-defined]
+        return -self.value
 
     def __pos__(self) -> object:
-        return +self.value  # type: ignore[attr-defined]
+        return +self.value
 
     def __lt__(self, other: object) -> bool:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value < v  # type: ignore[attr-defined,return-value]
+        return NotImplemented if v is _NO_PEER else self.value < cast(int | float, v)
 
     def __le__(self, other: object) -> bool:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value <= v  # type: ignore[attr-defined,return-value]
+        return NotImplemented if v is _NO_PEER else self.value <= cast(int | float, v)
 
     def __gt__(self, other: object) -> bool:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value > v  # type: ignore[attr-defined,return-value]
+        return NotImplemented if v is _NO_PEER else self.value > cast(int | float, v)
 
     def __ge__(self, other: object) -> bool:
         v = _peer_value(other)
-        return NotImplemented if v is _NO_PEER else self.value >= v  # type: ignore[attr-defined,return-value]
+        return NotImplemented if v is _NO_PEER else self.value >= cast(int | float, v)
+
+
+def _number_payload(value: NumberValue) -> int | float:
+    return value.value
 
 
 class IntegerValue(NumberValue):

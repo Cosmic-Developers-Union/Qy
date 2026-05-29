@@ -61,6 +61,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from qy.errors import SourceSpan
+from qy.frontend.reader import Symbol
 from qy.ir.lir import LIRContinuationLayout
 from qy.ir.lir import LIRHandlerLayout
 from qy.ir.lir import LIRInstruction
@@ -117,13 +118,16 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
         begin_inst = instructions[begin_idx]
         # operand layout: (handle_id, body_fn_idx, handler_specs)
         _mir_handle_id, body_fn_idx, specs = begin_inst.operands
+        assert isinstance(body_fn_idx, int)
+        assert isinstance(specs, tuple)
+        typed_specs = tuple(spec for spec in specs if isinstance(spec, tuple))
         end_inst = instructions[end_idx]
         # operand layout: (handle_id, dst_reg)
         _, dst_reg = end_inst.operands
         region_meta[begin_idx] = _RegionMeta(
             handler_id=next_handler_id,
             body_fn_idx=body_fn_idx,
-            specs=specs,
+            specs=typed_specs,
             dst_reg=dst_reg,
             begin=begin_idx,
             end=end_idx,
@@ -156,14 +160,7 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
 
             body_reg = register_alloc.alloc()
             new_instructions.append(
-                LIRInstruction("LOAD_HOST", (body_reg, _BodyFnRef(meta.body_fn_idx)), span)
-            )
-            # Replace LOAD_HOST(body_reg, BodyFnRef) with MAKE_FUNCTION at the
-            # bytecode-emit level; for now we emit MAKE_FUNCTION directly so
-            # the VM gets a BytecodeFunctionValue.
-            # Rewind: replace last instruction.
-            new_instructions[-1] = LIRInstruction(
-                "MAKE_FUNCTION", (body_reg, meta.body_fn_idx), span
+                LIRInstruction("MAKE_FUNCTION", (body_reg, meta.body_fn_idx), span)
             )
             new_instructions.append(LIRInstruction("CALL", (meta.dst_reg, body_reg, ()), span))
             new_instructions.append(LIRInstruction("HANDLER_POP", (meta.handler_id,), span))
@@ -200,7 +197,7 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
                 LIRHandlerLayout(
                     id=meta.handler_id,
                     effects=tuple(
-                        spec[0] for spec in meta.specs if isinstance(spec, tuple) and spec
+                        spec[0] for spec in meta.specs if spec and isinstance(spec[0], Symbol)
                     ),
                     handler_target=dispatch_label,
                     parent_handler=parent_id if parent_id >= 0 else None,
@@ -231,6 +228,7 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
         elif opcode == "EFFECT_PERFORM":
             # operands: (dst, eff_sym, arg_reg, resume_idx, resumable)
             dst, eff_sym, arg_reg, resume_idx, resumable = instruction.operands
+            assert isinstance(resume_idx, int)
             cont_reg = register_alloc.alloc()
             cont_layout_id = next_continuation_id
             next_continuation_id += 1
@@ -306,6 +304,7 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
             capture_inst.opcode, tuple(ops), capture_inst.span
         )
         cont_layout_id = ops[1]
+        assert isinstance(cont_layout_id, int)
         old_layout = continuation_layouts[cont_layout_id]
         new_continuation_layouts.append(
             LIRContinuationLayout(
@@ -333,20 +332,13 @@ def lower_effects(instructions: list[LIRInstruction], register_count: int) -> _L
 @dataclass
 class _RegionMeta:
     handler_id: int
-    body_fn_idx: object
-    specs: object
+    body_fn_idx: int
+    specs: tuple[tuple[object, ...], ...]
     dst_reg: object
     begin: int
     end: int
     dispatch_label_new_idx: int = -1
     jump_over_new_idx: int = -1
-
-
-@dataclass(frozen=True, slots=True)
-class _BodyFnRef:
-    """Sentinel kept inside the lowering for clarity; not emitted."""
-
-    fn_idx: int
 
 
 class _RegisterAllocator:
