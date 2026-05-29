@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import cast
 
 import pytest
 
@@ -53,12 +54,16 @@ class MockPass(Pass):
 
 
 def _ctx(artifact: object = "initial", **kwargs: object) -> PassContext:
+    artifact_kind = cast(str, kwargs.pop("artifact_kind", ""))
+    session = cast(PipelineSession, kwargs.pop("session", PipelineSession.minimal()))
+    diagnostics = cast(tuple[Diagnostic, ...], kwargs.pop("diagnostics", ()))
+    options = cast(PipelineOptions, kwargs.pop("options", PipelineOptions()))
     return PassContext(
         input_artifact=artifact,
-        artifact_kind=kwargs.pop("artifact_kind", ""),
-        session=kwargs.pop("session", PipelineSession.minimal()),
-        diagnostics=kwargs.pop("diagnostics", ()),
-        options=kwargs.pop("options", PipelineOptions()),
+        artifact_kind=artifact_kind,
+        session=session,
+        diagnostics=diagnostics,
+        options=options,
     )
 
 

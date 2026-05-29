@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import operator
+from typing import SupportsIndex
 from typing import cast
 
 from qy.core.operators import PureOperator
@@ -51,8 +53,8 @@ def _ensure_index(value: object) -> int:
             metadata={"value": value},
         )
     try:
-        return value.__index__()  # type: ignore[union-attr]
-    except (AttributeError, TypeError) as exc:
+        return operator.index(cast(SupportsIndex, value))
+    except TypeError as exc:
         raise QyTypeError(
             f"expected integer index, got {value!r}",
             span=get_span(value),
@@ -133,8 +135,10 @@ def _eq(left: object, right: object) -> object:
         return QY_T
     if type(left) is not type(right):
         return QY_NIL
-    if isinstance(left, NumberValue | StringValue):
-        return QY_T if left.value == right.value else QY_NIL  # type: ignore[union-attr]
+    if isinstance(left, NumberValue) and isinstance(right, NumberValue):
+        return QY_T if left.value == right.value else QY_NIL
+    if isinstance(left, StringValue) and isinstance(right, StringValue):
+        return QY_T if left.value == right.value else QY_NIL
     if isinstance(left, int | float | str | bool | Symbol):
         return QY_T if left == right else QY_NIL
     return QY_NIL

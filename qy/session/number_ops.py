@@ -144,7 +144,7 @@ def _integer_payload(value: IntegerValue) -> int:
 
 
 def _number_payload(value: NumberValue) -> int | float:
-    return cast(int | float, value.value)
+    return value.value
 
 
 def _make_integer(value_type: type[IntegerValue], value: int) -> IntegerValue:
@@ -203,7 +203,8 @@ def _dispatch_op(
     value_type = _ensure_same_number_type(args, op)
     typed_args = tuple(arg for arg in args if isinstance(arg, NumberValue))
     if issubclass(value_type, IntegerValue):
-        return integer_kernel(value_type, typed_args)  # type: ignore[arg-type]
+        integer_args = tuple(arg for arg in typed_args if isinstance(arg, IntegerValue))
+        return integer_kernel(value_type, integer_args)
     if value_type in _FLOAT_TYPES or any(issubclass(value_type, t) for t in _FLOAT_TYPES):
         return float_kernel(value_type, typed_args)
     raise QyTypeError(
@@ -218,35 +219,37 @@ def _dispatch_op(
 def _integer_add(value_type: type[IntegerValue], args: tuple[IntegerValue, ...]) -> IntegerValue:
     total = 0
     for arg in args:
-        total += arg.value  # type: ignore[attr-defined]
-    return value_type(_check_integer_range(total, value_type, "+"))
+        total += _integer_payload(arg)
+    return _make_integer(value_type, _check_integer_range(total, value_type, "+"))
 
 
 def _integer_sub(value_type: type[IntegerValue], args: tuple[IntegerValue, ...]) -> IntegerValue:
     if len(args) == 1:
-        return value_type(_check_integer_range(-args[0].value, value_type, "-"))  # type: ignore[attr-defined]
-    result = args[0].value  # type: ignore[attr-defined]
+        return _make_integer(
+            value_type, _check_integer_range(-_integer_payload(args[0]), value_type, "-")
+        )
+    result = _integer_payload(args[0])
     for arg in args[1:]:
-        result -= arg.value  # type: ignore[attr-defined]
-    return value_type(_check_integer_range(result, value_type, "-"))
+        result -= _integer_payload(arg)
+    return _make_integer(value_type, _check_integer_range(result, value_type, "-"))
 
 
 def _integer_mul(value_type: type[IntegerValue], args: tuple[IntegerValue, ...]) -> IntegerValue:
     result = 1
     for arg in args:
-        result *= arg.value  # type: ignore[attr-defined]
-    return value_type(_check_integer_range(result, value_type, "*"))
+        result *= _integer_payload(arg)
+    return _make_integer(value_type, _check_integer_range(result, value_type, "*"))
 
 
 def _integer_div(value_type: type[IntegerValue], args: tuple[IntegerValue, ...]) -> IntegerValue:
     if len(args) == 1:
-        first = args[0].value  # type: ignore[attr-defined]
+        first = _integer_payload(args[0])
         if first == 0:
             _perform_effect("divide-by-zero", {"operator": "/"}, resumable=True)
-        return value_type(_check_integer_range(1 // first, value_type, "/"))
-    result = args[0].value  # type: ignore[attr-defined]
+        return _make_integer(value_type, _check_integer_range(1 // first, value_type, "/"))
+    result = _integer_payload(args[0])
     for arg in args[1:]:
-        divisor = arg.value  # type: ignore[attr-defined]
+        divisor = _integer_payload(arg)
         if divisor == 0:
             _perform_effect("divide-by-zero", {"operator": "/"}, resumable=True)
         # Truncating integer division (``//`` in Python rounds toward -inf;
@@ -256,17 +259,17 @@ def _integer_div(value_type: type[IntegerValue], args: tuple[IntegerValue, ...])
             if (result < 0) ^ (divisor < 0) and result % divisor
             else result // divisor
         )
-    return value_type(_check_integer_range(result, value_type, "/"))
+    return _make_integer(value_type, _check_integer_range(result, value_type, "/"))
 
 
 def _integer_mod(value_type: type[IntegerValue], args: tuple[IntegerValue, ...]) -> IntegerValue:
     if len(args) != 2:
         raise QyTypeError("mod expects exactly 2 arguments")
-    a = args[0].value  # type: ignore[attr-defined]
-    b = args[1].value  # type: ignore[attr-defined]
+    a = _integer_payload(args[0])
+    b = _integer_payload(args[1])
     if b == 0:
         _perform_effect("divide-by-zero", {"operator": "mod"}, resumable=False)
-    return value_type(_check_integer_range(a % b, value_type, "mod"))
+    return _make_integer(value_type, _check_integer_range(a % b, value_type, "mod"))
 
 
 # -- Float kernels -----------------------------------------------------------
@@ -275,49 +278,51 @@ def _integer_mod(value_type: type[IntegerValue], args: tuple[IntegerValue, ...])
 def _float_add(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
     total = 0.0
     for arg in args:
-        total += arg.value  # type: ignore[attr-defined]
-    return value_type(_check_float_finite(total, value_type.type_name, "+"))  # type: ignore[call-arg]
+        total += float(_number_payload(arg))
+    return _make_number(value_type, _check_float_finite(total, value_type.type_name, "+"))
 
 
 def _float_sub(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
     if len(args) == 1:
-        return value_type(-args[0].value)  # type: ignore[attr-defined,call-arg]
-    result = args[0].value  # type: ignore[attr-defined]
+        return _make_number(value_type, -float(_number_payload(args[0])))
+    result = float(_number_payload(args[0]))
     for arg in args[1:]:
-        result -= arg.value  # type: ignore[attr-defined]
-    return value_type(_check_float_finite(result, value_type.type_name, "-"))  # type: ignore[call-arg]
+        result -= float(_number_payload(arg))
+    return _make_number(value_type, _check_float_finite(result, value_type.type_name, "-"))
 
 
 def _float_mul(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
     result = 1.0
     for arg in args:
-        result *= arg.value  # type: ignore[attr-defined]
-    return value_type(_check_float_finite(result, value_type.type_name, "*"))  # type: ignore[call-arg]
+        result *= float(_number_payload(arg))
+    return _make_number(value_type, _check_float_finite(result, value_type.type_name, "*"))
 
 
 def _float_div(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
     if len(args) == 1:
-        first = args[0].value  # type: ignore[attr-defined]
+        first = float(_number_payload(args[0]))
         if first == 0.0:
             _perform_effect("divide-by-zero", {"operator": "/"}, resumable=True)
-        return value_type(_check_float_finite(1.0 / first, value_type.type_name, "/"))  # type: ignore[call-arg]
-    result = args[0].value  # type: ignore[attr-defined]
+        return _make_number(value_type, _check_float_finite(1.0 / first, value_type.type_name, "/"))
+    result = float(_number_payload(args[0]))
     for arg in args[1:]:
-        divisor = arg.value  # type: ignore[attr-defined]
+        divisor = float(_number_payload(arg))
         if divisor == 0.0:
             _perform_effect("divide-by-zero", {"operator": "/"}, resumable=True)
         result /= divisor
-    return value_type(_check_float_finite(result, value_type.type_name, "/"))  # type: ignore[call-arg]
+    return _make_number(value_type, _check_float_finite(result, value_type.type_name, "/"))
 
 
 def _float_mod(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
     if len(args) != 2:
         raise QyTypeError("mod expects exactly 2 arguments")
-    a = args[0].value  # type: ignore[attr-defined]
-    b = args[1].value  # type: ignore[attr-defined]
+    a = float(_number_payload(args[0]))
+    b = float(_number_payload(args[1]))
     if b == 0.0:
         _perform_effect("divide-by-zero", {"operator": "mod"}, resumable=False)
-    return value_type(_check_float_finite(a - b * int(a / b), value_type.type_name, "mod"))  # type: ignore[call-arg]
+    return _make_number(
+        value_type, _check_float_finite(a - b * int(a / b), value_type.type_name, "mod")
+    )
 
 
 # -- Public arithmetic operators --------------------------------------------
@@ -346,13 +351,19 @@ def _mod(*args: object) -> NumberValue:
 # -- Comparison operators ----------------------------------------------------
 
 
-def _ordering(op: str, args: tuple[object, ...], py_op: Callable[[object, object], bool]) -> object:
+def _ordering(
+    op: str,
+    args: tuple[object, ...],
+    py_op: Callable[[int | float, int | float], bool],
+) -> object:
     if len(args) != 2:
         raise QyTypeError(f"{op} expects exactly 2 arguments")
     coerced = tuple(_coerce_host_number(a) for a in args)
     _ensure_same_number_type(coerced, op)
     left, right = coerced
-    return QY_T if py_op(left.value, right.value) else QY_NIL  # type: ignore[attr-defined]
+    if not isinstance(left, NumberValue) or not isinstance(right, NumberValue):
+        raise QyTypeError(f"{op} expects numbers")
+    return QY_T if py_op(_number_payload(left), _number_payload(right)) else QY_NIL
 
 
 def _lt(*args: object) -> object:

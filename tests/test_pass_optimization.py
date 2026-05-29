@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+from typing import cast
+
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
+from qy.ir.lir import LIRProgram
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
@@ -41,13 +45,23 @@ def _compile_to_mir(source: str) -> MIRProgram:
     )
     artifact = p.run(ctx).artifact
     assert artifact is not None
-    return artifact
+    return cast(MIRProgram, artifact)
 
 
-def _run_pass(pass_obj, artifact, env=None):
+def _run_pass(pass_obj: Any, artifact: object, env: object = None):
     session = PipelineSession(env=env) if env else PipelineSession.minimal()
     ctx = PassContext(input_artifact=artifact, session=session)
     return pass_obj.run(ctx)
+
+
+def _mir_artifact(artifact: object) -> MIRProgram:
+    assert artifact is not None
+    return cast(MIRProgram, artifact)
+
+
+def _lir_artifact(artifact: object) -> LIRProgram:
+    assert artifact is not None
+    return cast(LIRProgram, artifact)
 
 
 # --- Pipeline integration ---
@@ -68,8 +82,8 @@ class TestPipeline:
         ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         result = build_optimization_pipeline(optimize=False).run(ctx)
         assert result.success
-        assert result.artifact is not None
-        assert result.artifact.functions
+        artifact = _mir_artifact(result.artifact)
+        assert artifact.functions
 
     def test_pipeline_optimized_keeps_runtime_lookups(self):
         # Under strict ssc semantics literals stay as runtime lookups; const
@@ -79,8 +93,8 @@ class TestPipeline:
         ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         result = build_optimization_pipeline(optimize=True).run(ctx)
         assert result.success
-        assert result.artifact is not None
-        fn = result.artifact.functions[0]
+        artifact = _lir_artifact(result.artifact)
+        fn = artifact.functions[0]
         opcodes = [i.opcode for i in fn.instructions]
         assert "CALL" in opcodes
         assert "LOAD_ENV" in opcodes
@@ -96,7 +110,8 @@ class TestConstFold:
         mir = _compile_to_mir("(+ 1 2)")
         env = standard_environment()
         result = _run_pass(ConstFoldPass(), mir, env)
-        fn = result.artifact.functions[0]
+        artifact = _mir_artifact(result.artifact)
+        fn = artifact.functions[0]
         opcodes = [i.opcode for b in fn.blocks for i in b.instructions]
         assert "CALL" in opcodes
 
@@ -119,7 +134,8 @@ class TestConstFold:
         mir = _compile_to_mir("(define x 5)(+ x 1)")
         env = standard_environment()
         result = _run_pass(ConstFoldPass(), mir, env)
-        fn = result.artifact.functions[0]
+        artifact = _mir_artifact(result.artifact)
+        fn = artifact.functions[0]
         opcodes = [i.opcode for b in fn.blocks for i in b.instructions]
         assert "CALL" in opcodes
 
@@ -257,14 +273,13 @@ class TestOptimizationCorrectness:
 
         ctx1 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         r1 = build_optimization_pipeline(optimize=False).run(ctx1)
-        assert r1.success
-        assert r1.artifact is not None
+        r1_artifact = _lir_artifact(r1.artifact)
 
         ctx2 = PassContext(input_artifact=forms, session=PipelineSession(env=env))
         r2 = build_optimization_pipeline(optimize=True).run(ctx2)
         assert r2.success
-        assert r2.artifact is not None
+        r2_artifact = _lir_artifact(r2.artifact)
 
-        assert len(r2.artifact.functions[0].instructions) <= len(
-            r1.artifact.functions[0].instructions
+        assert len(r2_artifact.functions[0].instructions) <= len(
+            r1_artifact.functions[0].instructions
         )

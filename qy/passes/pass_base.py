@@ -21,7 +21,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from dataclasses import field
 from typing import Any
-from typing import ClassVar
 
 from qy.diag import Diagnostic
 
@@ -111,8 +110,8 @@ class Pass:
     ``namespace.action`` 形式，例如 ``hir.lower``、``effect.flatten``。
     """
 
-    input_kind: ClassVar[str] = ""
-    output_kind: ClassVar[str] = ""
+    input_kind: str = ""
+    output_kind: str = ""
 
     def __init__(self, name: str) -> None:
         self.name = name
