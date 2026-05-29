@@ -52,8 +52,8 @@ def test_vm_instance_module_exports():
 def test_register_vm_basic_functionality():
     """测试 RegisterVirtualMachine 基本功能仍然正常。."""
     from qy.async_utils import run_coro
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
     from qy.session.runtime_space import create_standard_runtime_space as standard_environment
     from qy.vm.instance.machine import RegisterVirtualMachine

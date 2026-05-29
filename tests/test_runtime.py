@@ -63,11 +63,11 @@ def test_legacy_operator_registration_names():
 
 def test_qy_instance_exposes_pipeline_helpers():
     from qy.async_utils import run_coro
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_source_to_bytecode_async
-    from qy.passes.build import compile_source_to_kind_async
-    from qy.passes.build import core_ast_artifact
-    from qy.passes.build import mir_artifact
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_bytecode_async
+    from qy.build.pipeline import compile_source_to_kind_async
+    from qy.build.pipeline import core_ast_artifact
+    from qy.build.pipeline import mir_artifact
     from qy.passes.pass_base import PipelineSession
 
     qy = Qy()

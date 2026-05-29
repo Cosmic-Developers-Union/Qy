@@ -111,8 +111,8 @@ def demo_compile_and_dump():
     """
 
     from qy.async_utils import run_coro
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
 
     session = PipelineSession(env=qy.env)

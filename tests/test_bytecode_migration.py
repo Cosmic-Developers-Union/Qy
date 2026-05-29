@@ -153,8 +153,8 @@ def test_serialize_with_diagnostics():
 def test_compile_simple_program():
     """Test compiling a simple program through the pipeline."""
     from qy.async_utils import run_coro
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
     from qy.runtime import Qy
 

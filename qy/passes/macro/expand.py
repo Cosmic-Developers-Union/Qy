@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.build.artifact import SurfaceProgram
 from qy.core.program import CoreProgram
-from qy.frontend.reader import Form
 from qy.macro.expand import MacroExpansionOptions
 from qy.macro.expand import macroexpand_async
 from qy.passes.pass_base import Pass
@@ -27,11 +27,13 @@ class MacroExpandPass(Pass):
         super().__init__("macro.expand")
 
     async def run(self, context: PassContext) -> PassResult:
-        forms = cast(list[Form], context.input_artifact)
+        surface_program = cast(SurfaceProgram, context.input_artifact)
         options = context.session.macro_options
         if options is None:
             options = MacroExpansionOptions()
-        expansion = await macroexpand_async(forms, context.session.env, options=options)
+        expansion = await macroexpand_async(
+            list(surface_program.forms), context.session.env, options=options
+        )
         program = CoreProgram(forms=tuple(expansion.forms), traces=tuple(expansion.traces))
         return PassResult(
             success=True,

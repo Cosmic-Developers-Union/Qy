@@ -11,7 +11,7 @@
 - pass 不得直接执行（那是 qy/build/ 的职责）
 
 注意：
-- 完整源到字节码编译入口由 ``qy.passes.build`` 提供
+- 完整源到字节码编译入口由 ``qy.build.pipeline`` 提供
   （``build_default_pipeline``、``compile_source_to_*``、
   ``compile_source_to_kind*``）。
 - 这里仅暴露 pass 类与调度基础设施，以及 IR 阶段优化测试用的
@@ -45,7 +45,7 @@ def build_optimization_pipeline(*, optimize: bool = False) -> Pipeline:
     """Build a HIR→MIR→(optionally optimized)→LIR sub-pipeline.
 
     This sub-pipeline is **not** a substitute for the canonical source→bytecode
-    pipeline in ``qy.passes.build``. It only exists so IR-stage optimization
+    pipeline in ``qy.build.pipeline``. It only exists so IR-stage optimization
     passes can be exercised in isolation by tests and tooling.
 
     Optimization pipeline stages (when ``optimize=True``):

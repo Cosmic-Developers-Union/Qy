@@ -301,7 +301,7 @@ async def _compile_source_via_pipeline(
     ``emit.bytecode`` 之前因 error 阈值短路时，``bytecode`` 为 ``None``，
     全部诊断仍包含在 ``pipeline_diagnostics`` 中。
     """
-    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.build.pipeline import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
 
     session = PipelineSession(env=env, source_name=source_name)

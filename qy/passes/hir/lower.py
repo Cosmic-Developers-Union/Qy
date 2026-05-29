@@ -3,7 +3,7 @@
 
 LowerHIRPass 在 ``qy/passes/hir/lower_pass.py`` 中通过调用 ``lower`` 把
 macro-expanded core forms 降为 ``ProgramIR``。这里只放算法实现；任何外部
-""完整源到字节码"调用必须通过 ``qy.passes.build`` 提供的 pipeline 入口。
+""完整源到字节码"调用必须通过 ``qy.build.pipeline`` 提供的 pipeline 入口。
 """
 
 from __future__ import annotations

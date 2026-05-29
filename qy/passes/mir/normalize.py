@@ -3,7 +3,7 @@
 
 LowerMIRPass 在 ``qy/passes/mir/lower_pass.py`` 中通过调用 ``lower_mir`` 把
 HIR 降为 MIR CFG / virtual register IR。这里只放算法实现；任何外部"完整源到
-字节码"调用必须通过 ``qy.passes.build`` 提供的 pipeline 入口。
+字节码"调用必须通过 ``qy.build.pipeline`` 提供的 pipeline 入口。
 
 Symbol Resolution:
 - HIR tracks symbol bindings with their owner symbol-space (ss)

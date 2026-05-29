@@ -8,7 +8,7 @@
 禁止：
 - 不得包含 VM 执行逻辑
 - 不得暴露绕过 pipeline 的 ``compile_bytecode`` / ``compile_mir_bytecode``
-  捷径——这两个旧入口已删除。完整的源到字节码编译走 ``qy.passes.build``。
+  捷径——这两个旧入口已删除。完整的源到字节码编译走 ``qy.build.pipeline``。
 """
 
 from qy.backend.vm.bytecode import BytecodeFunction

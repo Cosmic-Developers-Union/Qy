@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from typing import cast
 
-from qy.frontend.reader import Form
+from qy.build.artifact import RawFormProgram
+from qy.build.artifact import SurfaceProgram
 from qy.frontend.surface import expand_surface_dialect
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -25,10 +26,10 @@ class SurfaceNormalizePass(Pass):
         super().__init__("frontend.surface_normalize")
 
     def run(self, context: PassContext) -> PassResult:
-        forms = cast(list[Form], context.input_artifact)
-        normalized = expand_surface_dialect(forms)
+        raw_program = cast(RawFormProgram, context.input_artifact)
+        normalized = expand_surface_dialect(list(raw_program.forms))
         return PassResult(
             success=True,
-            artifact=normalized,
+            artifact=SurfaceProgram(forms=tuple(normalized)),
             artifact_kind=self.output_kind,
         )

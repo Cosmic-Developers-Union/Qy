@@ -1,7 +1,7 @@
 """Public Qy API.
 
 Stable pipeline APIs are centered around `Qy`, `RegisterVirtualMachine`, and
-`qy.passes.build` (the only sanctioned way to compile source → bytecode). All
+`qy.build.pipeline` (the only sanctioned way to compile source → bytecode). All
 front-to-back compilation must go through that pipeline; legacy single-stage
 helpers (``lower``/``lower_mir``/``compile_*_bytecode``/``macroexpand*``) have
 been removed.
@@ -21,6 +21,16 @@ from qy.backend.vm import BytecodeFunction
 from qy.backend.vm import BytecodeProgram
 from qy.backend.vm import Instruction
 from qy.backend.vm import dump_bytecode
+from qy.build.pipeline import build_default_pipeline
+from qy.build.pipeline import bytecode_artifact
+from qy.build.pipeline import compile_source_to_bytecode
+from qy.build.pipeline import compile_source_to_bytecode_async
+from qy.build.pipeline import compile_source_to_kind
+from qy.build.pipeline import compile_source_to_kind_async
+from qy.build.pipeline import core_ast_artifact
+from qy.build.pipeline import hir_artifact
+from qy.build.pipeline import lir_artifact
+from qy.build.pipeline import mir_artifact
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
 from qy.core.operator_signature import OperatorSignature
@@ -95,16 +105,6 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import dump_mir
 from qy.ir.mir import verify_mir
-from qy.passes.build import build_default_pipeline
-from qy.passes.build import bytecode_artifact
-from qy.passes.build import compile_source_to_bytecode
-from qy.passes.build import compile_source_to_bytecode_async
-from qy.passes.build import compile_source_to_kind
-from qy.passes.build import compile_source_to_kind_async
-from qy.passes.build import core_ast_artifact
-from qy.passes.build import hir_artifact
-from qy.passes.build import lir_artifact
-from qy.passes.build import mir_artifact
 from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import AsyncQy

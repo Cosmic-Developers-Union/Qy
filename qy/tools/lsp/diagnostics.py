@@ -7,7 +7,7 @@ from lsprotocol import types
 from qy.analysis import Diagnostic
 from qy.analysis import analyze_source
 from qy.async_utils import run_coro
-from qy.passes.build import compile_source_to_kind_async
+from qy.build.pipeline import compile_source_to_kind_async
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance

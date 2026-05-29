@@ -104,8 +104,8 @@ class MacroDefinition:
                 doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
             )
 
-        from qy.passes.build import bytecode_artifact
-        from qy.passes.build import compile_core_forms_to_bytecode_async
+        from qy.build.pipeline import bytecode_artifact
+        from qy.build.pipeline import compile_core_forms_to_bytecode_async
         from qy.passes.pass_base import PipelineSession
         from qy.vm.instance.machine import RegisterVirtualMachine
 

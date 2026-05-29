@@ -8,17 +8,17 @@ from typing import Any
 import typer
 
 from qy.backend.vm.bytecode import dump_bytecode
+from qy.build.pipeline import bytecode_artifact
+from qy.build.pipeline import core_ast_artifact
+from qy.build.pipeline import hir_artifact
+from qy.build.pipeline import lir_artifact
+from qy.build.pipeline import mir_artifact
 from qy.cli._common import compile_source_to
 from qy.cli._common import print_debug_diagnostics
 from qy.cli._common import read_debug_source
 from qy.ir import dump_ir
 from qy.ir.lir import dump_lir
 from qy.ir.mir import dump_mir
-from qy.passes.build import bytecode_artifact
-from qy.passes.build import core_ast_artifact
-from qy.passes.build import hir_artifact
-from qy.passes.build import lir_artifact
-from qy.passes.build import mir_artifact
 from qy.runtime import Qy
 from qy.tools.fmt import dump_program
 

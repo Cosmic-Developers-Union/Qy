@@ -80,8 +80,8 @@ def test_vm_runtime_errors_include_virtual_stack_frames():
 
 def test_vm_function_is_visible_to_lowering_after_definition():
     from qy.async_utils import run_coro
-    from qy.passes.build import compile_source_to_kind_async
-    from qy.passes.build import hir_artifact
+    from qy.build.pipeline import compile_source_to_kind_async
+    from qy.build.pipeline import hir_artifact
     from qy.passes.pass_base import PipelineSession
 
     qy = Qy()

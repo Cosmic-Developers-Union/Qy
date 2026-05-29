@@ -8,13 +8,29 @@ from typing import cast
 
 import pytest
 
+from qy.backend.vm.bytecode import BytecodeProgram
+from qy.build.artifact import RawFormProgram
+from qy.build.artifact import SurfaceProgram
+from qy.build.pipeline import build_default_pipeline
+from qy.build.pipeline import compile_core_forms_to_bytecode_async
+from qy.build.pipeline import compile_forms_to_bytecode_async
+from qy.build.pipeline import compile_source_to_kind_async
+from qy.build.pipeline import raw_forms_artifact
+from qy.build.pipeline import surface_forms_artifact
+from qy.core.program import CoreProgram
 from qy.diag import Diagnostic
+from qy.frontend.cst import CstProgram
+from qy.frontend.reader import Symbol
+from qy.ir import ProgramIR
+from qy.ir.lir import LIRProgram
+from qy.ir.mir import MIRProgram
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
 from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.passes.pipeline import Pipeline
+from qy.runtime import Qy
 
 
 class MockPass(Pass):
@@ -348,3 +364,71 @@ def test_pipeline_run_async_handles_async_pass():
     result = asyncio.run(pipeline.run_async(_ctx("seed")))
     assert result.success is True
     assert result.artifact == "seed+async+sync"
+
+
+def test_default_pipeline_stage_order():
+    pipeline = build_default_pipeline()
+    assert [p.name for p in pipeline.passes] == [
+        "frontend.cst_parse",
+        "frontend.reader_macro",
+        "frontend.surface_normalize",
+        "macro.expand",
+        "hir.lower",
+        "mir.lower",
+        "lir.lower",
+        "emit.bytecode",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected_type"),
+    [
+        ("cst", CstProgram),
+        ("raw-forms", RawFormProgram),
+        ("surface-forms", SurfaceProgram),
+        ("core-ast", CoreProgram),
+        ("hir", ProgramIR),
+        ("mir", MIRProgram),
+        ("lir", LIRProgram),
+        ("bytecode", BytecodeProgram),
+    ],
+)
+def test_compile_source_to_kind_returns_typed_artifact(kind: str, expected_type: type[object]):
+    qy = Qy()
+    session = PipelineSession(env=qy.env)
+    result = asyncio.run(compile_source_to_kind_async("(+ 1 2)", session, kind=kind))
+    assert result.success is True
+    assert isinstance(result.artifact, expected_type)
+
+
+def test_raw_and_surface_extractors_return_wrapped_forms():
+    qy = Qy()
+    session = PipelineSession(env=qy.env)
+    raw_result = asyncio.run(compile_source_to_kind_async("(+ 1 2)", session, kind="raw-forms"))
+    raw = raw_forms_artifact(raw_result)
+    assert isinstance(raw, RawFormProgram)
+    assert isinstance(raw.forms, tuple)
+
+    surface_result = asyncio.run(
+        compile_source_to_kind_async("(+ 1 2)", PipelineSession(env=qy.env), kind="surface-forms")
+    )
+    surface = surface_forms_artifact(surface_result)
+    assert isinstance(surface, SurfaceProgram)
+    assert isinstance(surface.forms, tuple)
+
+
+def test_form_entrypoints_compile_through_bytecode():
+    qy = Qy()
+    symbol = Symbol
+    forms_result = asyncio.run(
+        compile_forms_to_bytecode_async(
+            [(symbol("+"), symbol("1"), symbol("2"))],
+            PipelineSession(env=qy.env),
+        )
+    )
+    assert isinstance(forms_result.artifact, BytecodeProgram)
+
+    core_result = asyncio.run(
+        compile_core_forms_to_bytecode_async([symbol("1")], PipelineSession(env=qy.env))
+    )
+    assert isinstance(core_result.artifact, BytecodeProgram)

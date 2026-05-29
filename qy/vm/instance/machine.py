@@ -373,13 +373,13 @@ class RegisterVirtualMachine:
     async def _eval_form(self, form: object, env: Environment) -> object:
         from typing import cast
 
+        from qy.build.pipeline import bytecode_artifact
+        from qy.build.pipeline import compile_core_forms_to_bytecode_async
         from qy.core.syntax import Chain
         from qy.core.syntax import Chain as QyCons
         from qy.core.syntax import chain_to_tuple as qy_cons_to_tuple
         from qy.frontend.reader import Form
         from qy.frontend.reader import Symbol as _Symbol
-        from qy.passes.build import bytecode_artifact
-        from qy.passes.build import compile_core_forms_to_bytecode_async
         from qy.passes.pass_base import PipelineSession
 
         if isinstance(form, QyCons):
@@ -717,8 +717,8 @@ async def evaluate_bytecode_source_async(
     *,
     source_name: str | None = None,
 ) -> object:
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_source_to_bytecode_async
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
 
     runtime_env = env or standard_environment()
@@ -751,9 +751,9 @@ async def evaluate_form_async(expression: object, env: Environment) -> object:
     """
     from typing import cast
 
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_forms_to_bytecode_async
     from qy.frontend.reader import Form
-    from qy.passes.build import bytecode_artifact
-    from qy.passes.build import compile_forms_to_bytecode_async
     from qy.passes.pass_base import PipelineSession
 
     if isinstance(expression, Symbol):

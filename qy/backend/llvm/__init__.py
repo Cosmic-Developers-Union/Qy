@@ -12,7 +12,7 @@ Public API:
 Example:
     from qy.async_utils import run_coro
     from qy.backend.llvm import emit, link
-    from qy.passes.build import compile_source_to_kind_async, lir_artifact
+    from qy.build.pipeline import compile_source_to_kind_async, lir_artifact
     from qy.passes.pass_base import PipelineSession
 
     session = PipelineSession()

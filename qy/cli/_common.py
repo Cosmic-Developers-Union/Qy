@@ -10,7 +10,7 @@ from typing import Any
 
 from qy.analysis import Diagnostic
 from qy.async_utils import run_coro
-from qy.passes.build import compile_source_to_kind_async
+from qy.build.pipeline import compile_source_to_kind_async
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 

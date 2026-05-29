@@ -12,9 +12,9 @@ from qy.backend.vm.bytecode import BytecodeProgram
 from qy.benchmark.types import BenchmarkCase
 from qy.benchmark.types import BenchmarkPhase
 from qy.benchmark.types import BenchmarkResult
+from qy.build.pipeline import bytecode_artifact
+from qy.build.pipeline import compile_source_to_kind_async
 from qy.frontend.reader import read
-from qy.passes.build import bytecode_artifact
-from qy.passes.build import compile_source_to_kind_async
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.session.runtime_space import RuntimeSpace as Environment

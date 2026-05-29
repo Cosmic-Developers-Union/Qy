@@ -8,9 +8,9 @@ from typing import Any
 
 import typer
 
+from qy.build.pipeline import core_ast_artifact
 from qy.cli._common import compile_source_to
 from qy.cli._common import print_debug_diagnostics
-from qy.passes.build import core_ast_artifact
 from qy.runtime import Qy
 from qy.tools.fmt import dump_program
 

@@ -8,7 +8,7 @@
 注意：
 - 此模块只暴露 ``compile_lir_bytecode``，由 ``qy.passes.emit.bytecode`` 在
   pipeline 末段调用。任何"从更早 IR 起步"的捷径（compile_bytecode/HIR→bytecode、
-  compile_mir_bytecode/MIR→bytecode）都已删除——必须经由 ``qy.passes.build``
+  compile_mir_bytecode/MIR→bytecode）都已删除——必须经由 ``qy.build.pipeline``
   提供的 pipeline 入口逐段降级。
 - 仅接受 ``compat`` dialect 的 LIR；``abstract-machine`` dialect 的程序应该走
   另一条后端路径（VM 抽象机直执行或 LLVM）。

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from qy.build.artifact import RawFormProgram
 from qy.diag import Diagnostic
 from qy.errors import QySyntaxError
 from qy.frontend.cst import CstProgram
@@ -41,12 +42,12 @@ class ReaderMacroPass(Pass):
             )
             return PassResult(
                 success=False,
-                artifact=[],
+                artifact=RawFormProgram(forms=()),
                 artifact_kind=self.output_kind,
                 diagnostics=(diag,),
             )
         return PassResult(
             success=True,
-            artifact=forms,
+            artifact=RawFormProgram(forms=tuple(forms)),
             artifact_kind=self.output_kind,
         )

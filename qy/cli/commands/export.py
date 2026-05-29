@@ -9,10 +9,10 @@ from typing import Any
 import typer
 
 from qy.backend.vm.bytecode import serialize_bytecode_json
+from qy.build.pipeline import bytecode_artifact
 from qy.cli._common import compile_source_to
 from qy.cli._common import print_debug_diagnostics
 from qy.cli._common import read_debug_source
-from qy.passes.build import bytecode_artifact
 from qy.runtime import Qy
 
 
