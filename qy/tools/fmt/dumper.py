@@ -57,13 +57,15 @@ def dump_form(form: object, indent: int = 0) -> str:
             lines.append(f"{dump_form(chain_form.tail, indent + 1)},")
         lines.append(f"{prefix})")
         return "\n".join(lines)
-    if not form:
-        return f"{prefix}()"
+    if isinstance(form, tuple | list):
+        if not form:
+            return f"{prefix}()"
+        lines: list[str] = [f"{prefix}("]
+        lines.extend(f"{dump_form(item, indent + 1)}," for item in form)
+        lines.append(f"{prefix})")
+        return "\n".join(lines)
 
-    lines: list[str] = [f"{prefix}("]
-    lines.extend(f"{dump_form(item, indent + 1)}," for item in cast("Iterable[object]", form))
-    lines.append(f"{prefix})")
-    return "\n".join(lines)
+    return f"{prefix}{form!r}"
 
 
 def dump_cst(program: CstProgram) -> str:

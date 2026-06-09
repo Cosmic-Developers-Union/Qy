@@ -9,6 +9,17 @@ from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 
 
+def test_std_public_api_exports_module_registration_helpers():
+    from qy.std import StandardModule as StdStandardModule
+    from qy.std import register_module as std_register_module
+    from qy.stdlib import StandardModule as CompatStandardModule
+    from qy.stdlib import register_module as compat_register_module
+
+    assert StdStandardModule is StandardModule
+    assert CompatStandardModule is StandardModule
+    assert std_register_module is compat_register_module
+
+
 def test_standard_module_creation():
     """测试创建 StandardModule。."""
     exports = {Symbol("x"): 42, Symbol("y"): "hello"}

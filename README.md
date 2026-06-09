@@ -135,10 +135,10 @@ Embed a qy instance and register application operators:
 
 ```python
 from qy import Qy
+from qy import PureOperator
 from qy import Symbol
-from qy.operators import PureOperator
-from qy.stdlib import StandardModule
-from qy.stdlib import register_module
+from qy.std import StandardModule
+from qy.std import register_module
 
 qy = Qy()
 

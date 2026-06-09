@@ -4,7 +4,7 @@
 """VM 解释器入口。.
 
 目标：提供 VM 执行的公共入口函数。
-当前：从 qy/register_vm.py 重导出，迁移完成后实现独立解释器。
+当前：从 qy/vm/instance/machine.py 重导出。
 禁止：不得绕过 bytecode 直接解释 HIR/MIR。
 """
 

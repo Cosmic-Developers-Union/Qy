@@ -83,6 +83,13 @@ def test_pipeline_debug_commands_support_stdin(runner, app, command, expected):
     assert expected in result.output
 
 
+def test_expand_command_dumps_runtime_atom_macro_result(runner, app):
+    result = runner.invoke(app, ["expand", "-"], input="(macro one () (+ 0 1))\n(one)\n")
+
+    assert result.exit_code == 0, result.output
+    assert "IntValue(value=1)" in result.output
+
+
 def test_pipeline_debug_commands_return_nonzero_on_diagnostics(runner, app):
     result = runner.invoke(app, ["hir", "-"], input="(+ 1\n")
 
