@@ -29,12 +29,35 @@ __all__ = [
 
 
 def literal_type(value: object) -> TypeName:
+    from qy.sem.core import NONE
+    from qy.sem.core import DictValue
+    from qy.sem.core import ListValue
+    from qy.sem.core import NoneValue
+    from qy.sem.core import NumberValue
+    from qy.sem.core import SetValue
+    from qy.sem.core import StringValue
+    from qy.sem.core import TupleValue
+
     if value is nil:
         return "nil"
     if value is T:
         return "T"
+    if value is NONE or isinstance(value, NoneValue):
+        return "none"
     if isinstance(value, Chain):
         return "chain"
+    if isinstance(value, NumberValue):
+        return "number"
+    if isinstance(value, StringValue):
+        return "string"
+    if isinstance(value, TupleValue):
+        return "tuple"
+    if isinstance(value, ListValue):
+        return "list"
+    if isinstance(value, DictValue):
+        return "dict"
+    if isinstance(value, SetValue):
+        return "set"
     if isinstance(value, bool):
         return "bool"
     if isinstance(value, int | float):

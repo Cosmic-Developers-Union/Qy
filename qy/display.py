@@ -16,13 +16,21 @@ __all__ = ["format_value"]
 
 
 def format_value(value: object) -> str:
+    from qy.sem.core import NONE
+    from qy.sem.core import DictValue
+    from qy.sem.core import ListValue
+    from qy.sem.core import NoneValue
     from qy.sem.core import NumberValue
+    from qy.sem.core import SetValue
     from qy.sem.core import StringValue
+    from qy.sem.core import TupleValue
 
     if value is nil:
         return "nil"
     if value is T:
         return "T"
+    if value is NONE or isinstance(value, NoneValue):
+        return "none"
     if isinstance(value, NumberValue):
         return str(value)
     if isinstance(value, StringValue):
@@ -34,6 +42,16 @@ def format_value(value: object) -> str:
         return _format_chain(value)
     if isinstance(value, str):
         return value
+    if isinstance(value, TupleValue):
+        return f"({' '.join(format_value(item) for item in value.items)})"
+    if isinstance(value, ListValue):
+        return f"[{' '.join(format_value(item) for item in value.items)}]"
+    if isinstance(value, DictValue):
+        items = [f"{format_value(key)} {format_value(item)}" for key, item in value.entries]
+        return f"{{{' '.join(items)}}}"
+    if isinstance(value, SetValue):
+        items = sorted(format_value(item) for item in value.items)
+        return f"#{{{' '.join(items)}}}"
     if isinstance(value, tuple):
         return f"({' '.join(format_value(item) for item in value)})"
     if isinstance(value, Symbol | int | float | bool) or value is None:

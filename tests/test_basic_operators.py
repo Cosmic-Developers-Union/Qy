@@ -4,6 +4,7 @@ from qy.core.syntax import nil as QY_EMPTY_LIST
 from qy.core.syntax import nil as QY_NIL
 from qy.frontend.reader import Symbol
 from qy.runtime import evaluate_source
+from qy.sem.core import NONE as QY_NONE
 from qy.sem.core import T as QY_T
 
 S = Symbol
@@ -54,7 +55,7 @@ def test_is():
 def test_literals():
     assert evaluate_source("nil") is QY_NIL
     assert evaluate_source("T") is QY_T
-    assert evaluate_source("none") is None
+    assert evaluate_source("none") is QY_NONE
 
 
 def test_type():
@@ -62,7 +63,7 @@ def test_type():
     assert evaluate_source("(type 'abc)") == S("symbol")
     assert evaluate_source("(type nil)") == S("nil")
     assert evaluate_source("(type T)") == S("T")
-    assert evaluate_source("(type none)") == S("NoneType")
+    assert evaluate_source("(type none)") == S("none")
 
 
 def test_car_cdr_cons():

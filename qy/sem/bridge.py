@@ -10,7 +10,9 @@ from __future__ import annotations
 from qy.core.syntax import Chain
 from qy.core.syntax import nil
 from qy.sem.core import NIL
+from qy.sem.core import NONE
 from qy.sem.core import ChainValue
+from qy.sem.core import DictValue
 from qy.sem.core import Float16Value
 from qy.sem.core import Float32Value
 from qy.sem.core import Float128Value
@@ -20,9 +22,13 @@ from qy.sem.core import Int16Value
 from qy.sem.core import Int32Value
 from qy.sem.core import Int64Value
 from qy.sem.core import IntValue
+from qy.sem.core import ListValue
 from qy.sem.core import NilValue
+from qy.sem.core import NoneValue
+from qy.sem.core import SetValue
 from qy.sem.core import StringValue
 from qy.sem.core import T
+from qy.sem.core import TupleValue
 from qy.sem.core import TValue
 from qy.sem.core import UInt8Value
 from qy.sem.core import UInt16Value
@@ -34,7 +40,7 @@ from qy.sem.core import Value
 def to_sem(value: object) -> Value:
     """将 legacy runtime 值转为 sem Value。."""
     if value is nil or value is None:
-        return NIL
+        return NONE if value is None else NIL
     if value is T or value is True:
         return T
     if isinstance(value, Value):
@@ -47,6 +53,14 @@ def to_sem(value: object) -> Value:
         return StringValue(value)
     if isinstance(value, Chain):
         return ChainValue(to_sem(value.head), to_sem(value.tail))
+    if isinstance(value, tuple):
+        return TupleValue(tuple(value))
+    if isinstance(value, list):
+        return ListValue(tuple(value))
+    if isinstance(value, dict):
+        return DictValue(tuple(value.items()))
+    if isinstance(value, set):
+        return SetValue(tuple(value))
     return NIL
 
 
@@ -54,6 +68,8 @@ def from_sem(value: object) -> object:
     """将 sem Value 转回 legacy runtime 表示。."""
     if isinstance(value, NilValue):
         return nil
+    if isinstance(value, NoneValue):
+        return None
     if isinstance(value, TValue):
         return T
     if isinstance(
@@ -75,4 +91,12 @@ def from_sem(value: object) -> object:
         return value.value
     if isinstance(value, ChainValue):
         return Chain(from_sem(value.head), from_sem(value.tail))
+    if isinstance(value, TupleValue):
+        return tuple(value.items)
+    if isinstance(value, ListValue):
+        return list(value.items)
+    if isinstance(value, DictValue):
+        return dict(value.entries)
+    if isinstance(value, SetValue):
+        return set(value.items)
     return nil

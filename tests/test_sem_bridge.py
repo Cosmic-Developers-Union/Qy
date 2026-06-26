@@ -8,6 +8,7 @@ from qy.core.syntax import nil as QY_NIL
 from qy.sem.bridge import from_sem
 from qy.sem.bridge import to_sem
 from qy.sem.core import NIL
+from qy.sem.core import NONE
 from qy.sem.core import ChainValue
 from qy.sem.core import FloatValue
 from qy.sem.core import IntValue
@@ -21,7 +22,7 @@ from qy.sem.core import TValue
 def test_to_sem_nil():
     """测试 QY_NIL 转换为 sem NIL。."""
     assert to_sem(QY_NIL) == NIL
-    assert to_sem(None) == NIL
+    assert to_sem(None) == NONE
 
 
 def test_to_sem_t():

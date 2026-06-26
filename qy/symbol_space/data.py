@@ -20,10 +20,18 @@ from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
+from qy.sem.core import NONE as QY_NONE
+from qy.sem.core import DictValue
+from qy.sem.core import ListValue
+from qy.sem.core import NoneValue
+from qy.sem.core import SetValue
 from qy.sem.core import T as QY_T
+from qy.sem.core import TupleValue
 
 
 def _ensure_tuple(value: object) -> tuple[object, ...]:
+    if isinstance(value, TupleValue):
+        return value.items
     if not isinstance(value, tuple):
         raise QyTypeError(
             f"expected tuple, got {value!r}",
@@ -34,6 +42,8 @@ def _ensure_tuple(value: object) -> tuple[object, ...]:
 
 
 def _ensure_sequence(value: object) -> tuple[object, ...] | list[object]:
+    if isinstance(value, TupleValue | ListValue):
+        return value.items
     if isinstance(value, list):
         return cast(list[object], value)
     if not isinstance(value, tuple):
@@ -89,6 +99,10 @@ def _dict_from_chain(value: object) -> dict[object, object]:
     return result
 
 
+def _dict_entries_from_chain(value: object) -> tuple[tuple[object, object], ...]:
+    return tuple(_dict_entry_pair(entry) for entry in _proper_chain_items(value, "dict"))
+
+
 def _dict_entry_pair(entry: object) -> tuple[object, object]:
     if is_chain(entry):
         tail = chain_cdr(entry)
@@ -118,6 +132,8 @@ def _atom(value: object) -> object:
         return QY_T
     if is_chain(value):
         return QY_NIL
+    if isinstance(value, TupleValue):
+        return QY_T if value.length == 0 else QY_NIL
     if not isinstance(value, tuple) or len(value) == 0:
         return QY_T
     return QY_NIL
@@ -131,7 +147,11 @@ def _eq(left: object, right: object) -> object:
     from qy.sem.core import NumberValue
     from qy.sem.core import StringValue
 
-    if left is right:
+    if left is QY_NIL and right is QY_NIL:
+        return QY_T
+    if left is QY_T and right is QY_T:
+        return QY_T
+    if left is QY_NONE and right is QY_NONE:
         return QY_T
     if type(left) is not type(right):
         return QY_NIL
@@ -139,9 +159,40 @@ def _eq(left: object, right: object) -> object:
         return QY_T if left.value == right.value else QY_NIL
     if isinstance(left, StringValue) and isinstance(right, StringValue):
         return QY_T if left.value == right.value else QY_NIL
-    if isinstance(left, int | float | str | bool | Symbol):
+    if isinstance(left, Symbol):
         return QY_T if left == right else QY_NIL
     return QY_NIL
+
+
+def _same_qy_key(left: object, right: object) -> bool:
+    from qy.sem.core import NumberValue
+    from qy.sem.core import StringValue
+
+    if isinstance(left, StringValue) and isinstance(right, str):
+        return left.value == right
+    if isinstance(left, str) and isinstance(right, StringValue):
+        return left == right.value
+    if isinstance(left, str) and isinstance(right, str):
+        return left == right
+    if (
+        isinstance(left, NumberValue)
+        and isinstance(right, int | float)
+        and not isinstance(right, bool)
+    ):
+        return left.value == right
+    if (
+        isinstance(right, NumberValue)
+        and isinstance(left, int | float)
+        and not isinstance(left, bool)
+    ):
+        return left == right.value
+    if (
+        isinstance(left, int | float | bool)
+        and isinstance(right, int | float | bool)
+        and type(left) is type(right)
+    ):
+        return left == right
+    return _eq(left, right) is QY_T
 
 
 def _reify(args: tuple[object, ...], env: object) -> object:
@@ -166,7 +217,7 @@ def _reify(args: tuple[object, ...], env: object) -> object:
         return Symbol("nil")
     if value is QY_T:
         return Symbol("T")
-    if value is None:
+    if value is QY_NONE or isinstance(value, NoneValue):
         return Symbol("none")
     if isinstance(value, Symbol):
         return value
@@ -216,10 +267,14 @@ def _type(value: object) -> Symbol:
         return Symbol("nil")
     if value is QY_T:
         return Symbol("T")
+    if value is QY_NONE or isinstance(value, NoneValue):
+        return Symbol("none")
     if is_chain(value):
         return Symbol("chain")
     if isinstance(value, Symbol):
         return Symbol("symbol")
+    if isinstance(value, TupleValue | ListValue | DictValue | SetValue):
+        return Symbol(value.type_name)
     return Symbol(type(value).__name__)
 
 
@@ -259,10 +314,16 @@ def _append(left: object, right: object) -> object:
         return list_to_chain(combined)
     if is_chain(right) or is_nil(right):
         return list_to_chain(combined)
+    if isinstance(left, ListValue) or isinstance(right, ListValue):
+        return ListValue(combined)
+    if isinstance(left, TupleValue) or isinstance(right, TupleValue):
+        return TupleValue(combined)
     return combined
 
 
 def _append_items(value: object) -> tuple[object, ...]:
+    if isinstance(value, TupleValue | ListValue):
+        return value.items
     if isinstance(value, tuple):
         return value
     if isinstance(value, list):
@@ -281,6 +342,8 @@ def _append_items(value: object) -> tuple[object, ...]:
 def _chain(value: object) -> object:
     if is_nil(value) or is_chain(value):
         return value
+    if isinstance(value, TupleValue | ListValue):
+        return list_to_chain(value.items)
     if isinstance(value, list | tuple):
         return list_to_chain(value)
     raise QyTypeError(
@@ -290,74 +353,64 @@ def _chain(value: object) -> object:
     )
 
 
-def _tuple(*args: object) -> tuple[object, ...]:
+def _tuple(*args: object) -> TupleValue:
     if len(args) == 1 and _is_qy_chain(args[0]):
-        return _proper_chain_items(args[0], "tuple")
-    return tuple(args)
+        return TupleValue(_proper_chain_items(args[0], "tuple"))
+    return TupleValue(tuple(args))
 
 
-def _list(*args: object) -> list[object]:
+def _list(*args: object) -> ListValue:
     if len(args) == 1 and _is_qy_chain(args[0]):
-        return list(_proper_chain_items(args[0], "list"))
-    return list(args)
+        return ListValue(_proper_chain_items(args[0], "list"))
+    return ListValue(tuple(args))
 
 
-def _dict(*args: object) -> dict[object, object]:
+def _dict(*args: object) -> DictValue:
     if len(args) == 1 and _is_qy_chain(args[0]):
-        return _dict_from_chain(args[0])
+        return DictValue(_dict_entries_from_chain(args[0]))
     if len(args) % 2 != 0:
         raise QyArityError(
             f"dict expects key/value pairs, got {len(args)} argument(s)",
             metadata={"actual": len(args)},
         )
-    result: dict[object, object] = {}
+    entries: list[tuple[object, object]] = []
     for index in range(0, len(args), 2):
         key = args[index]
         value = args[index + 1]
-        try:
-            result[key] = value
-        except TypeError as e:
-            raise QyTypeError(
-                f"dict key must be hashable, got {key!r}",
-                span=get_span(key),
-                cause=e,
-                metadata={"key": key},
-            ) from e
-    return result
+        for entry_index, (existing_key, _) in enumerate(entries):
+            if _same_qy_key(existing_key, key):
+                entries[entry_index] = (key, value)
+                break
+        else:
+            entries.append((key, value))
+    return DictValue(tuple(entries))
 
 
-def _set(*args: object) -> set[object]:
+def _set(*args: object) -> SetValue:
     values = (
         _proper_chain_items(args[0], "set") if len(args) == 1 and _is_qy_chain(args[0]) else args
     )
-    result: set[object] = set()
+    items: list[object] = []
     for value in values:
-        try:
-            result.add(value)
-        except TypeError as e:
-            raise QyTypeError(
-                f"set item must be hashable, got {value!r}",
-                span=get_span(value),
-                cause=e,
-                metadata={"value": value},
-            ) from e
-    return result
+        if not any(_same_qy_key(existing, value) for existing in items):
+            items.append(value)
+    return SetValue(tuple(items))
 
 
 def _tuple_predicate(value: object) -> object:
-    return QY_T if isinstance(value, tuple) else QY_NIL
+    return QY_T if isinstance(value, TupleValue) else QY_NIL
 
 
 def _list_predicate(value: object) -> object:
-    return QY_T if isinstance(value, list) else QY_NIL
+    return QY_T if isinstance(value, ListValue) else QY_NIL
 
 
 def _dict_predicate(value: object) -> object:
-    return QY_T if isinstance(value, dict) else QY_NIL
+    return QY_T if isinstance(value, DictValue) else QY_NIL
 
 
 def _set_predicate(value: object) -> object:
-    return QY_T if isinstance(value, set) else QY_NIL
+    return QY_T if isinstance(value, SetValue) else QY_NIL
 
 
 def _len(value: object) -> object:
@@ -375,6 +428,8 @@ def _len(value: object) -> object:
             raise QyTypeError("len expects a proper Qy chain", cause=e) from e
     if isinstance(value, StringValue):
         return IntValue(len(value.value))
+    if isinstance(value, TupleValue | ListValue | DictValue | SetValue):
+        return IntValue(value.length)
     if isinstance(value, str | tuple | list | dict | set):
         return IntValue(len(value))
     raise QyTypeError(
@@ -390,7 +445,18 @@ def _get(collection: object, key: object, *default_values: object) -> object:
             f"get expects two or three arguments, got {len(default_values) + 2}",
             metadata={"expected": "2..3", "actual": len(default_values) + 2},
         )
-    default = default_values[0] if default_values else None
+    default = default_values[0] if default_values else QY_NONE
+    if isinstance(collection, DictValue):
+        for existing_key, item in collection.entries:
+            if _same_qy_key(existing_key, key):
+                return item
+        return default
+    if isinstance(collection, TupleValue | ListValue):
+        index = _ensure_index(key)
+        try:
+            return collection.items[index]
+        except IndexError:
+            return default
     if isinstance(collection, dict):
         mapping = cast(dict[object, object], collection)
         try:
@@ -425,6 +491,17 @@ def _has(*args: object) -> object:
             metadata={"expected": 2, "actual": len(args)},
         )
     collection, key = args
+    if isinstance(collection, DictValue):
+        return (
+            QY_T
+            if any(_same_qy_key(existing_key, key) for existing_key, _ in collection.entries)
+            else QY_NIL
+        )
+    if isinstance(collection, SetValue):
+        return QY_T if any(_same_qy_key(item, key) for item in collection.items) else QY_NIL
+    if isinstance(collection, TupleValue | ListValue):
+        index = _ensure_index(key)
+        return QY_T if -len(collection.items) <= index < len(collection.items) else QY_NIL
     if isinstance(collection, dict):
         try:
             return QY_T if key in collection else QY_NIL
@@ -492,5 +569,5 @@ def operators() -> dict[Symbol, object]:
         Symbol("false"): QY_NIL,
         Symbol("T"): QY_T,
         Symbol("nil"): QY_NIL,
-        Symbol("none"): None,
+        Symbol("none"): QY_NONE,
     }

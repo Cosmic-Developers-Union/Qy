@@ -25,11 +25,13 @@ from typing import cast
 
 __all__ = [
     "NIL",
+    "NONE",
     "ArrayValue",
     "ChainValue",
     "CharValue",
     "ComplexValue",
     "DatumValue",
+    "DictValue",
     "Float16Value",
     "Float32Value",
     "Float64Value",
@@ -42,14 +44,18 @@ __all__ = [
     "Int64Value",
     "IntValue",
     "IntegerValue",
+    "ListValue",
     "NilValue",
+    "NoneValue",
     "NumberValue",
     "ObjectValue",
     "RationalValue",
+    "SetValue",
     "StringValue",
     "SymbolValue",
     "T",
     "TValue",
+    "TupleValue",
     "UInt8Value",
     "UInt16Value",
     "UInt32Value",
@@ -114,8 +120,21 @@ class TValue(Value):
     type_name: ClassVar[str] = "t"
 
 
+@dataclass(frozen=True, slots=True)
+class NoneValue(Value):
+    """Qy's unique ``none`` value.
+
+    ``none`` is a language-level value.  It is represented by this singleton in
+    Qy code; Python ``None`` remains an implementation sentinel and host-interop
+    value, not the semantic object exposed by the standard profile.
+    """
+
+    type_name: ClassVar[str] = "none"
+
+
 NIL = NilValue()
 T = TValue()
+NONE = NoneValue()
 
 
 _NO_PEER = object()
@@ -507,6 +526,63 @@ class StringValue(ObjectValue):
     value: str
 
     type_name: ClassVar[str] = "string"
+
+
+@dataclass(frozen=True, slots=True)
+class TupleValue(ObjectValue):
+    """Immutable Qy tuple value."""
+
+    items: tuple[object, ...]
+
+    type_name: ClassVar[str] = "tuple"
+
+    @property
+    def length(self) -> int:
+        return len(self.items)
+
+
+@dataclass(frozen=True, slots=True)
+class ListValue(ObjectValue):
+    """Qy list value.
+
+    The current standard library exposes construction and lookup operations but
+    no mutating list API, so the Python implementation stores list contents in
+    an immutable tuple while keeping the language-visible kind distinct.
+    """
+
+    items: tuple[object, ...]
+
+    type_name: ClassVar[str] = "list"
+
+    @property
+    def length(self) -> int:
+        return len(self.items)
+
+
+@dataclass(frozen=True, slots=True)
+class DictValue(ObjectValue):
+    """Qy dictionary value stored as ordered key/value entries."""
+
+    entries: tuple[tuple[object, object], ...]
+
+    type_name: ClassVar[str] = "dict"
+
+    @property
+    def length(self) -> int:
+        return len(self.entries)
+
+
+@dataclass(frozen=True, slots=True)
+class SetValue(ObjectValue):
+    """Qy set value stored as unique ordered items."""
+
+    items: tuple[object, ...]
+
+    type_name: ClassVar[str] = "set"
+
+    @property
+    def length(self) -> int:
+        return len(self.items)
 
 
 @dataclass(slots=True)

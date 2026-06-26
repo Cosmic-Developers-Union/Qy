@@ -176,6 +176,7 @@ def create_lisp_ss() -> SymbolSpace:
     from qy.core.symbol_space import SymbolSpace
     from qy.core.syntax import nil
     from qy.frontend.reader import Symbol
+    from qy.sem.core import NONE
     from qy.sem.core import T
 
     return SymbolSpace(
@@ -184,7 +185,7 @@ def create_lisp_ss() -> SymbolSpace:
             Symbol("nil"): nil,
             Symbol("true"): T,
             Symbol("false"): nil,
-            Symbol("none"): None,
+            Symbol("none"): NONE,
         },
         name="lisp-ss",
         writable=False,
@@ -290,6 +291,7 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     """
     from qy.core.syntax import nil
     from qy.frontend.reader import Symbol
+    from qy.sem.core import NONE
     from qy.sem.core import T
 
     if parent is None:
@@ -300,7 +302,7 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
         lisp.define(Symbol("nil"), nil)
         lisp.define(Symbol("true"), T)
         lisp.define(Symbol("false"), nil)
-        lisp.define(Symbol("none"), None)
+        lisp.define(Symbol("none"), NONE)
     return create_value_ss(parent=lisp)
 
 
@@ -331,6 +333,7 @@ def try_default_literal(symbol: Symbol) -> object:
     Returns _MISSING if the symbol cannot be resolved.
     """
     from qy.core.syntax import nil
+    from qy.sem.core import NONE
     from qy.sem.core import T
 
     name = symbol.name
@@ -339,7 +342,7 @@ def try_default_literal(symbol: Symbol) -> object:
     if name == "nil" or name == "false":
         return nil
     if name == "none":
-        return None
+        return NONE
 
     if is_char_literal(name):
         result = parse_char_literal(name)
@@ -391,16 +394,17 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
     if value is _MISSING:
         return None
     from qy.core.syntax import nil
+    from qy.sem.core import NONE
     from qy.sem.core import T
 
     if value is nil:
         return "nil"
     if value is T:
         return "T"
+    if value is NONE:
+        return "none"
     if isinstance(value, bool):
         return "bool"
     if isinstance(value, int | float):
         return "number"
-    if value is None:
-        return "none"
     return None

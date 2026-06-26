@@ -30,9 +30,10 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `chain` 是不可变对象；`cons` / quasiquote / macro 改写必须构造新 chain，不能原地修改旧 chain。
 - Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
 - Runtime value 存在于 symbol-space/env 中；抽象上由 `number`、`string`、`object` 构成，`number` 与 `string` 是特殊 object。`number` 是 family，不是单一类型；例如 `int`（任意精度）、`int32`、`int64`、`float`、`float32`、`complex`、`rational` 都是彼此独立的 concrete value type。
+- `tuple`、`list`、`dict`、`set` 是 Qy runtime object，不是 Python `tuple` / `list` / `dict` / `set` 的别名。Python 宿主边界可以把它们转换成宿主容器，但语言层只暴露 Qy value。
 - `array` 是连续内存段 object family；它既可承载通用 `Value` cell，也可承载 `int32` 这类 concrete value type 的专门化连续段。`hash-map` 是哈希映射 object family。它们是更高层 `list` / `tuple` / `dict` / `struct` / `object` 可依赖的底层值形状，不等同于这些上层抽象本身。
 - Qy 不做隐式数值转换；数值算子只有在自身声明支持某个 concrete type 组合时才有定义。例如 `(+ int32 int64)` 不会自动提升，默认进入 unsupported-operation effect / error 路径。
-- `nil` 与 `t` 是 Qy 自身对象。
+- `nil`、`T` 与 `none` 是 Qy 自身对象；Python `None` 只在实现内部或显式宿主互操作边界出现。
 - Runtime value 是 Qy 语义对象，Python value 只是当前实现或宿主互操作对象；两者不得混淆。一个 host reference 可以指向 Python、Go 或其他宿主对象，但宿主对象的本地表示不是 Qy 语义本体。
 - Python profile 可以显式暴露 `True`、`False`、`None` 等 Python value reference；它们不等同于 `t` / `nil`。
 - Host reference 是一等 runtime value，Qy 可以直接操作；host/project 可以在实例化 Qy 时提供 `pre-symbol-space-chain`，把任意 host reference/operator 放进初始查找链的指定位置。
@@ -126,7 +127,7 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 
 - `quote`：返回参数 syntax datum。
 - `atom`：判断值是否不是非空 chain；因此 `symbol` 与 `nil` 都是 atom。
-- `eq`：遵循 Lisp eq 语义；比较 Qy runtime identity，而不是 Python `id()` / `is`。number 值相等、string 值相等、结构相等请使用专用算子（`=`、`str=`、`equal`）。
+- `eq`：比较 Qy 原子语义而不是 Python `id()` / `is`。`nil`、`T`、`none` 按各自单例相等；`symbol`、`number`、`string` 按 Qy 值相等；chain 与标准容器等复合值不做结构相等。
 - `car` / `cdr` / `cons`：核心 chain 操作。
 - `cond`：条件分支。
 - `truthy`：标准 profile 的复杂真值判断算子；用于构造更便利的 `if` 一类扩展控制算子，不改变 `cond` 的核心语义。
@@ -136,6 +137,7 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `race`：first-resume wins；最先恢复 parent continuation 的分支决定结果。
 - `defun` / `lambda` / `apply`：函数定义、匿名函数、动态调用。`defun` 是 `(define name (lambda ...))` 的语义糖；服从不可重绑定规则，同一 symbol-space 不可重复 `defun` 同名函数。
 - `macro`：compile-time syntax datum -> syntax datum 改写。
+- macro compile-time 求值使用专用 compile-time evaluator 与 compile-time symbol-space，不通过 bytecode / register VM 执行宏体。
 - `quasiquote` / `unquote` / `unquote-splicing`：宏构造 syntax datum 的核心配套机制。
 - `gensym` / `capture`：hygiene 与 intentional capture 机制。
 - `defeffect` / `perform` / `handle` / `resume`：代数效应定义、触发、处理、恢复。`defeffect` 走 `define` 语义，同一 symbol-space 内不可重复声明同名 effect。

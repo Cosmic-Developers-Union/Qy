@@ -76,6 +76,8 @@ def test_parse_number_literal():
 
 def test_create_lisp_ss():
     """Test lisp-ss creation."""
+    from qy.sem.core import NONE as QY_NONE
+
     lisp = create_lisp_ss()
 
     assert lisp.name == "lisp-ss"
@@ -84,7 +86,7 @@ def test_create_lisp_ss():
     assert lisp.lookup(S("nil")) is QY_NIL
     assert lisp.lookup(S("true")) is QY_T
     assert lisp.lookup(S("false")) is QY_NIL
-    assert lisp.lookup(S("none")) is None  # explicit binding to None
+    assert lisp.lookup(S("none")) is QY_NONE
     assert lisp.lookup(S("undefined")) is _MISSING
 
 
@@ -185,13 +187,15 @@ def test_create_pre_ssc_with_stdlib():
 
 def test_resolve_literal_in_pre_ss_lisp_values():
     """Test resolving Lisp values through pre-ss (chain walk via resolve)."""
+    from qy.sem.core import NONE as QY_NONE
+
     pre_ss = create_pre_ssc()
 
     assert pre_ss.resolve(S("T")) is QY_T
     assert pre_ss.resolve(S("nil")) is QY_NIL
     assert pre_ss.resolve(S("true")) is QY_T
     assert pre_ss.resolve(S("false")) is QY_NIL
-    assert pre_ss.resolve(S("none")) is None
+    assert pre_ss.resolve(S("none")) is QY_NONE
 
 
 def test_resolve_literal_in_pre_ss_numbers():

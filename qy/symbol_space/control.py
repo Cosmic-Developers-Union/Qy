@@ -93,9 +93,16 @@ def _complex_truthy(value: object) -> object:
     Handles Python host values (False, None, 0, "", empty containers)
     alongside Qy values (QY_NIL, empty chain).
     """
+    from qy.sem.core import NONE as QY_NONE
+    from qy.sem.core import DictValue
+    from qy.sem.core import ListValue
+    from qy.sem.core import NoneValue
+    from qy.sem.core import SetValue
+    from qy.sem.core import TupleValue
+
     if value is QY_NIL:
         return QY_NIL
-    if value is None:
+    if value is None or value is QY_NONE or isinstance(value, NoneValue):
         return QY_NIL
     if value is False:
         return QY_NIL
@@ -106,6 +113,8 @@ def _complex_truthy(value: object) -> object:
     if isinstance(value, str) and value == "":
         return QY_NIL
     if isinstance(value, list | dict | set) and len(value) == 0:
+        return QY_NIL
+    if isinstance(value, TupleValue | ListValue | DictValue | SetValue) and value.length == 0:
         return QY_NIL
     return QY_T
 
