@@ -4,6 +4,9 @@ from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.import_.registry import load_module
 from qy.runtime import AsyncQy as Qy
+from qy.sem.core import NONE as QY_NONE
+from qy.sem.core import DictValue
+from qy.sem.core import ListValue
 from qy.sem.core import StringValue
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.instance.values import HostObjectRef
@@ -116,7 +119,8 @@ return results
         '''
     )
 
-    assert result == [2, 4, 6, 8, 10]
+    assert isinstance(result, ListValue)
+    assert result.items == (2, 4, 6, 8, 10)
 
 
 async def test_py_converts_python_values_back_to_qy_values():
@@ -131,7 +135,11 @@ return ["qy", 1, None, {"name": "Qy"}]
         '''
     )
 
-    assert result == [S("qy"), 1, None, {S("name"): S("Qy")}]
+    assert isinstance(result, ListValue)
+    assert result.items[:3] == (S("qy"), 1, QY_NONE)
+    doc = result.items[3]
+    assert isinstance(doc, DictValue)
+    assert doc.entries == ((S("name"), S("Qy")),)
 
 
 async def test_py_preserves_core_data_types_across_bindings():
@@ -162,17 +170,19 @@ return [
         '''
     )
 
-    assert result == [
+    assert isinstance(result, ListValue)
+    expected = (
         S("QyChain"),
         S("QyNil"),
-        [1, 2],
+        ListValue((1, 2)),
         True,
         True,
         True,
         True,
         S("Qy"),
-        [S("core"), S("host")],
-    ]
+        ListValue((S("core"), S("host"))),
+    )
+    assert result.items == expected
 
 
 async def test_py_wraps_unknown_python_objects_as_host_refs():

@@ -237,12 +237,20 @@ class _ChainWrapper(metaclass=_ChainWrapperMeta):
 def _qy_to_python(value: object, env: Environment) -> object:
     from qy.core.syntax import Chain
     from qy.core.syntax import is_chain
+    from qy.sem.core import NONE as QY_NONE
+    from qy.sem.core import DictValue
+    from qy.sem.core import ListValue
+    from qy.sem.core import NoneValue
     from qy.sem.core import NumberValue
+    from qy.sem.core import SetValue
+    from qy.sem.core import TupleValue
 
     if isinstance(value, HostObjectRef):
         return value.value
     if value is QY_NIL or value is QY_T:
         return value
+    if value is QY_NONE or isinstance(value, NoneValue):
+        return None
     # Numbers unwrap to raw Python int/float so host code can iterate /
     # arithmetic naturally. Strings (StringValue) stay as Qy values; host
     # code can grab ``.value`` explicitly when it needs the underlying str.
@@ -259,6 +267,14 @@ def _qy_to_python(value: object, env: Environment) -> object:
         return _wrap_qy_callable(value, env)
     if isinstance(value, Symbol):
         return _symbol_to_python(value)
+    if isinstance(value, TupleValue):
+        return tuple(_qy_to_python(item, env) for item in value.items)
+    if isinstance(value, ListValue):
+        return [_qy_to_python(item, env) for item in value.items]
+    if isinstance(value, DictValue):
+        return {_qy_to_python(key, env): _qy_to_python(item, env) for key, item in value.entries}
+    if isinstance(value, SetValue):
+        return {_qy_to_python(item, env) for item in value.items}
     if isinstance(value, tuple):
         return tuple(_qy_to_python(item, env) for item in value)
     if isinstance(value, list):
@@ -283,24 +299,34 @@ def _symbol_to_python(value: Symbol) -> object:
 
 
 def _python_to_qy(value: object) -> object:
+    from qy.sem.core import NONE as QY_NONE
+    from qy.sem.core import DictValue
+    from qy.sem.core import ListValue
+    from qy.sem.core import SetValue
+    from qy.sem.core import TupleValue
+
     if value is QY_NIL or value is QY_T:
         return value
     if isinstance(value, QyCons):
         return map_qy_cons(value, _python_to_qy)
     if isinstance(value, HostObjectRef | Symbol):
         return value
-    if value is None or isinstance(value, bool | int | float):
+    if value is None:
+        return QY_NONE
+    if isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
         return Symbol(value)
     if isinstance(value, list):
-        return [_python_to_qy(item) for item in value]
+        return ListValue(tuple(_python_to_qy(item) for item in value))
     if isinstance(value, tuple):
-        return tuple(_python_to_qy(item) for item in value)
+        return TupleValue(tuple(_python_to_qy(item) for item in value))
     if isinstance(value, dict):
-        return {_python_to_qy(key): _python_to_qy(item) for key, item in value.items()}
+        return DictValue(
+            tuple((_python_to_qy(key), _python_to_qy(item)) for key, item in value.items())
+        )
     if isinstance(value, set):
-        return {_python_to_qy(item) for item in value}
+        return SetValue(tuple(_python_to_qy(item) for item in value))
     return HostObjectRef(value)
 
 
