@@ -145,7 +145,7 @@ passes/
   control/cfg_simplify.py
   mir/lower_pass.py              # 已实现
   mir/normalize.py               # 已实现
-  mir/validate.py
+  mir/validate.py                # 已实现
   lir/lower.py                   # 已实现
   lir/lower_pass.py              # 已实现
   lir/linearize.py               # 已实现
@@ -170,7 +170,9 @@ frontend.cst_parse
 -> macro.expand
 -> hir.lower
 -> mir.lower
+-> mir.validate
 -> lir.lower（内部: linearize -> effects -> peephole -> compact）
+-> lir.verify
 -> emit.bytecode
 ```
 
@@ -331,7 +333,7 @@ qy emit main.qy --target=lir
 - ~~`qy/runtime_values.py`~~：已删除 ✅。
 - ~~`qy/environment.py`~~：已删除。`Environment` 现为 `RuntimeSpace` 的类型别名 ✅。
 - ~~`qy/operator_docs.py`~~：已删除 ✅。
-- ~~`qy/stdlib/`~~：已删除，功能已迁入 `qy/symbol_space/` ✅。
+- `qy/stdlib/`：仅保留兼容入口 `__init__.py`，长期实现已迁入 `qy/std` / `qy/symbol_space/`；不得新增长期实现。
 - ~~`qy/python_codegen.py`~~：已删除 ✅。
 - `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`：operator metadata/schema 进入 core/std/profile 统一模型后删除或拆迁。**当前状态**：`qy/core/operators.py` 已承载 operator 类型层级，`qy/core/operator_signature.py` 已承载签名模型；legacy 迁移完成。
 - `qy/symbol_utils.py`：当前仍在 `qy/core/symbol_utils.py`，承载符号工具函数。**当前状态**：已迁移至 core，不再是 legacy 文件。
@@ -448,14 +450,14 @@ debug/
 1. ~~固定本文档、`AGENTS.md`、`CLAUDE.md`、`todo.md` 中的目标结构。~~ ✅
 2. ~~建立 compiler infrastructure 包：`diag/source/session/build/project/import_/analysis/debug/errors`。~~ ✅
 3. ~~建立 VM 分层：`qy/backend/vm/spec/` 与 `qy/vm/instance/`。~~ ✅
-4. ~~建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。~~ ✅（`qy/stdlib/` 已删除，功能迁入 `qy/symbol_space/`）
+4. ~~建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。~~ ✅（`qy/stdlib/` 仅剩兼容入口，功能迁入 `qy/std` / `qy/symbol_space/`）
 5. ~~修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。~~ ✅
 6. ~~解决同名 `macro`、`cli`、`errors` 冲突。~~ ✅
 7. ~~解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。~~ ✅
 8. ~~迁移 source/diag/session/project/import/build 的 legacy 文件。~~ ✅
 9. ~~按 VM target spec / Python VM implementation 分层迁移 VM 文件，再删除 top-level 旧文件。~~ ✅
 10. ~~迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。~~ ✅
-11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅
+11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（当前仍保留兼容入口）
 12. LIR effect lowering 落地：`passes/lir/effects.py` 已实现从 effect placeholder 到 abstract machine ops 的 lowering ✅。
 13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes。
 14. 待推进：abstract-machine LIR dialect 收口，compat LIR 逐步减少。

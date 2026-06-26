@@ -21,6 +21,7 @@
 from __future__ import annotations
 
 from typing import cast
+from typing import get_args
 
 from qy.backend.vm.bytecode import BytecodeFunction
 from qy.backend.vm.bytecode import BytecodeProgram
@@ -33,6 +34,10 @@ from qy.ir.lir import LIRProgram
 
 __all__ = ["compile_lir_bytecode"]
 
+_BYTECODE_OPCODES = frozenset(get_args(Opcode))
+_COMPAT_ONLY_LIR_OPCODES = frozenset({"LOAD_NIL", "LOAD_T", "BRANCH_NIL"})
+_SUPPORTED_COMPAT_LIR_OPCODES = _BYTECODE_OPCODES | _COMPAT_ONLY_LIR_OPCODES
+
 
 def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
     """Map LIR opcodes to bytecode opcodes."""
@@ -42,6 +47,8 @@ def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
         return "LOAD_HOST"
     if opcode == "BRANCH_NIL":
         return "JUMP_IF_FALSE"
+    if opcode not in _BYTECODE_OPCODES:
+        raise ValueError(f"unsupported compat LIR opcode {opcode!r} for register VM bytecode")
     return cast(Opcode, opcode)
 
 
@@ -83,8 +90,26 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
         return BytecodeProgram((), 0, (*program.diagnostics, diagnostic))
     if not program.ok:
         return BytecodeProgram((), 0, program.diagnostics)
+    opcode_diagnostics = _unsupported_opcode_diagnostics(program)
+    if opcode_diagnostics:
+        return BytecodeProgram((), 0, (*program.diagnostics, *opcode_diagnostics))
     return BytecodeProgram(
         tuple(_compile_function(f) for f in program.functions),
         program.main,
         program.diagnostics,
     )
+
+
+def _unsupported_opcode_diagnostics(program: LIRProgram) -> tuple[Diagnostic, ...]:
+    diagnostics: list[Diagnostic] = []
+    for function in program.functions:
+        for index, instruction in enumerate(function.instructions):
+            if instruction.opcode not in _SUPPORTED_COMPAT_LIR_OPCODES:
+                diagnostics.append(
+                    Diagnostic(
+                        f"compat LIR opcode {instruction.opcode!r} at "
+                        f"{function.name.name}:{index} cannot be emitted to register VM bytecode",
+                        severity="error",
+                    )
+                )
+    return tuple(diagnostics)

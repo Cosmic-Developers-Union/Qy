@@ -30,8 +30,10 @@ from qy.passes.frontend.reader_macro import ReaderMacroPass
 from qy.passes.frontend.surface_normalize import SurfaceNormalizePass
 from qy.passes.hir.lower_pass import LowerHIRPass
 from qy.passes.lir.lower_pass import LowerLIRPass
+from qy.passes.lir.verify import VerifyLIRPass
 from qy.passes.macro.expand import MacroExpandPass
 from qy.passes.mir.lower_pass import LowerMIRPass
+from qy.passes.mir.validate import ValidateMIRPass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
 from qy.passes.pass_base import PipelineOptions
@@ -63,8 +65,8 @@ ARTIFACT_KIND_TO_TARGET_PASS: dict[str, str] = {
     SURFACE_FORMS: "frontend.surface_normalize",
     CORE_AST: "macro.expand",
     HIR: "hir.lower",
-    MIR: "mir.lower",
-    LIR: "lir.lower",
+    MIR: "mir.validate",
+    LIR: "lir.verify",
     BYTECODE: "emit.bytecode",
 }
 
@@ -77,7 +79,9 @@ def build_default_pipeline() -> Pipeline:
     pipeline.add_pass(MacroExpandPass())
     pipeline.add_pass(LowerHIRPass())
     pipeline.add_pass(LowerMIRPass())
+    pipeline.add_pass(ValidateMIRPass())
     pipeline.add_pass(LowerLIRPass())
+    pipeline.add_pass(VerifyLIRPass())
     pipeline.add_pass(EmitBytecodePass())
     return pipeline
 

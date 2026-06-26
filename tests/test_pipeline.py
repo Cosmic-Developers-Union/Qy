@@ -375,7 +375,9 @@ def test_default_pipeline_stage_order():
         "macro.expand",
         "hir.lower",
         "mir.lower",
+        "mir.validate",
         "lir.lower",
+        "lir.verify",
         "emit.bytecode",
     ]
 

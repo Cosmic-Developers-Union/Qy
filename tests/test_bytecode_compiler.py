@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from qy.backend.vm.compiler import _lir_to_bytecode_opcode
 
 
@@ -23,6 +25,11 @@ def test_lir_to_bytecode_opcode_branch_nil():
 
 def test_lir_to_bytecode_opcode_passthrough():
     """测试其他操作码直接传递。."""
-    assert _lir_to_bytecode_opcode("LOAD_CONST") == "LOAD_CONST"
     assert _lir_to_bytecode_opcode("CALL") == "CALL"
     assert _lir_to_bytecode_opcode("RETURN") == "RETURN"
+
+
+def test_lir_to_bytecode_opcode_rejects_non_bytecode_opcode():
+    """Compat LIR 不能把 MIR-only opcode 静默塞进 bytecode。."""
+    with pytest.raises(ValueError, match="unsupported compat LIR opcode"):
+        _lir_to_bytecode_opcode("LOAD_CONST")
