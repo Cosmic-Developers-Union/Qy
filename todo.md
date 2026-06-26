@@ -3,11 +3,11 @@
 本文件不是最近一批工作的便签，而是 **Qy 从当前实现走到目标语言的完整路线图**。  
 历史批次与已完成细节看 `report.md`；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
 
-最近一次本地基线（2026-05-18）：
+最近一次本地基线（2026-06-09）：
 
-- `uv run python -m pytest -q`：363 passed
+- `uv run python -m pytest -q`：1011 passed
 - `uv run ty check .`：passed
-- `uv run python -m qy test.qy tests/qy`：40 / 40 passed
+- `uv run python -m qy test.qy tests/qy`：54 / 54 passed
 
 ---
 
@@ -188,17 +188,17 @@ source
 4. `literal_resolver` 让 `1` 等 spelling 绕过了真正的 chain / fold 模型；
 5. `(define 1 10)` 的行为尚未由最终 root 模型解释；
 6. `qy.core` 仍混入 profile / compat 能力；
-7. `qy.stdlib.data` 仍把 Python 容器视为一等目标语义；
-8. `eq` 仍受 Python interning 影响；
-9. `cond` 仍把 `False` / `None` / `()` 当作 false；
-10. `truthy` 仅在文档中存在，尚无正式 operator；
+7. 标准数据算子已返回 Qy `TupleValue` / `ListValue` / `DictValue` / `SetValue`，但 reader/string literal 仍有 Python `str` 迁移尾巴；
+8. `eq` 已脱离 Python identity / interning，后续还需补完整结构相等算子；
+9. `cond` 已是 nil-only truth；标准 profile 的 `truthy` 负责复杂真值；
+10. `truthy` 已有正式 operator，但还需按 profile 层文档继续收口；
 11. `io` 仍只是 `print/echo` 模块，不是 Qy runtime model；
 12. `reify` 已有最小实现（ScopeOperator、partial-failure、无 effect 路径）；
 13. `HostObjectRef` 尚未演化成完整 host reference / runtime identity 容器；
-14. compile-time namespace 仍未真正与 runtime namespace 分离；
+14. macro compile-time evaluator 已脱离 bytecode / register VM；compile-time namespace 仍需继续显式化为独立 slot/layout；
 15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；
 16. `quasiquote` nested 路径仍依赖过时 `list/append` 假设；
-17. LIR 目前仍与 bytecode opcode 基本同构；
+17. 默认 LIR 仍以 compat dialect 为主，但主 pipeline 已执行 `mir.validate` / `lir.verify`，bytecode emit 会拒绝非 VM compat opcode；
 18. LIR 尚未显式建模 virtual stack、continuation frame、handler frame、ss-chain transition、lookup operation、binding slot operation；
 19. effect frame 仍主要由 VM 中的 Python 对象承担；
 20. pending-binding / incomplete-value effort 尚未实现；
