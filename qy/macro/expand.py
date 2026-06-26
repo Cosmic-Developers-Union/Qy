@@ -407,11 +407,10 @@ async def _macroexpand_form(
             if isinstance(name, Symbol) and _is_list_form(value):
                 value_op = _get_operator(value)
                 if value_op == Symbol("component"):
-                    # 在宏展开阶段求值 component
-                    from qy.runtime import evaluate_async
+                    from qy.macro.evaluator import evaluate_compile_time_body
 
                     try:
-                        macro_def = await evaluate_async(value, context.env)
+                        macro_def = await evaluate_compile_time_body((value,), context.env)
                         if isinstance(macro_def, MacroDefinition):
                             context.define_macro(name, macro_def)
                     except Exception:

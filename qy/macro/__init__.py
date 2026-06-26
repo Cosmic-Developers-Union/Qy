@@ -104,16 +104,10 @@ class MacroDefinition:
                 doc="显式保留调用点 symbol/form，跳过默认 hygiene rewrite。",
             )
 
-        from qy.build.pipeline import bytecode_artifact
-        from qy.build.pipeline import compile_core_forms_to_bytecode_async
-        from qy.passes.pass_base import PipelineSession
-        from qy.vm.instance.machine import RegisterVirtualMachine
+        from qy.macro.evaluator import evaluate_compile_time_body
 
-        forms = list(cast(tuple[Form, ...], self.body))
-        session = PipelineSession(env=local_env)
-        result = await compile_core_forms_to_bytecode_async(forms, session)
-        bytecode = bytecode_artifact(result)
-        return await RegisterVirtualMachine(bytecode, local_env).evaluate()
+        forms = cast(tuple[Form, ...], self.body)
+        return await evaluate_compile_time_body(forms, local_env)
 
 
 from qy.macro.expand import MacroEffectPolicy as MacroEffectPolicy  # noqa: E402
