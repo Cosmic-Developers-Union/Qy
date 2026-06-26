@@ -62,15 +62,15 @@ class Scope:
 
 def scope_from_environment(env: Environment) -> Scope:
     scope = Scope()
-    all_visible = {**env.bindings(), **env.hidden_bindings()}
-    for symbol, value in all_visible.items():
-        scope = scope.define(
-            symbol,
-            value_type(value),
-            operator_kind=operator_kind_for_value(value),
-            eager_arguments=value_uses_eager_arguments(value),
-            signature=value_signature(value),
-        )
+    for frame in env.pre_symbol_space_chain():
+        for symbol, value in frame.bindings.items():
+            scope = scope.define(
+                symbol,
+                value_type(value),
+                operator_kind=operator_kind_for_value(value),
+                eager_arguments=value_uses_eager_arguments(value),
+                signature=value_signature(value),
+            )
     return scope
 
 

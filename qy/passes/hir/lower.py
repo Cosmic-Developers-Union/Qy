@@ -84,9 +84,9 @@ __all__ = [
 class Scope:
     """Scope tracks bindings during HIR lowering.
 
-    This is a transitional structure that wraps SymbolSpace and maintains
-    backward compatibility with the legacy Binding type. Eventually, this
-    will be replaced by direct SymbolSpace usage with BindingRef.
+    This is a transitional BindingRef facade over explicit symbol-space-chain
+    facts.  Root scopes are initialized from ``RuntimeSpace.pre_symbol_space_chain()``
+    snapshots instead of flattening live runtime env bindings.
     """
 
     bindings: dict[Symbol, Binding] | None = None
@@ -171,21 +171,26 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
 
 
 def _scope_from_environment(env: Environment, symbol_space: SymbolSpace) -> Scope:
-    scope = Scope(symbol_space=symbol_space)
-    all_visible = {**env.bindings(), **env.hidden_bindings()}
-    for symbol, value in all_visible.items():
-        scope = scope.define(
-            Binding(
-                symbol,
-                "builtin",
-                value_type(value),
-                symbol_space,
-                operator_kind=operator_kind_for_value(value),
-                eager_arguments=value_uses_eager_arguments(value),
-                value=value,
+    parent_scope: Scope | None = None
+    parent_space: SymbolSpace | None = None
+    for frame in env.pre_symbol_space_chain():
+        frame_space = SymbolSpace(name=frame.name, parent=parent_space)
+        frame_scope = Scope(parent=parent_scope, symbol_space=frame_space)
+        for symbol, value in frame.bindings.items():
+            frame_scope = frame_scope.define(
+                Binding(
+                    symbol,
+                    "builtin",
+                    value_type(value),
+                    frame_space,
+                    operator_kind=operator_kind_for_value(value),
+                    eager_arguments=value_uses_eager_arguments(value),
+                    value=value,
+                )
             )
-        )
-    return scope
+        parent_scope = frame_scope
+        parent_space = frame_space
+    return Scope(parent=parent_scope, symbol_space=symbol_space)
 
 
 def _lower_form(
