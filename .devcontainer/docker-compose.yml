@@ -42,13 +42,14 @@ services:
       no_proxy: ""
       npm_config_registry: ${DEVCONTAINER_BUN_REGISTRY-http://host.docker.internal:4873}
       UV_LINK_MODE: copy
+      HISTFILE: /home/${USER:-vscode}/.local/state/zsh/history
     volumes:
       - ..:/workspaces/Qy:cached
       - dev-venv:/workspaces/Qy/.venv
       - dev-node-modules:/workspaces/Qy/node_modules
       - dev-bun:/home/${USER:-vscode}/.bun
       - dev-go:/home/${USER:-vscode}/go
-      - zsh-history:/home/${USER:-vscode}/.zsh_history
+      - zsh-history:/home/${USER:-vscode}/.local/state/zsh
       - type: bind
         source: ${HOME}/.claude
         target: /home/${USER:-vscode}/.claude
