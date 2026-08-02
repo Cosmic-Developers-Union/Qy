@@ -2,6 +2,12 @@
 
 本文档定义 HIR、MIR、LIR 的独立职责。三者不是“同一棵树的三种打印格式”，而是三个不同抽象层；每一层都必须有自己稳定的输入、输出、禁止事项、verifier 与演进空间。
 
+> 本文档描述三层边界与完成度。三层 IR 的**正式 grammar / 节点语义 / verifier 规则**见：
+>
+> - [`docs/hir-spec.md`](hir-spec.md) — HIR 规范真源
+> - [`docs/mir-spec.md`](mir-spec.md) — MIR 规范真源
+> - [`docs/lir-spec.md`](lir-spec.md) — LIR 规范真源（含 `compat` 与 `abstract-machine` 两个 dialect）
+
 ---
 
 # 1. 总原则

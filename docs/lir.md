@@ -2,6 +2,8 @@
 
 本文档专门定义 Qy 的 LIR。`docs/ir-design.md` 只描述 HIR / MIR / LIR 的层级边界；本文描述 LIR 自身的数据模型、抽象机器、指令族、lowering 规则、verifier 与迁移路径。
 
+> 本文档是 LIR 的**设计意图与目标模型**文档。LIR 的**正式 grammar / opcode 语义 / verifier 规则 / MIR→LIR 映射**见 [`docs/lir-spec.md`](lir-spec.md)。
+
 ---
 
 # 1. 定位
