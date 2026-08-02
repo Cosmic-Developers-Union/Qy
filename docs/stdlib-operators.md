@@ -117,8 +117,19 @@
 
 `equal?` 是否进入 stdlib、由 Qy 实现还是由 host 辅助，待 chain/runtime value 边界稳定后再决定。
 
-## 当前迁移约束
+## 当前状态
 
-- `qy.stdlib.arithmetic` 目前只有 `+ - * / ==`，仍是过渡实现。
-- `qy.stdlib.strings` 当前返回 symbol、容忍 unresolved symbol 当文本，和目标 runtime string 模型不一致。
-- 下一步应先完成 runtime `string` 与 `pre-symbol-space-chain` 的正式模型，再重写字符串库；不要在旧 `str-*` family 上继续扩展。
+`qy/stdlib/` 仅保留 `__init__.py` 兼容 shim，把 `StandardModule` /
+`register_module` / `LANGUAGE_CORE_MODULES` / `PRELUDE_MODULES` /
+`STANDARD_PROFILE_MODULES` / `OPTIONAL_STDLIB_MODULES` 等从 `qy.std`
+re-export。`qy.std` 是当前实际承载标准库算子（`qy.num` / `qy.str` /
+`qy.char` / `qy.io` 等）的目标包。
+
+历史 `qy.stdlib.arithmetic` / `qy.stdlib.strings` 子模块已不存在；
+`+ - * /` 等数值算子由 standard profile（`qy/symbol_space/numeric_spaces.py` +
+profile 注册表）直接预装进 `pre-symbol-space-chain`，字符串算子由
+`qy.symbol_space.strings` 承载，不再走旧的 `str-*` family。
+
+下一步应先完成 runtime `string` 与 `pre-symbol-space-chain` 的正式模型
+（见 `todo.md` Phase D 与 Phase M），再按本草案重写字符串库；不要在旧
+`str-*` family 上继续扩展。

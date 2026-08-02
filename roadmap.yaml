@@ -54,7 +54,7 @@ QyLang_final_product:
     - symbol-space-chain 是多个 symbol-space 组成的有序查找链。
     - symbol-space-chain 的核心行为是 lookup：沿链寻找 symbol 的 binding，并由链的顺序决定 shadow 和 fallback。
 
-  pre-sysbol-space:
+  pre-symbol-space:
     - pss, 是 qy 中的 symbol-value 绑定关系描述的.
     - 一般 pss 需要提供两个方法, exist and lookup, 即该 symbol 是否在该空间中, 和找到该值.
     - 常见的 pss 包括 number-ss, char-ss, string-ss, bool-ss, nil-ss,
