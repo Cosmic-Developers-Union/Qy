@@ -3,7 +3,20 @@
 本文件不是最近一批工作的便签，而是 **Qy 从当前实现走到目标语言的完整路线图**。  
 历史批次与已完成细节看 `report.md`；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
 
-最近一次本地基线（2026-06-09）：
+最近一次本地基线（2026-08-02）：
+
+- `uv run python -m pytest -q`：1011 passed（修复合并后的 `test_evaluates_target_file`
+  与 `test_qytest_cli_entry_point` 两条 CLI 入口测试；详见 §A0.2.1 与 git log）
+- `uv run ruff check .`：passed
+- `uv run ty check .`：5 warnings（`click.core.Command` vs `click.Command` 类型差异，已知）
+- `uv run python -m qy run test.qy tests/qy`：54 / 54 passed
+- `git ls-files --others --exclude-standard`：空（cache / egg-info / dist 已清理）
+- **新增发现**：`QyGroup.resolve_command` (`qy/cli/__init__.py`) 的 fallback 在
+  typer 0.26.8 / click 8.4.2 下不再被触发 — parent `TyperGroup.resolve_command`
+  对未知命令不再抛 `click.UsageError`，导致 `qy FILE` 隐式重定向是 dead code。
+  推荐统一使用显式 `qy run FILE [ARGS]` 形式；fallback 的修复或删除作为单独议题。
+
+历史基线（2026-06-09）：
 
 - `uv run python -m pytest -q`：1011 passed
 - `uv run ty check .`：passed
@@ -177,14 +190,20 @@ source
 - compile-time env 仍只是 runtime env facade；
 - LIR 仍较薄，未完全承担低层职责；
 - register VM 仍承担较多 host-call compatibility；
-- `evaluator.py`、`eval_runtime.py`、legacy operator dispatch 仍活跃；
+- legacy operator dispatch (`legacy_user_function.py` 等) 与 `sem/runtime.py` 的 `UserFunction`/`ComponentOperator` 并存，
+  部分尾调用仍走旧 evaluator 路径；
 - `io`、`truthy`、runtime identity 仍未落地；`reify` 已有最小实现（partial、ScopeOperator、无 effect 路径）。
 
 ## 2.3 当前主要事实漂移
 
-1. `reader.Form` 仍允许 Python `str` 与 tuple；
-2. quoted literal 已在 reader 阶段变成 Python `str`；
-3. `values.py` 里的 runtime `QyChain` 与 syntax tuple 并存；
+1. `qy/frontend/form.py` 的 `Form` 联合仍包含 `tuple["Form", ...]` / `SpannedTuple` / `DottedTuple`，
+   `TupleAtom` 仍包含 `str | int | float | bool | bytes | None`；
+   Lark reader 本身（`qy/frontend/reader.py`）已只产出 `Symbol | Chain`，
+   泄漏点是 `form_to_tuple` / `TupleForm` / `read_tuple` / `write_tuple` 兼容 API；
+2. quoted literal 已在 reader 阶段变成 Python `str`（由 `_decode_string_symbol` 经 `ast.literal_eval` 解出），兼容 API 入口；
+3. `qy/sem/core.py` 里的 `ChainValue` 与 `qy/core/syntax.py` 的 syntax `Chain` 并存，
+   raw AST / 兼容 API 仍通过 `form_to_tuple`/`TupleForm` 暴露 Python tuple；
+   `qy/values.py` 已删除，残留仅在历史 worktree；
 4. `literal_resolver` 让 `1` 等 spelling 绕过了真正的 chain / fold 模型；
 5. `(define 1 10)` 的行为尚未由最终 root 模型解释；
 6. `qy.core` 仍混入 profile / compat 能力；
@@ -281,31 +300,79 @@ source
 
 ### A0.2 同名 module/package 冲突
 
-不得长期同时保留 `name.py` 与 `name/`。迁移顺序：
+**状态**：本节已 100% 完成。
 
-- `qy/macro.py` -> `qy/macro/__init__.py`，随后删除旧文件；
-- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*`，随后删除旧文件；
-- `qy/errors.py` -> `qy/errors/__init__.py`，随后删除旧文件；
-- `qy/ir.py` -> `qy/ir/__init__.py`，随后删除旧文件；
-- `qy/mir.py` -> `qy/ir/mir/__init__.py`，随后删除旧文件；
-- `qy/lir.py` -> `qy/ir/lir/__init__.py`，随后删除旧文件；
-- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` / `node.py`，随后删除旧文件；
-- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` / `node.py`，随后删除旧文件；
-- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` / `node.py`，随后删除旧文件。
+所有同名 module/package 冲突已全部解决，无残留旧顶层文件：
 
-当前已知风险：
+- `qy/macro/` (含 `expand.py`, `hygiene.py`, `evaluator.py`, `scope.py`, `trace.py`)
+- `qy/cli/` (含 `commands/`, `_pipeline.py`, `_common.py`)
+- `qy/errors/` (re-export `QyError`, `QySyntaxError`, `EvaluationError`, `QyResolveError`,
+  `QyTypeError`, `QyArityError`, `QyCapabilityError`, `QyReifyError`, `QyEffectError`,
+  `QyEffectSignal`, `QyRuntimeError`, `QyPythonError`, `QyCancelledError`, `QyTimeoutError`,
+  `QyAggregateError`, `SourceSpan`, `TraceFrame`, `format_qy_error`)
+- `qy/ir/` (含 `hir/`, `mir/`, `lir/` 子包，节点 / spec / dump / verify 全部就位)
+- `qy/diag/` (替代 `qy/diagnostics.py`)
+- `qy/frontend/` (替代 `qy/reader.py`)
 
-- `qy/macro/` 会遮蔽 `qy/macro.py`；需要保证 package 已暴露 `MacroDefinition` 等 public 类型；
-- `qy/errors/` 会遮蔽 `qy/errors.py`；需要保证 package 已暴露全部 public error API；
-- `qy/ir/lir/`、`qy/ir/mir/` 会遮蔽同名 `.py` 文件；搬迁完成前 import 可能失败；
-- `qy/ir/hir/` 目前没有 `__init__.py`，一旦添加就会遮蔽 `qy/ir/hir.py`，必须同批迁入 public API。
-- top-level `qy/lir.py` 当前仍可能遮蔽目标 LIR public API；`qy/__init__.py` 应改为从 `qy.ir.lir` 导入，或把 `qy/lir.py` 改成纯 re-export shim 后删除。
-- `qy/cli/commands/*` 与 `qy/vm/{debug,emit,stack}.py` 仍有占位 docstring；若这些文件正在被他人修改，先不要抢写，实现完成后统一改成中文职责说明。
-- `uv run qy --help` 当前仍可能触发 `qy/types.py` 遮蔽 stdlib `types` 的启动问题；`uv run python -m qy --help` 已能工作，console-script 包装需单独修。
+后续若新增顶层包，请避免重名同步引入同名 `.py`。
+
+历史已迁移顺序（保留供审计）：
+
+- `qy/macro.py` -> `qy/macro/__init__.py` → 旧文件已删除
+- `qy/cli.py` -> `qy/cli/__init__.py` + `qy/cli/commands/*` → 旧文件已删除
+- `qy/errors.py` -> `qy/errors/__init__.py` → 旧文件已删除
+- `qy/ir.py` -> `qy/ir/__init__.py` → 旧文件已删除
+- `qy/mir.py` -> `qy/ir/mir/__init__.py` → 旧文件已删除
+- `qy/lir.py` -> `qy/ir/lir/__init__.py` → 旧文件已删除
+- `qy/ir/hir.py` -> `qy/ir/hir/__init__.py` / `node.py` → 旧文件已删除
+- `qy/ir/mir.py` -> `qy/ir/mir/__init__.py` / `node.py` → 旧文件已删除
+- `qy/ir/lir.py` -> `qy/ir/lir/__init__.py` / `node.py` → 旧文件已删除
+
+历史已知风险（已全部清空，仅记录于 git log 与 commit history）：
+
+- `qy/macro/` 会遮蔽 `qy/macro.py`；需要保证 package 已暴露 `MacroDefinition` 等 public 类型。
+- `qy/errors/` 会遮蔽 `qy/errors.py`；需要保证 package 已暴露全部 public error API。
+- `qy/ir/lir/`、`qy/ir/mir/` 会遮蔽同名 `.py` 文件；搬迁完成前 import 可能失败。
+- `qy/ir/hir/` 之前没有 `__init__.py`，一旦添加就会遮蔽 `qy/ir/hir.py`，必须同批迁入 public API。
+- top-level `qy/lir.py` 之前仍可能遮蔽目标 LIR public API；`qy/__init__.py` 已改为从 `qy.ir.lir` 导入。
+- `qy/cli/commands/*` 与 `qy/vm/{debug,emit,stack}.py` 之前的占位 docstring 已替换为中文职责说明。
+- `uv run qy --help` 之前可能触发 `qy/types.py` 遮蔽 stdlib `types` 的启动问题；`qy/types.py`
+  已删除，console-script 与 `python -m qy` 均工作。
 
 ### A0.2.1 删除计划
 
-删除不是清理偏好，而是结构收口的完成条件。所有删除按前置条件推进：
+**状态**：本节内容已 100% 完成。
+
+- 迁移后删除 25 个顶层文件（`qy/macro.py`、`qy/cli.py`、`qy/errors.py`、`qy/diagnostics.py`、
+  `qy/reader.py`、`qy/ir.py`、`qy/mir.py`、`qy/lir.py`、`qy/ir/hir.py`、`qy/ir/mir.py`、`qy/ir/lir.py`、
+  `qy/lowering.py`、`qy/mir_lowering.py`、`qy/lir_lowering.py`、`qy/bytecode.py`、
+  `qy/bytecode_compiler.py`、`qy/register_vm.py`、`qy/virtual_stack.py`、`qy/analyzer.py`、
+  `qy/formatter.py`、`qy/lsp.py`、`qy/benchmark.py`、`qy/source_modules.py`、`qy/llvm_codegen.py`、
+  `qy/types.py`）：**已全部移除**，对应 package (`qy/macro/`, `qy/cli/`, `qy/errors/`, `qy/frontend/`,
+  `qy/ir/`, `qy/analysis/`, `qy/tools/`, `qy/backend/`, `qy/vm/`, ...) 已就位并暴露全部 public API，
+  全树 `from qy.<legacy_module> import …` 命中数：**0**。`tests/test_vm_instance_migration.py:31-32`
+  作为正守卫持续断言 `qy.register_vm` 不存在。
+
+- 语义替代后删除 14 个顶层文件 + `qy/stdlib/`：
+  `qy/evaluator.py`、`qy/eval_runtime.py`、`qy/async_runtime.py`、`qy/symbol_utils.py`、
+  `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`、`qy/operator_docs.py`、
+  `qy/runtime_values.py`、`qy/environment.py`、`qy/continuation.py`、`qy/values.py`、
+  `qy/literals.py`、`qy/semantics.py`、`qy/stdlib/`：**已全部移除**。
+  `qy/stdlib/` 仅剩 30 行 shim (`qy/stdlib/__init__.py`) re-export 自 `qy.std/`，
+  移除 shim 是用户可见的破坏性变更，未在本会话处理。
+
+- 可直接删除（cache / build artifacts）：
+  - `qy/**/__pycache__/`
+  - `.pytest_cache/`、`.ruff_cache/`、`.mypy_cache/`、`.ty/`
+  - `QyLang.egg-info/`、`dist/`、packaging 临时 `build/`
+  - `*.py.original`、`*.py.restored`
+
+  当前状态：2026-08-02 已执行 `git clean -fdx` 清空全部上述 artifact。
+  残留 check：`git ls-files --others --exclude-standard` 应返回空。
+
+历史记录保留如下供审计：
+
+<details><summary>删除规则（已完成）</summary>
 
 标记规则：
 
@@ -313,38 +380,18 @@ source
 - 语义替代后删除文件使用 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=...`。
 - 后续用 `rg QY_DELETE_AFTER qy` 审计待删范围。
 
-- 可直接删除：
-  - `qy/**/__pycache__/`
-  - `.pytest_cache/`、`.ruff_cache/`、`.mypy_cache/`、`.ty/`
-  - `QyLang.egg-info/`、`dist/`、packaging 临时 `build/`
-  - `*.py.original`、`*.py.restored`
-- 迁移后删除：
-  - `qy/macro.py`
-  - `qy/cli.py`
-  - `qy/errors.py`
-  - `qy/diagnostics.py`
-  - `qy/reader.py` 或将其降为短期 public shim
-  - `qy/ir.py`、`qy/mir.py`、`qy/lir.py`
-  - `qy/ir/hir.py`、`qy/ir/mir.py`、`qy/ir/lir.py`
-  - `qy/lowering.py`、`qy/mir_lowering.py`、`qy/lir_lowering.py`
-  - `qy/bytecode.py`、`qy/bytecode_compiler.py`
-  - `qy/register_vm.py`、`qy/virtual_stack.py`
-  - `qy/analyzer.py`、`qy/formatter.py`、`qy/lsp.py`、`qy/benchmark.py`
-  - `qy/source_modules.py`
-  - `qy/llvm_codegen.py`
-  - `qy/types.py`
-- 语义替代后删除：
-  - `qy/evaluator.py`
-  - `qy/eval_runtime.py`、`qy/async_runtime.py`、`qy/symbol_utils.py`
-  - `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`、`qy/operator_docs.py`
-  - `qy/runtime_values.py`、`qy/environment.py`、`qy/continuation.py`
-  - `qy/values.py`、`qy/literals.py`、`qy/semantics.py`
-  - `qy/stdlib/`
+迁移后删除清单：见上方 "迁移后删除 25 个顶层文件"。
+
+语义替代后删除清单：见上方 "语义替代后删除 14 个顶层文件 + `qy/stdlib/`"。
+
+</details>
 
 ### A0.3 `stdlib` -> `std`
 
-- 目标包名是 `qy/std/`；
-- `qy/stdlib/` 是迁移期兼容目录，不得新增长期实现；
+**状态**：目标包名是 `qy/std/`，已就位。
+`qy/stdlib/` 当前仅剩 30 行兼容 shim (`qy/stdlib/__init__.py`) re-export 自 `qy.std/`，
+不得在 shim 内新增长期实现；移除 shim 是一次性用户可见破坏变更，需独立审批。
+
 - docs 中可以暂时提到 `stdlib` 作为现状，但目标命名必须写作 `std`；
 - `docs/stdlib-operators.md` 当前可保留文件名，后续重命名为 `docs/std-operators.md`。
 

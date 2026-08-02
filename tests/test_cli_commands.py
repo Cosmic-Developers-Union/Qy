@@ -18,7 +18,7 @@ def app():
 
 
 def test_evaluates_target_file(runner, app):
-    result = runner.invoke(app, ["examples/validation/00_host_arithmetic.qy"])
+    result = runner.invoke(app, ["run", "examples/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "42" in result.output

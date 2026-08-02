@@ -33,6 +33,38 @@ def create_app() -> Any:
     from typer.core import TyperGroup
 
     class QyGroup(TyperGroup):
+        """Typer group with a fallback intent to re-route ``qy FILE [ARGS]`` to ``qy run FILE [ARGS]``.
+
+        The intent is: when click fails to resolve the first positional
+        argument as a subcommand **and** that argument names an existing
+        file in the current working directory, the call is forwarded to the
+        ``run`` subcommand with the same remaining arguments.
+
+        Status (typer 0.26.8 / click 8.4.2):
+            ``TyperGroup.resolve_command`` is invoked for unknown commands,
+            but the parent class no longer raises ``click.UsageError`` in
+            that path — it returns ``None``/empty and the group exits with
+            ``No such command 'FILE'`` before the ``except click.UsageError``
+            block here can match. The fallback is therefore currently
+            **non-functional** in this typer version, even though the code
+            below is well-formed and would activate in any typer that does
+            raise ``click.UsageError`` (or if a future typer changes its
+            dispatch to surface unknown commands differently).
+
+        Recommended usage:
+            Always use the explicit ``qy run FILE [ARGS]`` form. It avoids
+            relying on the (currently dead) implicit re-route and matches
+            how the CLI is exercised in ``tests/test_cli_commands.py`` and
+            ``tests/test_qytest_runner.py``.
+
+        Future work:
+            Either (a) port the dispatch to whatever mechanism current
+            typer uses to surface unknown subcommands, or (b) drop the
+            ``QyGroup`` override and the ``Shortcut: qy FILE evaluates FILE.``
+            epilog once a maintainer confirms the implicit form is not a
+            contracted surface.
+        """
+
         def resolve_command(
             self, ctx: click.Context, args: list[str]
         ) -> tuple[str | None, click.Command | None, list[str]]:

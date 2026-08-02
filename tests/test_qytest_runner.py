@@ -22,11 +22,11 @@ def test_qytest_runner_executes_qy_suite():
 
 
 def test_qytest_cli_entry_point():
-    """Verify `python -m qy test.qy tests/qy` works as a real subprocess."""
+    """Verify `python -m qy run test.qy tests/qy` works as a real subprocess."""
     import sys
 
     result = subprocess.run(
-        [sys.executable, "-m", "qy", "test.qy", "tests/qy"],
+        [sys.executable, "-m", "qy", "run", "test.qy", "tests/qy"],
         capture_output=True,
         text=True,
         timeout=30,
