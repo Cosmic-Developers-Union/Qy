@@ -4,34 +4,37 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
-from typing import Any
 
-import typer
+import click
+
+from qy.cli._common import secho
 
 
-def create_pkg_app() -> Any:
+def create_pkg_app() -> click.Group:
     """创建 pkg 子命令组。."""
-    pkg_app = typer.Typer(help="Package management commands.", no_args_is_help=True)
 
-    @pkg_app.command("init")
-    def pkg_init(
-        path: Annotated[
-            str | None,
-            typer.Argument(help="Package path (e.g. github.com/user/my-pkg). Prompted if omitted."),
-        ] = None,
-    ) -> None:
+    @click.group("pkg", help="Package management commands.", no_args_is_help=True)
+    def pkg_group() -> None:
+        pass
+
+    @pkg_group.command("init")
+    @click.argument(
+        "path",
+        required=False,
+        default=None,
+    )
+    def pkg_init(path: str | None) -> None:
         """Initialize a new qy package in the current directory."""
         cwd = Path.cwd()
         manifest_path = cwd / "qy.toml"
         if manifest_path.exists():
-            typer.secho("qy.toml already exists", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1)
+            secho("qy.toml already exists", fg="red", err=True)
+            raise click.exceptions.Exit(1)
 
         if path is None:
             path = _infer_package_path(cwd)
             if path is None:
-                path = typer.prompt("Package path")
+                path = click.prompt("Package path")
 
         from qy.project.manifest import Manifest
         from qy.project.manifest import serialize_manifest
@@ -48,22 +51,23 @@ def create_pkg_app() -> Any:
                 encoding="utf-8",
             )
 
-        typer.secho(f"initialized package: {path}", fg=typer.colors.GREEN)
+        secho(f"initialized package: {path}", fg="green")
 
-    @pkg_app.command("add")
-    def pkg_add(
-        dep_path: Annotated[str, typer.Argument(help="Package path to add as dependency.")],
-        version: Annotated[
-            str | None,
-            typer.Option("--version", "-v", help="Minimum version (default: latest)."),
-        ] = None,
-    ) -> None:
+    @pkg_group.command("add")
+    @click.argument("dep_path")
+    @click.option(
+        "--version",
+        "-v",
+        default=None,
+        help="Minimum version (default: latest).",
+    )
+    def pkg_add(dep_path: str, version: str | None) -> None:
         """Add a dependency to the current package."""
         manifest, manifest_path = _load_current_manifest()
 
         if version is None:
             version = "0.1.0"
-            typer.echo(f"no version specified, using {version}")
+            click.echo(f"no version specified, using {version}")
 
         from qy.project.manifest import Dependency
         from qy.project.manifest import Manifest
@@ -85,12 +89,11 @@ def create_pkg_app() -> Any:
             replaces=manifest.replaces,
         )
         manifest_path.write_text(serialize_manifest(new_manifest), encoding="utf-8")
-        typer.secho(f'added {dep_path} = "{version}"', fg=typer.colors.GREEN)
+        secho(f'added {dep_path} = "{version}"', fg="green")
 
-    @pkg_app.command("remove")
-    def pkg_remove(
-        dep_path: Annotated[str, typer.Argument(help="Package path to remove.")],
-    ) -> None:
+    @pkg_group.command("remove")
+    @click.argument("dep_path")
+    def pkg_remove(dep_path: str) -> None:
         """Remove a dependency from the current package."""
         manifest, manifest_path = _load_current_manifest()
         from qy.project.manifest import Manifest
@@ -98,8 +101,8 @@ def create_pkg_app() -> Any:
 
         new_deps = tuple(d for d in manifest.dependencies if d.path != dep_path)
         if len(new_deps) == len(manifest.dependencies):
-            typer.secho(f"{dep_path} not found in dependencies", fg=typer.colors.YELLOW, err=True)
-            raise typer.Exit(1)
+            secho(f"{dep_path} not found in dependencies", fg="yellow", err=True)
+            raise click.exceptions.Exit(1)
 
         new_manifest = Manifest(
             pkg_path=manifest.pkg_path,
@@ -115,19 +118,17 @@ def create_pkg_app() -> Any:
             replaces=manifest.replaces,
         )
         manifest_path.write_text(serialize_manifest(new_manifest), encoding="utf-8")
-        typer.secho(f"removed {dep_path}", fg=typer.colors.GREEN)
+        secho(f"removed {dep_path}", fg="green")
 
-    @pkg_app.command("update")
-    def pkg_update(
-        dep_path: Annotated[
-            str | None,
-            typer.Argument(help="Package path to update. Updates all if omitted."),
-        ] = None,
-        version: Annotated[
-            str | None,
-            typer.Option("--version", "-v", help="New minimum version."),
-        ] = None,
-    ) -> None:
+    @pkg_group.command("update")
+    @click.argument("dep_path", required=False, default=None)
+    @click.option(
+        "--version",
+        "-v",
+        default=None,
+        help="New minimum version.",
+    )
+    def pkg_update(dep_path: str | None, version: str | None) -> None:
         """Update dependency version(s)."""
         manifest, manifest_path = _load_current_manifest()
         from qy.project.manifest import Dependency
@@ -135,12 +136,12 @@ def create_pkg_app() -> Any:
         from qy.project.manifest import serialize_manifest
 
         if dep_path is None:
-            typer.echo("updating all dependencies (no-op without registry)")
+            click.echo("updating all dependencies (no-op without registry)")
             return
 
         if version is None:
-            typer.secho("--version required for targeted update", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1)
+            secho("--version required for targeted update", fg="red", err=True)
+            raise click.exceptions.Exit(1)
 
         new_deps: list[Dependency] = []
         found = False
@@ -152,8 +153,8 @@ def create_pkg_app() -> Any:
                 new_deps.append(d)
 
         if not found:
-            typer.secho(f"{dep_path} not found in dependencies", fg=typer.colors.YELLOW, err=True)
-            raise typer.Exit(1)
+            secho(f"{dep_path} not found in dependencies", fg="yellow", err=True)
+            raise click.exceptions.Exit(1)
 
         new_manifest = Manifest(
             pkg_path=manifest.pkg_path,
@@ -169,9 +170,9 @@ def create_pkg_app() -> Any:
             replaces=manifest.replaces,
         )
         manifest_path.write_text(serialize_manifest(new_manifest), encoding="utf-8")
-        typer.secho(f"updated {dep_path} to {version}", fg=typer.colors.GREEN)
+        secho(f"updated {dep_path} to {version}", fg="green")
 
-    @pkg_app.command("graph")
+    @pkg_group.command("graph")
     def pkg_graph() -> None:
         """Print the resolved dependency graph."""
         manifest, _ = _load_current_manifest()
@@ -180,14 +181,14 @@ def create_pkg_app() -> Any:
         provider = _build_provider_from_manifest(manifest)
         build_list = resolve(manifest, provider)
 
-        typer.echo(f"{manifest.pkg_path}@v{manifest.version}")
+        click.echo(f"{manifest.pkg_path}@v{manifest.version}")
         for mod in build_list.modules:
-            typer.echo(f"  {mod.path}@v{mod.version}")
+            click.echo(f"  {mod.path}@v{mod.version}")
 
         if not build_list.modules:
-            typer.echo("  (no dependencies)")
+            click.echo("  (no dependencies)")
 
-    @pkg_app.command("verify")
+    @pkg_group.command("verify")
     def pkg_verify() -> None:
         """Verify qy.sum integrity hashes."""
         cwd = Path.cwd()
@@ -202,19 +203,19 @@ def create_pkg_app() -> Any:
         for dep in manifest.dependencies:
             cached = get_cached(dep.path, dep.min_version)
             if cached is None:
-                typer.secho(f"  {dep.path}@v{dep.min_version}: not cached", fg=typer.colors.YELLOW)
+                secho(f"  {dep.path}@v{dep.min_version}: not cached", fg="yellow")
                 continue
             ok = verify_package(dep.path, dep.min_version, cached.root, sum_file)
             if ok:
-                typer.secho(f"  {dep.path}@v{dep.min_version}: ok", fg=typer.colors.GREEN)
+                secho(f"  {dep.path}@v{dep.min_version}: ok", fg="green")
             else:
-                typer.secho(f"  {dep.path}@v{dep.min_version}: MISMATCH", fg=typer.colors.RED)
+                secho(f"  {dep.path}@v{dep.min_version}: MISMATCH", fg="red")
                 all_ok = False
 
         if not all_ok:
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
 
-    @pkg_app.command("build")
+    @pkg_group.command("build")
     def pkg_build() -> None:
         """Resolve dependencies and compile the package."""
         manifest, _ = _load_current_manifest()
@@ -222,10 +223,12 @@ def create_pkg_app() -> Any:
         src_dir = cwd / manifest.src
 
         if not src_dir.exists():
-            typer.secho(
-                f"source directory {manifest.src}/ not found", fg=typer.colors.RED, err=True
+            secho(
+                f"source directory {manifest.src}/ not found",
+                fg="red",
+                err=True,
             )
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
 
         from qy.runtime import Qy
 
@@ -235,17 +238,17 @@ def create_pkg_app() -> Any:
         for f in source_files:
             try:
                 qy.evaluate_file(f)
-                typer.echo(f"  compiled {f.relative_to(cwd)}")
+                click.echo(f"  compiled {f.relative_to(cwd)}")
             except Exception as e:
-                typer.secho(f"  error {f.relative_to(cwd)}: {e}", fg=typer.colors.RED, err=True)
+                secho(f"  error {f.relative_to(cwd)}: {e}", fg="red", err=True)
                 errors += 1
 
         if errors:
-            typer.secho(f"\nbuild failed: {errors} error(s)", fg=typer.colors.RED)
-            raise typer.Exit(1)
-        typer.secho(f"\nbuild ok: {len(source_files)} module(s)", fg=typer.colors.GREEN)
+            secho(f"\nbuild failed: {errors} error(s)", fg="red")
+            raise click.exceptions.Exit(1)
+        secho(f"\nbuild ok: {len(source_files)} module(s)", fg="green")
 
-    @pkg_app.command("test")
+    @pkg_group.command("test")
     def pkg_test() -> None:
         """Run package tests."""
         _manifest, _ = _load_current_manifest()
@@ -253,14 +256,14 @@ def create_pkg_app() -> Any:
         test_dir = cwd / "test"
 
         if not test_dir.exists():
-            typer.secho("no test/ directory found", fg=typer.colors.YELLOW)
+            secho("no test/ directory found", fg="yellow")
             return
 
         from qy.runtime import Qy
 
         test_files = sorted(test_dir.rglob("*_test.qy"))
         if not test_files:
-            typer.secho("no test files found (expected *_test.qy)", fg=typer.colors.YELLOW)
+            secho("no test files found (expected *_test.qy)", fg="yellow")
             return
 
         qy = Qy()
@@ -269,49 +272,48 @@ def create_pkg_app() -> Any:
         for f in test_files:
             try:
                 qy.evaluate_file(f)
-                typer.secho(f"  pass {f.relative_to(cwd)}", fg=typer.colors.GREEN)
+                secho(f"  pass {f.relative_to(cwd)}", fg="green")
                 passed += 1
             except Exception as e:
-                typer.secho(f"  fail {f.relative_to(cwd)}: {e}", fg=typer.colors.RED, err=True)
+                secho(f"  fail {f.relative_to(cwd)}: {e}", fg="red", err=True)
                 failed += 1
 
-        typer.echo(f"\n{passed} passed, {failed} failed")
+        click.echo(f"\n{passed} passed, {failed} failed")
         if failed:
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
 
-    @pkg_app.command("publish")
+    @pkg_group.command("publish")
     def pkg_publish() -> None:
         """Publish the package (currently: validate only)."""
         manifest, _ = _load_current_manifest()
 
         if not manifest.pkg_path:
-            typer.secho("package path is required for publishing", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1)
+            secho("package path is required for publishing", fg="red", err=True)
+            raise click.exceptions.Exit(1)
         if not manifest.version:
-            typer.secho("version is required for publishing", fg=typer.colors.RED, err=True)
-            raise typer.Exit(1)
+            secho("version is required for publishing", fg="red", err=True)
+            raise click.exceptions.Exit(1)
 
-        typer.echo(f"package: {manifest.pkg_path}@v{manifest.version}")
-        typer.echo("publish target: git tag (registry not yet implemented)")
-        typer.secho(
+        click.echo(f"package: {manifest.pkg_path}@v{manifest.version}")
+        click.echo("publish target: git tag (registry not yet implemented)")
+        secho(
             f"ready to publish — run: git tag v{manifest.version} && git push --tags",
-            fg=typer.colors.GREEN,
+            fg="green",
         )
 
-    return pkg_app
+    return pkg_group
 
 
-def _load_current_manifest() -> tuple[Any, Path]:
+def _load_current_manifest() -> tuple[object, Path]:
     """加载当前目录的 qy.toml。."""
-    import typer
-
+    from qy.cli._common import secho
     from qy.project.manifest import parse_manifest_file
 
     cwd = Path.cwd()
     manifest_path = cwd / "qy.toml"
     if not manifest_path.exists():
-        typer.secho("no qy.toml in current directory", fg=typer.colors.RED, err=True)
-        raise typer.Exit(1)
+        secho("no qy.toml in current directory", fg="red", err=True)
+        raise click.exceptions.Exit(1)
     return parse_manifest_file(manifest_path), manifest_path
 
 
@@ -358,7 +360,7 @@ def _module_name(pkg_path: str) -> str:
     return parts[-1] if parts else pkg_path
 
 
-def _build_provider_from_manifest(manifest: Any) -> Any:
+def _build_provider_from_manifest(manifest: object) -> object:
     """从当前清单构建 LocalManifestProvider（仅包含直接依赖）。."""
     from qy.project.fetch import get_cached
     from qy.project.manifest import parse_manifest_file

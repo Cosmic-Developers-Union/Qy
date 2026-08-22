@@ -1,126 +1,52 @@
 # -*- coding: utf-8 -*-
 
-import sys
 from pathlib import Path
 from typing import Any
+
+import click
 
 from qy.cli._common import CLI_COMMANDS as CLI_COMMANDS
 from qy.cli._common import REPL_COMMANDS as REPL_COMMANDS
 
-INSTALL_CLI_MESSAGE = (
-    "Qy CLI requires the optional cli dependency. Install with: pip install 'QyLang[cli]'"
-)
 INSTALL_LSP_MESSAGE = (
     "Qy LSP requires the optional lsp dependency. Install with: pip install 'QyLang[lsp]'"
 )
 
 
 def main() -> int:
+    from qy.cli._app import build_cli
+
+    cli = build_cli()
     try:
-        app = create_app()
-    except ModuleNotFoundError as e:
-        if e.name == "typer":
-            print(INSTALL_CLI_MESSAGE, file=sys.stderr)
-            return 2
-        raise
-    app()
+        cli(standalone_mode=False)
+    except click.exceptions.Exit as e:
+        return e.exit_code
+    except click.exceptions.Abort:
+        return 1
     return 0
 
 
 def create_app() -> Any:
-    import click
-    import typer
-    from typer.core import TyperGroup
+    """Return the top-level click group for tests and tooling."""
+    from qy.cli._app import build_cli
 
-    class QyGroup(TyperGroup):
-        """Typer group with a fallback intent to re-route ``qy FILE [ARGS]`` to ``qy run FILE [ARGS]``.
+    return build_cli()
 
-        The intent is: when click fails to resolve the first positional
-        argument as a subcommand **and** that argument names an existing
-        file in the current working directory, the call is forwarded to the
-        ``run`` subcommand with the same remaining arguments.
 
-        Status (typer 0.26.8 / click 8.4.2):
-            ``TyperGroup.resolve_command`` is invoked for unknown commands,
-            but the parent class no longer raises ``click.UsageError`` in
-            that path — it returns ``None``/empty and the group exits with
-            ``No such command 'FILE'`` before the ``except click.UsageError``
-            block here can match. The fallback is therefore currently
-            **non-functional** in this typer version, even though the code
-            below is well-formed and would activate in any typer that does
-            raise ``click.UsageError`` (or if a future typer changes its
-            dispatch to surface unknown commands differently).
+class _QyGroupFallback(click.Group):
+    """Backward-compatible alias retained for older imports/tests."""
 
-        Recommended usage:
-            Always use the explicit ``qy run FILE [ARGS]`` form. It avoids
-            relying on the (currently dead) implicit re-route and matches
-            how the CLI is exercised in ``tests/test_cli_commands.py`` and
-            ``tests/test_qytest_runner.py``.
-
-        Future work:
-            Either (a) port the dispatch to whatever mechanism current
-            typer uses to surface unknown subcommands, or (b) drop the
-            ``QyGroup`` override and the ``Shortcut: qy FILE evaluates FILE.``
-            epilog once a maintainer confirms the implicit form is not a
-            contracted surface.
-        """
-
-        def resolve_command(
-            self, ctx: click.Context, args: list[str]
-        ) -> tuple[str | None, click.Command | None, list[str]]:
-            try:
-                return super().resolve_command(ctx, args)
-            except click.UsageError:
-                if args and not args[0].startswith("-") and Path(args[0]).is_file():
-                    command = self.get_command(ctx, "run")
+    def resolve_command(
+        self, ctx: click.Context, args: list[str]
+    ) -> tuple[str | None, click.Command | None, list[str]]:
+        try:
+            return super().resolve_command(ctx, args)
+        except click.UsageError:
+            if args and not args[0].startswith("-") and Path(args[0]).is_file():
+                command = self.get_command(ctx, "run")
+                if command is not None:
                     return "run", command, args
-                raise
-
-    app = typer.Typer(
-        add_completion=False,
-        cls=QyGroup,
-        epilog="Shortcut: qy FILE evaluates FILE.",
-        help="Qy command line tools.",
-        invoke_without_command=True,
-        no_args_is_help=False,
-    )
-
-    @app.callback()
-    def root(ctx: typer.Context) -> None:
-        if ctx.invoked_subcommand is not None:
-            return
-        from qy.cli.commands.repl import repl
-        from qy.runtime import Qy
-
-        raise typer.Exit(repl(Qy()))
-
-    from qy.cli._pipeline import register_pipeline_commands
-    from qy.cli.commands import check as check_cmd
-    from qy.cli.commands import fmt as fmt_cmd
-    from qy.cli.commands import lsp as lsp_cmd
-    from qy.cli.commands.ast import register as register_ast
-    from qy.cli.commands.completion import register as register_completion
-    from qy.cli.commands.export import register as register_export
-    from qy.cli.commands.llvm import register as register_llvm
-    from qy.cli.commands.operators import register as register_operators
-    from qy.cli.commands.pkg import create_pkg_app
-    from qy.cli.commands.repl import register as register_repl
-    from qy.cli.commands.run import register as register_run
-
-    register_run(app)
-    register_repl(app)
-    register_pipeline_commands(app)
-    register_ast(app)
-    register_operators(app)
-    register_completion(app)
-    register_export(app)
-    register_llvm(app)
-    fmt_cmd.register(app)
-    check_cmd.register(app)
-    lsp_cmd.register(app)
-    app.add_typer(create_pkg_app(), name="pkg")
-
-    return app
+            raise
 
 
 # Re-export for external consumers (tests, benchmark CLI, etc.)

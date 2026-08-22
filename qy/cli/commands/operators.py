@@ -4,17 +4,15 @@
 
 from __future__ import annotations
 
-from typing import Any
-
-import typer
+import click
 
 from qy.symbol_space.profile import format_operator_docs
 
 
-def register(app: Any) -> None:
-    """将 operators 命令注册到给定的 typer 应用。."""
+def register(group: click.Group) -> None:
+    """将 operators 命令注册到给定的 click group。."""
 
-    @app.command("operators")
+    @group.command("operators")
     def operators_command() -> None:
         """列出当前标准库支持的算子."""
-        typer.echo(format_operator_docs(), nl=False)
+        click.echo(format_operator_docs(), nl=False)

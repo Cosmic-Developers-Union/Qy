@@ -2,12 +2,12 @@
 
 """`qy completion` 命令入口。."""
 
-from typing import Annotated
-from typing import Any
+from __future__ import annotations
 
-import typer
+import click
 
 from qy.cli._common import CLI_COMMANDS
+from qy.cli._common import secho
 
 
 def _completion_script(shell: str) -> str:
@@ -55,19 +55,15 @@ qy_completion_commands() {{
     raise ValueError("unsupported shell; expected one of: bash, zsh, sh")
 
 
-def register(app: Any) -> None:
-    """将 completion 命令注册到给定的 typer 应用。."""
+def register(group: click.Group) -> None:
+    """将 completion 命令注册到给定的 click group。."""
 
-    @app.command("completion")
-    def completion_command(
-        shell: Annotated[
-            str,
-            typer.Argument(help="Shell name: bash, zsh, or sh."),
-        ],
-    ) -> None:
-        """输出 shell completion 脚本."""
+    @group.command("completion")
+    @click.argument("shell")
+    def completion_command(shell: str) -> None:
+        """Output shell completion script (bash, zsh, or sh)."""
         try:
-            typer.echo(_completion_script(shell), nl=False)
+            click.echo(_completion_script(shell), nl=False)
         except ValueError as e:
-            typer.secho(str(e), fg=typer.colors.RED, err=True)
-            raise typer.Exit(2) from e
+            secho(str(e), fg="red", err=True)
+            raise click.exceptions.Exit(2) from e

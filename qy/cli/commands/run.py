@@ -2,30 +2,28 @@
 
 """`qy run` 命令入口。."""
 
-from pathlib import Path
-from typing import Annotated
-from typing import Any
+from __future__ import annotations
 
-import typer
+from pathlib import Path
+
+import click
 
 from qy.cli._common import _is_definition_artifact
+from qy.cli._common import secho
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
 from qy.runtime import Qy
 
 
-def register(app: Any) -> None:
-    """将 run 命令注册到给定的 typer 应用。."""
+def register(group: click.Group) -> None:
+    """将 run 命令注册到给定的 click group。."""
 
-    @app.command("run")
-    def run_command(
-        path: Annotated[Path, typer.Argument(help="Qy source file to evaluate.")],
-        args: Annotated[
-            list[str] | None,
-            typer.Argument(help="Arguments passed through to the Qy runtime program."),
-        ] = None,
-    ) -> None:
+    @group.command("run")
+    @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+    @click.argument("args", nargs=-1)
+    def run_command(path: Path, args: tuple[str, ...]) -> None:
+        """Evaluate a Qy source file."""
         try:
             qy = Qy()
             if args:
@@ -37,7 +35,7 @@ def register(app: Any) -> None:
             for value in results:
                 if _is_definition_artifact(value):
                     continue
-                typer.echo(format_value(value))
+                click.echo(format_value(value))
         except QyError as e:
-            typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
-            raise typer.Exit(1) from e
+            secho(format_qy_error(e), fg="red", err=True)
+            raise click.exceptions.Exit(1) from e

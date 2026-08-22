@@ -489,7 +489,7 @@ class TestFetchCache:
 class TestPkgCLI:
     def test_pkg_init(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from typer.testing import CliRunner
+        from click.testing import CliRunner
 
         from qy.cli import create_app
         from qy.project.manifest import parse_manifest_file
@@ -507,7 +507,7 @@ class TestPkgCLI:
 
     def test_pkg_add_and_remove(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from typer.testing import CliRunner
+        from click.testing import CliRunner
 
         from qy.cli import create_app
         from qy.project.manifest import parse_manifest_file
@@ -533,7 +533,7 @@ class TestPkgCLI:
 
     def test_pkg_graph(self, tmp_path: Path, monkeypatch):
         monkeypatch.chdir(tmp_path)
-        from typer.testing import CliRunner
+        from click.testing import CliRunner
 
         from qy.cli import create_app
 

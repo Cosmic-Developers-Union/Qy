@@ -2,10 +2,12 @@
 
 """Pipeline 调试命令 (expand/hir/mir/lir/bytecode) 的公共注册。."""
 
-from typing import Annotated
+from __future__ import annotations
+
+from collections.abc import Callable
 from typing import Any
 
-import typer
+import click
 
 from qy.backend.vm.bytecode import dump_bytecode
 from qy.build.pipeline import bytecode_artifact
@@ -25,31 +27,31 @@ from qy.tools.fmt import dump_program
 _PIPELINE_COMMANDS: dict[str, dict[str, Any]] = {
     "expand": {
         "kind": "core-ast",
-        "help": "Qy source file to expand, or - to read from stdin.",
+        "help": "Expand a Qy source file to core AST. Use '-' for stdin.",
         "artifact_fn": core_ast_artifact,
         "dump_fn": lambda p: dump_program(p.forms) if p.forms else "",
     },
     "hir": {
         "kind": "hir",
-        "help": "Qy source file to lower, or - to read from stdin.",
+        "help": "Lower a Qy source file to HIR. Use '-' for stdin.",
         "artifact_fn": hir_artifact,
         "dump_fn": dump_ir,
     },
     "mir": {
         "kind": "mir",
-        "help": "Qy source file to lower into MIR, or - to read from stdin.",
+        "help": "Lower a Qy source file to MIR. Use '-' for stdin.",
         "artifact_fn": mir_artifact,
         "dump_fn": dump_mir,
     },
     "lir": {
         "kind": "lir",
-        "help": "Qy source file to lower into LIR, or - to read from stdin.",
+        "help": "Lower a Qy source file to LIR. Use '-' for stdin.",
         "artifact_fn": lir_artifact,
         "dump_fn": dump_lir,
     },
     "bytecode": {
         "kind": "bytecode",
-        "help": "Qy source file to compile, or - to read from stdin.",
+        "help": "Compile a Qy source file to bytecode. Use '-' for stdin.",
         "artifact_fn": bytecode_artifact,
         "dump_fn": dump_bytecode,
     },
@@ -58,15 +60,12 @@ _PIPELINE_COMMANDS: dict[str, dict[str, Any]] = {
 
 def _make_pipeline_command(
     kind: str,
-    artifact_fn: Any,
-    dump_fn: Any,
-) -> Any:
-    def command(
-        target: Annotated[
-            str,
-            typer.Argument(help="Qy source file to inspect, or - to read from stdin."),
-        ],
-    ) -> None:
+    artifact_fn: Callable[..., Any],
+    dump_fn: Callable[..., str],
+) -> click.Command:
+    @click.command(context_settings={"help_option_names": ["-h", "--help"]})
+    @click.argument("target")
+    def command(target: str) -> None:
         qy = Qy()
         source, source_name = read_debug_source(target)
         result = compile_source_to(qy, source, kind=kind, source_name=source_name)
@@ -75,18 +74,18 @@ def _make_pipeline_command(
             artifact = artifact_fn(result)
         except TypeError:
             if has_errors:
-                raise typer.Exit(1) from None
+                raise click.exceptions.Exit(1) from None
             return
-        typer.echo(dump_fn(artifact), nl=False)
+        click.echo(dump_fn(artifact), nl=False)
         if has_errors:
-            raise typer.Exit(1)
+            raise click.exceptions.Exit(1)
 
     return command
 
 
-def register_pipeline_commands(app: Any) -> None:
+def register_pipeline_commands(group: click.Group) -> None:
     """注册 expand/hir/mir/lir/bytecode 五个 pipeline 调试命令。."""
     for name, cfg in _PIPELINE_COMMANDS.items():
-        fn = _make_pipeline_command(cfg["kind"], cfg["artifact_fn"], cfg["dump_fn"])
-        fn.__name__ = name
-        app.command(name)(fn)
+        cmd = _make_pipeline_command(cfg["kind"], cfg["artifact_fn"], cfg["dump_fn"])
+        cmd.help = cfg["help"]
+        group.add_command(cmd, name=name)

@@ -1,10 +1,6 @@
 import subprocess
 
-import pytest
-
-pytest.importorskip("typer")
-
-from typer.testing import CliRunner
+from click.testing import CliRunner
 
 from qy.cli import create_app
 

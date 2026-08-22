@@ -13,22 +13,24 @@
 
 from __future__ import annotations
 
-from typing import Any
+import click
 
-import typer
+from qy.cli import INSTALL_LSP_MESSAGE
+from qy.cli._common import secho
 
 
-def register(app: Any) -> None:
-    """将 lsp 命令注册到给定的 typer 应用。."""
-    from qy.cli import INSTALL_LSP_MESSAGE
+def register(group: click.Group) -> None:
+    """将 lsp 命令注册到给定的 click group。."""
 
-    @app.command("lsp")
-    def lsp_command(stdio: bool = typer.Option(False, "--stdio", hidden=True)) -> None:
+    @group.command("lsp")
+    @click.option("--stdio", is_flag=True, hidden=True)
+    def lsp_command(stdio: bool) -> None:
+        """Run the Qy language server."""
         try:
             from qy.tools.lsp import main as lsp_main
         except ModuleNotFoundError as e:
             if e.name in {"pygls", "lsprotocol"}:
-                typer.secho(INSTALL_LSP_MESSAGE, fg=typer.colors.RED, err=True)
-                raise typer.Exit(2) from e
+                secho(INSTALL_LSP_MESSAGE, fg="red", err=True)
+                raise click.exceptions.Exit(2) from e
             raise
-        raise typer.Exit(lsp_main())
+        raise click.exceptions.Exit(lsp_main())

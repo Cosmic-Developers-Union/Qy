@@ -2,14 +2,20 @@
 
 """`qy repl` 命令入口。."""
 
+from __future__ import annotations
+
 import atexit
+import sys
 from pathlib import Path
 from typing import Any
 
-import typer
+import click
 
 from qy.analysis import analyze_source
 from qy.cli._common import REPL_COMMANDS
+from qy.cli._common import diagnostic_color
+from qy.cli._common import secho
+from qy.cli._common import style
 from qy.display import format_value
 from qy.errors import QyError
 from qy.errors import format_qy_error
@@ -23,13 +29,13 @@ from qy.tools.fmt import format_source
 
 def repl(qy: Qy) -> int:
     _install_repl_readline(qy)
-    typer.secho("Qy interactive interpreter", fg=typer.colors.GREEN, bold=True)
-    typer.echo("Commands: .help .env .ast <expr> .fmt <expr> .check <expr> .exit")
+    secho("Qy interactive interpreter", bold=True)
+    secho("Commands: .help .env .ast <expr> .fmt <expr> .check <expr> .exit")
     while True:
         try:
             source = _read_repl_source()
         except (EOFError, KeyboardInterrupt):
-            typer.echo()
+            click.echo()
             return 0
 
         source = source.strip()
@@ -55,13 +61,13 @@ def repl(qy: Qy) -> int:
 
         try:
             for form in read(source):
-                typer.echo(format_value(qy.evaluate(form)))
+                click.echo(format_value(qy.evaluate(form)))
         except QyError as e:
-            typer.secho(format_qy_error(e), fg=typer.colors.RED, err=True)
+            secho(format_qy_error(e), fg="red", err=True)
 
 
 def _read_repl_source() -> str:
-    return input(f"{typer.style('qy>', fg=typer.colors.BLUE)} ")
+    return input(f"{style('qy>')} ")
 
 
 def _install_repl_readline(qy: Qy) -> None:
@@ -106,47 +112,46 @@ def _repl_completions(qy: Qy, text: str) -> list[str]:
 
 
 def _print_repl_help() -> None:
-    typer.echo("Enter qy expressions to evaluate them in the current session.")
-    typer.echo(".env          show bound symbols")
-    typer.echo(".ast <expr>   print the parsed syntax tree")
-    typer.echo(".fmt <expr>   print canonical qy formatting")
-    typer.echo(".check <expr> run analyzer diagnostics")
-    typer.echo(".exit         leave the interpreter")
+    click.echo("Enter qy expressions to evaluate them in the current session.")
+    click.echo(".env          show bound symbols")
+    click.echo(".ast <expr>   print the parsed syntax tree")
+    click.echo(".fmt <expr>   print canonical qy formatting")
+    click.echo(".check <expr> run analyzer diagnostics")
+    click.echo(".exit         leave the interpreter")
 
 
 def _print_environment(qy: Qy) -> None:
     for symbol in sorted(qy.env.bindings(), key=lambda item: item.name):
-        typer.echo(symbol.name)
+        click.echo(symbol.name)
 
 
 def _print_repl_ast(source: str) -> None:
     try:
-        typer.echo(dump_program(read_raw(source)))
+        click.echo(dump_program(read_raw(source)))
     except ReaderSyntaxError as e:
-        typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+        secho(f"error: {e}", fg="red", err=True)
 
 
 def _print_repl_format(source: str) -> None:
     try:
-        typer.echo(format_source(source), nl=False)
+        click.echo(format_source(source), nl=False)
     except ReaderSyntaxError as e:
-        typer.secho(f"error: {e}", fg=typer.colors.RED, err=True)
+        secho(f"error: {e}", fg="red", err=True)
 
 
 def _print_repl_check(source: str) -> None:
-    from qy.cli._common import diagnostic_color
-
     analysis = analyze_source(source)
     if not analysis.diagnostics:
-        typer.secho("ok", fg=typer.colors.GREEN)
+        secho("ok", fg="green")
         return
     for diagnostic in analysis.diagnostics:
-        typer.secho(diagnostic.message, fg=diagnostic_color(diagnostic), err=True)
+        secho(diagnostic.message, fg=diagnostic_color(diagnostic), err=True)
 
 
-def register(app: Any) -> None:
-    """将 repl 命令注册到给定的 typer 应用。."""
+def register(group: click.Group) -> None:
+    """将 repl 命令注册到给定的 click group。."""
 
-    @app.command("repl")
+    @group.command("repl")
     def repl_command() -> None:
-        raise typer.Exit(repl(Qy()))
+        """Start an interactive Qy session."""
+        sys.exit(repl(Qy()))
