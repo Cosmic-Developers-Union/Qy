@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "skills": {
+    "cli-guide-zh": {
+      "source": "https://gitea.mms.vincentge.top/Ge/coder-skills.git",
+      "sourceUrl": "https://gitea.mms.vincentge.top/Ge/coder-skills.git",
+      "sourceType": "git",
+      "skillPath": "skills/cli-guide-zh/SKILL.md",
+      "computedHash": "1150ff340ac66847302703283f0ac863c11597f68cfc1437c95a50275aa84d6a"
+    }
+  }
+}
