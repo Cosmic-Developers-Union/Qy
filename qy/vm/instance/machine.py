@@ -761,6 +761,14 @@ async def evaluate_form_async(expression: object, env: Environment) -> object:
 
     session = PipelineSession(env=env)
     result = await compile_forms_to_bytecode_async([cast(Form, expression)], session)
+    if not result.success:
+        # Pipeline aborted (e.g., HIR/MIR/LIR validation produced errors). Surface
+        # the diagnostics as an EvaluationError rather than letting bytecode_artifact
+        # blow up with TypeError. This preserves the contract: bad input raises.
+        message = "; ".join(d.message for d in result.diagnostics if d.severity == "error")
+        if not message:
+            message = "compilation failed"
+        raise EvaluationError(message)
     bytecode = bytecode_artifact(result)
     vm = RegisterVirtualMachine(bytecode, env)
     results = await vm.evaluate_program()
@@ -808,6 +816,23 @@ def _raise_for_diagnostics(program: BytecodeProgram) -> None:
     diagnostics = tuple(item for item in program.diagnostics if item.severity == "error")
     if not diagnostics:
         return
+    # Prefer the most specific error. Unresolved-symbol diagnostics
+    # surface as QyResolveError so callers can branch on the precise type.
+    resolve_errors = tuple(d for d in diagnostics if d.message.startswith("unresolved symbol "))
+    if resolve_errors:
+        from qy.errors import QyResolveError
+        from qy.errors import SourceSpan
+        from qy.errors import TraceFrame
+
+        first = resolve_errors[0]
+        symbol = first.message.removeprefix("unresolved symbol ").strip("'")
+        span = SourceSpan(start_line=first.line, start_column=first.column)
+        raise QyResolveError(
+            first.message,
+            span=span,
+            frames=(TraceFrame("call", None, span),),
+            metadata={"symbol": symbol},
+        )
     messages = "; ".join(item.message for item in diagnostics)
     raise QyRuntimeError(f"cannot execute bytecode with diagnostics: {messages}")
 

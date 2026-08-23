@@ -14,6 +14,7 @@ RAW_FORMS = "raw-forms"
 SURFACE_FORMS = "surface-forms"
 CORE_AST = "core-ast"
 HIR = "hir"
+HIR_VALIDATED = "hir-validated"
 MIR = "mir"
 LIR = "lir"
 BYTECODE = "bytecode"
@@ -25,6 +26,7 @@ ArtifactKind = Literal[
     "surface-forms",
     "core-ast",
     "hir",
+    "hir-validated",
     "mir",
     "lir",
     "bytecode",
@@ -52,6 +54,7 @@ __all__ = [
     "CORE_AST",
     "CST",
     "HIR",
+    "HIR_VALIDATED",
     "LIR",
     "MIR",
     "RAW_FORMS",

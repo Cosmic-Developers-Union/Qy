@@ -49,7 +49,21 @@ def verify_mir(program: MIRProgram) -> tuple[Diagnostic, ...]:
         )
     for function in program.functions:
         _verify_function(function, diagnostics)
+    # Phase 1 (formal-proofs): M9 / M10 由独立 predicates 模块提供
+    diagnostics.extend(_phase1_predicate_diagnostics(program))
     return tuple(diagnostics)
+
+
+def _phase1_predicate_diagnostics(program: MIRProgram) -> tuple[Diagnostic, ...]:
+    """Run M9 / M10 predicates introduced by the formal-proofs effort.
+
+    Kept as a thin wrapper so ``verify_mir`` stays the canonical public API
+    while the per-rule logic lives in :mod:`qy.ir.mir.predicates` where it
+    can be tested in isolation.
+    """
+    from qy.ir.mir.predicates import check_program as predicate_check_program
+
+    return predicate_check_program(program)
 
 
 def dump_mir(program: MIRProgram) -> str:

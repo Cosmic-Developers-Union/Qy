@@ -163,8 +163,10 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     scope = _scope_from_environment(context.env, root_space)
     scope = _predeclare_callable_definitions(tuple(forms), scope, context)
     body: list[IRExpr] = []
-    for index, form in enumerate(forms):
-        expr = _lower_form(form, scope, context, tail=index == len(forms) - 1)
+    for form in forms:
+        # Top-level forms are not in tail position; tail propagation starts from
+        # function / lambda / cond / pipeline bodies (see ir-spec.md §3.4 H5).
+        expr = _lower_form(form, scope, context, tail=False)
         body.append(expr)
         scope = _scope_after_form(form, expr, scope, context)
     return ProgramIR(tuple(body), tuple(context.diagnostics))

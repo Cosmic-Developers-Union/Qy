@@ -11,6 +11,7 @@ from qy.build.artifact import BYTECODE
 from qy.build.artifact import CORE_AST
 from qy.build.artifact import CST
 from qy.build.artifact import HIR
+from qy.build.artifact import HIR_VALIDATED
 from qy.build.artifact import LIR
 from qy.build.artifact import MIR
 from qy.build.artifact import RAW_FORMS
@@ -29,6 +30,7 @@ from qy.passes.frontend.cst_parse import CstParsePass
 from qy.passes.frontend.reader_macro import ReaderMacroPass
 from qy.passes.frontend.surface_normalize import SurfaceNormalizePass
 from qy.passes.hir.lower_pass import LowerHIRPass
+from qy.passes.hir.validate import ValidateHIRPass
 from qy.passes.lir.lower_pass import LowerLIRPass
 from qy.passes.lir.verify import VerifyLIRPass
 from qy.passes.macro.expand import MacroExpandPass
@@ -65,6 +67,7 @@ ARTIFACT_KIND_TO_TARGET_PASS: dict[str, str] = {
     SURFACE_FORMS: "frontend.surface_normalize",
     CORE_AST: "macro.expand",
     HIR: "hir.lower",
+    HIR_VALIDATED: "hir.validate",
     MIR: "mir.validate",
     LIR: "lir.verify",
     BYTECODE: "emit.bytecode",
@@ -78,6 +81,7 @@ def build_default_pipeline() -> Pipeline:
     pipeline.add_pass(SurfaceNormalizePass())
     pipeline.add_pass(MacroExpandPass())
     pipeline.add_pass(LowerHIRPass())
+    pipeline.add_pass(ValidateHIRPass())
     pipeline.add_pass(LowerMIRPass())
     pipeline.add_pass(ValidateMIRPass())
     pipeline.add_pass(LowerLIRPass())

@@ -147,7 +147,22 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                         )
 
         _verify_continuous_run(func, diagnostics)
+
+    # Phase 1 (formal-proofs): L2, L5..L12, L14 由独立 predicates 模块提供
+    diagnostics.extend(_phase1_predicate_diagnostics(program))
     return tuple(diagnostics)
+
+
+def _phase1_predicate_diagnostics(program: LIRProgram) -> tuple[Diagnostic, ...]:
+    """Run L2, L5..L12, L14 predicates introduced by the formal-proofs effort.
+
+    Kept as a thin wrapper so ``verify_lir`` stays the canonical public API
+    while the per-rule logic lives in :mod:`qy.ir.lir.predicates` where it
+    can be tested in isolation.
+    """
+    from qy.ir.lir.predicates import check_program as predicate_check_program
+
+    return predicate_check_program(program)
 
 
 def _verify_continuous_run(func: object, diagnostics: list[Diagnostic]) -> None:

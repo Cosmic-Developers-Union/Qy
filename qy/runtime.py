@@ -217,17 +217,22 @@ def _raise_on_diagnostics(diagnostics: tuple[object, ...]) -> None:
     )
     if not errors:
         return
-    if len(errors) == 1 and errors[0].message.startswith("unresolved symbol "):
-        symbol = errors[0].message.removeprefix("unresolved symbol ").strip("'")
-        span = SourceSpan(start_line=errors[0].line, start_column=errors[0].column)
+    # Surface the *first* error as QyResolveError if it's an unresolved-symbol
+    # diagnostic. Downstream LIR cascade errors ("main function index out of
+    # range") are noise from a failed upstream and should not mask the root
+    # cause. Tests in test_evaluator expect QyResolveError, not QyRuntimeError,
+    # when a source fails to resolve.
+    first = errors[0]
+    if first.message.startswith("unresolved symbol "):
+        symbol = first.message.removeprefix("unresolved symbol ").strip("'")
+        span = SourceSpan(start_line=first.line, start_column=first.column)
         raise QyResolveError(
-            errors[0].message,
+            first.message,
             span=span,
             frames=(TraceFrame("call", None, span),),
             metadata={"symbol": symbol},
         )
     messages = "; ".join(item.message for item in errors)
-    first = errors[0]
     raise QyRuntimeError(
         f"cannot evaluate program with diagnostics: {messages}",
         span=SourceSpan(start_line=first.line, start_column=first.column),
