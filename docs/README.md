@@ -14,6 +14,7 @@ This directory contains all design documents and technical documentation for QyL
 - [lir-spec.md](lir-spec.md) - LIR 正式 grammar / opcode（按 compat 与 abstract-machine dialect）/ layout / MIR → LIR 映射（规范真源）
 - [formal-semantics.md](formal-semantics.md) - IR 良构性谓词 + 管线保义定理（form-proofer plan 配套；Lean 4 骨架见 `formal/`）
 - [grammar-spec.md](grammar-spec.md) - 端到端语法规范（lexer → CST → raw AST → surface → core → HIR → MIR → LIR → bytecode）一站式 review
+- [core-language-semantics.md](core-language-semantics.md) - 核心语言严格语义（抽象语法 / 静态语义 / 小步操作语义 / 效果系统 / 模块系统）
 
 ## Language Design
 

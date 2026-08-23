@@ -1,8 +1,11 @@
 name = "QyLangFormal"
-defaultTargets = ["QyLangFormal"]
+defaultTargets = ["QyLangFormal", "QyLangCore"]
 
 [[lean_lib]]
 name = "QyLangFormal"
+
+[[lean_lib]]
+name = "QyLangCore"
 
 [lean]
 options = ["pp.unicode.fun", "warning.all"]
