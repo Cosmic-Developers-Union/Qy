@@ -198,3 +198,7 @@ demo:
 		echo "=== $${cmd} ==="; \
 		qy $${cmd} examples/hello.qy; \
 	done
+
+download-tlaplus:
+	mkdir -p tools
+	curl -L -o tools/tla2tools.jar https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar

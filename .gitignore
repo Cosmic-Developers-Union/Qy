@@ -367,3 +367,5 @@ bunfig.toml
 reports
 
 coverage*
+
+tools/tla2tools.jar
