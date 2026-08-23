@@ -2,7 +2,7 @@
 
 本文档给出 QyLang 核心语言的严格语义, 形式化为 Lean 4 类型定义与归纳谓词. 所谓核心语言, 是指宏展开之后、任何中间表示降级之前的语言形态. 核心语言是用户直接面对的语言的语义本体; 所有后续的 HIR、MIR、LIR、字节码都是对核心语言语义的不同实现策略, 不得反过来修改核心语言的语义.
 
-核心语言的语义包括三个层面: 抽象语法 (描述核心语言所承认的所有语法形态及其结构), 静态语义 (描述程序必须满足的良构条件、作用域规则、类型规则、效果声明规则), 动态语义 (描述良构程序在求值过程中如何一步一步地化简为最终结果, 以及如何处理控制流、并发、效果、模块).
+核心语言的语义包括三个层面: 抽象语法 (描述核心语言所承认的所有语法形态及其结构), 静态语义 (描述程序必须满足的良构条件、作用域规则、类型规则、效果声明规则), 动态语义 (描述良构程序在求值过程中如何一步一步地化简为最终结果, 以及如何处理控制流、并发、效果、模块), 可观察行为 (在化简基础上累积 trace, 形成 Behavior 集合, 支撑后续的行为等价性).
 
 本文档的语义模型刻意保持精简. 整个求值模型建立在两个相互独立的抽象之上: 符号空间与符号空间链描述绑定与作用域; 虚拟栈与延续描述控制流与效果. 不引入传统的环境-闭包二元模型, 所有函数值都用符号空间链建模; 不引入传统的异常模型, 所有效果都用符号空间链上的受控跳转建模. 这种统一性是核心语言设计的核心追求.
 
@@ -386,3 +386,125 @@ end Inv
 ```
 
 不变量 1 与 6 已给出完整实现. 不变量 3, 4, 5 为占位实现 (`True`), 后续工作补全: 求值确定性需要证明等价化简的传递性, 多分支恢复需要形式化延续复制语义, 类型契约需要递归检查所有调用表达式的签名匹配.
+
+---
+
+## §11 可观察行为 (Trace Semantics)
+
+化简规则之上叠加 trace: 每次化简产生 0 或 1 个 `Event`, 多步化简累积成 trace. 程序的所有可能 (trace, outcome) 对构成 `Behavior` 集合, 这是行为等价 (behavioral equivalence) 的基础.
+
+### 11.1 错误种类与事件
+
+`ErrKind` 枚举全部可观察错误: `unresolved`, `pendingValue`, `unhandledEffect`, `assertFail`, `typeMismatch`, `arityMismatch`. `Event` 归纳覆盖核心语言的全部可观察动作: 符号读 (命中 / 未解析 / 挂起), `define` 完成, `perform` 触发 / 分派 / 未处理, 处理器进入 / 退出, 函数调用进入 / 返回, 模块进入 / 退出, `from` 折叠, `resume` 恢复, `assert` 失败.
+
+### 11.2 终止形态
+
+`outcome` 归纳程序终止的三种形态: `.ok v` (正常终止, 返回值 `v`), `.err k` (错误终止, 携带 `ErrKind`), `.div` (非终止 / 发散).
+
+### 11.3 执行关系
+
+`Exec` 是 `Cfg → List Event → outcome → Prop` 的归纳谓词, 把化简规则与 trace 累积联系起来:
+
+```lean
+inductive Exec : Cfg → List Event → outcome → Prop where
+  | terminal   -- 当前配置栈与处理器栈同时为空, 程序正常终止
+  | failure    -- 配置处于错误状态 (.term .sym "_unresolved_" 等), 错误终止
+  | step       -- 单步化简产生一个事件, 累积后继续执行
+  | silent     -- 单步静默化简, 不产生事件, 继续执行
+```
+
+每次化简通过 `actionOf` 映射到 `Action.step e` 或 `Action.silent`, 然后在 `Exec` 中累积或跳过.
+
+### 11.4 Behavior 集合
+
+`Program` 是顶层程序 (顶层 `Form` + 顶层 `SSC` + 顶层空栈/处理器栈). `Program.toCfg` 构造初始配置. `Behavior` 以谓词形式给出 (Lean 4 core 无 `Set`):
+
+```lean
+def Behavior (p : Program) (pair : List Event × outcome) : Prop :=
+  ∃ tr o, Exec (Program.toCfg p) tr o ∧ pair = (tr, o)
+```
+
+派生谓词:
+
+```lean
+def Program.canTerminate (p : Program) : Prop :=
+  ∃ tr v, Exec (Program.toCfg p) tr (.ok v)
+
+def Program.canDiverge (p : Program) : Prop :=
+  ∃ tr, Exec (Program.toCfg p) tr outcome.div
+
+def Program.canError (p : Program) (k : ErrKind) : Prop :=
+  ∃ tr, Exec (Program.toCfg p) tr (.err k)
+```
+
+### 11.5 设计意图
+
+`Behavior` 是程序语义的外延: 不问"程序如何求值", 只问"程序可能产生哪些事件序列, 以何种方式终止". 这一外延视角使得后续可以定义:
+
+- 行为等价: `p₁ ~ p₂ := Behavior(p₁) = Behavior(p₂)`
+- 行为蕴含: `p₁ ≤ p₂ := Behavior(p₁) ⊆ Behavior(p₂)`
+- 安全性质: 对任意 `Behavior(p)`, trace 满足某谓词
+- 活性性质: 对任意 `Behavior(p)`, 程序最终终止于某 outcome
+
+`actionOf` 按 c → c' 的形式判定产生哪个 Event, 已覆盖 `symRefDone` (→ `symReadOk`) 与 `symRefPending` (→ `symReadPending`) 两种情形. 其余化简规则返回 `Action.silent`, 后续按需扩展.
+
+---
+
+## §12 多步执行, 行为等价, 精化
+
+```lean
+inductive Steps : Cfg → Cfg → Prop where
+  | refl (c : Cfg) : Steps c c
+  | step (c c' c'' : Cfg) : Steps c c' → StepNS.Step c' c'' → Steps c c''
+
+def Equivalent (p q : Program) : Prop :=
+  ∀ pair, Behavior p pair ↔ Behavior q pair
+
+def Refines (p q : Program) : Prop :=
+  ∀ pair, Behavior p pair → Behavior q pair
+```
+
+`Equivalent` 要求双方行为完全相同; `Refines` 单向蕴含, 更适合 compiler correctness (优化的每个行为都必须是源程序允许的行为).
+
+---
+
+## §13 核心定理
+
+陈述 6 条核心定理. 其中 3 条已 machine-checkable 证明, 3 条用 `sorry` 占位 (完整证明需对各归纳谓词做深度归纳).
+
+### 已证明
+
+```lean
+theorem behavior_terminal (p) (tr) (v) (hstack) (hhand) :
+    Behavior p (tr, .ok v) := by
+  refine ⟨tr, .ok v, ?_, rfl⟩
+  exact Exec.terminal (Program.toCfg p) tr v ⟨hstack, hhand⟩
+
+theorem progress_sym (ssc) (sym) (slot) (h) (hv) :
+    ∃ cfg', StepNS.Step
+      { code := .syn (.term (.sym sym)), ssc, stack := [], handlers := [] }
+      cfg' := by
+  refine ⟨{ code := .val (Val.sym (SymVal.mk (toString sym ++ "_" ++ toString 0))), ... }, ?_⟩
+  exact StepNS.Step.prim (StepNS.Prim.symRefDone ... h hv)
+
+theorem preservation_sym_done (...) :
+    Code.isValue (.val (Val.sym (SymVal.mk (toString sym ++ "_" ++ toString 0)))) := by
+  trivial
+```
+
+`behavior_terminal` 直接构造 `Exec.terminal`. `progress_sym` 与 `preservation_sym_done` 给出 `symRefDone` 化简规则的具体 Progress 与 Preservation 证明.
+
+### 用 `sorry` 占位
+
+```lean
+theorem progress (ssc) (f) (hWF) :
+    Code.isValue (.syn f) ∨ ∃ f', StepNS.Step ... := by sorry
+
+theorem preservation (c c') (ssc) (f f') (hWF) ... :
+    StepNS.Step c c' → WF ssc f' := by sorry
+
+theorem lowering_refines (lower) (p) :
+    Refines (lower p) p := by sorry
+```
+
+这三条是 general 形式的 Progress / Preservation / Refinement. 完整证明需要对 `WellScoped` / `StepNS.Step` / 降级函数做深度归纳. 当前的 `sorry` 占位已足以让整个工程 machine-check 通过 (`lake build` 成功).
