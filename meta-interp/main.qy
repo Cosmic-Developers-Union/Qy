@@ -1,168 +1,49 @@
-;; meta-interp/main.qy
+;; meta-interp/main.qy — Qy meta-circular evaluator.
+;; Strategy: Python host pre-tokenizes source; Qy evals the token list.
+;; Tokens are encoded as nested chains:
+;;   (quote SYM "name")      ; symbol
+;;   (quote NUM "123")       ; number (decimal text)
+;;   (quote STR "hello")     ; string
+;;   (quote LPAREN) (quote RPAREN) (quote QUOTE)
+;;   symbol                  ; nested list element
 ;;
-;; Strategy:
-;;   - parse source string into chain of forms
-;;   - eval each form in a single chained environment
-;;   - rely on top-level output (no print) to avoid print-bug
+;; Tokenizer is in Python (run_host.py); eval is in Qy.
 
-(print "meta-interp loaded")
-
-;; Import string/char ops needed by tokenizer/parser.
-(from qy.str import string-empty? string-slice string-length string-at string-find string=
-  string-concat string->symbol)
-(from qy.char import char-whitespace? char-numeric? char=? char->integer integer->char)
+;; === string->integer helper ===
+(from qy.str import
+  string-empty? string-slice string-length string-at string-find
+  string= string-concat string->symbol)
+(from qy.char import
+  char-whitespace? char-numeric? char=? char->integer integer->char)
 (from qy.core import atom type)
 (from qy.num import + -)
 (from qy.num import =)
 (from qy.num import >)
 (from qy.num import <)
 
-;; === reverse ===
-(define reverse-acc
-  (lambda (lst acc)
-    (cond
-      ((eq lst nil) acc)
-      (true
-        (reverse-acc (cdr lst) (cons (car lst) acc))))))
-
-(define reverse (lambda (lst) (reverse-acc lst nil)))
-
-;; === string->integer helper ===
-;; Convert a numeric string to a Qy integer using char arithmetic.
-;; (q.num has no direct string->int, so we build it digit-by-digit.)
-
-(define digit-value
+(define digit-of
   (lambda (c)
     (- (char->integer c) (char->integer (integer->char 0)))))
 
-(define string->int-aux
+(define parse-integer
+  (lambda (s)
+    (parse-integer-loop s (- (string-length s) 1) 0)))
+
+(define parse-integer-loop
   (lambda (s i acc)
     (cond
       ((string-empty? s) acc)
+      ((= i 0) (digit-of (string-at s 0)))
       (true
-        (cond
-          ((= i 0) (digit-value (string-at s 0)))
-          (true
-            (string->int-aux
-              (string-slice s 1 nil)
-              (- i 1)
-              (+ (* acc 10) (digit-value (string-at s 0))))))))))
+        (parse-integer-loop
+          (string-slice s 1 nil)
+          (- i 1)
+          (+ (* acc 10) (digit-of (string-at s 0))))))))
 
-(define string->integer-qy
-  (lambda (s)
-    (string->int-aux s (- (string-length s) 1) 0)))
-(define skip-spaces
-  (lambda (src)
-    (cond
-      ((string-empty? src) src)
-      ((char-whitespace? (string-at src 0))
-       (skip-spaces (string-slice src 1 nil)))
-      (true src))))
-
-;; === atom-delimiter? ===
-(define atom-delimiter?
-  (lambda (c)
-    (cond
-      ((char-whitespace? c) true)
-      ((char=? c (integer->char 40)) true)
-      ((char=? c (integer->char 41)) true)
-      ((char=? c (integer->char 34)) true)
-      ((char=? c (integer->char 39)) true)
-      (true nil))))
-
-;; === find-atom-end ===
-(define find-atom-end
-  (lambda (src i)
-    (cond
-      ((>= i (string-length src)) i)
-      ((atom-delimiter? (string-at src i)) i)
-      (true (find-atom-end src (+ i 1))))))
-
-;; === all-numeric? ===
-(define all-numeric?
-  (lambda (text)
-    (cond
-      ((string-empty? text) true)
-      (true
-        (let ((c (string-at text 0)))
-          (cond
-            ((char-numeric? c) (all-numeric? (string-slice text 1 nil)))
-            (true nil)))))))
-
-;; === read-atom ===
-(define read-atom
-  (lambda (src)
-    (let ((end (find-atom-end src 0)))
-      (cond
-        ((= end 0)
-         (cons (cons 'SYM "|err|") (string-slice src 1 nil)))
-        (true
-          (let ((text (string-slice src 0 end))
-                (rest (string-slice src end nil)))
-            (cond
-              ((all-numeric? text)
-               (cons (cons 'NUM (string->integer-qy text)) rest))
-              (true (cons (cons 'SYM text) rest)))))))))
-
-;; === tokenize-after ===
-(define tokenize-after
-  (lambda (src acc)
-    (let ((src (skip-spaces src)))
-      (cond
-        ((string-empty? src) (reverse acc))
-        ((string= (string-slice src 0 1) "(")
-         (tokenize-after (string-slice src 1 nil) (cons '(LPAREN) acc)))
-        ((string= (string-slice src 0 1) ")")
-         (tokenize-after (string-slice src 1 nil) (cons '(RPAREN) acc)))
-        ((string= (string-slice src 0 1) "'")
-         (tokenize-after (string-slice src 1 nil) (cons '(QUOTE) acc)))
-        (true
-          (let ((r (read-atom src)))
-            (tokenize-after (cdr r) (cons (car r) acc))))))))
-
-(define tokenize (lambda (src) (tokenize-after src nil)))
-
-;; === parser ===
-(define parse-all-acc
-  (lambda (tokens acc)
-    (cond
-      ((eq tokens nil) (reverse acc))
-      (true
-        (let ((r (parse-one tokens)))
-          (parse-all-acc (car (cdr r)) (cons (car r) acc)))))))
-
-(define parse-one
-  (lambda (tokens)
-    (let ((tok (car tokens)))
-      (cond
-        ((eq tok '(QUOTE))
-         (let ((inner (parse-one (cdr tokens))))
-           (cons (cons 'quote (cons (car inner) nil)) (car (cdr inner)))))
-        ((eq tok '(LPAREN)) (parse-list (cdr tokens) nil))
-        ((eq (car tok) 'SYM) (cons (string->symbol (cdr tok)) (cdr tokens)))
-        ((eq (car tok) 'NUM) (cons (cdr tok) (cdr tokens)))
-        (true (cons '|err| tokens))))))
-
-(define parse-list
-  (lambda (tokens acc)
-    (let ((tok (car tokens)))
-      (cond
-        ((eq tok '(RPAREN)) (cons (reverse acc) (cdr tokens)))
-        ((eq tok '(QUOTE))
-         (let ((inner (parse-one (cdr tokens))))
-           (parse-list (car (cdr inner)) (cons (cons 'quote (cons (car inner) nil)) acc))))
-        (true
-          (let ((item (parse-one tokens)))
-            (parse-list (car (cdr item)) (cons (car item) acc))))))))
-
-(define parse-all (lambda (tokens) (parse-all-acc tokens nil)))
-(define parse (lambda (src) (parse-all (tokenize src))))
-
-;; === evaluator (functional env threading) ===
-;; Qy has no `set!` operator — bindings are immutable in source. We thread
-;; the env explicitly through eval: each eval-form returns (value . new-env)
-;; as a cons cell. eval-forms extracts the value for display and threads
-;; the new env.
+;; === evaluator core ===
+;; env: chain of (name . value) frames; threading via (value . new-env) pair.
+;; token: one of (SYM "name"), (NUM "text"), (STR "text"),
+;;        (LPAREN), (RPAREN), (QUOTE), or a nested chain of tokens.
 
 (define env-lookup-frame
   (lambda (sym frame)
@@ -185,277 +66,347 @@
   (lambda (env name value)
     (cons (cons name value) (car env))))
 
-(define env-define-extend
-  (lambda (env name value-form-result)
-    (cons (car value-form-result)
-          (env-extend (cdr value-form-result) name (car value-form-result)))))
-
 (define make-env (lambda () (cons nil nil)))
 
-(define truthy?
-  (lambda (v) (cond ((eq v nil) nil) (true v))))
+;; === apply-list-+ and apply-list-* (operate on chain of values) ===
+(define apply-list-+
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 0)
+      ((eq (cdr vals) nil) (car vals))
+      (true (+ (car vals) (apply-list-+ (cdr vals)))))))
+
+(define apply-list-*
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 1)
+      ((eq (cdr vals) nil) (car vals))
+      (true (* (car vals) (apply-list-* (cdr vals)))))))
+
+;; === eval-args (eval each token in args) ===
+(define eval-args
+  (lambda (args env)
+    (cond
+      ((eq args nil) nil)
+      (true (cons (eval-token (car args) env) (eval-args (cdr args) env))))))
+
+;; === token-classify ===
+(define token-quote?
+  (lambda (tok)
+    (and-token-is tok (quote QUOTE))))
+
+(define token-lparen?
+  (lambda (tok)
+    (and-token-is tok (quote LPAREN))))
+
+(define token-rparen?
+  (lambda (tok)
+    (and-token-is tok (quote RPAREN))))
+
+(define token-sym?
+  (lambda (tok)
+    (and-token-is tok (quote SYM))))
+
+(define token-num?
+  (lambda (tok)
+    (and-token-is tok (quote NUM))))
+
+(define token-str?
+  (lambda (tok)
+    (and-token-is tok (quote STR))))
+
+(define and-token-is
+  (lambda (tok tag)
+    (cond
+      ((eq (type tok) (quote pair))
+       (and-pair-eq (car tok) (cons tag (cons (cdr tok) nil))))
+      (true nil))))
+
+(define and-pair-eq
+  (lambda (a b)
+    (cond
+      ((eq a b) true)
+      (true nil))))
+
+;; === token kind dispatch ===
+(define token-kind
+  (lambda (tok)
+    (cond
+      ((eq (type tok) (quote pair)) (car (car tok)))
+      (true (quote ATOM)))))
+
+;; (token-text tok) — get the raw text or value from a wrapped token.
+(define token-text
+  (lambda (tok)
+    (cond
+      ((eq (type tok) (quote pair)) (cdr (car tok)))
+      (true tok))))
+
+(define token->sym
+  (lambda (tok) (string->symbol (cdr (car tok)))))
+
+(define token->str-val
+  (lambda (tok) (cdr (car tok))))
+
+;; === eval-token-result: token × env → (value . env) ===
+;; Returns (value . new-env) pair to support define without set!.
+(define eval-token-result
+  (lambda (tok env)
+    (cond
+      ((token-sym? tok)
+       (cons (env-lookup (token->sym tok) env) env))
+      ((token-num? tok)
+       (cons (parse-integer (token-text tok)) env))
+      ((token-str? tok)
+       (cons (token->str-val tok) env))
+      ((token-quote? tok)
+       (eval-quoted-target (cdr tok) env))
+      ((token-lparen? tok)
+       (eval-call-result (cdr tok) env))
+      (true
+       (cond
+         ((eq (type tok) (quote pair))
+          ;; nested chain (no leading LPAREN); treat as call.
+          (eval-call-result tok env))
+         (true (cons tok env)))))))
+
+(define eval-quoted-target
+  (lambda (toks env)
+    (cond
+      ((eq toks nil) (cons nil env))
+      (true
+        (let ((r (eval-token-result (car toks) env)))
+          (cons (cons (quote quote) (cons (car r) nil)) (cdr r)))))))
+
+;; === eval-call-result: token list × env → (value . env) ===
+;; The token list is the args (not including LPAREN).
+(define eval-call-result
+  (lambda (toks env)
+    (let ((op (car toks)))
+      (cond
+        ((token-sym? op)
+         (eval-op (token->sym op) (cdr toks) env))
+        (true
+          ;; First token isn't a symbol; evaluate it then apply.
+          (let ((r (eval-token-result op env)))
+            (cons (eval-form-from-val (car r) (cdr toks) env) (cdr r))))))))
+
+(define eval-op
+  (lambda (op args env)
+    (cond
+      ((eq op (quote quote)) (cons (car args) env))
+      ((eq op (quote +)) (cons (apply-list-+ (eval-args args env)) env))
+      ((eq op (quote *)) (cons (apply-list-* (eval-args args env)) env))
+      ((eq op (quote -)) (eval-minus args env))
+      ((eq op (quote =)) (cons (= (eval-token-result (car args) env)
+                                  (eval-token-result (car (cdr args)) env))
+                              env))
+      ((eq op (quote <)) (cons (< (eval-token-result (car args) env)
+                                  (eval-token-result (car (cdr args)) env))
+                              env))
+      ((eq op (quote >)) (cons (> (eval-token-result (car args) env)
+                                  (eval-token-result (car (cdr args)) env))
+                              env))
+      ((eq op (quote car)) (eval-unary-car args env))
+      ((eq op (quote cdr)) (eval-unary-cdr args env))
+      ((eq op (quote cons)) (eval-cons args env))
+      ((eq op (quote define)) (eval-define args env))
+      ((eq op (quote lambda)) (eval-lambda args env))
+      ((eq op (quote if)) (eval-if args env))
+      ((eq op (quote cond)) (eval-cond args env))
+      (true
+        (let ((r (eval-token-result (car args) env)))
+          (cond
+            ((closure? (car r))
+             (cons (apply-closure (car r) (eval-args (cdr args) env))
+                   (cdr r)))
+            (true (cons (car r) (cdr r)))))))))
+
+;; === eval-token (just returns value) ===
+(define eval-token
+  (lambda (tok env)
+    (car (eval-token-result tok env))))
+
+;; === eval-minus: (- x) or (- x y) ===
+(define eval-minus
+  (lambda (args env)
+    (cond
+      ((eq (cdr args) nil)
+       (cons (- 0 (eval-token-result (car args) env)) env))
+      (true
+        (let ((a (eval-token-result (car args) env))
+              (b (eval-token-result (car (cdr args)) env)))
+          (cons (- (car a) (car b)) env))))))
+
+;; === eval-cons ===
+(define eval-cons
+  (lambda (args env)
+    (let ((a (eval-token-result (car args) env))
+          (b (eval-token-result (car (cdr args)) env)))
+      (cons (cons (car a) (car b)) env))))
+
+(define eval-unary-car
+  (lambda (args env)
+    (let ((r (eval-token-result (car args) env)))
+      (cons (car (car r)) (cdr r)))))
+
+(define eval-unary-cdr
+  (lambda (args env)
+    (let ((r (eval-token-result (car args) env)))
+      (cons (cdr (car r)) (cdr r)))))
+
+;; === eval-define ===
+;; (define name expr) — evaluate expr, extend env, return the value.
+;; Use a helper to avoid let-body tail call.
+(define eval-define
+  (lambda (args env)
+    (let ((r (eval-token-result (car (cdr args)) env)))
+      (define-extend-helper (car args) (car r) (cdr r)))))
+
+(define define-extend-helper
+  (lambda (name value env)
+    (cons value (env-extend env name value))))
+
+;; === eval-lambda ===
+;; (lambda (params...) body) — produce a CLOSURE.
+(define eval-lambda
+  (lambda (args env)
+    (cons (cons (quote CLOSURE)
+                (cons (car args)
+                      (cons (car (cdr args))
+                            (cons env nil))))
+          env)))
+
+;; === eval-form-from-val: a value applied to args (handles closure case) ===
+(define eval-form-from-val
+  (lambda (val args env)
+    (cond
+      ((closure? val)
+       (cons (apply-closure val (eval-args args env)) env))
+      (true (cons val env)))))
 
 (define closure?
-  (lambda (v) (cond ((eq (type v) 'pair) (eq (car v) 'CLOSURE)) (true nil))))
+  (lambda (v)
+    (cond
+      ((eq (type v) (quote pair)) (eq (car v) (quote CLOSURE)))
+      (true nil))))
 
 (define closure-params (lambda (c) (car (cdr c))))
 (define closure-body (lambda (c) (car (cdr (cdr c)))))
 (define closure-env (lambda (c) (car (cdr (cdr (cdr c))))))
 
-;; Non-result-returning helpers (only need value):
-(define map-eval
-  (lambda (forms env)
-    (cond
-      ((eq forms nil) nil)
-      (true (cons (eval-form (car forms) env) (map-eval (cdr forms) env))))))
-
-(define eval-form
-  (lambda (form env)
-    (cond
-      ((eq (type form) 'symbol) (env-lookup form env))
-      ((eq (type form) 'pair) (eval-call form env))
-      (true form))))
-
-(define eval-call
-  (lambda (form env)
-    (let ((op (car form)) (args (cdr form)))
-      (cond
-        ((eq op 'quote) (car args))
-        ((eq op '+) (apply-+ (map-eval args env)))
-        ((eq op '-)
-         (cond
-           ((eq (cdr args) nil) (- 0 (eval-form (car args) env)))
-           (true (- (eval-form (car args) env) (eval-form (car (cdr args)) env)))))
-        ((eq op '*) (apply-* (map-eval args env)))
-        ((eq op 'if)
-         (cond
-           ((truthy? (eval-form (car args) env)) (eval-form (car (cdr args)) env))
-           (true (eval-form (car (cdr (cdr args))) env))))
-        ((eq op 'cond) (eval-cond args env))
-        ((eq op '=) (= (eval-form (car args) env) (eval-form (car (cdr args)) env)))
-        ((eq op 'eq?) (eq (eval-form (car args) env) (eval-form (car (cdr args)) env)))
-        (true
-          (let ((fn (eval-form op env)))
-            (cond
-              ((closure? fn) (apply-closure fn (map-eval args env)))
-              (true (apply-builtin fn (map-eval args env))))))))))
-
-(define apply-+
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 0)
-      ((eq (cdr vals) nil) (car vals))
-      (true (+ (car vals) (apply-+ (cdr vals)))))))
-
-(define apply-*
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 1)
-      ((eq (cdr vals) nil) (car vals))
-      (true (* (car vals) (apply-* (cdr vals)))))))
-
-(define eval-cond
-  (lambda (clauses env)
-    (cond
-      ((eq clauses nil) nil)
-      (true
-        (let ((cl (car clauses)))
-          (cond
-            ((truthy? (eval-form (car cl) env)) (eval-form (car (cdr cl)) env))
-            (true (eval-cond (cdr clauses) env))))))))
-
+;; === apply-closure (helper to avoid let-body tail call) ===
 (define apply-closure
   (lambda (closure vals)
-    (bind-and-eval (closure-params closure) vals (closure-env closure) (closure-body closure))))
+    (apply-closure-step1 (closure-params closure) vals
+                         (closure-env closure) (closure-body closure))))
+
+(define apply-closure-step1
+  (lambda (params vals env body)
+    (bind-and-eval params vals env body)))
 
 (define bind-and-eval
   (lambda (params vals env body)
     (cond
-      ((eq params nil) (eval-form body env))
+      ((eq params nil) (eval-token body env))
       (true
-        (bind-and-eval (cdr params) (cdr vals)
-                       (env-extend env (car params) (car vals))
-                       body)))))
+        (bind-and-eval-step (car params) (car vals) (cdr params) (cdr vals) env body)))))
 
-(define apply-builtin
-  (lambda (fn vals) nil))
+(define bind-and-eval-step
+  (lambda (p v params vals env body)
+    (bind-and-eval params vals (env-extend env p v) body)))
 
-;; eval-result-aux: forms × env × last → (last-value . final-env)
-;; (defined after eval-call-result)
-
-(define eval-result
-  (lambda (form env)
-    (cond
-      ((eq (type form) 'symbol) (cons (env-lookup form env) env))
-      ((eq (type form) 'pair) (eval-call-result form env))
-      (true (cons form env)))))
-
-(define eval-call-result
-  (lambda (form env)
-  (lambda (form env)
-    (let ((op (car form)) (args (cdr form)))
+;; === eval-if: (if cond then else) ===
+(define eval-if
+  (lambda (args env)
+    (let ((cond-v (eval-token-result (car args) env)))
       (cond
-        ((eq op 'quote) (cons (car args) env))
-        ((eq op '+) (cons (apply-+ (map-eval args env)) env))
-        ((eq op '-)
-         (cond
-           ((eq (cdr args) nil) (cons (- 0 (eval-form (car args) env)) env))
-           (true (cons (- (eval-form (car args) env)
-                          (eval-form (car (cdr args)) env)) env))))
-        ((eq op '*) (cons (apply-* (map-eval args env)) env))
-        ((eq op 'define)
-         (env-define-extend env (car args) (eval-result (car (cdr args)) env))))
-        ((eq op 'lambda)
-         (cons (cons 'CLOSURE (cons (car args) (cons (car (cdr args)) (cons env nil))))
-               env))
-        ((eq op 'if)
-         (cond
-           ((truthy? (eval-form (car args) env))
-            (eval-result (car (cdr args)) env))
-           (true (eval-result (car (cdr (cdr args))) env))))
-        ((eq op 'cond) (eval-cond-result args env))
-        ((eq op '=) (cons (= (eval-form (car args) env) (eval-form (car (cdr args)) env)) env))
-        ((eq op 'eq?) (cons (eq (eval-form (car args) env) (eval-form (car (cdr args)) env)) env))
-        (true
-          (let ((fn (eval-form op env)))
-            (cond
-              ((closure? fn) (apply-closure fn (map-eval args env)))
-              (true (apply-builtin fn (map-eval args env)))))))))
+        ((eq (car cond-v) nil)
+         (eval-token-result (car (cdr (cdr args))) env))
+        (true (eval-token-result (car (cdr args)) env))))))
 
-(define eval-call-result
-  (lambda (form env)
-    (let ((op (car form)) (args (cdr form)))
-      (cond
-        ((eq op 'quote) (cons (car args) env))
-        ((eq op '+) (cons (apply-+ (map-eval args env)) env))
-        ((eq op '-)
-         (cond
-           ((eq (cdr args) nil) (cons (- 0 (eval-form (car args) env)) env))
-           (true (cons (- (eval-form (car args) env)
-                          (eval-form (car (cdr args)) env)) env))))
-        ((eq op '*) (cons (apply-* (map-eval args env)) env))
-        ((eq op 'define)
-         (env-define-extend env (car args) (eval-result (car (cdr args)) env))))
-        ((eq op 'lambda)
-         (cons (cons 'CLOSURE (cons (car args) (cons (car (cdr args)) (cons env nil))))
-               env))
-        ((eq op 'if)
-         (cond
-           ((truthy? (eval-form (car args) env))
-            (eval-result (car (cdr args)) env))
-           (true (eval-result (car (cdr (cdr args))) env))))
-        ((eq op 'cond) (eval-cond-result args env))
-        ((eq op '=) (cons (= (eval-form (car args) env) (eval-form (car (cdr args)) env)) env))
-        ((eq op 'eq?) (cons (eq (eval-form (car args) env) (eval-form (car (cdr args)) env)) env))
-        (true
-          (let ((fn (eval-form op env)))
-            (cond
-              ((closure? fn) (apply-closure fn (map-eval args env)))
-              (true (apply-builtin fn (map-eval args env)))))))))
-
-;; Non-result-returning helpers (only need value):
-(define map-eval
-  (lambda (forms env)
-    (cond
-      ((eq forms nil) nil)
-      (true (cons (eval-form (car forms) env) (map-eval (cdr forms) env))))))
-
-(define eval-form
-  (lambda (form env)
-    (cond
-      ((eq (type form) 'symbol) (env-lookup form env))
-      ((eq (type form) 'pair) (eval-call form env))
-      (true form)))))
-
-(define eval-call
-  (lambda (form env)
-    (let ((op (car form)) (args (cdr form)))
-      (cond
-        ((eq op 'quote) (car args))
-        ((eq op '+) (apply-+ (map-eval args env)))
-        ((eq op '-)
-         (cond
-           ((eq (cdr args) nil) (- 0 (eval-form (car args) env)))
-           (true (- (eval-form (car args) env) (eval-form (car (cdr args)) env)))))
-        ((eq op '*) (apply-* (map-eval args env)))
-        ((eq op 'if)
-         (cond
-           ((truthy? (eval-form (car args) env)) (eval-form (car (cdr args)) env))
-           (true (eval-form (car (cdr (cdr args))) env))))
-        ((eq op 'cond) (eval-cond args env))
-        ((eq op '=) (= (eval-form (car args) env) (eval-form (car (cdr args)) env)))
-        ((eq op 'eq?) (eq (eval-form (car args) env) (eval-form (car (cdr args)) env)))
-        (true
-          (let ((fn (eval-form op env)))
-            (cond
-              ((closure? fn) (apply-closure fn (map-eval args env)))
-              (true (apply-builtin fn (map-eval args env))))))))))
-
-(define apply-+
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 0)
-      ((eq (cdr vals) nil) (car vals))
-      (true (+ (car vals) (apply-+ (cdr vals)))))))
-
-(define apply-*
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 1)
-      ((eq (cdr vals) nil) (car vals))
-      (true (* (car vals) (apply-* (cdr vals)))))))
-
+;; === eval-cond ===
 (define eval-cond
-  (lambda (clauses env)
-    (cond
-      ((eq clauses nil) nil)
-      (true
-        (let ((cl (car clauses)))
-          (cond
-            ((truthy? (eval-form (car cl) env)) (eval-form (car (cdr cl)) env))
-            (true (eval-cond (cdr clauses) env))))))))
-
-(define eval-cond-result
   (lambda (clauses env)
     (cond
       ((eq clauses nil) (cons nil env))
       (true
         (let ((cl (car clauses)))
-          (cond
-            ((truthy? (eval-form (car cl) env))
-             (eval-result (car (cdr cl)) env))
-            (true (eval-cond-result (cdr clauses) env))))))))
-
-(define apply-closure
-  (lambda (closure vals)
-    (bind-and-eval (closure-params closure) vals (closure-env closure) (closure-body closure))))
-
-(define bind-and-eval
-  (lambda (params vals env body)
-    (cond
-      ((eq params nil) (eval-form body env))
-      (true
-        (bind-and-eval (cdr params) (cdr vals)
-                       (env-extend env (car params) (car vals))
-                       body)))))
-
-(define apply-builtin
-  (lambda (fn vals) nil))
+          (let ((cv (eval-token-result (car cl) env)))
+            (cond
+              ((eq (car cv) nil)
+               (eval-cond (cdr clauses) env))
+              (true (eval-token-result (car (cdr cl)) env)))))))))
 
 ;; === driver ===
-
-(define eval-result-aux
+;; eval-forms: walk forms, thread env, return last value.
+(define eval-forms-helper
   (lambda (forms env last)
     (cond
-      ((eq forms nil) (cons last env))
+      ((eq forms nil) last)
       (true
-        (eval-result-aux
-          (cdr forms)
-          (cdr (eval-result (car forms) env))
-          (car (eval-result (car forms) env)))))))
+        (let ((r (eval-token-result (car forms) env)))
+          (eval-forms-helper (cdr forms) (cdr r) (car r)))))))
 
-(define meta-run
+;; === Tokenizer (Python supplies tokens, but we also have a built-in for tests) ===
+;; For self-test, expect tokens via meta-run-internal.
+
+;; Tokenize a string into Qy's internal format using the same algorithm
+;; as Python's tokenizer.
+(define tokenize-string
   (lambda (src)
-    (let ((env (make-env)))
-      (let ((final (eval-result-aux (parse src) env nil)))
-        (car final)))))
+    (cond
+      ((string-empty? src) nil)
+      ((string= (string-slice src 0 1) "(")
+       (cons (cons (quote LPAREN) (cons (string-slice src 0 1) nil))
+             (tokenize-string (string-slice src 1 nil))))
+      ((string= (string-slice src 0 1) ")")
+       (cons (cons (quote RPAREN) (cons (string-slice src 0 1) nil))
+             (tokenize-string (string-slice src 1 nil))))
+      ((string= (string-slice src 0 1) "'")
+       (cons (cons (quote QUOTE) (cons (string-slice src 0 1) nil))
+             (tokenize-string (string-slice src 1 nil))))
+      (true
+        (let ((end (find-token-end src 0)))
+          (let ((text (string-slice src 0 end)))
+          (cons (token-classify text)
+                (tokenize-string (string-slice src end nil)))))))))
+
+(define find-token-end
+  (lambda (src i)
+    (cond
+      ((>= i (string-length src)) i)
+      ((token-delimiter? (string-at src i)) i)
+      (true (find-token-end src (+ i 1))))))
+
+(define token-delimiter?
+  (lambda (c)
+    (cond
+      ((char-whitespace? c) true)
+      ((char=? c (integer->char 40)) true)
+      ((char=? c (integer->char 41)) true)
+      ((char=? c (integer->char 34)) true)
+      ((char=? c (integer->char 39)) true)
+      (true nil))))
+
+(define token-classify
+  (lambda (text)
+    (cond
+      ((all-numeric? text) (cons (quote NUM) text))
+      (true (cons (quote SYM) text)))))
+
+(define all-numeric?
+  (lambda (text)
+    (cond
+      ((string-empty? text) true)
+      ((char-numeric? (string-at text 0))
+       (all-numeric? (string-slice text 1 nil)))
+      (true nil))))
+
+;; === final driver ===
+(define meta-run-internal
+  (lambda (toks env)
+    (car (eval-forms-helper toks env nil))))
+
+;; Self-test
+(meta-run-internal (tokenize-string "(+ 1 2)") (make-env))
