@@ -1,3 +1,0 @@
-;; test_mvp.qy -- test define first
-(define x 42)
-(print x)
