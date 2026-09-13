@@ -1,0 +1,3 @@
+(car (quote (a b c)))
+(cdr (quote (a b c)))
+(cons (quote head) (quote (tail)))

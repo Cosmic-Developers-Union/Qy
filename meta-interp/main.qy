@@ -1,0 +1,261 @@
+;; meta-interp/main.qy
+;;
+;; Strategy:
+;;   - parse source string into chain of forms
+;;   - eval each form in a single chained environment
+;;   - rely on top-level output (no print) to avoid print-bug
+
+(print "meta-interp loaded")
+
+;; Import string/char ops needed by tokenizer/parser.
+(from qy.str import string-empty? string-slice string-length string-at string-find string=?
+  string->integer)
+(from qy.chr import char-whitespace? char-numeric? char=?)
+(from qy.core import atom? string->symbol)
+
+;; === reverse ===
+(define reverse-acc
+  (lambda (lst acc)
+    (cond
+      ((eq lst nil) acc)
+      (true
+        (reverse-acc (cdr lst) (cons (car lst) acc))))))
+
+(define reverse (lambda (lst) (reverse-acc lst nil)))
+
+;; === skip-spaces ===
+(define skip-spaces
+  (lambda (src)
+    (cond
+      ((string-empty? src) src)
+      ((char-whitespace? (string-at src 0))
+       (skip-spaces (string-slice src 1 nil)))
+      (true src))))
+
+;; === atom-delimiter? ===
+(define atom-delimiter?
+  (lambda (c)
+    (cond
+      ((char-whitespace? c) true)
+      ((char=? c (char 40)) true)
+      ((char=? c (char 41)) true)
+      ((char=? c (char 34)) true)
+      ((char=? c (char 39)) true)
+      (true nil))))
+
+;; === find-atom-end ===
+(define find-atom-end
+  (lambda (src i)
+    (cond
+      ((>= i (string-length src)) i)
+      ((atom-delimiter? (string-at src i)) i)
+      (true (find-atom-end src (+ i 1))))))
+
+;; === all-numeric? ===
+(define all-numeric?
+  (lambda (text)
+    (cond
+      ((string-empty? text) true)
+      (true
+        (let ((c (string-at text 0)))
+          (cond
+            ((char-numeric? c) (all-numeric? (string-slice text 1 nil)))
+            (true nil)))))))
+
+;; === read-atom ===
+(define read-atom
+  (lambda (src)
+    (let ((end (find-atom-end src 0)))
+      (cond
+        ((= end 0)
+         (cons (cons 'SYM "|err|") (string-slice src 1 nil)))
+        (true
+          (let ((text (string-slice src 0 end))
+                (rest (string-slice src end nil)))
+            (cond
+              ((all-numeric? text)
+               (cons (cons 'NUM (string->integer text)) rest))
+              (true (cons (cons 'SYM text) rest)))))))))
+
+;; === tokenize-after ===
+(define tokenize-after
+  (lambda (src acc)
+    (let ((src (skip-spaces src)))
+      (cond
+        ((string-empty? src) (reverse acc))
+        ((string=? (string-slice src 0 1) "(")
+         (tokenize-after (string-slice src 1 nil) (cons '(LPAREN) acc)))
+        ((string=? (string-slice src 0 1) ")")
+         (tokenize-after (string-slice src 1 nil) (cons '(RPAREN) acc)))
+        ((string=? (string-slice src 0 1) "'")
+         (tokenize-after (string-slice src 1 nil) (cons '(QUOTE) acc)))
+        (true
+          (let ((r (read-atom src)))
+            (tokenize-after (cdr r) (cons (car r) acc))))))))
+
+(define tokenize (lambda (src) (tokenize-after src nil)))
+
+;; === parser ===
+(define parse-all-acc
+  (lambda (tokens acc)
+    (cond
+      ((eq tokens nil) (reverse acc))
+      (true
+        (let ((r (parse-one tokens)))
+          (parse-all-acc (car (cdr r)) (cons (car r) acc)))))))
+
+(define parse-one
+  (lambda (tokens)
+    (let ((tok (car tokens)))
+      (cond
+        ((eq tok '(QUOTE))
+         (let ((inner (parse-one (cdr tokens))))
+           (cons (cons 'quote (cons (car inner) nil)) (car (cdr inner)))))
+        ((eq tok '(LPAREN)) (parse-list (cdr tokens) nil))
+        ((eq (car tok) 'SYM) (cons (string->symbol (cdr tok)) (cdr tokens)))
+        ((eq (car tok) 'NUM) (cons (cdr tok) (cdr tokens)))
+        (true (cons '|err| tokens))))))
+
+(define parse-list
+  (lambda (tokens acc)
+    (let ((tok (car tokens)))
+      (cond
+        ((eq tok '(RPAREN)) (cons (reverse acc) (cdr tokens)))
+        ((eq tok '(QUOTE))
+         (let ((inner (parse-one (cdr tokens))))
+           (parse-list (car (cdr inner)) (cons (cons 'quote (cons (car inner) nil)) acc))))
+        (true
+          (let ((item (parse-one tokens)))
+            (parse-list (car (cdr item)) (cons (car item) acc))))))))
+
+(define parse-all (lambda (tokens) (parse-all-acc tokens nil)))
+(define parse (lambda (src) (parse-all (tokenize src))))
+
+;; === evaluator ===
+(define env-frame nil)
+(define make-env (lambda () (cons env-frame nil)))
+
+(define env-lookup-frame
+  (lambda (sym frame)
+    (cond
+      ((eq frame nil) nil)
+      ((eq (car (car frame)) sym) (cdr (car frame)))
+      (true (env-lookup-frame sym (cdr frame))))))
+
+(define env-lookup
+  (lambda (sym env)
+    (cond
+      ((eq env nil) sym)
+      (true
+        (let ((hit (env-lookup-frame sym (car env))))
+          (cond
+            ((eq hit nil) (env-lookup sym (cdr env)))
+            (true hit)))))))
+
+(define env-set!
+  (lambda (env name value)
+    (set! env-frame (cons (cons name value) (car env)))
+    nil))
+
+(define truthy?
+  (lambda (v) (cond ((eq v nil) nil) (true v))))
+
+(define closure?
+  (lambda (v) (cond ((pair? v) (eq (car v) 'CLOSURE)) (true nil))))
+
+(define closure-params (lambda (c) (car (cdr c))))
+(define closure-body (lambda (c) (car (cdr (cdr c)))))
+(define closure-env (lambda (c) (car (cdr (cdr (cdr c))))))
+
+(define map-eval
+  (lambda (forms env)
+    (cond
+      ((eq forms nil) nil)
+      (true (cons (eval-form (car forms) env) (map-eval (cdr forms) env))))))
+
+(define eval-form
+  (lambda (form env)
+    (cond
+      ((symbol? form) (env-lookup form env))
+      ((pair? form) (eval-call form env))
+      (true form))))
+
+(define eval-call
+  (lambda (form env)
+    (let ((op (car form)) (args (cdr form)))
+      (cond
+        ((eq op 'quote) (car args))
+        ((eq op '+) (apply-+ (map-eval args env)))
+        ((eq op '-)
+         (cond
+           ((eq (cdr args) nil) (- 0 (eval-form (car args) env)))
+           (true (- (eval-form (car args) env) (eval-form (car (cdr args)) env)))))
+        ((eq op '*) (apply-* (map-eval args env)))
+        ((eq op 'define)
+         (let ((value (eval-form (car (cdr args)) env)))
+           (env-set! env (car args) value) value))
+        ((eq op 'lambda)
+         (cons 'CLOSURE (cons (car args) (cons (car (cdr args)) (cons env nil)))))
+        ((eq op 'if)
+         (cond
+           ((truthy? (eval-form (car args) env)) (eval-form (car (cdr args)) env))
+           (true (eval-form (car (cdr (cdr args))) env))))
+        ((eq op 'cond) (eval-cond args env))
+        ((eq op '=) (= (eval-form (car args) env) (eval-form (car (cdr args)) env)))
+        ((eq op 'eq?) (eq (eval-form (car args) env) (eval-form (car (cdr args)) env)))
+        (true
+          (let ((fn (eval-form op env)))
+            (cond
+              ((closure? fn) (apply-closure fn (map-eval args env)))
+              (true (apply-builtin fn (map-eval args env))))))))))
+
+(define apply-+
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 0)
+      ((eq (cdr vals) nil) (car vals))
+      (true (+ (car vals) (apply-+ (cdr vals)))))))
+
+(define apply-*
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 1)
+      ((eq (cdr vals) nil) (car vals))
+      (true (* (car vals) (apply-* (cdr vals)))))))
+
+(define eval-cond
+  (lambda (clauses env)
+    (cond
+      ((eq clauses nil) nil)
+      (true
+        (let ((cl (car clauses)))
+          (cond
+            ((truthy? (eval-form (car cl) env)) (eval-form (car (cdr cl)) env))
+            (true (eval-cond (cdr clauses) env))))))))
+
+(define apply-closure
+  (lambda (closure vals)
+    (bind-and-eval (closure-params closure) vals (closure-env closure) (closure-body closure))))
+
+(define bind-and-eval
+  (lambda (params vals env body)
+    (cond
+      ((eq params nil) (eval-form body env))
+      (true
+        (env-set! env (car params) (car vals))
+        (bind-and-eval (cdr params) (cdr vals) env body)))))
+
+(define apply-builtin
+  (lambda (fn vals) nil))
+
+;; === driver ===
+(define eval-forms
+  (lambda (forms env last)
+    (cond
+      ((eq forms nil) last)
+      (true (eval-forms (cdr forms) env (eval-form (car forms) env))))))
+
+(define meta-run
+  (lambda (src)
+    (let ((env (make-env)))
+      (eval-forms (parse src) env nil))))
