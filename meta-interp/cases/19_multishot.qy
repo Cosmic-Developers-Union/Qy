@@ -1,0 +1,5 @@
+(defeffect choose)
+(handle
+  (on choose (value) k
+    (+ (resume k value) (resume k (+ value 1))))
+  (+ (perform choose 20) 1))

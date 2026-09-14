@@ -4,11 +4,14 @@
 ;;   datum:        symbol / chain / number / string / nil
 ;;   special:      quote if cond define defun lambda let and or from apply
 ;;                 pipeline parallel all race module exports macro quasiquote
-;;                 unquote unquote-splicing eval reify
-;;   effects:      defeffect perform handle resume (resumable, continue semantics)
+;;                 unquote unquote-splicing eval reify bind this component
+;;   effects:      defeffect perform handle resume (resumable, continue semantics;
+;;                 multi-shot continuations supported)
+;;   macros:       hygiene by binder renaming + definition-site free symbols +
+;;                 capture/gensym; reader supports dotted pairs
 ;;   numbers:      parsed through host `string->number` (int and float literals)
-;;   primitives:   + - * / mod = == < > <= >= car cdr cons list null? not
-;;                 eq? eq atom len truthy is print
+;;   primitives:   + - * / mod = == < > <= >= car cdr cons list get dict len
+;;                 null? not eq? eq atom truthy is print slot
 ;;   other host operators resolve via `from` + `lookup-export` pass-through.
 ;;   reader:       `;` line comments, `'` quote, `` ` ``/`,`/`,@`,
 ;;                 string escapes (\n \t \r \" \\)
@@ -30,7 +33,7 @@
 (from qy.char import
   char-whitespace? char-numeric? char=? char->integer integer->char)
 (from qy.core import type atom tuple)
-(from qy.core import len truthy is)
+(from qy.core import len truthy is list get dict)
 (from qy.num import + -)
 (from qy.num import / mod)
 (from qy.num import =)
@@ -41,7 +44,7 @@
 (from qy.num import <=)
 (from qy.num import >=)
 (from qy.io import read-file)
-(from qy.testhost import cli-args lookup-export display raise-error)
+(from qy.testhost import cli-args lookup-export display raise-error gensym)
 
 ;; === list helpers ===
 (define reverse
@@ -111,12 +114,23 @@
   (lambda (src i n acc)
     (let ((end (find-atom-end src i n)))
       (let ((text (string-slice src i end)))
-        (let ((number (string->number text)))
-          (cond
-            ((eq number nil)
-             (tokenize-loop src end n (cons (tok-make 'SYM text) acc)))
-            (true
-             (tokenize-loop src end n (cons (tok-make 'NUM number) acc)))))))))
+        (cond
+          ((dot-text? text)
+           (tokenize-loop src end n (cons (tok-make 'DOT ".") acc)))
+          (true
+           (let ((number (string->number text)))
+             (cond
+               ((eq number nil)
+                (tokenize-loop src end n (cons (tok-make 'SYM text) acc)))
+               (true
+                (tokenize-loop src end n (cons (tok-make 'NUM number) acc)))))))))))
+
+(define dot-text?
+  (lambda (text)
+    (cond
+      ((eq (string-length text) 1)
+       (char=? (string-at text 0) (chr 46)))
+      (true nil))))
 
 (define scan-string
   (lambda (src i n acc)
@@ -221,9 +235,26 @@
     (cond
       ((eq tokens nil) (cons (reverse acc) nil))
       ((eq (tok-tag (car tokens)) 'RPAREN) (cons (reverse acc) (cdr tokens)))
+      ((eq (tok-tag (car tokens)) 'DOT)
+       (let ((r (parse-one (cdr tokens))))
+         (let ((rest (cdr r)))
+           (cond
+             ;; consume the closing paren of the dotted list
+             ((eq rest nil)
+              (cons (chain-with-tail (reverse acc) (car r)) nil))
+             ((eq (tok-tag (car rest)) 'RPAREN)
+              (cons (chain-with-tail (reverse acc) (car r)) (cdr rest)))
+             (true
+              (cons (chain-with-tail (reverse acc) (car r)) rest))))))
       (true
         (let ((r (parse-one tokens)))
           (parse-list (cdr r) (cons (car r) acc)))))))
+
+(define chain-with-tail
+  (lambda (items tail)
+    (cond
+      ((eq items nil) tail)
+      (true (cons (car items) (chain-with-tail (cdr items) tail))))))
 
 (define arg1
   (lambda (args) (car args)))
@@ -360,6 +391,12 @@
   (lambda (params vals env)
     (cond
       ((eq params nil) env)
+      ;; macro rest parameters: (name args &body body) binds body to the
+      ;; remaining argument forms as a chain.
+      ((eq (car params) '&body)
+       (env-extend-top env (arg1 (cdr params)) vals))
+      ((eq (car params) '&rest)
+       (env-extend-top env (arg1 (cdr params)) vals))
       (true
         (bind-params (cdr params) (cdr vals)
                      (env-extend-top env (car params) (car vals)))))))
@@ -391,8 +428,8 @@
   (lambda (ctx handlers) (cons handlers (cdr ctx))))
 
 (define ctx-push-target
-  (lambda (ctx record cont)
-    (cons (car ctx) (cons (cons record cont) (cdr ctx)))))
+  (lambda (ctx record cont env)
+    (cons (car ctx) (cons (cons record (cons cont (cons env nil))) (cdr ctx)))))
 
 (define ctx-pop-target
   (lambda (ctx) (cons (car ctx) (cdr (cdr ctx)))))
@@ -433,10 +470,14 @@
   (lambda (record) (car (cdr (cdr (cdr (cdr record)))))))
 
 ;; === first-class continuations captured at perform ===
-;; (CONT k env ctx record resumable?)
+;; (CONT kind k env ctx record resumable?)
+;; kind = "delimited": resuming continues the perform site's body and returns
+;;        the completion through the handler boundary;
+;; kind = "identity":  resuming only returns the resumed value to the handler
+;;        (host arithmetic effects such as divide-by-zero behave this way).
 (define make-continuation
-  (lambda (k env ctx record resumable)
-    (cons 'CONT (cons k (cons env (cons ctx (cons record (cons resumable nil))))))))
+  (lambda (kind k env ctx record resumable)
+    (cons 'CONT (cons kind (cons k (cons env (cons ctx (cons record (cons resumable nil)))))))))
 
 (define continuation?
   (lambda (value)
@@ -444,20 +485,23 @@
       ((eq (type value) 'chain) (eq (car value) 'CONT))
       (true nil))))
 
-(define cont-k
+(define cont-kind
   (lambda (cont) (car (cdr cont))))
 
-(define cont-env
+(define cont-k
   (lambda (cont) (car (cdr (cdr cont)))))
 
-(define cont-ctx
+(define cont-env
   (lambda (cont) (car (cdr (cdr (cdr cont))))))
 
-(define cont-record
+(define cont-ctx
   (lambda (cont) (car (cdr (cdr (cdr (cdr cont)))))))
 
-(define cont-resumable?
+(define cont-record
   (lambda (cont) (car (cdr (cdr (cdr (cdr (cdr cont))))))))
+
+(define cont-resumable?
+  (lambda (cont) (car (cdr (cdr (cdr (cdr (cdr (cdr cont)))))))))
 
 ;; === evaluator core (CPS) ===
 (define eval-k
@@ -494,6 +538,9 @@
         ((eq op 'quasiquote) (qq-k (arg1 args) 0 env ctx k))
         ((eq op 'unquote) (eval-k (arg1 args) env ctx k))
         ((eq op 'unquote-splicing) (eval-k (arg1 args) env ctx k))
+        ((eq op 'bind) (eval-bind-k args env ctx k))
+        ((eq op 'this) (k 'this-ss env ctx))
+        ((eq op 'component) (k (cons 'COMPONENT nil) env ctx))
         ((eq op 'eval) (eval-datum-k args env ctx k))
         ((eq op 'reify) (eval-reify-k args env ctx k))
         ((eq op 'apply) (eval-apply-form-k args env ctx k))
@@ -525,7 +572,7 @@
 
 (define eval-define-k
   (lambda (args env ctx k)
-    (let ((name (arg1 args)) (rhs (arg2 args)))
+    (let ((name (quoted-name (arg1 args))) (rhs (arg2 args)))
       (cond
         ((lambda-form? rhs)
          (let ((r (define-closure name rhs env)))
@@ -534,6 +581,16 @@
          (eval-k rhs env ctx
            (lambda (value env2 ctx2)
              (k value (env-extend-top env2 name value) ctx2))))))))
+
+;; `(define 'name v)` / `(bind 'name v slot)` use a quoted symbol as the name.
+(define quoted-name
+  (lambda (form)
+    (cond
+      ((eq (type form) 'chain)
+       (cond
+         ((head-is? form 'quote) (arg1 (cdr form)))
+         (true form)))
+      (true form))))
 
 ;; `(lambda params body...)` as a datum (used to build self-recursive closures)
 (define lambda-form?
@@ -552,7 +609,11 @@
   (lambda (bindings body env ctx k)
     (eval-bindings-k bindings env ctx
       (lambda (frame env2 ctx2)
-        (eval-body-k body (cons frame env2) ctx2 k)))))
+        (eval-body-k body (cons frame env2) ctx2
+          (lambda (value body-env body-ctx)
+            ;; `let` introduces a lexical symbol-space; its bindings (and any
+            ;; local `define`) must not leak to the enclosing evaluation.
+            (k value env body-ctx)))))))
 
 (define eval-bindings-k
   (lambda (bindings env ctx k)
@@ -619,11 +680,20 @@
           ((macro? f)
            (expand-macro-k f args ctx2
              (lambda (expansion env3 ctx3)
-               (eval-k expansion env2 ctx3 k))))
+               (let ((hygienic (hygienize expansion (collect-arg-nodes args) (macro-env f))))
+                 (eval-k (hw-form hygienic)
+                         (env-push-frame (hw-bindings hygienic) env2)
+                         ctx3 k)))))
           (true
            (eval-args-k args env2 ctx2
              (lambda (vals env3 ctx3)
                (apply-value-k f vals env3 ctx3 k)))))))))
+
+(define eval-bind-k
+  (lambda (args env ctx k)
+    (eval-k (arg2 args) env ctx
+      (lambda (value env2 ctx2)
+        (k value (env-extend-top env2 (quoted-name (arg1 args)) value) ctx2)))))
 
 (define eval-datum-k
   (lambda (args env ctx k)
@@ -702,7 +772,57 @@
   (lambda (f vals env ctx k)
     (cond
       ((closure? f) (apply-closure-k f vals env ctx k))
+      ;; Arithmetic that may raise language-level effects is dispatched through
+      ;; the interpreted handler stack instead of letting the host signal leak.
+      ((eq f '/) (eval-divide-k vals env ctx k))
+      ((eq f 'mod) (eval-mod-k vals env ctx k))
       (true (k (apply-primitive f vals) env ctx)))))
+
+;; `perform` synthesized by the interpreter itself (e.g. divide-by-zero raised
+;; by arithmetic primitives). With no interpreted handler we fall back to the
+;; host primitive so the host raises its usual unhandled-effect signal.
+(define eval-synthetic-perform-k
+  (lambda (name payload fallback env ctx k)
+    (let ((record (find-handler name (ctx-handlers ctx))))
+      (cond
+        ((eq record nil) (k (fallback) env ctx))
+        (true (dispatch-perform-kind 'identity name true payload env ctx k))))))
+
+(define eval-divide-k
+  (lambda (vals env ctx k)
+    (cond
+      ((div-zero? vals)
+       (eval-synthetic-perform-k
+         'divide-by-zero
+         (cons '/ (cons (arg1 vals) (cdr vals)))
+         (lambda () (apply-primitive '/ vals))
+         env ctx k))
+      (true (k (apply-primitive '/ vals) env ctx)))))
+
+(define eval-mod-k
+  (lambda (vals env ctx k)
+    (cond
+      ((eq (arg2 vals) 0)
+       (eval-synthetic-perform-k
+         'mod
+         (cons 'mod (cons (arg1 vals) (cdr vals)))
+         (lambda () (apply-primitive 'mod vals))
+         env ctx k))
+      (true (k (apply-primitive 'mod vals) env ctx)))))
+
+(define div-zero?
+  (lambda (vals)
+    (cond
+      ((eq vals nil) nil)
+      ((eq (cdr vals) nil) (eq (arg1 vals) 0))
+      (true (div-rest-zero? (cdr vals))))))
+
+(define div-rest-zero?
+  (lambda (vals)
+    (cond
+      ((eq vals nil) nil)
+      ((eq (arg1 vals) 0) true)
+      (true (div-rest-zero? (cdr vals))))))
 
 (define apply-primitive
   (lambda (f vals)
@@ -729,10 +849,15 @@
       ((eq f 'car) (car (arg1 vals)))
       ((eq f 'cdr) (cdr (arg1 vals)))
       ((eq f 'cons) (cons (arg1 vals) (arg2 vals)))
-      ((eq f 'list) vals)
+      ((eq f 'list) (apply list vals))
+      ((eq f 'get) (prim-two get vals))
+      ((eq f 'dict) (apply dict vals))
+      ((eq f 'slot) (cons 'SLOT nil))
       ((eq f 'null?) (qy-not (arg1 vals)))
       ((eq f 'not) (qy-not (arg1 vals)))
       ((eq f 'print) (print-value (arg1 vals)))
+      ((eq f 'capture) (cons 'CAPTURED (cons (arg1 vals) nil)))
+      ((eq f 'gensym) (prim-gensym vals))
       (true nil))))
 
 ;; === primitives ===
@@ -750,6 +875,12 @@
 (define prim-atom
   (lambda (vals)
     (atom (arg1 vals))))
+
+(define prim-gensym
+  (lambda (vals)
+    (cond
+      ((eq vals nil) (gensym))
+      (true (gensym (arg1 vals))))))
 
 (define prim-one
   (lambda (prim vals)
@@ -843,6 +974,10 @@
 
 (define dispatch-perform
   (lambda (name resumable payload env ctx k)
+    (dispatch-perform-kind 'delimited name resumable payload env ctx k)))
+
+(define dispatch-perform-kind
+  (lambda (kind name resumable payload env ctx k)
     (let ((record (find-handler name (ctx-handlers ctx))))
       (cond
         ((eq record nil)
@@ -855,12 +990,14 @@
                (let ((env2 (bind-params
                              (cons arg-name (cons k-name nil))
                              (cons payload
-                                   (cons (make-continuation k env ctx record resumable) nil))
+                                   (cons (make-continuation
+                                           kind k env ctx record resumable) nil))
                              (handler-env record))))
                  (eval-body-k (cdr (cdr clause)) env2
                               (handler-exec-ctx record ctx)
                               (make-handler-cont (handler-k-out record)
-                                                 (handler-ctx-outer record))))))))))))
+                                                 (handler-ctx-outer record)
+                                                 (handler-env record))))))))))))
 
 (define handler-exec-ctx
   (lambda (record ctx)
@@ -868,18 +1005,23 @@
           (ctx-targets ctx))))
 
 (define make-handler-cont
-  (lambda (k-out ctx-outer)
-    (lambda (value env ctx) (k-out value env ctx-outer))))
+  (lambda (k-out ctx-outer handle-env)
+    (lambda (value env ctx) (k-out value handle-env ctx-outer))))
 
 (define make-handle-body-cont
-  (lambda (record k-out ctx-outer)
+  (lambda (record k-out ctx-outer handle-env)
     (lambda (value env ctx)
       (let ((targets (ctx-targets ctx)))
         (cond
-          ((eq targets nil) (k-out value env ctx-outer))
+          ((eq targets nil) (k-out value handle-env ctx-outer))
           ((is (car (car targets)) record)
-           ((cdr (car targets)) value env (ctx-pop-target ctx)))
-          (true (k-out value env ctx-outer)))))))
+           ;; resume target = (record cont env): the handler continuation must
+           ;; run in the handler's env, not the resumed body env.
+           ((car (cdr (car targets)))
+            value
+            (car (cdr (cdr (car targets))))
+            (ctx-pop-target ctx)))
+          (true (k-out value handle-env ctx-outer)))))))
 
 (define eval-handle-k
   (lambda (args env ctx k)
@@ -894,7 +1036,7 @@
       ;; `body` is a single expression; wrap it as a one-form body.
       (eval-body-k (cons body nil) env
                    (ctx-set-handlers ctx (cons record (ctx-handlers ctx)))
-                   (make-handle-body-cont record k ctx)))))
+                   (make-handle-body-cont record k ctx env)))))
 
 (define on-form?
   (lambda (form)
@@ -920,21 +1062,19 @@
   (lambda (clause)
     (let ((effect (arg2 clause)) (params (arg3 clause)) (rest (cdr (cdr (cdr clause)))))
       (cond
-        ((eq params nil)
-         (cons effect (cons (cons '_v (cons 'k nil)) rest)))
-        ((one-element-chain? params)
-         (cond
-           ((eq rest nil)
-            (cons effect (cons (append-chain params (cons 'k nil)) rest)))
-           ((eq (type (car rest)) 'symbol)
-            (cond
-              ((eq (cdr rest) nil)
-               (cons effect (cons (append-chain params (cons 'k nil)) rest)))
-              (true
-               (cons effect (cons (cons (car params) (cons (car rest) nil)) (cdr rest))))))
-           (true
-            (cons effect (cons (append-chain params (cons 'k nil)) rest)))))
+        ((eq params nil) (normalize-on-params '_v effect rest))
+        ((one-element-chain? params) (normalize-on-params (car params) effect rest))
         (true (cons effect (cons params rest)))))))
+
+;; `(on effect (args...) [k] body...)`: the standalone symbol after the
+;; parameter list names the continuation (default `k`), matching the host.
+(define normalize-on-params
+  (lambda (arg-name effect rest)
+    (cond
+      ((eq rest nil) (cons effect (cons (cons arg-name (cons 'k nil)) nil)))
+      ((eq (type (car rest)) 'symbol)
+       (cons effect (cons (cons arg-name (cons (car rest) nil)) (cdr rest))))
+      (true (cons effect (cons (cons arg-name (cons 'k nil)) rest))))))
 
 (define one-element-chain?
   (lambda (value)
@@ -957,11 +1097,13 @@
        (cond
          ((eq (cont-resumable? cont-value) nil)
           (raise-error "resume: effect is not resumable"))
+         ((eq (cont-kind cont-value) 'identity)
+          (k value env ctx))
          (true
           ((cont-k cont-value)
            value
            (cont-env cont-value)
-           (ctx-push-target (cont-ctx cont-value) (cont-record cont-value) k)))))
+           (ctx-push-target (cont-ctx cont-value) (cont-record cont-value) k env)))))
       (true (raise-error "resume expects a continuation")))))
 
 ;; === modules ===
@@ -978,19 +1120,41 @@
     (cond
       ((eq items nil) env)
       (true
-        (let ((name (arg1 items)))
-          (let ((rest (cdr items)))
-            (cond
-              ((as-marker? rest)
-               (import-specs module-value module-ref (cdr (cdr rest))
-                             (env-extend-top
-                               env (arg2 rest)
-                               (resolve-import module-value module-ref name))))
-              (true
-                (import-specs module-value module-ref rest
-                              (env-extend-top
-                                env name
-                                (resolve-import module-value module-ref name)))))))))))
+        (let ((item (arg1 items)))
+          (cond
+            ;; parenthesized spec: (name as alias) or (name alias)
+            ((eq (type item) 'chain)
+             (let ((name (arg1 item)))
+               (let ((spec-rest (cdr item)))
+                 (cond
+                   ((as-marker? spec-rest)
+                    (import-specs module-value module-ref (cdr items)
+                                  (env-extend-top
+                                    env (arg2 spec-rest)
+                                    (resolve-import module-value module-ref name))))
+                   ((eq spec-rest nil)
+                    (import-specs module-value module-ref (cdr items)
+                                  (env-extend-top
+                                    env name
+                                    (resolve-import module-value module-ref name))))
+                   (true
+                    (import-specs module-value module-ref (cdr items)
+                                  (env-extend-top
+                                    env (arg1 spec-rest)
+                                    (resolve-import module-value module-ref name))))))))
+            (true
+             (let ((rest (cdr items)))
+               (cond
+                 ((as-marker? rest)
+                  (import-specs module-value module-ref (cdr (cdr rest))
+                                (env-extend-top
+                                  env (arg2 rest)
+                                  (resolve-import module-value module-ref item))))
+                 (true
+                  (import-specs module-value module-ref rest
+                                (env-extend-top
+                                  env item
+                                  (resolve-import module-value module-ref item)))))))))))))
 
 (define as-marker?
   (lambda (rest)
@@ -1105,6 +1269,249 @@
                  (bind-params (macro-params macro) args (macro-env macro))
                  ctx k)))
 
+;; === macro hygiene ===
+;; A naive expansion would let macro-introduced symbols capture call-site
+;; bindings (and vice versa). `hygienize` walks the expansion:
+;;   1. syntax that came from the call-site arguments stays untouched — nodes
+;;      are tracked by identity (`is`), not by spelling;
+;;   2. binders introduced by the macro body (let / lambda / defun) and their
+;;      references are renamed to fresh symbols through the scope;
+;;   3. free symbols introduced by the macro body are renamed and bound to the
+;;      macro *definition-site* value (referential transparency), except
+;;      special-form keywords;
+;;   4. `(capture x)` is unwrapped so x keeps call-site resolution.
+;; Walk results are triples: (form renames bindings), where renames is a chain
+;; of (name . fresh) and bindings a chain of (fresh . definition-site value).
+
+(define hw
+  (lambda (form renames bindings)
+    (cons form (cons renames (cons bindings nil)))))
+
+(define hw-form (lambda (w) (car w)))
+(define hw-renames (lambda (w) (car (cdr w))))
+(define hw-bindings (lambda (w) (car (cdr (cdr w)))))
+
+(define hygienize
+  (lambda (form arg-nodes macro-env)
+    (hygienize-expr form arg-nodes macro-env nil)))
+
+(define hygienize-expr
+  (lambda (form arg-nodes macro-env renames)
+    (cond
+      ((captured-value? form) (hw (captured-payload form) renames nil))
+      ((eq (type form) 'symbol)
+       (hygienize-symbol form arg-nodes macro-env renames))
+      ((eq (type form) 'chain)
+       (cond
+         ((head-is? form 'quote) (hw form renames nil))
+         ((head-is? form 'quasiquote) (hw form renames nil))
+         ((head-is? form 'let) (hygienize-let form arg-nodes macro-env renames))
+         ((head-is? form 'lambda) (hygienize-lambda form arg-nodes macro-env renames))
+         ((head-is? form 'defun) (hygienize-defun form arg-nodes macro-env renames))
+         (true (hygienize-chain form arg-nodes macro-env renames))))
+      (true (hw form renames nil)))))
+
+(define head-is?
+  (lambda (form name)
+    (eq (car form) name)))
+
+(define hygienize-symbol
+  (lambda (sym arg-nodes macro-env renames)
+    (cond
+      ((node-in? sym arg-nodes) (hw sym renames nil))
+      ((special-form-name? sym) (hw sym renames nil))
+      ((rename-lookup sym renames) (hw (rename-lookup sym renames) renames nil))
+      (true
+       (let ((fresh (gensym (symbol->string sym))))
+         (hw fresh renames (cons (cons fresh (env-lookup sym macro-env)) nil)))))))
+
+(define hygienize-chain
+  (lambda (form arg-nodes macro-env renames)
+    (let ((walked (hygienize-elements form arg-nodes macro-env renames)))
+      (hw (hw-form walked) (hw-renames walked) (hw-bindings walked)))))
+
+(define hygienize-elements
+  (lambda (items arg-nodes macro-env renames)
+    (cond
+      ((eq items nil) (hw nil renames nil))
+      (true
+        (let ((first (hygienize-expr (car items) arg-nodes macro-env renames)))
+          (let ((rest (hygienize-elements
+                        (cdr items) arg-nodes macro-env (hw-renames first))))
+            (hw (cons (hw-form first) (hw-form rest))
+                (hw-renames rest)
+                (append-chain (hw-bindings first) (hw-bindings rest)))))))))
+
+(define hygienize-let
+  (lambda (form arg-nodes macro-env renames)
+    (let ((bindings-form (arg1 (cdr form)))
+          (body (cdr (cdr form))))
+      (let ((walked (hygienize-let-bindings bindings-form arg-nodes macro-env renames)))
+        (let ((body-walked (hygienize-body
+                             body arg-nodes macro-env (hw-renames walked))))
+          (hw (cons 'let (cons (hw-form walked) (hw-form body-walked)))
+              (hw-renames body-walked)
+              (append-chain (hw-bindings walked) (hw-bindings body-walked))))))))
+
+(define hygienize-let-bindings
+  (lambda (bindings arg-nodes macro-env renames)
+    (cond
+      ((eq bindings nil) (hw nil renames nil))
+      (true
+        (let ((binding (car bindings)))
+          (let ((value (hygienize-expr (arg2 binding) arg-nodes macro-env renames)))
+            (let ((fresh (hygienize-binder (arg1 binding) arg-nodes)))
+              (let ((rest (hygienize-let-bindings
+                            (cdr bindings) arg-nodes macro-env
+                            (cons (cons (arg1 binding) fresh) (hw-renames value)))))
+                (hw (cons (cons fresh (cons (hw-form value) nil)) (hw-form rest))
+                    (hw-renames rest)
+                    (append-chain (hw-bindings value) (hw-bindings rest)))))))))))
+
+(define hygienize-lambda
+  (lambda (form arg-nodes macro-env renames)
+    (let ((params-form (arg1 (cdr form)))
+          (body (cdr (cdr form))))
+      (let ((bound (hygienize-params params-form arg-nodes renames)))
+        (let ((body-walked (hygienize-body
+                             body arg-nodes macro-env (hw-renames bound))))
+          (hw (cons 'lambda (cons (hw-form bound) (hw-form body-walked)))
+              (hw-renames body-walked)
+              (hw-bindings body-walked)))))))
+
+(define hygienize-defun
+  (lambda (form arg-nodes macro-env renames)
+    (let ((name (arg1 (cdr form)))
+          (params-form (arg2 (cdr form)))
+          (body (cdr (cdr (cdr form)))))
+      (let ((fresh (hygienize-binder name arg-nodes)))
+        (let ((renames2 (cons (cons name fresh) renames)))
+          (let ((bound (hygienize-params params-form arg-nodes renames2)))
+            (let ((body-walked (hygienize-body
+                                 body arg-nodes macro-env (hw-renames bound))))
+              (hw (cons 'defun (cons fresh (cons (hw-form bound) (hw-form body-walked))))
+                  (hw-renames body-walked)
+                  (hw-bindings body-walked)))))))))
+
+(define hygienize-params
+  (lambda (params arg-nodes renames)
+    (cond
+      ((eq params nil) (hw nil renames nil))
+      ((eq (car params) '&body)
+       (let ((fresh (hygienize-binder (arg1 (cdr params)) arg-nodes)))
+         (hw (cons '&body (cons fresh nil))
+             (cons (cons (arg1 (cdr params)) fresh) renames)
+             nil)))
+      (true
+        (let ((fresh (hygienize-binder (car params) arg-nodes)))
+          (let ((rest (hygienize-params (cdr params) arg-nodes
+                                        (cons (cons (car params) fresh) renames))))
+            (hw (cons fresh (hw-form rest))
+                (hw-renames rest)
+                (hw-bindings rest))))))))
+
+(define hygienize-binder
+  (lambda (name arg-nodes)
+    (cond
+      ((node-in? name arg-nodes) name)
+      ((special-form-name? name) name)
+      (true (gensym (symbol->string name))))))
+
+(define hygienize-body
+  (lambda (body arg-nodes macro-env renames)
+    (cond
+      ((eq body nil) (hw nil renames nil))
+      (true
+        (let ((first (hygienize-expr (car body) arg-nodes macro-env renames)))
+          (let ((rest (hygienize-body
+                        (cdr body) arg-nodes macro-env (hw-renames first))))
+            (hw (cons (hw-form first) (hw-form rest))
+                (hw-renames rest)
+                (append-chain (hw-bindings first) (hw-bindings rest)))))))))
+
+(define rename-lookup
+  (lambda (name renames)
+    (cond
+      ((eq renames nil) nil)
+      ((eq (car (car renames)) name) (cdr (car renames)))
+      (true (rename-lookup name (cdr renames))))))
+
+(define collect-arg-nodes
+  (lambda (args)
+    (collect-nodes-chain args nil)))
+
+(define collect-nodes-chain
+  (lambda (items acc)
+    (cond
+      ((eq items nil) acc)
+      (true (collect-nodes-chain (cdr items) (collect-nodes (car items) acc))))))
+
+(define collect-nodes
+  (lambda (form acc)
+    (cond
+      ((eq (type form) 'chain)
+       (collect-nodes (cdr form) (collect-nodes (car form) (cons form acc))))
+      (true (cons form acc)))))
+
+(define node-in?
+  (lambda (node nodes)
+    (cond
+      ((eq nodes nil) nil)
+      ((is node (car nodes)) true)
+      (true (node-in? node (cdr nodes))))))
+
+(define env-push-frame
+  (lambda (frame env) (cons frame env)))
+
+(define component-value?
+  (lambda (value)
+    (cond
+      ((eq (type value) 'chain) (eq (car value) 'COMPONENT))
+      (true nil))))
+
+(define captured-value?
+  (lambda (value)
+    (cond
+      ((eq (type value) 'chain) (eq (car value) 'CAPTURED))
+      (true nil))))
+
+(define captured-payload
+  (lambda (value) (arg2 value)))
+
+(define special-form-name?
+  (lambda (name)
+    (cond
+      ((eq name 'quote) true)
+      ((eq name 'quasiquote) true)
+      ((eq name 'unquote) true)
+      ((eq name 'unquote-splicing) true)
+      ((eq name 'if) true)
+      ((eq name 'cond) true)
+      ((eq name 'define) true)
+      ((eq name 'defun) true)
+      ((eq name 'lambda) true)
+      ((eq name 'let) true)
+      ((eq name 'and) true)
+      ((eq name 'or) true)
+      ((eq name 'from) true)
+      ((eq name 'module) true)
+      ((eq name 'exports) true)
+      ((eq name 'macro) true)
+      ((eq name 'defeffect) true)
+      ((eq name 'perform) true)
+      ((eq name 'handle) true)
+      ((eq name 'resume) true)
+      ((eq name 'apply) true)
+      ((eq name 'pipeline) true)
+      ((eq name 'parallel) true)
+      ((eq name 'all) true)
+      ((eq name 'race) true)
+      ((eq name 'eval) true)
+      ((eq name 'reify) true)
+      ((eq name '&body) true)
+      ((eq name '&rest) true)
+      (true nil))))
+
 ;; === quasiquote / unquote / unquote-splicing ===
 (define qq-k
   (lambda (form depth env ctx k)
@@ -1181,7 +1588,12 @@
 ;; and function definitions evaluate to closure artifacts (also hidden).
 (define skip-form-result?
   (lambda (form value)
+    ;; Host `qy run` hides function artifacts; interpreted closures correspond
+    ;; to host BytecodeFunctionValue, so any closure result is hidden. This also
+    ;; covers macro calls whose expansion is a `define`/`defun`.
     (cond
+      ((closure? value) true)
+      ((component-value? value) true)
       ((eq (type form) 'chain)
        (let ((head (car form)))
          (cond
@@ -1189,8 +1601,6 @@
            ((eq head 'module) true)
            ((eq head 'defeffect) true)
            ((eq head 'macro) true)
-           ((eq head 'defun) (closure? value))
-           ((eq head 'define) (closure? value))
            (true nil))))
       (true nil))))
 

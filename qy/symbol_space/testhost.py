@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from pathlib import Path
 
 from qy.core.operators import ScopeOperator
@@ -44,6 +45,11 @@ def module() -> StandardModule:
                 "raise-error",
                 _raise_error,
                 "以 EvaluationError 终止当前求值；供自举解释器报告未处理效应等错误。",
+            ),
+            Symbol("gensym"): ScopeOperator(
+                "gensym",
+                _gensym,
+                "用宿主计数器生成全新 symbol；供自举解释器实现宏 hygiene。",
             ),
             Symbol("run-file"): ScopeOperator("run-file", _run_file, "运行 Qy 文件并返回结果。"),
             Symbol("run-file-with-coverage"): ScopeOperator(
@@ -191,6 +197,15 @@ def _raise_error(args: tuple[object, ...], env: Environment) -> object:
 
     message = " ".join(format_value(arg) for arg in args) if args else "error"
     raise EvaluationError(message)
+
+
+_GENSYM_COUNTER = itertools.count(1)
+
+
+def _gensym(args: tuple[object, ...], env: Environment) -> object:
+    del env
+    prefix = _as_text(args[0]) if args else "g"
+    return Symbol(f"__qy_meta_gensym_{prefix}_{next(_GENSYM_COUNTER)}")
 
 
 def _start_coverage(args: tuple[object, ...], env: Environment) -> object:

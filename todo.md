@@ -5,12 +5,12 @@
 
 最近一次本地基线（2026-09-14）：
 
-- `uv run python -m pytest -q`：1031 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
+- `uv run python -m pytest -q`：1041 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
 - `uv run ruff check .`：passed
 - `uv run ruff format --check .`：passed
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
-- `meta-interp/cases/` 16 个自举用例与 `qy run` 参考输出逐字节一致；
-  `tests/qy` 行为用例 **54/54** 全部对拍通过
+- `meta-interp/cases/` 19 个自举用例与 `qy run` 参考输出逐字节一致；
+  `tests/qy` 行为用例 **54/54**、`examples/validation` 7 个验收样例全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
 - **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
   dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；
@@ -18,7 +18,10 @@
   参数列表 `(macro)` 不再被 macroexpander 误判为宏定义；
   `qy.io/read-file` 与 `qy.testhost/lookup-export`/`display`/`raise-error` host 能力；
   自举解释器实现代数效应（CPS + 显式 handler/continuation）并覆盖并行/浮点/reify；
-  host `eq` 对字符串字面量按值比较（对齐 LANGUAGE.md）；qy.num 新增 `string->number`。
+  host `eq` 对字符串字面量按值比较（对齐 LANGUAGE.md）；qy.num 新增 `string->number`；
+  自举解释器补齐宏 hygiene（binder 重命名 + definition-site free symbol + capture/gensym）、
+  dotted pair reader、multi-shot resume、算术算子的 identity-continuation 效应、
+  `list`/`get`/`dict`、`bind`/`this`/`slot` 近似与 `(define 'name v)`。
 
 历史基线（2026-08-02）：
 
@@ -1990,7 +1993,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
    - compat stdlib 下沉。
 6. **自举解释器推进**
    - 保持 `meta-interp/cases/` 与受支持 `tests/qy` 用例的对拍；
-   - 逐步补齐 hygiene（gensym/capture）、number family 的 concrete 类型语义；
+   - 逐步补齐 py 宿主互操作、number family 的 concrete 类型语义；
    - 性能：消除解释器全局 lookup 的线性扫描，再谈阶段 3 自解释。
 
 ---
@@ -2024,20 +2027,25 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 ## 验证
 
-- `meta-interp/compare.sh cases/*.qy`：16/16 与参考输出逐字节一致。
+- `meta-interp/compare.sh cases/*.qy`：19/19 与参考输出逐字节一致。
 - `tests/test_meta_interp.py`：
-  - 16 个 `cases/` 用例默认运行，逐字节对比参考；
+  - 19 个 `cases/` 用例默认运行，逐字节对比参考；
   - `tests/qy` 全部 54 个行为用例在一次解释器进程内批量对拍；
+  - `examples/validation` 7 个验收样例默认对拍（03/09 深尾递归压力样例默认跳过）；
   - `QY_META_SELF=1` 时额外运行阶段 2 自解释测试（解释器源码被自身解释后仍能把
     `(+ 1 2)` 解释为 `3`）。
 
 ## 已知差距
 
-- macro 的 `gensym`/`capture` 未实现（现有宏为非 hygiene 展开，但 `tests/qy`
-  宏用例行为与 host 一致）；`reify` 对 host reference 的 partial 语义未实现。
-- 效应的已知简化：仅单帧 continuation 重入（覆盖现有测试的 continue 语义），
-  `:resumable false` 只在 `resume` 时报错；尚未验证 multi-shot 与 effect 在
-  并发结构中的交互；`parallel`/`all`/`race` 为顺序实现（语言允许）。
+- `py` 宿主互操作（examples/validation/08）未实现：解释器求值后的实参无法回传
+  host `py` 所需的原始表达式与 env。
+- `this`/`slot`/`bind` 为可运行近似（local binding），不建模真正的 symbol-space
+  object / binding slot；`component` 只作为不融合的占位值，host 对象 repr
+  （RuntimeSpace / slot）无法逐字节对齐，因此 `examples/hello.qy` 未纳入自动对拍。
+- `reify` 对 host reference 的 partial 语义未实现。
+- 效应的已知简化：`divide-by-zero` 等 host 算术效应按宿主行为使用 identity
+  continuation；显式 `perform` 支持 multi-shot（`19_multishot`），但并发结构与
+  effect 的交互未验证；`parallel`/`all`/`race` 为顺序实现（语言允许）。
 - number family 只透传 host 数字；定宽整型/浮点的 concrete 类型语义未在解释器内建模。
 - 性能：CPS 化后阶段 2 自解释正确但仍极慢（约 37s 跑完单次自解释测试）；
   瓶颈在解释执行本身、闭包分配与全局 lookup 的线性扫描，需要专门优化。

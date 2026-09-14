@@ -82,6 +82,20 @@ SUPPORTED_QY_TESTS = (
     "52_number_float_add",
 )
 
+# examples/validation 中不依赖宿主 Python 互操作（py）且运行代价可接受的样例。
+# 03/09 是深度尾调用压力样例（分别约 4.5s / 29s），尾调用语义已由 tests/qy
+# 的 20_tail_recursion 覆盖，默认测试不重复跑。
+_EXCLUDED_VALIDATION = {
+    "03_functions_tail_call.qy",
+    "08_host_interop.qy",
+    "09_register_vm_tail_call.qy",
+}
+VALIDATION_EXAMPLES = tuple(
+    path
+    for path in sorted((ROOT / "examples" / "validation").glob("*.qy"))
+    if path.name not in _EXCLUDED_VALIDATION
+)
+
 
 @pytest.fixture
 def runner() -> CliRunner:
@@ -95,6 +109,18 @@ def test_meta_interp_matches_reference(runner: CliRunner, case: Path) -> None:
     assert reference.exit_code == 0, reference.output
 
     meta = runner.invoke(cli, ["run", str(META_INTERP), "--", str(case)])
+    assert meta.exit_code == 0, meta.output
+    assert meta.output == reference.output
+
+
+@pytest.mark.parametrize("example", VALIDATION_EXAMPLES, ids=lambda path: path.stem)
+def test_meta_interp_runs_validation_examples(runner: CliRunner, example: Path) -> None:
+    """examples/validation 验收样例与 host register VM 输出逐字节一致。."""
+    cli = create_app()
+    reference = runner.invoke(cli, ["run", str(example)])
+    assert reference.exit_code == 0, reference.output
+
+    meta = runner.invoke(cli, ["run", str(META_INTERP), "--", str(example)])
     assert meta.exit_code == 0, meta.output
     assert meta.output == reference.output
 
