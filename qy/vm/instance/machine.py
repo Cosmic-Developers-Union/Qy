@@ -428,7 +428,10 @@ class RegisterVirtualMachine:
             for r in raw:
                 if isinstance(r, BaseException):
                     raise r
-        return tuple(raw)
+        # Parallel/join results are Qy semantic containers, not host tuples.
+        from qy.sem.core import TupleValue
+
+        return TupleValue(tuple(raw))
 
     async def _race_first(
         self,

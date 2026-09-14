@@ -325,18 +325,12 @@ def _append(left: object, right: object) -> object:
         return list_to_chain(combined)
     if isinstance(left, ListValue) or isinstance(right, ListValue):
         return ListValue(combined)
-    if isinstance(left, TupleValue) or isinstance(right, TupleValue):
-        return TupleValue(combined)
-    return combined
+    return TupleValue(combined)
 
 
 def _append_items(value: object) -> tuple[object, ...]:
     if isinstance(value, TupleValue | ListValue):
         return value.items
-    if isinstance(value, tuple):
-        return value
-    if isinstance(value, list):
-        return tuple(value)
     if is_nil(value):
         return ()
     if is_chain(value):
@@ -353,10 +347,8 @@ def _chain(value: object) -> object:
         return value
     if isinstance(value, TupleValue | ListValue):
         return list_to_chain(value.items)
-    if isinstance(value, list | tuple):
-        return list_to_chain(value)
     raise QyTypeError(
-        f"chain expects a Python list or tuple, got {value!r}",
+        f"chain expects a tuple/list container, got {value!r}",
         span=get_span(value),
         metadata={"value": value},
     )
@@ -439,8 +431,6 @@ def _len(value: object) -> object:
         return IntValue(len(value.value))
     if isinstance(value, TupleValue | ListValue | DictValue | SetValue):
         return IntValue(value.length)
-    if isinstance(value, str | tuple | list | dict | set):
-        return IntValue(len(value))
     raise QyTypeError(
         f"len expects a collection, got {value!r}",
         span=get_span(value),
@@ -464,18 +454,6 @@ def _get(collection: object, key: object, *default_values: object) -> object:
         index = _ensure_index(key)
         try:
             return collection.items[index]
-        except IndexError:
-            return default
-    if isinstance(collection, dict):
-        mapping = cast(dict[object, object], collection)
-        try:
-            return mapping[key]
-        except (KeyError, TypeError):
-            return default
-    if isinstance(collection, tuple | list):
-        index = _ensure_index(key)
-        try:
-            return collection[index]
         except IndexError:
             return default
     if is_nil(collection):
@@ -511,19 +489,6 @@ def _has(*args: object) -> object:
     if isinstance(collection, TupleValue | ListValue):
         index = _ensure_index(key)
         return QY_T if -len(collection.items) <= index < len(collection.items) else QY_NIL
-    if isinstance(collection, dict):
-        try:
-            return QY_T if key in collection else QY_NIL
-        except TypeError:
-            return QY_NIL
-    if isinstance(collection, set):
-        try:
-            return QY_T if key in collection else QY_NIL
-        except TypeError:
-            return QY_NIL
-    if isinstance(collection, tuple | list):
-        index = _ensure_index(key)
-        return QY_T if -len(collection) <= index < len(collection) else QY_NIL
     if is_nil(collection):
         return QY_NIL
     if is_chain(collection):
@@ -565,13 +530,11 @@ def operators() -> dict[Symbol, object]:
         Symbol("atom"): PureOperator("atom", _atom, "如果值不是非空 chain 或 tuple，则返回 true。"),
         Symbol("car"): PureOperator("car", _car, "返回 chain 的第一个元素。"),
         Symbol("cdr"): PureOperator("cdr", _cdr, "返回 chain 除第一个元素外的剩余部分。"),
-        Symbol("chain"): PureOperator("chain", _chain, "把 Python list/tuple 转换为 Qy chain。"),
+        Symbol("chain"): PureOperator("chain", _chain, "把 tuple/list 容器转换为 Qy chain。"),
         Symbol("append"): PureOperator(
             "append", _append, "拼接 tuple/list/chain，并在 chain 场景返回 chain。"
         ),
-        Symbol("cons"): PureOperator(
-            "cons", _cons, "构造 chain cell；对 Python tuple/list 保持同类拼接。"
-        ),
+        Symbol("cons"): PureOperator("cons", _cons, "构造 chain cell。"),
         Symbol("eq"): PureOperator(
             "eq", _eq, "Lisp 风格 eq；atom 按值比较，chain 按 identity 比较。"
         ),

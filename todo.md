@@ -2078,16 +2078,16 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   Python 扩展在边界显式 `StringValue <-> str` / `NumberValue <-> int|float` 转换。
 - `qy.sem.bridge.to_qy_value` / `from_qy_value`：扩展边界的统一宿主值转换
   （未知对象 → `HostReference`）；`string-split`/`string->list` 返回 `TupleValue`。
+- `parallel`/`all` join 结果为 `TupleValue`；`len`/`get`/`has?`/`append`/`chain`
+  不再接受裸宿主容器；语义容器补宿主级 permissive `__eq__`。
 - `tests/test_extensions.py`：内核包不得 import `qy.ext.*` / 宿主模块；
   扩展声明与 capability；扩展模块装载；`qy.core` 无 `py`；`qy.io` 无 `read-file`。
 - 文档：`docs/extensions.md`；`docs/package-structure.md` 增补 `ext/` 所有权与导入方向。
 
 ## 待迁移
 
-- 裸 `list`/`tuple`/`dict`/`set`/`bool`/`None` 作为 runtime value 的迁移期
-  互操作，逐步收敛到 `TupleValue`/`ListValue`/`DictValue`/`SetValue`/
-  `NoneValue`；`data.py` 中接受宿主 list/dict/tuple 的分支同步收紧
-  （字符串/数字已完成）。
+- 宿主侧显式 `env.define` 注入裸宿主容器仍是允许的边界行为（VM 不自动转换）；
+  后续可在实例/profile 层增加 canonicalize 策略。
 - `qy.project` / CLI 对文件系统、进程、时钟、网络的访问，逐步建模为显式扩展
   capability（`filesystem` / `process` / `clock` / `network`），实例按 profile 选择启用。
 - `qy.ext.testhost` 仍含 `run-file`/覆盖率等测试专属能力；`run-file` 直接调用

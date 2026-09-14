@@ -97,6 +97,11 @@ register_extension(DESCRIPTOR, module)
   显式完成 `StringValue <-> str`、`NumberValue <-> int/float` 转换。
 - `string-split` / `string->list` 返回 `TupleValue`（不再是宿主 tuple）；
   `append` 按语义容器选择 `ListValue`/`TupleValue`/chain。
+- `parallel`/`all` 的 join 结果在 VM 内构造为 `TupleValue`（不再是宿主 tuple）。
+- `len`/`get`/`has?`/`append`/`chain` 只接受语义容器（chain / `TupleValue` /
+  `ListValue` / `DictValue` / `SetValue`），不再接受裸宿主容器。
+- 语义容器 `TupleValue`/`ListValue`/`DictValue`/`SetValue` 提供宿主级 permissive
+  `__eq__`（与 `NumberValue`/`StringValue` 一致），仅用于测试/调试，不影响 Qy 语义。
 
 待迁移（登记于 `todo.md`）：
 

@@ -546,7 +546,13 @@ class StringValue(ObjectValue):
 
 @dataclass(frozen=True, slots=True)
 class TupleValue(ObjectValue):
-    """Immutable Qy tuple value."""
+    """Immutable Qy tuple value.
+
+    Like ``NumberValue``/``StringValue``, host-level ``==`` is permissive: a
+    ``TupleValue`` compares equal to another ``TupleValue`` with equal items and
+    to a host tuple with permissively equal elements. Qy operators do their own
+    semantic comparison.
+    """
 
     items: tuple[object, ...]
 
@@ -555,6 +561,18 @@ class TupleValue(ObjectValue):
     @property
     def length(self) -> int:
         return len(self.items)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, TupleValue):
+            return self.items == other.items
+        if isinstance(other, tuple):
+            return len(self.items) == len(other) and all(
+                a == b for a, b in zip(self.items, other, strict=True)
+            )
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-tuple", self.items))
 
 
 @dataclass(frozen=True, slots=True)
@@ -574,6 +592,18 @@ class ListValue(ObjectValue):
     def length(self) -> int:
         return len(self.items)
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, ListValue):
+            return self.items == other.items
+        if isinstance(other, list):
+            return len(self.items) == len(other) and all(
+                a == b for a, b in zip(self.items, other, strict=True)
+            )
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-list", self.items))
+
 
 @dataclass(frozen=True, slots=True)
 class DictValue(ObjectValue):
@@ -587,6 +617,21 @@ class DictValue(ObjectValue):
     def length(self) -> int:
         return len(self.entries)
 
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, DictValue):
+            return self.entries == other.entries
+        if isinstance(other, dict):
+            if len(self.entries) != len(other):
+                return False
+            return all(
+                any(k == other_key and v == other_value for other_key, other_value in other.items())
+                for k, v in self.entries
+            )
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-dict", self.entries))
+
 
 @dataclass(frozen=True, slots=True)
 class SetValue(ObjectValue):
@@ -599,6 +644,18 @@ class SetValue(ObjectValue):
     @property
     def length(self) -> int:
         return len(self.items)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, SetValue):
+            return self.items == other.items
+        if isinstance(other, set):
+            return len(self.items) == len(other) and all(
+                any(item == candidate for candidate in other) for item in self.items
+            )
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-set", self.items))
 
 
 @dataclass(slots=True)
