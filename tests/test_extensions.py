@@ -13,7 +13,9 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
+from qy.ext import ExtensionPolicy
 from qy.ext import extension_names
+from qy.ext import extension_requires
 from qy.ext import get_extension
 from qy.ext import load_extension
 from qy.import_.registry import load_module
@@ -149,3 +151,30 @@ def test_python_file_modules_load_through_extension_hook(tmp_path: Path):
     module = load_file_module(str(module_file))
     names = {symbol.name for symbol in module.exports}
     assert names == {"answer"}
+
+
+def test_extension_policy_gates_loading():
+    import pytest
+
+    from qy.errors import QyCapabilityError
+
+    assert extension_requires("qy.ext.fs") == ("filesystem",)
+    assert set(extension_requires("qy.ext.python")) == {"python-exec"}
+
+    with pytest.raises(QyCapabilityError, match="not enabled"):
+        load_extension("qy.ext.fs", policy=ExtensionPolicy(enabled_extensions=frozenset()))
+
+    with pytest.raises(QyCapabilityError, match="filesystem"):
+        load_extension("qy.ext.fs", policy=ExtensionPolicy(allowed_capabilities=frozenset()))
+
+    module = load_extension(
+        "qy.ext.fs",
+        policy=ExtensionPolicy(
+            enabled_extensions=frozenset({"qy.ext.fs"}),
+            allowed_capabilities=frozenset({"filesystem"}),
+        ),
+    )
+    assert module.name == "qy.ext.fs"
+
+    # no policy -> unrestricted (existing explicit-import behavior)
+    assert load_extension("qy.ext.fs").name == "qy.ext.fs"

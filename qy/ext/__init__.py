@@ -28,8 +28,10 @@ from qy.ext import testhost as _testhost  # noqa: F401
 from qy.ext.descriptor import ExtensionBinding as ExtensionBinding
 from qy.ext.descriptor import ExtensionCapability as ExtensionCapability
 from qy.ext.descriptor import ExtensionDescriptor as ExtensionDescriptor
+from qy.ext.registry import ExtensionPolicy as ExtensionPolicy
 from qy.ext.registry import extension_descriptors as extension_descriptors
 from qy.ext.registry import extension_names as extension_names
+from qy.ext.registry import extension_requires as extension_requires
 from qy.ext.registry import get_extension as get_extension
 from qy.ext.registry import load_extension as load_extension
 from qy.ext.registry import register_extension as register_extension
@@ -38,8 +40,10 @@ __all__ = [
     "ExtensionBinding",
     "ExtensionCapability",
     "ExtensionDescriptor",
+    "ExtensionPolicy",
     "extension_descriptors",
     "extension_names",
+    "extension_requires",
     "get_extension",
     "load_extension",
     "register_extension",

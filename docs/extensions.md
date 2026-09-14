@@ -30,6 +30,12 @@
 
 ## 3. 注册与装载
 
+扩展声明中的 capability 是准入依据：实例/工具可通过
+`qy.ext.ExtensionPolicy(enabled_extensions=..., allowed_capabilities=...)`
+在装载时做检查（`load_extension(name, policy=...)`），违反时抛
+`QyCapabilityError`。未提供 policy 等价于不限制，保持显式 `from` 的既有行为。
+`extension_requires(name)` 返回扩展声明的 capability 集合（含 binding 级声明）。
+
 ```python
 from qy.ext import ExtensionDescriptor, ExtensionCapability, ExtensionBinding, register_extension
 

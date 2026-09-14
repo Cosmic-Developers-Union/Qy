@@ -2065,6 +2065,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   声明模型 + 注册表（`descriptor.py` / `registry.py`）。
 - 内核 `qy.core` 不再混入宿主算子；容器构造器更名 `container_operators`
   （产物是 Qy 语义值）。
+- `ExtensionPolicy`：扩展/capability 准入检查（`load_extension(policy=...)`），
+  违反抛 `QyCapabilityError`；`extension_requires(name)` 提供声明查询。
 - 模块迁移（module_name 保持兼容）：
   - `qy.symbol_space.python` → `qy.ext.python`（`qy.py`，capability `python-exec`）；
   - `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost`）；
