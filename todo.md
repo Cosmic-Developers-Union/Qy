@@ -2076,6 +2076,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 - `HostObjectRef` 定义移入 `qy.sem.host.HostReference`，VM instance 只重导出。
 - 字符串字面量解析为 `StringValue`：语言运行时不再以宿主 `str` 定义字符串值；
   Python 扩展在边界显式 `StringValue <-> str` / `NumberValue <-> int|float` 转换。
+- `qy.sem.bridge.to_qy_value` / `from_qy_value`：扩展边界的统一宿主值转换
+  （未知对象 → `HostReference`）；`string-split`/`string->list` 返回 `TupleValue`。
 - `tests/test_extensions.py`：内核包不得 import `qy.ext.*` / 宿主模块；
   扩展声明与 capability；扩展模块装载；`qy.core` 无 `py`；`qy.io` 无 `read-file`。
 - 文档：`docs/extensions.md`；`docs/package-structure.md` 增补 `ext/` 所有权与导入方向。

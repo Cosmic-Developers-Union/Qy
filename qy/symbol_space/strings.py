@@ -17,6 +17,7 @@ from qy.sem.core import CharValue
 from qy.sem.core import IntValue
 from qy.sem.core import StringValue
 from qy.sem.core import T as QY_T
+from qy.sem.core import TupleValue
 
 
 def module() -> StandardModule:
@@ -117,21 +118,25 @@ def _string_find(s: object, needle: object) -> object:
     return IntValue(idx)
 
 
-def _string_split(s: object, separator: object = None) -> tuple[StringValue, ...]:
+def _string_split(s: object, separator: object = None) -> TupleValue:
     text = _extract_str(s, "string-split")
     separator = _optional(separator)
     if separator is None:
         parts = text.split()
     else:
         parts = text.split(_extract_str(separator, "string-split"))
-    return tuple(StringValue(p) for p in parts)
+    return TupleValue(tuple(StringValue(p) for p in parts))
 
 
 def _string_join(separator: object, *values: object) -> StringValue:
     sep = _extract_str(separator, "string-join")
     parts: list[str] = []
+    from qy.sem.core import ListValue
+
     for v in values:
-        if isinstance(v, tuple):
+        if isinstance(v, TupleValue | ListValue):
+            parts.extend(_extract_str(item, "string-join") for item in v.items)
+        elif isinstance(v, tuple):
             parts.extend(_extract_str(item, "string-join") for item in v)
         else:
             parts.append(_extract_str(v, "string-join"))
@@ -187,8 +192,8 @@ def _string_trim(s: object) -> StringValue:
     return StringValue(_extract_str(s, "string-trim").strip())
 
 
-def _string_to_list(s: object) -> tuple[CharValue, ...]:
-    return tuple(CharValue(c) for c in _extract_str(s, "string->list"))
+def _string_to_list(s: object) -> TupleValue:
+    return TupleValue(tuple(CharValue(c) for c in _extract_str(s, "string->list")))
 
 
 def _string_to_symbol(s: object) -> Symbol:

@@ -8,7 +8,10 @@ VM 直接操作 sem value 后本模块可删除。
 from __future__ import annotations
 
 from qy.core.syntax import Chain
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
 from qy.core.syntax import nil
+from qy.frontend.reader import Symbol
 from qy.sem.core import NIL
 from qy.sem.core import NONE
 from qy.sem.core import ChainValue
@@ -25,6 +28,7 @@ from qy.sem.core import IntValue
 from qy.sem.core import ListValue
 from qy.sem.core import NilValue
 from qy.sem.core import NoneValue
+from qy.sem.core import ObjectValue
 from qy.sem.core import SetValue
 from qy.sem.core import StringValue
 from qy.sem.core import T
@@ -35,6 +39,7 @@ from qy.sem.core import UInt16Value
 from qy.sem.core import UInt32Value
 from qy.sem.core import UInt64Value
 from qy.sem.core import Value
+from qy.sem.host import HostReference
 
 
 def to_sem(value: object) -> Value:
@@ -100,3 +105,80 @@ def from_sem(value: object) -> object:
     if isinstance(value, SetValue):
         return set(value.items)
     return nil
+
+
+# ─── Extension boundary conversions ──────────────────────────────────────────
+# Language runtime only accepts semantic values; host values cross the boundary
+# through qy.ext.* extensions. Kernel code must not call these automatically.
+
+
+def to_qy_value(value: object) -> object:
+    """宿主值 → Qy 语义值（扩展边界）。.
+
+    未知宿主对象包装为 ``HostReference``；Symbol / operator / 已有语义值原样返回。
+    """
+    if isinstance(value, ObjectValue | HostReference | Symbol):
+        return value
+    if value is None:
+        return NONE
+    if isinstance(value, bool):
+        return T if value else nil
+    if isinstance(value, int):
+        return IntValue(value)
+    if isinstance(value, float):
+        return FloatValue(value)
+    if isinstance(value, str):
+        return StringValue(value)
+    if isinstance(value, list):
+        return ListValue(tuple(to_qy_value(item) for item in value))
+    if isinstance(value, tuple):
+        return TupleValue(tuple(to_qy_value(item) for item in value))
+    if isinstance(value, dict):
+        return DictValue(tuple((to_qy_value(k), to_qy_value(v)) for k, v in value.items()))
+    if isinstance(value, set):
+        return SetValue(tuple(to_qy_value(item) for item in value))
+    return HostReference(value)
+
+
+def from_qy_value(value: object) -> object:
+    """Qy 语义值 → 宿主值（扩展边界）。.
+
+    与 legacy :func:`from_sem` 不同：未知值原样返回而不是折叠为 ``nil``。
+    """
+    if isinstance(value, HostReference):
+        return value.value
+    if isinstance(value, NoneValue):
+        return None
+    if isinstance(
+        value,
+        IntValue
+        | Int8Value
+        | Int16Value
+        | Int32Value
+        | Int64Value
+        | UInt8Value
+        | UInt16Value
+        | UInt32Value
+        | UInt64Value,
+    ):
+        return value.value
+    if isinstance(value, FloatValue | Float16Value | Float32Value | Float128Value):
+        return value.value
+    if isinstance(value, StringValue):
+        return value.value
+    if isinstance(value, TupleValue):
+        return tuple(from_qy_value(item) for item in value.items)
+    if isinstance(value, ListValue):
+        return [from_qy_value(item) for item in value.items]
+    if isinstance(value, DictValue):
+        return {from_qy_value(k): from_qy_value(v) for k, v in value.entries}
+    if isinstance(value, SetValue):
+        return {from_qy_value(item) for item in value.items}
+    if is_nil(value):
+        return None
+    if isinstance(value, Chain) or is_chain(value):
+        return [from_qy_value(item) for item in value]
+    return value
+
+
+__all__ = ["from_qy_value", "from_sem", "to_qy_value", "to_sem"]

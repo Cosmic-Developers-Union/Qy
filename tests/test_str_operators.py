@@ -34,7 +34,11 @@ def test_string_length():
 
 
 def test_string_split():
-    assert evaluate_source('(string-split "a,b,c" ",")', _str_env()) == (
+    from qy.sem.core import TupleValue
+
+    result = evaluate_source('(string-split "a,b,c" ",")', _str_env())
+    assert isinstance(result, TupleValue)
+    assert result.items == (
         StringValue("a"),
         StringValue("b"),
         StringValue("c"),

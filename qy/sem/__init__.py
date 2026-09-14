@@ -17,6 +17,8 @@
 - 不得混入工具链逻辑
 """
 
+from qy.sem.bridge import from_qy_value
+from qy.sem.bridge import to_qy_value
 from qy.sem.core import NIL
 from qy.sem.core import NONE
 from qy.sem.core import ArrayValue
@@ -81,4 +83,6 @@ __all__ = [
     "TupleValue",
     "UserFunction",
     "Value",
+    "from_qy_value",
+    "to_qy_value",
 ]

@@ -56,6 +56,10 @@ register_extension(DESCRIPTOR, module)
 - VM instance 只重导出该类型（`qy.vm.instance.values.HostObjectRef` 为兼容别名）。
 - 扩展负责创建/解包 host reference，并把宿主异常转换成语言级错误
   （`QyError` 子类），不得把宿主异常类型暴露给语言。
+- 转换助手：`qy.sem.bridge.to_qy_value` / `from_qy_value`（宿主 primitive ↔
+  `IntValue`/`FloatValue`/`StringValue`/容器语义值；未知对象 → `HostReference`）。
+  仅限扩展边界调用；内核不得自动转换。legacy `to_sem`/`from_sem` 仍保留在
+  同一模块用于迁移期。
 
 ## 5. 文件模块后缀
 
@@ -91,6 +95,8 @@ register_extension(DESCRIPTOR, module)
 - `python_container_operators` 更名为 `container_operators`（Qy 语义容器）。
 - 字符串字面量解析为 `StringValue`（不再是宿主 `str`）；Python 扩展在边界
   显式完成 `StringValue <-> str`、`NumberValue <-> int/float` 转换。
+- `string-split` / `string->list` 返回 `TupleValue`（不再是宿主 tuple）；
+  `append` 按语义容器选择 `ListValue`/`TupleValue`/chain。
 
 待迁移（登记于 `todo.md`）：
 
