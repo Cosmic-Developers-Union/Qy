@@ -2,15 +2,21 @@
 ;;
 ;; Interpreted subset:
 ;;   datum:        symbol / chain / number / string / nil
-;;   special:      quote if cond define defun lambda let and or from apply pipeline
-;;   primitives:   + - * = < > <= >= car cdr cons list null? not eq? eq atom print
+;;   special:      quote if cond define defun lambda let and or from apply
+;;                 pipeline module exports macro quasiquote unquote
+;;                 unquote-splicing eval reify
+;;   effects:      defeffect perform handle resume (resumable, continue semantics)
+;;   primitives:   + - * / mod = == < > <= >= car cdr cons list null? not
+;;                 eq? eq atom len truthy is print
 ;;   other host operators resolve via `from` + `lookup-export` pass-through.
-;;   reader:       `;` line comments, `'` quote, string escapes (\n \t \r \" \\)
+;;   reader:       `;` line comments, `'` quote, `` ` ``/`,`/`,@`,
+;;                 string escapes (\n \t \r \" \\)
 ;;
 ;; Design:
 ;;   - tokens are chains (TAG payload); TAG ∈ SYM NUM STR LPAREN RPAREN QUOTE
 ;;   - env is a chain of frames; each frame is a chain of (name . value) pairs
-;;   - eval returns (value . env) so `define` can extend env without set!
+;;   - evaluator is CPS: continuations are closures (lambda (value env ctx) ...)
+;;     and ctx carries the dynamic handler stack plus resume targets
 ;;   - closures are chains (CLOSURE params body env name)
 ;;   - closure body env starts with a (FALLBACK globals) marker so references to
 ;;     globals defined after the closure was created (forward/mutual recursion)
@@ -19,7 +25,7 @@
 
 (from qy.str import
   string-empty? string-slice string-length string-at
-  string= string-concat string->symbol)
+  string= string-concat string->symbol symbol->string)
 (from qy.char import
   char-whitespace? char-numeric? char=? char->integer integer->char)
 (from qy.core import type atom)
@@ -27,12 +33,13 @@
 (from qy.num import + -)
 (from qy.num import / mod)
 (from qy.num import =)
+(from qy.num import ==)
 (from qy.num import >)
 (from qy.num import <)
 (from qy.num import <=)
 (from qy.num import >=)
 (from qy.io import read-file)
-(from qy.testhost import cli-args lookup-export display)
+(from qy.testhost import cli-args lookup-export display raise-error)
 
 ;; === list helpers ===
 (define reverse
@@ -400,85 +407,166 @@
         ((eq name nil) env)
         (true (env-extend-top env name closure))))))
 
-(define eval-body
-  (lambda (body env)
-    (car (eval-body-result body env))))
+;; === contexts ===
+;; A continuation is a closure (lambda (value env ctx) ...).
+;; ctx = (HANDLERS . TARGETS) where
+;;   HANDLERS : chain of (HANDLER clauses env k-out ctx-outer) records
+;;   TARGETS  : chain of (RECORD . K) pairs; K receives the delimited body
+;;              result when a resumed computation reaches the matching
+;;              handler boundary.
+(define make-ctx
+  (lambda () (cons nil nil)))
 
-(define eval-body-result
-  (lambda (body env)
+(define ctx-handlers
+  (lambda (ctx) (car ctx)))
+
+(define ctx-targets
+  (lambda (ctx) (cdr ctx)))
+
+(define ctx-set-handlers
+  (lambda (ctx handlers) (cons handlers (cdr ctx))))
+
+(define ctx-push-target
+  (lambda (ctx record cont)
+    (cons (car ctx) (cons (cons record cont) (cdr ctx)))))
+
+(define ctx-pop-target
+  (lambda (ctx) (cons (car ctx) (cdr (cdr ctx)))))
+
+;; === effect values ===
+;; effect value = (EFFECT name resumable?)
+(define make-effect
+  (lambda (name resumable) (cons 'EFFECT (cons name (cons resumable nil)))))
+
+(define effect?
+  (lambda (value)
     (cond
-      ((eq body nil) (cons nil env))
-      ((eq (cdr body) nil) (eval-result (car body) env))
-      (true
-        (let ((r (eval-result (car body) env)))
-          (eval-body-result (cdr body) (cdr r)))))))
+      ((eq (type value) 'chain) (eq (car value) 'EFFECT))
+      (true nil))))
 
-(define apply-closure
-  (lambda (closure vals call-env)
-    (let ((env (bind-self closure (closure-env closure))))
-      (eval-body (closure-body closure)
-                 (cons (marker-frame (env-globals call-env))
-                       (bind-params (closure-params closure) vals env))))))
+(define effect-name
+  (lambda (effect) (car (cdr effect))))
 
-;; === evaluator: form × env -> (value . env) ===
-(define eval-result
-  (lambda (form env)
+(define effect-resumable?
+  (lambda (effect) (car (cdr (cdr effect)))))
+
+;; === handler records ===
+;; (HANDLER clauses env k-out ctx-outer)
+(define make-handler
+  (lambda (clauses env k-out ctx-outer)
+    (cons 'HANDLER (cons clauses (cons env (cons k-out (cons ctx-outer nil)))))))
+
+(define handler-clauses
+  (lambda (record) (car (cdr record))))
+
+(define handler-env
+  (lambda (record) (car (cdr (cdr record)))))
+
+(define handler-k-out
+  (lambda (record) (car (cdr (cdr (cdr record))))))
+
+(define handler-ctx-outer
+  (lambda (record) (car (cdr (cdr (cdr (cdr record)))))))
+
+;; === first-class continuations captured at perform ===
+;; (CONT k env ctx record resumable?)
+(define make-continuation
+  (lambda (k env ctx record resumable)
+    (cons 'CONT (cons k (cons env (cons ctx (cons record (cons resumable nil))))))))
+
+(define continuation?
+  (lambda (value)
     (cond
-      ((eq (type form) 'symbol) (cons (env-lookup form env) env))
-      ((eq (type form) 'chain) (eval-call-result form env))
-      (true (cons form env)))))
+      ((eq (type value) 'chain) (eq (car value) 'CONT))
+      (true nil))))
 
-(define eval-call-result
-  (lambda (form env)
+(define cont-k
+  (lambda (cont) (car (cdr cont))))
+
+(define cont-env
+  (lambda (cont) (car (cdr (cdr cont)))))
+
+(define cont-ctx
+  (lambda (cont) (car (cdr (cdr (cdr cont))))))
+
+(define cont-record
+  (lambda (cont) (car (cdr (cdr (cdr (cdr cont)))))))
+
+(define cont-resumable?
+  (lambda (cont) (car (cdr (cdr (cdr (cdr (cdr cont))))))))
+
+;; === evaluator core (CPS) ===
+(define eval-k
+  (lambda (form env ctx k)
+    (cond
+      ((eq (type form) 'symbol) (k (env-lookup form env) env ctx))
+      ((eq (type form) 'chain) (eval-call-k form env ctx k))
+      (true (k form env ctx)))))
+
+(define eval-call-k
+  (lambda (form env ctx k)
     (let ((op (car form)) (args (cdr form)))
       (cond
-        ((eq op 'quote) (cons (arg1 args) env))
-        ((eq op 'if) (eval-if-result args env))
-        ((eq op 'cond) (eval-cond-result args env))
-        ((eq op 'define) (eval-define-result args env))
-        ((eq op 'defun) (eval-defun-result args env))
+        ((eq op 'quote) (k (arg1 args) env ctx))
+        ((eq op 'if) (eval-if-k args env ctx k))
+        ((eq op 'cond) (eval-cond-k args env ctx k))
+        ((eq op 'define) (eval-define-k args env ctx k))
+        ((eq op 'defun)
+         (let ((r (define-closure (arg1 args) (cons 'lambda (cdr args)) env)))
+           (k (car r) (cdr r) ctx)))
         ((eq op 'lambda)
-         (cons (make-closure (arg1 args) (cdr args) env) env))
-        ((eq op 'let) (eval-let-result (arg1 args) (cdr args) env))
-        ((eq op 'and) (eval-and-result args env))
-        ((eq op 'or) (eval-or-result args env))
-        ((eq op 'from) (eval-from-result args env))
-        ((eq op 'module) (eval-module-result args env))
-        ((eq op 'exports) (cons nil env))
-        ((eq op 'macro) (eval-macro-result args env))
-        ((eq op 'quasiquote) (cons (qq (arg1 args) 0 env) env))
-        ((eq op 'unquote) (cons (car (eval-result (arg1 args) env)) env))
-        ((eq op 'unquote-splicing) (cons (car (eval-result (arg1 args) env)) env))
-        ((eq op 'apply) (eval-apply-form args env))
-        ((eq op 'pipeline) (eval-body-result args env))
-        (true (eval-apply-result op args env))))))
+         (k (make-closure (arg1 args) (cdr args) env) env ctx))
+        ((eq op 'let) (eval-let-k (arg1 args) (cdr args) env ctx k))
+        ((eq op 'and) (eval-and-k args env ctx k))
+        ((eq op 'or) (eval-or-k args env ctx k))
+        ((eq op 'from) (eval-from-k args env ctx k))
+        ((eq op 'module) (eval-module-k args env ctx k))
+        ((eq op 'exports) (k nil env ctx))
+        ((eq op 'macro) (eval-macro-k args env ctx k))
+        ((eq op 'defeffect) (eval-defeffect-k args env ctx k))
+        ((eq op 'perform) (eval-perform-k args env ctx k))
+        ((eq op 'handle) (eval-handle-k args env ctx k))
+        ((eq op 'resume) (eval-resume-k args env ctx k))
+        ((eq op 'quasiquote) (qq-k (arg1 args) 0 env ctx k))
+        ((eq op 'unquote) (eval-k (arg1 args) env ctx k))
+        ((eq op 'unquote-splicing) (eval-k (arg1 args) env ctx k))
+        ((eq op 'eval) (eval-datum-k args env ctx k))
+        ((eq op 'reify) (eval-reify-k args env ctx k))
+        ((eq op 'apply) (eval-apply-form-k args env ctx k))
+        ((eq op 'pipeline) (eval-body-k args env ctx k))
+        (true (eval-apply-k op args env ctx k))))))
 
-(define eval-if-result
-  (lambda (args env)
-    (let ((c (eval-result (arg1 args) env)))
-      (cond
-        ((eq (car c) nil) (eval-result (arg3 args) (cdr c)))
-        (true (eval-result (arg2 args) (cdr c)))))))
+(define eval-if-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (condition env2 ctx2)
+        (cond
+          ((eq condition nil) (eval-k (arg3 args) env2 ctx2 k))
+          (true (eval-k (arg2 args) env2 ctx2 k)))))))
 
-(define eval-cond-result
-  (lambda (clauses env)
+(define eval-cond-k
+  (lambda (clauses env ctx k)
     (cond
-      ((eq clauses nil) (cons nil env))
+      ((eq clauses nil) (k nil env ctx))
       (true
         (let ((clause (car clauses)))
-          (let ((c (eval-result (arg1 clause) env)))
-            (cond
-              ((eq (car c) nil) (eval-cond-result (cdr clauses) (cdr c)))
-              (true (eval-result (arg2 clause) (cdr c))))))))))
+          (eval-k (arg1 clause) env ctx
+            (lambda (condition env2 ctx2)
+              (cond
+                ((eq condition nil) (eval-cond-k (cdr clauses) env2 ctx2 k))
+                (true (eval-k (arg2 clause) env2 ctx2 k))))))))))
 
-(define eval-define-result
-  (lambda (args env)
+(define eval-define-k
+  (lambda (args env ctx k)
     (let ((name (arg1 args)) (rhs (arg2 args)))
       (cond
-        ((lambda-form? rhs) (define-closure name rhs env))
+        ((lambda-form? rhs)
+         (let ((r (define-closure name rhs env)))
+           (k (car r) (cdr r) ctx)))
         (true
-          (let ((r (eval-result rhs env)))
-            (cons (car r) (env-extend-top (cdr r) name (car r)))))))))
+         (eval-k rhs env ctx
+           (lambda (value env2 ctx2)
+             (k value (env-extend-top env2 name value) ctx2))))))))
 
 ;; `(lambda params body...)` as a datum (used to build self-recursive closures)
 (define lambda-form?
@@ -493,18 +581,408 @@
                      name (arg1 (cdr rhs)) (cdr (cdr rhs)) env)))
       (cons closure (env-extend-top env name closure)))))
 
-;; `(defun name (params) body...)`
-(define eval-defun-result
-  (lambda (args env)
-    (define-closure (arg1 args) (cons 'lambda (cdr args)) env)))
+(define eval-let-k
+  (lambda (bindings body env ctx k)
+    (eval-bindings-k bindings env ctx
+      (lambda (frame env2 ctx2)
+        (eval-body-k body (cons frame env2) ctx2 k)))))
 
+(define eval-bindings-k
+  (lambda (bindings env ctx k)
+    (cond
+      ((eq bindings nil) (k nil env ctx))
+      (true
+        (let ((binding (car bindings)))
+          (eval-k (arg2 binding) env ctx
+            (lambda (value env2 ctx2)
+              (eval-bindings-k (cdr bindings) env2 ctx2
+                (lambda (frame env3 ctx3)
+                  (k (cons (cons (arg1 binding) value) frame) env3 ctx3))))))))))
+
+(define eval-body-k
+  (lambda (body env ctx k)
+    (cond
+      ((eq body nil) (k nil env ctx))
+      ((eq (cdr body) nil) (eval-k (car body) env ctx k))
+      (true
+        (eval-k (car body) env ctx
+          (lambda (value env2 ctx2)
+            (eval-body-k (cdr body) env2 ctx2 k)))))))
+
+(define eval-and-k
+  (lambda (forms env ctx k)
+    (cond
+      ((eq forms nil) (k true env ctx))
+      ((eq (cdr forms) nil) (eval-k (car forms) env ctx k))
+      (true
+        (eval-k (car forms) env ctx
+          (lambda (value env2 ctx2)
+            (cond
+              ((eq value nil) (k nil env2 ctx2))
+              (true (eval-and-k (cdr forms) env2 ctx2 k)))))))))
+
+(define eval-or-k
+  (lambda (forms env ctx k)
+    (cond
+      ((eq forms nil) (k nil env ctx))
+      ((eq (cdr forms) nil) (eval-k (car forms) env ctx k))
+      (true
+        (eval-k (car forms) env ctx
+          (lambda (value env2 ctx2)
+            (cond
+              ((eq value nil) (eval-or-k (cdr forms) env2 ctx2 k))
+              (true (k value env2 ctx2)))))))))
+
+(define eval-args-k
+  (lambda (args env ctx k)
+    (cond
+      ((eq args nil) (k nil env ctx))
+      (true
+        (eval-k (car args) env ctx
+          (lambda (value env2 ctx2)
+            (eval-args-k (cdr args) env2 ctx2
+              (lambda (vals env3 ctx3)
+                (k (cons value vals) env3 ctx3)))))))))
+
+(define eval-apply-k
+  (lambda (op args env ctx k)
+    (eval-k op env ctx
+      (lambda (f env2 ctx2)
+        (cond
+          ((macro? f)
+           (expand-macro-k f args ctx2
+             (lambda (expansion env3 ctx3)
+               (eval-k expansion env2 ctx3 k))))
+          (true
+           (eval-args-k args env2 ctx2
+             (lambda (vals env3 ctx3)
+               (apply-value-k f vals env3 ctx3 k)))))))))
+
+(define eval-datum-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (datum env2 ctx2)
+        (eval-k datum env2 ctx2 k)))))
+
+(define eval-reify-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (value env2 ctx2)
+        (k (reify-value value) env2 ctx2)))))
+
+(define reify-value
+  (lambda (value)
+    (cond
+      ((eq (type value) 'chain)
+       (cond
+         ((closure? value) value)
+         ((macro? value) value)
+         ((effect? value) value)
+         ((continuation? value) value)
+         (true (reify-chain value))))
+      (true value))))
+
+(define reify-chain
+  (lambda (items)
+    (cond
+      ((eq items nil) nil)
+      (true (cons (reify-value (car items)) (reify-chain (cdr items)))))))
+
+(define eval-apply-form-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (f env2 ctx2)
+        (eval-k (arg2 args) env2 ctx2
+          (lambda (vals env3 ctx3)
+            (apply-value-k f vals env3 ctx3 k)))))))
+
+(define apply-closure-k
+  (lambda (closure vals call-env ctx k)
+    (let ((env (bind-self closure (closure-env closure))))
+      (eval-body-k (closure-body closure)
+                   (cons (marker-frame (env-globals call-env))
+                         (bind-params (closure-params closure) vals env))
+                   ctx
+                   ;; The callee's env (params, local defines) must not leak to
+                   ;; the caller; ctx (handlers / resume targets) flows through
+                   ;; so that handler boundaries and resumes stay balanced.
+                   (lambda (value body-env body-ctx)
+                     (k value call-env body-ctx))))))
+
+(define apply-value-k
+  (lambda (f vals env ctx k)
+    (cond
+      ((closure? f) (apply-closure-k f vals env ctx k))
+      (true (k (apply-primitive f vals) env ctx)))))
+
+(define apply-primitive
+  (lambda (f vals)
+    (cond
+      ((eq (type f) 'function) (apply f vals))
+      ((eq (type f) 'operator) (apply f vals))
+      ((eq f '+) (apply-list-+ vals))
+      ((eq f '*) (apply-list-* vals))
+      ((eq f '-) (apply-list-minus vals))
+      ((eq f '/) (apply-list-div vals))
+      ((eq f 'mod) (prim-two mod vals))
+      ((eq f 'len) (prim-one len vals))
+      ((eq f 'truthy) (prim-one truthy vals))
+      ((eq f 'is) (prim-two is vals))
+      ((eq f '=) (prim-two = vals))
+      ((eq f '==) (prim-two == vals))
+      ((eq f '<) (prim-two < vals))
+      ((eq f '>) (prim-two > vals))
+      ((eq f '<=) (prim-two <= vals))
+      ((eq f '>=) (prim-two >= vals))
+      ((eq f 'eq) (prim-two eq vals))
+      ((eq f 'eq?) (prim-two eq vals))
+      ((eq f 'atom) (prim-atom vals))
+      ((eq f 'car) (car (arg1 vals)))
+      ((eq f 'cdr) (cdr (arg1 vals)))
+      ((eq f 'cons) (cons (arg1 vals) (arg2 vals)))
+      ((eq f 'list) vals)
+      ((eq f 'null?) (qy-not (arg1 vals)))
+      ((eq f 'not) (qy-not (arg1 vals)))
+      ((eq f 'print) (print-value (arg1 vals)))
+      (true nil))))
+
+;; === primitives ===
+(define qy-not
+  (lambda (value)
+    (cond
+      ((eq value nil) true)
+      (true nil))))
+
+(define prim-two
+  (lambda (prim vals)
+    ;; prim is a host operator value bound in the prelude, not a symbol.
+    (prim (arg1 vals) (arg2 vals))))
+
+(define prim-atom
+  (lambda (vals)
+    (atom (arg1 vals))))
+
+(define prim-one
+  (lambda (prim vals)
+    (prim (arg1 vals))))
+
+(define apply-list-+
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 0)
+      ((eq (cdr vals) nil) (car vals))
+      (true (+ (car vals) (apply-list-+ (cdr vals)))))))
+
+(define apply-list-*
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 1)
+      ((eq (cdr vals) nil) (car vals))
+      (true (* (car vals) (apply-list-* (cdr vals)))))))
+
+(define apply-list-minus
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 0)
+      ((eq (cdr vals) nil) (- (car vals)))
+      (true (apply-minus-fold (car vals) (cdr vals))))))
+
+(define apply-minus-fold
+  (lambda (acc rest)
+    (cond
+      ((eq rest nil) acc)
+      (true (apply-minus-fold (- acc (car rest)) (cdr rest))))))
+
+(define apply-list-div
+  (lambda (vals)
+    (cond
+      ((eq vals nil) 1)
+      ((eq (cdr vals) nil) (/ (car vals)))
+      (true (apply-div-fold (car vals) (cdr vals))))))
+
+(define apply-div-fold
+  (lambda (acc rest)
+    (cond
+      ((eq rest nil) acc)
+      (true (apply-div-fold (/ acc (car rest)) (cdr rest))))))
+
+;; === algebraic effects ===
+(define eval-defeffect-k
+  (lambda (args env ctx k)
+    (let ((name (arg1 args)))
+      (let ((effect (make-effect name (defeffect-resumable-opt (cdr args)))))
+        (k effect (env-extend-top env name effect) ctx)))))
+
+(define defeffect-resumable-opt
+  (lambda (options)
+    (cond
+      ((eq options nil) true)
+      ((eq (arg1 options) ':resumable)
+       (cond
+         ((eq (arg2 options) 'false) nil)
+         (true true)))
+      (true true))))
+
+(define eval-perform-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (effect-value env2 ctx2)
+        (eval-k (arg2 args) env2 ctx2
+          (lambda (payload env3 ctx3)
+            (dispatch-perform
+              (cond
+                ((effect? effect-value) (effect-name effect-value))
+                (true effect-value))
+              (cond
+                ((effect? effect-value) (effect-resumable? effect-value))
+                (true true))
+              payload env3 ctx3 k)))))))
+
+(define find-handler
+  (lambda (name handlers)
+    (cond
+      ((eq handlers nil) nil)
+      ((find-clause name (handler-clauses (car handlers))) (car handlers))
+      (true (find-handler name (cdr handlers))))))
+
+(define find-clause
+  (lambda (name clauses)
+    (cond
+      ((eq clauses nil) nil)
+      ((eq (arg1 (car clauses)) name) (car clauses))
+      (true (find-clause name (cdr clauses))))))
+
+(define dispatch-perform
+  (lambda (name resumable payload env ctx k)
+    (let ((record (find-handler name (ctx-handlers ctx))))
+      (cond
+        ((eq record nil)
+         (raise-error (string-concat "unhandled effect: " (symbol->string name))))
+        (true
+         (let ((clause (find-clause name (handler-clauses record))))
+           (let ((params (arg2 clause)))
+             (let ((arg-name (arg1 params))
+                   (k-name (arg2 params)))
+               (let ((env2 (bind-params
+                             (cons arg-name (cons k-name nil))
+                             (cons payload
+                                   (cons (make-continuation k env ctx record resumable) nil))
+                             (handler-env record))))
+                 (eval-body-k (cdr (cdr clause)) env2
+                              (handler-exec-ctx record ctx)
+                              (make-handler-cont (handler-k-out record)
+                                                 (handler-ctx-outer record))))))))))))
+
+(define handler-exec-ctx
+  (lambda (record ctx)
+    (cons (cons record (ctx-handlers (handler-ctx-outer record)))
+          (ctx-targets ctx))))
+
+(define make-handler-cont
+  (lambda (k-out ctx-outer)
+    (lambda (value env ctx) (k-out value env ctx-outer))))
+
+(define make-handle-body-cont
+  (lambda (record k-out ctx-outer)
+    (lambda (value env ctx)
+      (let ((targets (ctx-targets ctx)))
+        (cond
+          ((eq targets nil) (k-out value env ctx-outer))
+          ((is (car (car targets)) record)
+           ((cdr (car targets)) value env (ctx-pop-target ctx)))
+          (true (k-out value env ctx-outer)))))))
+
+(define eval-handle-k
+  (lambda (args env ctx k)
+    (let ((first (arg1 args)) (second (arg2 args)))
+      (cond
+        ((on-form? first) (eval-handle-parts second first env ctx k))
+        (true (eval-handle-parts first second env ctx k))))))
+
+(define eval-handle-parts
+  (lambda (body clauses env ctx k)
+    (let ((record (make-handler (normalize-clauses clauses) env k ctx)))
+      ;; `body` is a single expression; wrap it as a one-form body.
+      (eval-body-k (cons body nil) env
+                   (ctx-set-handlers ctx (cons record (ctx-handlers ctx)))
+                   (make-handle-body-cont record k ctx)))))
+
+(define on-form?
+  (lambda (form)
+    (cond
+      ((eq (type form) 'chain) (eq (car form) 'on))
+      (true nil))))
+
+(define normalize-clauses
+  (lambda (clauses)
+    (cond
+      ((on-form? clauses) (cons (normalize-on-clause clauses) nil))
+      ((eq (type clauses) 'chain)
+       (cond
+         ((eq clauses nil) nil)
+         ((on-form? (car clauses))
+          (cons (normalize-on-clause (car clauses)) (normalize-clauses (cdr clauses))))
+         (true (cons (car clauses) (normalize-clauses (cdr clauses))))))
+      (true nil))))
+
+;; `(on effect (arg k) body...)`, `(on effect () body...)` and
+;; `(on effect (arg) k body...)` all normalize to `(effect (arg k) body...)`.
+(define normalize-on-clause
+  (lambda (clause)
+    (let ((effect (arg2 clause)) (params (arg3 clause)) (rest (cdr (cdr (cdr clause)))))
+      (cond
+        ((eq params nil)
+         (cons effect (cons (cons '_v (cons 'k nil)) rest)))
+        ((one-element-chain? params)
+         (cond
+           ((eq rest nil)
+            (cons effect (cons (append-chain params (cons 'k nil)) rest)))
+           ((eq (type (car rest)) 'symbol)
+            (cond
+              ((eq (cdr rest) nil)
+               (cons effect (cons (append-chain params (cons 'k nil)) rest)))
+              (true
+               (cons effect (cons (cons (car params) (cons (car rest) nil)) (cdr rest))))))
+           (true
+            (cons effect (cons (append-chain params (cons 'k nil)) rest)))))
+        (true (cons effect (cons params rest)))))))
+
+(define one-element-chain?
+  (lambda (value)
+    (cond
+      ((eq (type value) 'chain) (eq (cdr value) nil))
+      (true nil))))
+
+(define eval-resume-k
+  (lambda (args env ctx k)
+    (eval-k (arg1 args) env ctx
+      (lambda (cont-value env2 ctx2)
+        (eval-k (arg2 args) env2 ctx2
+          (lambda (value env3 ctx3)
+            (resume-continuation cont-value value env3 ctx3 k)))))))
+
+(define resume-continuation
+  (lambda (cont-value value env ctx k)
+    (cond
+      ((continuation? cont-value)
+       (cond
+         ((eq (cont-resumable? cont-value) nil)
+          (raise-error "resume: effect is not resumable"))
+         (true
+          ((cont-k cont-value)
+           value
+           (cont-env cont-value)
+           (ctx-push-target (cont-ctx cont-value) (cont-record cont-value) k)))))
+      (true (raise-error "resume expects a continuation")))))
+
+;; === modules ===
 ;; `(from module import name [as alias] ...)` — module may be an interpreted
 ;; module value or a host module name resolved through `lookup-export`.
-(define eval-from-result
-  (lambda (args env)
+(define eval-from-k
+  (lambda (args env ctx k)
     (let ((module-ref (arg1 args)))
       (let ((module-value (env-lookup module-ref env)))
-        (cons nil (import-specs module-value module-ref (cdr (cdr args)) env))))))
+        (k nil (import-specs module-value module-ref (cdr (cdr args)) env) ctx)))))
 
 (define import-specs
   (lambda (module-value module-ref items env)
@@ -539,23 +1017,26 @@
       (true (lookup-export module-ref name)))))
 
 ;; `(module Name (exports a b ...) body...)` — evaluate body in a fresh env and
-;; bind Name to a (MODULE nameexports) value in the enclosing env.
-(define eval-module-result
-  (lambda (args env)
+;; bind Name to a (MODULE name exports) value in the enclosing env.
+(define eval-module-k
+  (lambda (args env ctx k)
     (let ((name (arg1 args)))
       (let ((body (cdr args)))
-        (let ((final-env (cdr (eval-forms-env body (make-standard-env)))))
-          (let ((module (make-module name (collect-exports (exports-of body) final-env))))
-            (cons module (env-extend-top env name module))))))))
+        (eval-forms-env-k body (make-standard-env) ctx
+          (lambda (values final-env ctx2)
+            (let ((module (make-module name (collect-exports (exports-of body) final-env))))
+              (k module (env-extend-top env name module) ctx2))))))))
 
-(define eval-forms-env
-  (lambda (forms env)
+(define eval-forms-env-k
+  (lambda (forms env ctx k)
     (cond
-      ((eq forms nil) (cons nil env))
+      ((eq forms nil) (k nil env ctx))
       (true
-        (let ((r (eval-result (car forms) env)))
-          (let ((rest (eval-forms-env (cdr forms) (cdr r))))
-            (cons (cons (car r) (car rest)) (cdr rest))))))))
+        (eval-k (car forms) env ctx
+          (lambda (value env2 ctx2)
+            (eval-forms-env-k (cdr forms) env2 ctx2
+              (lambda (values env3 ctx3)
+                (k (cons value values) env3 ctx3)))))))))
 
 (define exports-form?
   (lambda (form)
@@ -623,51 +1104,62 @@
 (define macro-env
   (lambda (macro) (car (cdr (cdr (cdr macro))))))
 
-(define eval-macro-result
-  (lambda (args env)
+(define eval-macro-k
+  (lambda (args env ctx k)
     (let ((name (arg1 args)))
       (let ((macro (make-macro (arg2 args) (cdr (cdr args)) env)))
-        (cons macro (env-extend-top env name macro))))))
+        (k macro (env-extend-top env name macro) ctx)))))
 
-(define expand-macro
-  (lambda (macro args)
-    (eval-body (macro-body macro)
-               (bind-params (macro-params macro) args (macro-env macro)))))
+(define expand-macro-k
+  (lambda (macro args ctx k)
+    (eval-body-k (macro-body macro)
+                 (bind-params (macro-params macro) args (macro-env macro))
+                 ctx k)))
 
 ;; === quasiquote / unquote / unquote-splicing ===
-(define qq
-  (lambda (form depth env)
+(define qq-k
+  (lambda (form depth env ctx k)
     (cond
       ((eq (type form) 'chain)
        (let ((head (car form)))
          (cond
            ((eq head 'unquote)
             (cond
-              ((= depth 0) (car (eval-result (arg1 (cdr form)) env)))
-              (true (cons 'unquote
-                          (cons (qq (arg1 (cdr form)) (- depth 1) env) nil)))))
+              ((= depth 0) (eval-k (arg1 (cdr form)) env ctx k))
+              (true
+               (qq-k (arg1 (cdr form)) (- depth 1) env ctx
+                 (lambda (value env2 ctx2)
+                   (k (cons 'unquote (cons value nil)) env2 ctx2))))))
            ((eq head 'quasiquote)
-            (cons 'quasiquote
-                  (cons (qq (arg1 (cdr form)) (+ depth 1) env) nil)))
+            (qq-k (arg1 (cdr form)) (+ depth 1) env ctx
+              (lambda (value env2 ctx2)
+                (k (cons 'quasiquote (cons value nil)) env2 ctx2))))
            ((eq head 'unquote-splicing)
-            (cons 'unquote-splicing
-                  (cons (qq (arg1 (cdr form)) (- depth 1) env) nil)))
-           (true (qq-list form depth env)))))
-      (true form))))
+            (qq-k (arg1 (cdr form)) (- depth 1) env ctx
+              (lambda (value env2 ctx2)
+                (k (cons 'unquote-splicing (cons value nil)) env2 ctx2))))
+           (true (qq-list-k form depth env ctx k)))))
+      (true (k form env ctx)))))
 
-(define qq-list
-  (lambda (items depth env)
+(define qq-list-k
+  (lambda (items depth env ctx k)
     (cond
-      ((eq items nil) nil)
+      ((eq items nil) (k nil env ctx))
       (true
         (let ((item (car items)))
           (cond
             ((qq-splice? item depth)
-             (append-chain (car (eval-result (arg1 (cdr item)) env))
-                           (qq-list (cdr items) depth env)))
+             (eval-k (arg1 (cdr item)) env ctx
+               (lambda (value env2 ctx2)
+                 (qq-list-k (cdr items) depth env2 ctx2
+                   (lambda (rest env3 ctx3)
+                     (k (append-chain value rest) env3 ctx3))))))
             (true
-             (cons (qq item depth env)
-                   (qq-list (cdr items) depth env)))))))))
+             (qq-k item depth env ctx
+               (lambda (value env2 ctx2)
+                 (qq-list-k (cdr items) depth env2 ctx2
+                   (lambda (rest env3 ctx3)
+                     (k (cons value rest) env3 ctx3))))))))))))
 
 (define qq-splice?
   (lambda (item depth)
@@ -683,160 +1175,6 @@
     (cond
       ((eq left nil) right)
       (true (cons (car left) (append-chain (cdr left) right))))))
-
-;; `(apply f arg-chain)` — f evaluated, args datum evaluated to a chain.
-(define eval-apply-form
-  (lambda (args env)
-    (let ((f (eval-result (arg1 args) env)))
-      (let ((av (eval-result (arg2 args) (cdr f))))
-        (cons (apply-value (car f) (car av) (cdr av)) (cdr av))))))
-
-(define eval-let-result
-  (lambda (bindings body env)
-    (let ((frame (eval-bindings bindings env)))
-      (eval-body-result body (cons (car frame) (cdr frame))))))
-
-(define eval-bindings
-  (lambda (bindings env)
-    (cond
-      ((eq bindings nil) (cons nil env))
-      (true
-        (let ((binding (car bindings)))
-          (let ((r (eval-result (arg2 binding) env)))
-            (let ((rest (eval-bindings (cdr bindings) (cdr r))))
-              (cons (cons (cons (arg1 binding) (car r)) (car rest))
-                    (cdr rest)))))))))
-
-(define eval-and-result
-  (lambda (forms env)
-    (cond
-      ((eq forms nil) (cons true env))
-      ((eq (cdr forms) nil) (eval-result (car forms) env))
-      (true
-        (let ((r (eval-result (car forms) env)))
-          (cond
-            ((eq (car r) nil) (cons nil (cdr r)))
-            (true (eval-and-result (cdr forms) (cdr r)))))))))
-
-(define eval-or-result
-  (lambda (forms env)
-    (cond
-      ((eq forms nil) (cons nil env))
-      ((eq (cdr forms) nil) (eval-result (car forms) env))
-      (true
-        (let ((r (eval-result (car forms) env)))
-          (cond
-            ((eq (car r) nil) (eval-or-result (cdr forms) (cdr r)))
-            (true r)))))))
-
-(define eval-args-result
-  (lambda (args env)
-    (cond
-      ((eq args nil) (cons nil env))
-      (true
-        (let ((r (eval-result (car args) env)))
-          (let ((rest (eval-args-result (cdr args) (cdr r))))
-            (cons (cons (car r) (car rest)) (cdr rest))))))))
-
-(define eval-apply-result
-  (lambda (op args env)
-    (let ((f (eval-result op env)))
-      (cond
-        ;; macro: expand with raw argument forms, then evaluate the expansion
-        ((macro? (car f)) (eval-result (expand-macro (car f) args) (cdr f)))
-        (true
-         (let ((av (eval-args-result args (cdr f))))
-           (cons (apply-value (car f) (car av) env) (cdr av))))))))
-
-;; === primitives ===
-(define qy-not
-  (lambda (value)
-    (cond
-      ((eq value nil) true)
-      (true nil))))
-
-(define apply-value
-  (lambda (f vals env)
-    (cond
-      ((closure? f) (apply-closure f vals env))
-      ((eq (type f) 'operator) (apply f vals))
-      ((eq f '+) (apply-list-+ vals))
-      ((eq f '*) (apply-list-* vals))
-      ((eq f '-) (apply-list-minus vals))
-      ((eq f '/) (apply-list-div vals))
-      ((eq f 'mod) (prim-two mod vals))
-      ((eq f 'len) (prim-one len vals))
-      ((eq f 'truthy) (prim-one truthy vals))
-      ((eq f 'is) (prim-two is vals))
-      ((eq f '=) (prim-two = vals))
-      ((eq f '<) (prim-two < vals))
-      ((eq f '>) (prim-two > vals))
-      ((eq f '<=) (prim-two <= vals))
-      ((eq f '>=) (prim-two >= vals))
-      ((eq f 'eq) (prim-two eq vals))
-      ((eq f 'eq?) (prim-two eq vals))
-      ((eq f 'atom) (prim-atom vals))
-      ((eq f 'car) (car (arg1 vals)))
-      ((eq f 'cdr) (cdr (arg1 vals)))
-      ((eq f 'cons) (cons (arg1 vals) (arg2 vals)))
-      ((eq f 'list) vals)
-      ((eq f 'null?) (qy-not (arg1 vals)))
-      ((eq f 'not) (qy-not (arg1 vals)))
-      ((eq f 'print) (print-value (arg1 vals)))
-      (true nil))))
-
-(define prim-two
-  (lambda (prim vals)
-    ;; prim is a host operator value bound in the prelude, not a symbol.
-    (prim (arg1 vals) (arg2 vals))))
-
-(define prim-atom
-  (lambda (vals)
-    (atom (arg1 vals))))
-
-(define prim-one
-  (lambda (prim vals)
-    (prim (arg1 vals))))
-
-(define apply-list-+
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 0)
-      ((eq (cdr vals) nil) (car vals))
-      (true (+ (car vals) (apply-list-+ (cdr vals)))))))
-
-(define apply-list-*
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 1)
-      ((eq (cdr vals) nil) (car vals))
-      (true (* (car vals) (apply-list-* (cdr vals)))))))
-
-(define apply-list-minus
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 0)
-      ((eq (cdr vals) nil) (- (car vals)))
-      (true (apply-minus-fold (car vals) (cdr vals))))))
-
-(define apply-minus-fold
-  (lambda (acc rest)
-    (cond
-      ((eq rest nil) acc)
-      (true (apply-minus-fold (- acc (car rest)) (cdr rest))))))
-
-(define apply-list-div
-  (lambda (vals)
-    (cond
-      ((eq vals nil) 1)
-      ((eq (cdr vals) nil) (/ (car vals)))
-      (true (apply-div-fold (car vals) (cdr vals))))))
-
-(define apply-div-fold
-  (lambda (acc rest)
-    (cond
-      ((eq rest nil) acc)
-      (true (apply-div-fold (/ acc (car rest)) (cdr rest))))))
 
 ;; === host output ===
 ;; `display` 只做 Qy display 格式化，不解析 literal spelling；宿主 `print` 则
@@ -869,19 +1207,24 @@
 
 (define run-forms
   (lambda (forms env)
-    (emit-all-results (eval-forms-collect forms env))))
+    (collect-k forms env (make-ctx)
+      (lambda (results env2 ctx2)
+        (emit-all-results results)))))
 
 ;; Evaluate every form, threading env, and collect (form . value) pairs.
 ;; Printing happens afterwards so that side-effect output precedes the results,
 ;; matching `qy run` (which echoes collected results after evaluation).
-(define eval-forms-collect
-  (lambda (forms env)
+(define collect-k
+  (lambda (forms env ctx k)
     (cond
-      ((eq forms nil) nil)
+      ((eq forms nil) (k nil env ctx))
       (true
-        (let ((r (eval-result (car forms) env)))
-          (cons (cons (car forms) (car r))
-                (eval-forms-collect (cdr forms) (cdr r))))))))
+        (let ((form (car forms)))
+          (eval-k form env ctx
+            (lambda (value env2 ctx2)
+              (collect-k (cdr forms) env2 ctx2
+                (lambda (results env3 ctx3)
+                  (k (cons (cons form value) results) env3 ctx3))))))))))
 
 (define emit-all-results
   (lambda (results)
@@ -925,7 +1268,9 @@
           (cons "(define f (lambda (x) (+ x 1))) (f 41)"
             (cons "(car '(a b c)) (cdr '(a b c)) (cons 'head '(tail))"
               (cons "(define square (lambda (x) (* x x))) (square 7) ((lambda (a b) (+ a b)) 10 32)"
-                nil))))))))
+                (cons "(defeffect ask) (handle (perform ask 7) ((ask (x k) (resume k (+ x 35)))))"
+                (cons "(defeffect inner) (defeffect outer) (handle (perform inner (handle (perform outer 10) ((outer (x k) (resume k (* x 5)))))) ((inner (v k) (resume k (+ v 1)))))"
+                  nil))))))))))
 
 (define interp-entry
   (lambda ()

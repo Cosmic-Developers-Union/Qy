@@ -40,6 +40,11 @@ def module() -> StandardModule:
                 _display,
                 "按 Qy display 规则把值格式化为 string；不做 literal 解析，不打印。",
             ),
+            Symbol("raise-error"): ScopeOperator(
+                "raise-error",
+                _raise_error,
+                "以 EvaluationError 终止当前求值；供自举解释器报告未处理效应等错误。",
+            ),
             Symbol("run-file"): ScopeOperator("run-file", _run_file, "运行 Qy 文件并返回结果。"),
             Symbol("run-file-with-coverage"): ScopeOperator(
                 "run-file-with-coverage", _run_file_with_coverage, "运行 Qy 文件并收集覆盖率。"
@@ -177,6 +182,15 @@ def _display(args: tuple[object, ...], env: Environment) -> object:
     from qy.sem.core import StringValue
 
     return StringValue(format_value(args[0]))
+
+
+def _raise_error(args: tuple[object, ...], env: Environment) -> object:
+    del env
+    from qy.display import format_value
+    from qy.errors import EvaluationError
+
+    message = " ".join(format_value(arg) for arg in args) if args else "error"
+    raise EvaluationError(message)
 
 
 def _start_coverage(args: tuple[object, ...], env: Environment) -> object:

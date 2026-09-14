@@ -1,0 +1,9 @@
+(defeffect inner)
+(defeffect outer)
+(handle
+  (perform inner (handle (perform outer 10) ((outer (x k) (resume k (* x 5))))))
+  ((inner (v k) (resume k (+ v 1)))))
+(+ 1
+   (handle
+     (+ 10 (perform inner 30))
+     ((inner (x k) (resume k (* x 2))))))

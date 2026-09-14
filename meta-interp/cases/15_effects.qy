@@ -1,0 +1,3 @@
+(defeffect ask)
+(handle (perform ask 7) ((ask (x k) (resume k (+ x 35)))))
+(handle (+ 1 (perform ask 10)) ((ask (v k) (resume k (* v 3)))))
