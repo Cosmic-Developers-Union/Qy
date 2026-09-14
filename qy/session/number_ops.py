@@ -406,6 +406,30 @@ def _py_eq(left: object, right: object) -> object:
     return QY_T if left == right else QY_NIL
 
 
+def _string_to_number(value: object) -> object:
+    """Parse a numeric literal string into ``IntValue`` / ``FloatValue``. .
+
+    Returns ``nil`` when the text is not a valid number literal. Accepts
+    ``StringValue``, ``Symbol`` and host ``str`` during the transition period.
+    """
+    from qy.sem.core import NumberValue
+    from qy.sem.core import StringValue
+    from qy.session.pre_ss import parse_number_literal
+
+    if isinstance(value, StringValue):
+        text = value.value
+    elif isinstance(value, str):
+        text = value
+    elif isinstance(value, Symbol):
+        text = value.name
+    else:
+        return QY_NIL
+    parsed = parse_number_literal(text)
+    if isinstance(parsed, NumberValue):
+        return parsed
+    return QY_NIL
+
+
 def number_ss_bindings() -> dict[Symbol, object]:
     """Return the fixed bindings of number-ss.
 
@@ -430,6 +454,11 @@ def number_ss_bindings() -> dict[Symbol, object]:
             "数字相除；要求所有参数为同一 concrete number 类型；除零触发 divide-by-zero effect。",
         ),
         Symbol("mod"): PureOperator("mod", _mod, "取模；要求所有参数为同一 concrete number 类型。"),
+        Symbol("string->number"): PureOperator(
+            "string->number",
+            _string_to_number,
+            "把数字字面量字符串解析为 number；不是合法数字时返回 nil。",
+        ),
         Symbol("<"): PureOperator("<", _lt, "小于;要求所有参数为同一 concrete number 类型。"),
         Symbol(">"): PureOperator(">", _gt, "大于;要求所有参数为同一 concrete number 类型。"),
         Symbol("<="): PureOperator("<=", _le, "小于等于;要求所有参数为同一 concrete number 类型。"),

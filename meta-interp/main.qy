@@ -3,9 +3,10 @@
 ;; Interpreted subset:
 ;;   datum:        symbol / chain / number / string / nil
 ;;   special:      quote if cond define defun lambda let and or from apply
-;;                 pipeline module exports macro quasiquote unquote
-;;                 unquote-splicing eval reify
+;;                 pipeline parallel all race module exports macro quasiquote
+;;                 unquote unquote-splicing eval reify
 ;;   effects:      defeffect perform handle resume (resumable, continue semantics)
+;;   numbers:      parsed through host `string->number` (int and float literals)
 ;;   primitives:   + - * / mod = == < > <= >= car cdr cons list null? not
 ;;                 eq? eq atom len truthy is print
 ;;   other host operators resolve via `from` + `lookup-export` pass-through.
@@ -28,12 +29,13 @@
   string= string-concat string->symbol symbol->string)
 (from qy.char import
   char-whitespace? char-numeric? char=? char->integer integer->char)
-(from qy.core import type atom)
+(from qy.core import type atom tuple)
 (from qy.core import len truthy is)
 (from qy.num import + -)
 (from qy.num import / mod)
 (from qy.num import =)
 (from qy.num import ==)
+(from qy.num import string->number)
 (from qy.num import >)
 (from qy.num import <)
 (from qy.num import <=)
@@ -105,33 +107,16 @@
       ((delimiter? (string-at src i)) i)
       (true (find-atom-end src (+ i 1) n)))))
 
-(define all-numeric?
-  (lambda (text)
-    (cond
-      ((string-empty? text) nil)
-      ;; leading '-' only counts when at least one digit follows
-      ((char=? (string-at text 0) (chr 45))
-       (cond
-         ((< (string-length text) 2) nil)
-         (true (all-numeric-from? text 1 (string-length text)))))
-      (true (all-numeric-from? text 0 (string-length text))))))
-
-(define all-numeric-from?
-  (lambda (text i n)
-    (cond
-      ((>= i n) true)
-      ((char-numeric? (string-at text i)) (all-numeric-from? text (+ i 1) n))
-      (true nil))))
-
 (define tokenize-atom
   (lambda (src i n acc)
     (let ((end (find-atom-end src i n)))
       (let ((text (string-slice src i end)))
-        (cond
-          ((all-numeric? text)
-           (tokenize-loop src end n (cons (tok-make 'NUM text) acc)))
-          (true
-           (tokenize-loop src end n (cons (tok-make 'SYM text) acc))))))))
+        (let ((number (string->number text)))
+          (cond
+            ((eq number nil)
+             (tokenize-loop src end n (cons (tok-make 'SYM text) acc)))
+            (true
+             (tokenize-loop src end n (cons (tok-make 'NUM number) acc)))))))))
 
 (define scan-string
   (lambda (src i n acc)
@@ -221,7 +206,7 @@
         ((eq (tok-tag tok) 'SYM)
          (cons (string->symbol (tok-payload tok)) (cdr tokens)))
         ((eq (tok-tag tok) 'NUM)
-         (cons (parse-num (tok-payload tok)) (cdr tokens)))
+         (cons (tok-payload tok) (cdr tokens)))
         ((eq (tok-tag tok) 'STR)
          (cons (tok-payload tok) (cdr tokens)))
         (true (cons nil (cdr tokens)))))))
@@ -240,27 +225,6 @@
         (let ((r (parse-one tokens)))
           (parse-list (cdr r) (cons (car r) acc)))))))
 
-(define parse-num
-  (lambda (text)
-    (cond
-      ((char=? (string-at text 0) (chr 45))
-       (- 0 (parse-num-loop text 1 (string-length text) 0)))
-      (true
-       (parse-num-loop text 0 (string-length text) 0)))))
-
-(define parse-num-loop
-  (lambda (text i n acc)
-    (cond
-      ((>= i n) acc)
-      (true
-       (parse-num-loop text (+ i 1) n
-                       (+ (* acc 10) (digit-of (string-at text i))))))))
-
-(define digit-of
-  (lambda (ch)
-    (- (char->integer ch) (char->integer (chr 48)))))
-
-;; === arg accessors ===
 (define arg1
   (lambda (args) (car args)))
 
@@ -534,6 +498,9 @@
         ((eq op 'reify) (eval-reify-k args env ctx k))
         ((eq op 'apply) (eval-apply-form-k args env ctx k))
         ((eq op 'pipeline) (eval-body-k args env ctx k))
+        ((eq op 'parallel) (eval-gather-k args env ctx k))
+        ((eq op 'all) (eval-gather-k args env ctx k))
+        ((eq op 'race) (eval-race-k args env ctx k))
         (true (eval-apply-k op args env ctx k))))))
 
 (define eval-if-k
@@ -673,6 +640,11 @@
 (define reify-value
   (lambda (value)
     (cond
+      ;; nil / T / none reify to their syntax spellings (like the host does),
+      ;; so `'nil` (a symbol datum) compares equal to the reified form.
+      ((eq value nil) (string->symbol "nil"))
+      ((eq value true) (string->symbol "T"))
+      ((eq value none) (string->symbol "none"))
       ((eq (type value) 'chain)
        (cond
          ((closure? value) value)
@@ -687,6 +659,23 @@
     (cond
       ((eq items nil) nil)
       (true (cons (reify-value (car items)) (reify-chain (cdr items)))))))
+
+;; `(parallel ...)` / `(all ...)`: sequential evaluation is a legal
+;; implementation ("parallel 只表示允许并行，不要求并行"); results are gathered
+;; into a tuple, matching the host VM.
+(define eval-gather-k
+  (lambda (args env ctx k)
+    (eval-args-k args env ctx
+      (lambda (vals env2 ctx2)
+        (k (apply tuple vals) env2 ctx2)))))
+
+;; `(race ...)`: first-resume wins; sequential evaluation returns the value of
+;; the first branch.
+(define eval-race-k
+  (lambda (args env ctx k)
+    (cond
+      ((eq args nil) (k nil env ctx))
+      (true (eval-k (car args) env ctx k)))))
 
 (define eval-apply-form-k
   (lambda (args env ctx k)

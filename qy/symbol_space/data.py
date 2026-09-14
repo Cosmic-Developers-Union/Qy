@@ -159,6 +159,11 @@ def _eq(left: object, right: object) -> object:
         return QY_T if left.value == right.value else QY_NIL
     if isinstance(left, StringValue) and isinstance(right, StringValue):
         return QY_T if left.value == right.value else QY_NIL
+    # String literals still materialize as host ``str`` during the transition
+    # (see pre_ss.parse_string_literal); LANGUAGE.md specifies string values
+    # compare by value, so host str must follow the same rule.
+    if isinstance(left, str) and isinstance(right, str):
+        return QY_T if left == right else QY_NIL
     if isinstance(left, Symbol):
         return QY_T if left == right else QY_NIL
     return QY_NIL

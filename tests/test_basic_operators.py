@@ -44,6 +44,18 @@ def test_eq():
     assert evaluate_source("(eq none nil)") is QY_NIL
     assert evaluate_source("(eq T true)") is QY_T  # both resolve to QY_T
     assert evaluate_source("(== T true)") is QY_T  # both resolve to QY_T
+    # string literals follow LANGUAGE.md string value equality
+    assert evaluate_source('(eq "hello" "hello")') is QY_T
+    assert evaluate_source('(eq "hello" "world")') is QY_NIL
+    assert evaluate_source('(eq "1" 1)') is QY_NIL
+
+
+def test_string_to_number():
+    assert evaluate_source('(string->number "42")') == 42
+    assert evaluate_source('(string->number "-3")') == -3
+    assert evaluate_source('(string->number "2.5")') == 2.5
+    assert evaluate_source('(string->number "abc")') is QY_NIL
+    assert evaluate_source('(string->number "+")') is QY_NIL
 
 
 def test_is():

@@ -5,19 +5,20 @@
 
 最近一次本地基线（2026-09-14）：
 
-- `uv run python -m pytest -q`：1030 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
+- `uv run python -m pytest -q`：1031 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
 - `uv run ruff check .`：passed
 - `uv run ruff format --check .`：passed
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
 - `meta-interp/cases/` 16 个自举用例与 `qy run` 参考输出逐字节一致；
-  另有 48 个受支持的 `tests/qy` 行为用例一次性批量对拍通过
+  `tests/qy` 行为用例 **54/54** 全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
 - **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
   dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；
   `print` 不再重复求值 cons 结果；MIR→LIR `STORE_LOCAL` 寄存器重映射修复；
   参数列表 `(macro)` 不再被 macroexpander 误判为宏定义；
   `qy.io/read-file` 与 `qy.testhost/lookup-export`/`display`/`raise-error` host 能力；
-  自举解释器实现代数效应（CPS + 显式 handler/continuation）。
+  自举解释器实现代数效应（CPS + 显式 handler/continuation）并覆盖并行/浮点/reify；
+  host `eq` 对字符串字面量按值比较（对齐 LANGUAGE.md）；qy.num 新增 `string->number`。
 
 历史基线（2026-08-02）：
 
@@ -1989,7 +1990,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
    - compat stdlib 下沉。
 6. **自举解释器推进**
    - 保持 `meta-interp/cases/` 与受支持 `tests/qy` 用例的对拍；
-   - 逐步补齐 parallel/all/race、float/number family、hygiene（gensym/capture）；
+   - 逐步补齐 hygiene（gensym/capture）、number family 的 concrete 类型语义；
    - 性能：消除解释器全局 lookup 的线性扫描，再谈阶段 3 自解释。
 
 ---
@@ -2026,21 +2027,18 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 - `meta-interp/compare.sh cases/*.qy`：16/16 与参考输出逐字节一致。
 - `tests/test_meta_interp.py`：
   - 16 个 `cases/` 用例默认运行，逐字节对比参考；
-  - 48 个受支持的 `tests/qy` 行为用例在一次解释器进程内批量对拍；
+  - `tests/qy` 全部 54 个行为用例在一次解释器进程内批量对拍；
   - `QY_META_SELF=1` 时额外运行阶段 2 自解释测试（解释器源码被自身解释后仍能把
     `(+ 1 2)` 解释为 `3`）。
 
 ## 已知差距
 
-- 不支持：`parallel`/`all`/`race`、float 字面量与完整的 number family、
-  macro 的 `gensym`/`capture`（现有宏为非 hygiene 展开）、
-  `reify` 对 host reference 的 partial 语义。
+- macro 的 `gensym`/`capture` 未实现（现有宏为非 hygiene 展开，但 `tests/qy`
+  宏用例行为与 host 一致）；`reify` 对 host reference 的 partial 语义未实现。
 - 效应的已知简化：仅单帧 continuation 重入（覆盖现有测试的 continue 语义），
   `:resumable false` 只在 `resume` 时报错；尚未验证 multi-shot 与 effect 在
-  并发结构中的交互。
-- 与宿主的已知不一致：宿主 `eq` 对 Python `str` 字面量仍返回 nil（str/StringValue
-  混用，见 §2.2），自举解释器按 `LANGUAGE.md` 的 string 值相等语义返回 T；
-  因此 `tests/qy/40_eq_value_identity.qy` 暂不纳入批量对拍。
+  并发结构中的交互；`parallel`/`all`/`race` 为顺序实现（语言允许）。
+- number family 只透传 host 数字；定宽整型/浮点的 concrete 类型语义未在解释器内建模。
 - 性能：CPS 化后阶段 2 自解释正确但仍极慢（约 37s 跑完单次自解释测试）；
   瓶颈在解释执行本身、闭包分配与全局 lookup 的线性扫描，需要专门优化。
 - 环境用不可变 chain 建模，前向引用依赖 FALLBACK fallback；尚无 `set!`/mutation

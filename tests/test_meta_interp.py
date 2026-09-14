@@ -22,9 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 META_INTERP = ROOT / "meta-interp" / "main.qy"
 CASES = tuple(sorted((ROOT / "meta-interp" / "cases").glob("*.qy")))
 
-# tests/qy 行为用例中被 meta-interp 完整支持的子集（批量跑，一次解释器进程）。
-# 其余用例依赖尚未实现的能力：macro/quasiquote、module/exports、effect、
-# parallel/all/race、float 等。
+# tests/qy 行为用例全集（批量跑，一次解释器进程）。
+# 覆盖 quote/apply、作用域、递归、宏、模块、代数效应、parallel/all/race、
+# 字符串、数字与 reify 等；每个用例都与 host register VM 输出逐字节对拍。
 SUPPORTED_QY_TESTS = (
     "01_quote_apply",
     "02_scope_shadow",
@@ -39,6 +39,7 @@ SUPPORTED_QY_TESTS = (
     "11_quote_chain",
     "12_cons_chain",
     "13_macro_basic",
+    "14_parallel",
     "15_lambda",
     "16_cond",
     "17_nested_handle",
@@ -51,6 +52,8 @@ SUPPORTED_QY_TESTS = (
     "24_capture",
     "25_string_literal",
     "26_export_view",
+    "27_all_barrier",
+    "28_race_first",
     "29_nested_effects",
     "30_defeffect_basic",
     "31_macro_hygiene",
@@ -64,6 +67,8 @@ SUPPORTED_QY_TESTS = (
     "38_eq_identity",
     "38_module_function",
     "39_nil_only_cond",
+    "40_eq_value_identity",
+    "41_reify_basic",
     "42_number_add",
     "43_number_sub",
     "44_number_neg",
@@ -74,6 +79,7 @@ SUPPORTED_QY_TESTS = (
     "49_number_gt",
     "50_number_le",
     "51_number_ge",
+    "52_number_float_add",
 )
 
 
