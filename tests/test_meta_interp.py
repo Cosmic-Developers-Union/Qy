@@ -82,12 +82,11 @@ SUPPORTED_QY_TESTS = (
     "52_number_float_add",
 )
 
-# examples/validation 中不依赖宿主 Python 互操作（py）且运行代价可接受的样例。
+# examples/validation 中运行代价可接受的样例。
 # 03/09 是深度尾调用压力样例（分别约 4.5s / 29s），尾调用语义已由 tests/qy
 # 的 20_tail_recursion 覆盖，默认测试不重复跑。
 _EXCLUDED_VALIDATION = {
     "03_functions_tail_call.qy",
-    "08_host_interop.qy",
     "09_register_vm_tail_call.qy",
 }
 VALIDATION_EXAMPLES = tuple(

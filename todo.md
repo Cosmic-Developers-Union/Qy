@@ -11,13 +11,13 @@
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
 - 宿主边界：`qy/ext/` 扩展机制落地；`tests/test_extensions.py` 边界测试 7 项通过
 - `meta-interp/cases/` 19 个自举用例与 `qy run` 参考输出逐字节一致；
-  `tests/qy` 行为用例 **54/54**、`examples/validation` 7 个验收样例全部对拍通过
+  `tests/qy` 行为用例 **54/54**、`examples/validation` 8 个验收样例全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
 - **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
   dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；
   `print` 不再重复求值 cons 结果；MIR→LIR `STORE_LOCAL` 寄存器重映射修复；
   参数列表 `(macro)` 不再被 macroexpander 误判为宏定义；
-  `qy.io/read-file` 与 `qy.testhost/lookup-export`/`display`/`raise-error` host 能力；
+  `read-file`、`lookup-export`、`display`、`raise-error`、`gensym` 等 host 能力；
   自举解释器实现代数效应（CPS + 显式 handler/continuation）并覆盖并行/浮点/reify；
   host `eq` 对字符串字面量按值比较（对齐 LANGUAGE.md）；qy.num 新增 `string->number`；
   自举解释器补齐宏 hygiene（binder 重命名 + definition-site free symbol + capture/gensym）、
@@ -2005,7 +2005,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 ## 已完成
 
-- **Reader**：`tokenize-string`（含 `;` 行注释、字符串转义 `\n \t \r \" \\`）、
+- **Reader**：`tokenize-string`（含 `;` 行注释、字符串转义 `\n \t \r \" \\`、
+  三重引号字符串）、
   parser 产出 symbol / chain / number（含负数）/ string / nil。
 - **环境模型**：env 是 frame chain；closure body env 允许一个 `(FALLBACK globals)` 头帧，
   用来解析"定义晚于闭包创建"的前向引用/互递归（对应语言里 pre-declared binding slot 的语义）。
@@ -2032,14 +2033,13 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 - `tests/test_meta_interp.py`：
   - 19 个 `cases/` 用例默认运行，逐字节对比参考；
   - `tests/qy` 全部 54 个行为用例在一次解释器进程内批量对拍；
-  - `examples/validation` 7 个验收样例默认对拍（03/09 深尾递归压力样例默认跳过）；
+  - `examples/validation` 8 个验收样例默认对拍（03/09 深尾递归压力样例默认跳过，
+    含 08_host_interop：py 扩展边界 + triple-quoted reader）；
   - `QY_META_SELF=1` 时额外运行阶段 2 自解释测试（解释器源码被自身解释后仍能把
     `(+ 1 2)` 解释为 `3`）。
 
 ## 已知差距
 
-- `py` 宿主互操作（examples/validation/08）未实现：解释器求值后的实参无法回传
-  host `py` 所需的原始表达式与 env。
 - `this`/`slot`/`bind` 为可运行近似（local binding），不建模真正的 symbol-space
   object / binding slot；`component` 只作为不融合的占位值，host 对象 repr
   （RuntimeSpace / slot）无法逐字节对齐，因此 `examples/hello.qy` 未纳入自动对拍。

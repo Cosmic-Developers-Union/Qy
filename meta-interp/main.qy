@@ -14,7 +14,7 @@
 ;;                 null? not eq? eq atom truthy is print slot
 ;;   other host operators resolve via `from` + `lookup-export` pass-through.
 ;;   reader:       `;` line comments, `'` quote, `` ` ``/`,`/`,@`,
-;;                 string escapes (\n \t \r \" \\)
+;;                 string escapes (\n \t \r \" \\), triple-quoted strings
 ;;
 ;; Design:
 ;;   - tokens are chains (TAG payload); TAG ∈ SYM NUM STR LPAREN RPAREN QUOTE
@@ -160,6 +160,27 @@
       (tokenize-loop src (+ (cdr r) 1) n
                      (cons (tok-make 'STR (car r)) acc)))))
 
+(define triple-quote-at?
+  (lambda (src i n)
+    (cond
+      ((>= (+ i 1) n) nil)
+      ((char=? (string-at src i) (chr 34))
+       (char=? (string-at src (+ i 1)) (chr 34)))
+      (true nil))))
+
+(define scan-string-triple
+  (lambda (src i n acc)
+    (cond
+      ((>= (+ i 2) n) (cons (string-concat acc (string-slice src i n)) n))
+      ((triple-quote-at? src i n) (cons acc (+ i 3)))
+      ((char=? (string-at src i) (chr 92))
+       (cond
+         ((>= (+ i 1) n) (cons (string-concat acc "\\") (+ i 1)))
+         (true (scan-string-triple src (+ i 2) n
+                                   (string-concat acc (string-escape src (+ i 1)))))))
+      (true (scan-string-triple src (+ i 1) n
+                                (string-concat acc (string-slice src i (+ i 1))))))))
+
 (define tokenize-loop
   (lambda (src i n acc)
     (let ((i (skip-space src i n)))
@@ -188,7 +209,13 @@
                  (true
                   (tokenize-loop src (+ i 1) n (cons (tok-make 'UNQUOTE ",") acc)))))
               ((char=? ch (chr 34))
-               (tokenize-string-token src (+ i 1) n acc))
+               (cond
+                 ((triple-quote-at? src (+ i 1) n)
+                  (let ((r (scan-string-triple src (+ i 3) n "")))
+                    (tokenize-loop src (cdr r) n
+                                   (cons (tok-make 'STR (car r)) acc))))
+                 (true
+                  (tokenize-string-token src (+ i 1) n acc))))
               ((char=? ch (chr 59))
                (tokenize-loop src (skip-line-comment src (+ i 1) n) n acc))
               (true (tokenize-atom src i n acc)))))))))
