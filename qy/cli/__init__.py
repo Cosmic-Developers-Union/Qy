@@ -18,11 +18,15 @@ def main() -> int:
 
     cli = build_cli()
     try:
-        cli(standalone_mode=False)
+        result = cli(standalone_mode=False)
     except click.exceptions.Exit as e:
         return e.exit_code
     except click.exceptions.Abort:
         return 1
+    # click 在 non-standalone 模式下会把命令显式 raise 的 Exit(rc) 转成返回值；
+    # 若直接忽略该返回值，`qy run bad.qy` 这类失败会错误地以 0 退出。
+    if isinstance(result, int):
+        return result
     return 0
 
 

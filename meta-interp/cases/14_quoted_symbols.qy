@@ -1,0 +1,7 @@
+(print (quote chain))
+(quote true)
+(print (quote +))
+(print "literal")
+(print 42)
+(print true)
+(print nil)

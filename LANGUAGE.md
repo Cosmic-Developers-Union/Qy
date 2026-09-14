@@ -128,6 +128,8 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `quote`：返回参数 syntax datum。
 - `atom`：判断值是否不是非空 chain；因此 `symbol` 与 `nil` 都是 atom。
 - `eq`：比较 Qy 原子语义而不是 Python `id()` / `is`。`nil`、`T`、`none` 按各自单例相等；`symbol`、`number`、`string` 按 Qy 值相等；chain 与标准容器等复合值不做结构相等。
+- `type`：返回值的 Qy 语义类型名（`nil` / `T` / `none` / `symbol` / `number` / `string` / `char` / `chain` / `tuple` / `list` / `dict` / `set` / `operator` / `function` / `effect` 等）。不得返回宿主实现类名（如 Python `IntValue` / `str`）；宿主互操作对象只能作为显式 host reference 分类。
+- 动态调用：operator 位置的静态类型未知（`any`，例如 lambda 参数或 let 绑定值）时，必须在运行时按值分派；只有静态已知不是 callable 的 operator 位置才允许在编译期报错。
 - `car` / `cdr` / `cons`：核心 chain 操作。
 - `cond`：条件分支。
 - `truthy`：标准 profile 的复杂真值判断算子；用于构造更便利的 `if` 一类扩展控制算子，不改变 `cond` 的核心语义。

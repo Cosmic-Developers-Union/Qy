@@ -536,7 +536,7 @@ HandleExpr    := { expression: IRExpr, handlers: EffectHandler+, ... }
 | H2 | 同一 `SymbolSpace` 内同一 `Symbol` 至多一个 binding（define-once） |
 | H3 | 所有 `IRExpr` 构造合法：每节点必满足 §3 中字段不变量；特殊节点 arity 合法（如 `LetExpr.bindings ≥ 1`、`CondExpr.clauses ≥ 1`、`HandleExpr.handlers ≥ 1`、`PipelineExpr.body ≥ 1`） |
 | H4 | `CallExpr.continuous=True` 当且仅当对应 `Binding.operator_kind ∈ {Pure}` 且 `OperatorSignature.continuous=True` |
-| H5 | `CallExpr.tail_position` 仅在合法位置（函数最末一个表达式、`cond` clause 的 result、`if` 分支、`pipeline` body 末项等） |
+| H5 | `CallExpr.tail_position` 仅在合法位置（函数最末一个表达式、`cond` clause 的 result、`if` 分支、`pipeline` body 末项、`let` body 末项、`handle` body 末项等） |
 | H6 | `HandleExpr` 内 effect 必须已被 `defeffect` 声明（解析期检查） |
 | H7 | `ResumeExpr` 仅出现在 `HandleExpr` 的 handler body 内；对应 effect 必须 `resumable=True` |
 | H8 | `PerformExpr.effect` 必须已被 `defeffect` 声明 |

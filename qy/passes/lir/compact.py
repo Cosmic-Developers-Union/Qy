@@ -68,6 +68,9 @@ def _map_register_operands(
             return (map_register(operands[0]), map_register(operands[1]))
         case "DEFINE_ONCE":
             return (operands[0], map_register(operands[1]))
+        case "STORE_LOCAL":
+            # (symbol, src_reg)
+            return (operands[0], map_register(operands[1]))
         case "MAKE_FUNCTION":
             return (map_register(operands[0]), operands[1])
         case "MAKE_MACRO":
@@ -98,6 +101,9 @@ def _map_register_operands(
         case "DEFINE_MODULE":
             return (map_register(operands[0]), operands[1], operands[2], operands[3])
         case "JUMP_IF_FALSE":
+            return (map_register(operands[0]), operands[1])
+        case "BRANCH_NIL":
+            # compat opcode: (src_reg, target)
             return (map_register(operands[0]), operands[1])
         case "RAISE_EFFECT":
             return (operands[0], map_register(operands[1]), operands[2])

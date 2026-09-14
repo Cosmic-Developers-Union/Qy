@@ -107,6 +107,21 @@
 - `string-upper` / `string-lower` / `string-trim` 涉及宿主 Unicode 行为，可以作为 stdlib host extension，但不是最小能力。
 - `show` / `display` / `repr` 若以后需要，应作为单独文本化能力设计，不与 runtime string 本体混淆。
 
+## IO 草案
+
+建议 namespace：`qy.io`。IO 属于"无法由 Qy 自举"的宿主能力，允许作为 host primitive 存在。
+
+| 算子        | 类型     | 说明                                                         |
+| ----------- | -------- | ------------------------------------------------------------ |
+| `print`     | effect   | 打印求值后的值，返回最后一个打印值                           |
+| `echo`      | effect   | `print` 别名                                                 |
+| `read-file` | effect   | 读取文本文件并返回 `string`；参数为路径（symbol 或 string） |
+
+说明：
+
+- `print` / `echo` 是 raw-argument 算子：字面量实参以 syntax datum（symbol）形式到达，需在宿主边界解析为 runtime value；已经求值完成的复合实参（chain 等）**不得再次求值**。
+- `read-file` 的路径参数允许 symbol 或 string；文件系统访问失败进入语言级错误路径。
+
 ## 结构相等
 
 `eq` 不能承担结构相等。若测试框架或 stdlib 需要结构比较，后续另行设计：

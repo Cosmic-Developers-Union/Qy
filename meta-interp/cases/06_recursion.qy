@@ -1,0 +1,4 @@
+(define fact (lambda (n) (cond ((<= n 1) 1) (true (* n (fact (- n 1)))))))
+(fact 10)
+(define fib (lambda (n) (cond ((< n 2) n) (true (+ (fib (- n 1)) (fib (- n 2)))))))
+(fib 12)

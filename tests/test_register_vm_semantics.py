@@ -1,6 +1,7 @@
 import pytest
 
 from qy import Qy
+from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
@@ -23,6 +24,25 @@ def test_vm_defun_can_be_called_across_repl_steps():
 
 def test_vm_lambda_call():
     assert Qy().evaluate_source("((lambda (x) (+ x 1)) 41)") == 42
+
+
+def test_vm_cond_then_let_remaps_store_local_register():
+    """回归：MIR→LIR register compaction 必须重映射 STORE_LOCAL 的源寄存器。.
+
+    曾经的 bug：``_map_register_operands`` 缺少 ``STORE_LOCAL`` 分支，导致
+    ``(cond ...)`` 之后的 ``(let ...)`` 把变量存进未初始化寄存器，读回 None。
+    """
+    results = Qy().evaluate_program(
+        """
+        (cond
+          ((eq (car '(x y)) 'x) (cdr '(x y)))
+          (true 'no))
+        (let ((pair (cons 1 (cons 2 nil))))
+          (cons (car pair) (cdr pair)))
+        """
+    )
+
+    assert results[-1] == list_to_chain([1, 2])
 
 
 def test_vm_self_tail_recursion():

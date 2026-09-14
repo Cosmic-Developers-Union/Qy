@@ -1,0 +1,7 @@
+(from qy.str import string-concat string-length string-upper)
+(from qy.core import type)
+(define greet (lambda (name) (string-concat "hello, " name)))
+(greet "qy")
+(string-length "hello")
+(string-upper "abc")
+(type (greet "x"))

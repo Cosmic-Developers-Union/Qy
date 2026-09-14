@@ -261,7 +261,15 @@ def h4_call_continuous(call: CallExpr) -> tuple[Diagnostic, ...]:
 
 
 _LEGAL_TAIL_PARENTS: frozenset[Parent] = frozenset(
-    {Parent.TOP, Parent.FUNC_BODY, Parent.COND_RESULT, Parent.IF_BRANCH, Parent.PIPELINE_LAST}
+    {
+        Parent.TOP,
+        Parent.FUNC_BODY,
+        Parent.COND_RESULT,
+        Parent.IF_BRANCH,
+        Parent.PIPELINE_LAST,
+        Parent.LET_BODY,
+        Parent.HANDLE_BODY,
+    }
 )
 
 

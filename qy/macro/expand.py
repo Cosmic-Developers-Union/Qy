@@ -385,8 +385,19 @@ async def _macroexpand_form(
             depth=depth,
         )
     if operator == Symbol("macro"):
-        _define_macro(form, context)
-        return nil
+        # Only treat the form as a macro definition when its shape matches
+        # ``(macro name (params) body...)``. Otherwise it may be a lambda
+        # parameter list such as ``(lambda (macro) ...)`` where the chain
+        # ``(macro)`` merely happens to start with the symbol ``macro``.
+        definition_items = _form_to_list(form)
+        is_definition = (
+            len(definition_items) >= 4
+            and isinstance(definition_items[1], Symbol)
+            and (_is_list_form(definition_items[2]) or is_nil(definition_items[2]))
+        )
+        if is_definition:
+            _define_macro(form, context)
+            return nil
     if operator == Symbol("from"):
         _import_macros_from_form(form, context)
         return form

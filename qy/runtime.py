@@ -322,10 +322,18 @@ async def _evaluate_program_via_pipeline(
     *,
     source_name: str | None = None,
 ) -> list[object]:
-    """``Qy.evaluate_program`` 走的宽松路径：pipeline 诊断不抛错（保持旧行为）。."""
-    bytecode, _ = await _compile_source_via_pipeline(source, env, source_name=source_name)
+    """``Qy.evaluate_program`` 的 pipeline 路径。.
+
+    与 :func:`evaluate_program_async` 一致：error 级诊断必须上抛，否则源文件
+    编译失败会被静默吞掉（返回空列表），调用方无法区分"空程序"与"编译错误"。
+    """
+    bytecode, pipeline_diagnostics = await _compile_source_via_pipeline(
+        source, env, source_name=source_name
+    )
+    _raise_on_diagnostics(pipeline_diagnostics)
     if bytecode is None:
         return []
+    _raise_on_diagnostics(bytecode.diagnostics)
     return await RegisterVirtualMachine(bytecode, env).evaluate_program()
 
 

@@ -30,6 +30,15 @@ def test_macro_receives_unevaluated_arguments():
     assert evaluate_source("(const-answer missing)", env) == 42
 
 
+def test_lambda_parameter_named_macro_is_not_a_macro_definition():
+    """回归：参数列表 ``(macro)`` 不得被 macroexpander 当作宏定义。."""
+    source = """
+    (define apply-param (lambda (macro) macro))
+    (apply-param 7)
+    """
+    assert evaluate_source(source) == 7
+
+
 def test_macro_can_construct_ast_with_cons():
     env = standard_environment()
     evaluate_source("(macro twice (form) (cons '+ (cons form (cons form '()))))", env)

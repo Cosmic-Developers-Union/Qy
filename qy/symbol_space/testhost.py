@@ -30,6 +30,16 @@ def module() -> StandardModule:
             Symbol("file?"): ScopeOperator("file?", _is_file, "判断路径是否为文件。"),
             Symbol("dir?"): ScopeOperator("dir?", _is_dir, "判断路径是否为目录。"),
             Symbol("qy-file?"): ScopeOperator("qy-file?", _is_qy_file, "判断路径是否为 .qy 文件。"),
+            Symbol("lookup-export"): ScopeOperator(
+                "lookup-export",
+                _lookup_export,
+                "按 (模块名 导出名) 解析宿主模块导出；用于自举解释器的 from 实现。",
+            ),
+            Symbol("display"): ScopeOperator(
+                "display",
+                _display,
+                "按 Qy display 规则把值格式化为 string；不做 literal 解析，不打印。",
+            ),
             Symbol("run-file"): ScopeOperator("run-file", _run_file, "运行 Qy 文件并返回结果。"),
             Symbol("run-file-with-coverage"): ScopeOperator(
                 "run-file-with-coverage", _run_file_with_coverage, "运行 Qy 文件并收集覆盖率。"
@@ -142,6 +152,31 @@ def _as_text(value: object) -> str:
     if isinstance(value, Symbol):
         return value.name
     return str(value)
+
+
+def _lookup_export(args: tuple[object, ...], env: Environment) -> object:
+    del env
+    if len(args) != 2:
+        return QY_NIL
+    module_name = _as_text(args[0])
+    export_name = _as_text(args[1])
+    try:
+        from qy.import_.registry import load_module
+
+        module = load_module(module_name)
+    except Exception:
+        return QY_NIL
+    return module.exports.get(Symbol(export_name), QY_NIL)
+
+
+def _display(args: tuple[object, ...], env: Environment) -> object:
+    del env
+    if len(args) != 1:
+        return QY_NIL
+    from qy.display import format_value
+    from qy.sem.core import StringValue
+
+    return StringValue(format_value(args[0]))
 
 
 def _start_coverage(args: tuple[object, ...], env: Environment) -> object:

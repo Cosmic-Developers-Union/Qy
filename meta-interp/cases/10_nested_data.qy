@@ -1,0 +1,7 @@
+(car (cdr '(a b c d)))
+(cons (car '(1 2)) (cdr '(3 4)))
+(cond
+  ((eq (car '(x y)) 'x) (cdr '(x y)))
+  (true 'no))
+(let ((pair (cons 1 (cons 2 nil))))
+  (cons (car pair) (cdr pair)))

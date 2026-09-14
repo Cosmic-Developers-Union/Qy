@@ -263,6 +263,8 @@ def _reify_value(value: object, env: object) -> object:
 
 
 def _type(value: object) -> Symbol:
+    from qy.sem.classify import value_type
+
     if value is QY_NIL:
         return Symbol("nil")
     if value is QY_T:
@@ -275,7 +277,9 @@ def _type(value: object) -> Symbol:
         return Symbol("symbol")
     if isinstance(value, TupleValue | ListValue | DictValue | SetValue):
         return Symbol(value.type_name)
-    return Symbol(type(value).__name__)
+    # 其余 runtime value 按 Qy 语义类型命名（number / string / char / operator /
+    # function / effect ...），不得泄漏 Python 实现类名（IntValue / str）或宿主细节。
+    return Symbol(value_type(value))
 
 
 def _car(value: object) -> object:

@@ -3,7 +3,22 @@
 本文件不是最近一批工作的便签，而是 **Qy 从当前实现走到目标语言的完整路线图**。  
 历史批次与已完成细节看 `report.md`；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
 
-最近一次本地基线（2026-08-02）：
+最近一次本地基线（2026-09-14）：
+
+- `uv run python -m pytest -q`：1028 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
+- `uv run ruff check .`：passed
+- `uv run ruff format --check .`：passed
+- `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
+- `meta-interp/cases/` 14 个自举用例与 `qy run` 参考输出逐字节一致；
+  另有 41 个受支持的 `tests/qy` 行为用例一次性批量对拍通过
+- `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
+- **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
+  dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；
+  `print` 不再重复求值 cons 结果；MIR→LIR `STORE_LOCAL` 寄存器重映射修复；
+  参数列表 `(macro)` 不再被 macroexpander 误判为宏定义；
+  `qy.io/read-file` 与 `qy.testhost/lookup-export`/`display` host 能力。
+
+历史基线（2026-08-02）：
 
 - `uv run python -m pytest -q`：1011 passed（修复合并后的 `test_evaluates_target_file`
   与 `test_qytest_cli_entry_point` 两条 CLI 入口测试；详见 §A0.2.1 与 git log）
@@ -177,7 +192,9 @@ source
 - examples 已分成 validation / design / host；
 - `Environment.fold_from()` 已出现；
 - `Qy.pre_symbol_space_chain` 已有只读快照；
-- `evaluator.py` 已退出主求值路径。
+- `evaluator.py` 已退出主求值路径；
+- `meta-interp/main.qy` 已形成可运行的 Qy-in-Qy 解释器，11 个用例与参考输出一致，
+  阶段 2 自解释（解释自身源码）已打通（详见 §9½）。
 
 ## 2.2 仍在过渡
 
@@ -1969,6 +1986,54 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
    - `UserFunction` -> bytecode function；
    - evaluator 退场；
    - compat stdlib 下沉。
+6. **自举解释器推进**
+   - 保持 `meta-interp/cases/` 与受支持 `tests/qy` 用例的对拍；
+   - 逐步补齐 perform/handle/resume、macro/quasiquote、parallel/all/race、float；
+   - 性能：消除解释器全局 lookup 的线性扫描，再谈阶段 3 自解释。
+
+---
+
+# 9½. 自举解释器进展（meta-interp）
+
+目标：用 Qy 写一个能解释 Qy 的解释器，最终达到自举。当前真源在 `meta-interp/main.qy`。
+
+## 已完成
+
+- **Reader**：`tokenize-string`（含 `;` 行注释、字符串转义 `\n \t \r \" \\`）、
+  parser 产出 symbol / chain / number（含负数）/ string / nil。
+- **环境模型**：env 是 frame chain；closure body env 允许一个 `(FALLBACK globals)` 头帧，
+  用来解析"定义晚于闭包创建"的前向引用/互递归（对应语言里 pre-declared binding slot 的语义）。
+- **求值器**：`quote` `if` `cond` `define` `defun` `lambda` `let` `and` `or`
+  `from` `apply` `pipeline` `module` `exports`（含 `import name as alias`）、
+  `macro`/`quasiquote`/`unquote`/`unquote-splicing`（非 hygiene；`gensym`/`capture` 未实现）；
+  primitive 表覆盖
+  `+ - * / mod = < > <= >= car cdr cons list null? not eq? eq atom len truthy is print`；
+  其余宿主算子通过 `lookup-export` 透传（`(eq (type f) 'operator) (apply f vals)`）。
+- **闭包**：具名闭包支持自递归；`from`/`apply` 已接入。
+- **输出对齐**：求值与打印分离（先全部求值再按 `qy run` 顺序打印）；`print-value`
+  走宿主 `display`，不对字面量拼写做二次解析。
+- **CLI**：`qy run meta-interp/main.qy -- FILE...`（支持多文件批量）；无参数时运行内置 self-test。
+
+## 验证
+
+- `meta-interp/compare.sh cases/*.qy`：14/14 与参考输出逐字节一致。
+- `tests/test_meta_interp.py`：
+  - 14 个 `cases/` 用例默认运行，逐字节对比参考；
+  - 34 个受支持的 `tests/qy` 行为用例在一次解释器进程内批量对拍；
+  - `QY_META_SELF=1` 时额外运行阶段 2 自解释测试（解释器源码被自身解释后仍能把
+    `(+ 1 2)` 解释为 `3`）。
+
+## 已知差距
+
+- 不支持：`perform`/`handle`/`resume`、`parallel`/`all`/`race`、float 字面量、
+  macro 的 `gensym`/`capture`（现有宏为非 hygiene 展开）。
+- 与宿主的已知不一致：宿主 `eq` 对 Python `str` 字面量仍返回 nil（str/StringValue
+  混用，见 §2.2），自举解释器按 `LANGUAGE.md` 的 string 值相等语义返回 T；
+  因此 `tests/qy/40_eq_value_identity.qy` 暂不纳入批量对拍。
+- 性能：阶段 2 自解释正确但极慢（`(+ 1 2)` 约 10s，`(f 4)` 约 100s）；
+  瓶颈在解释执行本身与全局 lookup 的线性扫描，需要专门优化。
+- 环境用不可变 chain 建模，前向引用依赖 FALLBACK fallback；尚无 `set!`/mutation
+  语义（语言核也刻意不提供）。
 
 ---
 

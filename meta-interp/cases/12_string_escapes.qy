@@ -1,0 +1,5 @@
+(from qy.str import string-length string-concat)
+(string-length "a\nb")
+(string-concat "x" "\t" "y")
+(string-length "\\")
+(string-concat "a" "\"" "b")

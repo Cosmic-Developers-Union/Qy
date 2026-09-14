@@ -47,6 +47,15 @@ def module() -> StandardModule:
     )
 
 
+def _optional(value: object) -> object:
+    """把语言层 nil 视为"未提供"的可选参数。.
+
+    宿主算子用 Python ``None`` 表示缺省参数；Qy 程序传入的缺省值只能是 ``nil``，
+    两者必须在宿主边界统一，否则 ``(string-slice s 1 nil)`` 会报类型错误。
+    """
+    return None if value is QY_NIL else value
+
+
 def _extract_str(value: object, op: str = "") -> str:
     if isinstance(value, StringValue):
         return value.value
@@ -84,6 +93,7 @@ def _string_eq(a: object, b: object) -> object:
 def _string_slice(s: object, start: object, end: object = None) -> StringValue:
     text = _extract_str(s, "string-slice")
     i = _extract_int(start, "string-slice")
+    end = _optional(end)
     if end is None:
         return StringValue(text[i:])
     j = _extract_int(end, "string-slice")
@@ -109,6 +119,7 @@ def _string_find(s: object, needle: object) -> object:
 
 def _string_split(s: object, separator: object = None) -> tuple[StringValue, ...]:
     text = _extract_str(s, "string-split")
+    separator = _optional(separator)
     if separator is None:
         parts = text.split()
     else:

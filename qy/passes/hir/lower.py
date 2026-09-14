@@ -1344,7 +1344,9 @@ def _infer_call_type(
                 return "number"
 
     operator_type = _type_of(operator_expr)
-    if operator_type not in {"operator", "function", "unknown"}:
+    # "any" 表示静态类型未知（例如 lambda 参数没有类型标注）。Qy 是动态语言，
+    # 只有确知不是 callable 时才报错；否则必须允许把函数值当 operator 调用。
+    if operator_type not in {"operator", "function", "unknown", "any"}:
         context.diagnostic(f"operator position is {operator_type}, not callable", form)
     return "any"
 

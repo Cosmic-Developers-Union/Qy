@@ -1,0 +1,4 @@
+(defun square (x) (* x x))
+(square 9)
+(defun sum-to (n) (cond ((= n 0) 0) (true (+ n (sum-to (- n 1))))))
+(sum-to 10)

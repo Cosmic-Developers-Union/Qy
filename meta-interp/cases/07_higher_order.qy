@@ -1,0 +1,8 @@
+(define compose (lambda (f g) (lambda (x) (f (g x)))))
+(define inc (lambda (x) (+ x 1)))
+(define double (lambda (x) (* x 2)))
+((compose inc double) 10)
+(define twice (lambda (f x) (f (f x))))
+(twice inc 5)
+(define apply-twice (lambda (f) (lambda (x) (f (f x)))))
+((apply-twice double) 3)
