@@ -2069,6 +2069,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   - `qy.symbol_space.python` → `qy.ext.python`（`qy.py`，capability `python-exec`）；
   - `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost`）；
   - `read-file` 从 `qy.io` 移入 `qy.ext.fs`（capability `filesystem`）；
+  - 自举解释器的通用宿主能力拆出 `qy.ext.interp`
+    （`cli-args`/`lookup-export`/`display`/`raise-error`/`gensym`）；
   - `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`，
     内核只保留通用 `register_file_module_loader` hook。
 - `HostObjectRef` 定义移入 `qy.sem.host.HostReference`，VM instance 只重导出。
@@ -2083,8 +2085,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   `TupleValue` 等语义对象；`data.py` 中接受宿主 list/dict/tuple 的分支同步收紧。
 - `qy.project` / CLI 对文件系统、进程、时钟、网络的访问，逐步建模为显式扩展
   capability（`filesystem` / `process` / `clock` / `network`），实例按 profile 选择启用。
-- 自举解释器对宿主能力的依赖（testhost 的 `cli-args`/`display`/`gensym` 等）
-  应迁移到专用扩展声明，而不是复用测试扩展。
+- `qy.ext.testhost` 仍含 `run-file`/覆盖率等测试专属能力；`run-file` 直接调用
+  `AsyncQy` 求值，后续应改为显式 build/求值 capability。
 - 错误文本/对象 repr 中残留的宿主细节（`<qy.session.runtime_space...>` 等）。
 
 ---

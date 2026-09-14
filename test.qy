@@ -1,4 +1,5 @@
-(from qy.testhost import cli-args list-dir path-join dir? qy-file? run-file)
+(from qy.ext.interp import cli-args)
+(from qy.testhost import list-dir path-join dir? qy-file? run-file)
 
 (defun qytest-root ()
   (let ((args (cli-args)))

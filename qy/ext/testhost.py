@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import itertools
 from pathlib import Path
 
 from qy.core.operators import ScopeOperator
@@ -31,36 +30,11 @@ def module() -> StandardModule:
     return StandardModule(
         "qy.testhost",
         {
-            Symbol("cli-args"): ScopeOperator(
-                "cli-args",
-                _cli_args,
-                "读取 CLI 传入的额外参数（chain of symbol）。",
-            ),
             Symbol("list-dir"): ScopeOperator("list-dir", _list_dir, "列出目录项（chain）。"),
             Symbol("path-join"): ScopeOperator("path-join", _path_join, "拼接路径。"),
             Symbol("file?"): ScopeOperator("file?", _is_file, "判断路径是否为文件。"),
             Symbol("dir?"): ScopeOperator("dir?", _is_dir, "判断路径是否为目录。"),
             Symbol("qy-file?"): ScopeOperator("qy-file?", _is_qy_file, "判断路径是否为 .qy 文件。"),
-            Symbol("lookup-export"): ScopeOperator(
-                "lookup-export",
-                _lookup_export,
-                "按 (模块名 导出名) 解析宿主模块导出；用于自举解释器的 from 实现。",
-            ),
-            Symbol("display"): ScopeOperator(
-                "display",
-                _display,
-                "按 Qy display 规则把值格式化为 string；不做 literal 解析，不打印。",
-            ),
-            Symbol("raise-error"): ScopeOperator(
-                "raise-error",
-                _raise_error,
-                "以 EvaluationError 终止当前求值；供自举解释器报告未处理效应等错误。",
-            ),
-            Symbol("gensym"): ScopeOperator(
-                "gensym",
-                _gensym,
-                "用宿主计数器生成全新 symbol；供自举解释器实现宏 hygiene。",
-            ),
             Symbol("run-file"): ScopeOperator("run-file", _run_file, "运行 Qy 文件并返回结果。"),
             Symbol("run-file-with-coverage"): ScopeOperator(
                 "run-file-with-coverage", _run_file_with_coverage, "运行 Qy 文件并收集覆盖率。"
@@ -76,23 +50,6 @@ def module() -> StandardModule:
             ),
         },
     )
-
-
-def set_cli_args(env: Environment, args: tuple[str, ...]) -> None:
-    env.cache_define(_CLI_ARGS_CACHE_KEY, tuple(args))
-
-
-def _cli_args(args: tuple[object, ...], env: Environment) -> object:
-    if args:
-        return list_to_chain(())
-    try:
-        cached_args = env.cache_lookup(_CLI_ARGS_CACHE_KEY)
-    except KeyError:
-        cached_args = ()
-    if not isinstance(cached_args, tuple):
-        return list_to_chain(())
-    normalized = tuple(item for item in cached_args if isinstance(item, str))
-    return list_to_chain(Symbol(item) for item in normalized)
 
 
 def _list_dir(args: tuple[object, ...], env: Environment) -> object:
@@ -175,49 +132,6 @@ def _as_text(value: object) -> str:
     return str(value)
 
 
-def _lookup_export(args: tuple[object, ...], env: Environment) -> object:
-    del env
-    if len(args) != 2:
-        return QY_NIL
-    module_name = _as_text(args[0])
-    export_name = _as_text(args[1])
-    try:
-        from qy.import_.registry import load_module
-
-        module = load_module(module_name)
-    except Exception:
-        return QY_NIL
-    return module.exports.get(Symbol(export_name), QY_NIL)
-
-
-def _display(args: tuple[object, ...], env: Environment) -> object:
-    del env
-    if len(args) != 1:
-        return QY_NIL
-    from qy.display import format_value
-    from qy.sem.core import StringValue
-
-    return StringValue(format_value(args[0]))
-
-
-def _raise_error(args: tuple[object, ...], env: Environment) -> object:
-    del env
-    from qy.display import format_value
-    from qy.errors import EvaluationError
-
-    message = " ".join(format_value(arg) for arg in args) if args else "error"
-    raise EvaluationError(message)
-
-
-_GENSYM_COUNTER = itertools.count(1)
-
-
-def _gensym(args: tuple[object, ...], env: Environment) -> object:
-    del env
-    prefix = _as_text(args[0]) if args else "g"
-    return Symbol(f"__qy_meta_gensym_{prefix}_{next(_GENSYM_COUNTER)}")
-
-
 def _start_coverage(args: tuple[object, ...], env: Environment) -> object:
     """启动覆盖率收集."""
     del args
@@ -294,8 +208,6 @@ DESCRIPTOR = ExtensionDescriptor(
     description="测试 / CLI 基础设施扩展（目录、文件、CLI 参数、覆盖率）。",
     capabilities=(
         ExtensionCapability("filesystem", "读取目录与文件状态"),
-        ExtensionCapability("cli", "读取进程 CLI 参数"),
-        ExtensionCapability("introspection", "解析宿主模块导出与 display 格式化"),
         ExtensionCapability("coverage", "启动/停止覆盖率收集（可选）"),
     ),
     bindings=(

@@ -33,6 +33,8 @@ OPTIONAL_STDLIB_MODULES = (
     "qy.char",
     "qy.py",
     "qy.testhost",
+    "qy.ext.fs",
+    "qy.ext.interp",
     "qy.legacy",
     "qy.int8",
     "qy.int16",

@@ -70,7 +70,8 @@ register_extension(DESCRIPTOR, module)
 | `qy.ext.python` | `qy.py` | `python-exec` | `py`：执行内嵌 async Python |
 | `qy.ext.python-modules` | —（loader-only） | `host-python-modules` | 把 `.py` 文件装载为 Qy 模块 |
 | `qy.ext.fs` | `qy.ext.fs` | `filesystem` | `read-file` |
-| `qy.ext.testhost` | `qy.testhost` | `filesystem` / `cli` / `introspection` / `coverage` | 测试与 CLI 基础设施 |
+| `qy.ext.interp` | `qy.ext.interp` | `cli` / `introspection` / `symbols` | 自举解释器/工具链：`cli-args`、`lookup-export`、`display`、`raise-error`、`gensym` |
+| `qy.ext.testhost` | `qy.testhost` | `filesystem` / `coverage` | 测试基础设施：目录/文件状态、run-file、覆盖率 |
 
 标准 profile (`qy.core` + `qy.io`) 不预装任何宿主扩展。
 
@@ -83,6 +84,9 @@ register_extension(DESCRIPTOR, module)
 - `read-file` 从 `qy.io` 移入 `qy.ext.fs`；`qy.io` 只保留语言 IO（`print`/`echo`）。
 - `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`；
   内核 registry 只保留通用的 suffix loader hook。
+- 自举解释器的通用宿主能力（`cli-args` / `lookup-export` / `display` /
+  `raise-error` / `gensym`）从 `qy.testhost` 拆出为 `qy.ext.interp`，
+  解释器不再依赖测试扩展。
 - `HostObjectRef` 定义移入 `qy.sem.host`，VM instance 只重导出。
 - `python_container_operators` 更名为 `container_operators`（Qy 语义容器）。
 

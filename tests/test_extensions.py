@@ -71,6 +71,7 @@ def test_builtin_extensions_are_declared_with_capabilities():
     assert "qy.ext.fs" in names
     assert "qy.ext.testhost" in names
     assert "qy.ext.python-modules" in names
+    assert "qy.ext.interp" in names
 
     python_ext = get_extension("qy.ext.python")
     assert python_ext.module_name == "qy.py"
@@ -81,6 +82,21 @@ def test_builtin_extensions_are_declared_with_capabilities():
     assert fs_ext.module_name == "qy.ext.fs"
     assert [binding.name for binding in fs_ext.bindings] == ["read-file"]
     assert {capability.name for capability in fs_ext.capabilities} == {"filesystem"}
+
+    interp_ext = get_extension("qy.ext.interp")
+    assert interp_ext.module_name == "qy.ext.interp"
+    assert {binding.name for binding in interp_ext.bindings} == {
+        "cli-args",
+        "lookup-export",
+        "display",
+        "raise-error",
+        "gensym",
+    }
+    assert {capability.name for capability in interp_ext.capabilities} == {
+        "cli",
+        "introspection",
+        "symbols",
+    }
 
     host_modules = get_extension("qy.ext.python-modules")
     assert host_modules.module_name is None

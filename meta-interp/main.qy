@@ -44,7 +44,7 @@
 (from qy.num import <=)
 (from qy.num import >=)
 (from qy.ext.fs import read-file)
-(from qy.testhost import cli-args lookup-export display raise-error gensym)
+(from qy.ext.interp import cli-args lookup-export display raise-error gensym)
 
 ;; === list helpers ===
 (define reverse

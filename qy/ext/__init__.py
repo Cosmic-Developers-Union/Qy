@@ -21,6 +21,7 @@ from __future__ import annotations
 
 # 内置扩展在包导入时注册声明（模块内容仍按需装载）。
 from qy.ext import fs as _fs  # noqa: F401
+from qy.ext import interp as _interp  # noqa: F401
 from qy.ext import python as _python  # noqa: F401
 from qy.ext import python_module as _python_module  # noqa: F401
 from qy.ext import testhost as _testhost  # noqa: F401
