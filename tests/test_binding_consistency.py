@@ -129,7 +129,9 @@ def test_string_spelling_consistent() -> None:
 
     result = qy.evaluate_source('"hello"')
     assert result == "hello"
-    assert isinstance(result, str)
+    from qy.sem.core import StringValue
+
+    assert isinstance(result, StringValue)
 
 
 def test_eq_identity_vs_num_equality() -> None:

@@ -58,7 +58,7 @@ return user_name.upper()
         '''
     )
 
-    assert result == S("QY")
+    assert result == StringValue("QY")
 
 
 async def test_py_supports_await_and_awaits_returned_coroutines():
@@ -95,10 +95,9 @@ return await normalize(doc)
         '''
     )
 
-    from qy.vm.instance.values import HostObjectRef
-
-    assert isinstance(result, HostObjectRef)
-    assert result.value == StringValue("QY")
+    # Qy string results cross back as Qy semantic values, not host wrappers.
+    assert isinstance(result, StringValue)
+    assert result == StringValue("QY")
 
 
 async def test_py_converts_quoted_symbolic_literals_to_python_values():
@@ -136,10 +135,10 @@ return ["qy", 1, None, {"name": "Qy"}]
     )
 
     assert isinstance(result, ListValue)
-    assert result.items[:3] == (S("qy"), 1, QY_NONE)
+    assert result.items[:3] == (StringValue("qy"), 1, QY_NONE)
     doc = result.items[3]
     assert isinstance(doc, DictValue)
-    assert doc.entries == ((S("name"), S("Qy")),)
+    assert doc.entries == ((StringValue("name"), StringValue("Qy")),)
 
 
 async def test_py_preserves_core_data_types_across_bindings():
@@ -171,16 +170,17 @@ return [
     )
 
     assert isinstance(result, ListValue)
+    # host str crosses back as Qy StringValue (extension boundary conversion)
     expected = (
-        S("QyChain"),
-        S("QyNil"),
+        StringValue("QyChain"),
+        StringValue("QyNil"),
         ListValue((1, 2)),
         True,
         True,
         True,
         True,
-        S("Qy"),
-        ListValue((S("core"), S("host"))),
+        StringValue("Qy"),
+        ListValue((StringValue("core"), StringValue("host"))),
     )
     assert result.items == expected
 

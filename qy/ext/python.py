@@ -102,6 +102,10 @@ async def _evaluate_py_source(expression: object, env: Environment) -> str:
         return value.name
     if isinstance(value, str):
         return value
+    from qy.sem.core import StringValue
+
+    if isinstance(value, StringValue):
+        return value.value
     raise QyTypeError(
         f"py source must be text, got {value!r}",
         span=get_span(expression),
@@ -263,10 +267,14 @@ def _qy_to_python(value: object, env: Environment) -> object:
         return value
     if value is QY_NONE or isinstance(value, NoneValue):
         return None
-    # Numbers unwrap to raw Python int/float so host code can iterate /
-    # arithmetic naturally. Strings (StringValue) stay as Qy values; host
-    # code can grab ``.value`` explicitly when it needs the underlying str.
+    # Numbers and strings unwrap to raw Python int/float/str at the extension
+    # boundary so host code can use them naturally. The Qy semantic values stay
+    # NumberValue/StringValue on the language side.
     if isinstance(value, NumberValue):
+        return value.value
+    from qy.sem.core import StringValue
+
+    if isinstance(value, StringValue):
         return value.value
     # Handle AST Chain (from quote) - keep as Chain but convert elements
     if isinstance(value, Chain) or is_chain(value):
@@ -328,7 +336,9 @@ def _python_to_qy(value: object) -> object:
     if isinstance(value, bool | int | float):
         return value
     if isinstance(value, str):
-        return Symbol(value)
+        from qy.sem.core import StringValue
+
+        return StringValue(value)
     if isinstance(value, list):
         return ListValue(tuple(_python_to_qy(item) for item in value))
     if isinstance(value, tuple):

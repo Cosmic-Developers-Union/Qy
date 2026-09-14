@@ -89,11 +89,12 @@ register_extension(DESCRIPTOR, module)
   解释器不再依赖测试扩展。
 - `HostObjectRef` 定义移入 `qy.sem.host`，VM instance 只重导出。
 - `python_container_operators` 更名为 `container_operators`（Qy 语义容器）。
+- 字符串字面量解析为 `StringValue`（不再是宿主 `str`）；Python 扩展在边界
+  显式完成 `StringValue <-> str`、`NumberValue <-> int/float` 转换。
 
 待迁移（登记于 `todo.md`）：
 
-- Python 原生值（`str` / `int` / `list` / `tuple` / `dict` / `set` / `bool` / `None`）
-  作为 runtime value 的迁移期互操作，需逐步收敛到 `NumberValue` / `StringValue` /
-  `TupleValue` 等语义对象。
+- 其余 Python 原生值（裸 `list` / `tuple` / `dict` / `set` / `bool` / `None`）
+  作为 runtime value 的迁移期互操作，需逐步收敛到语义对象；字符串/数字已完成。
 - `qy.project` 对宿主文件系统/进程的访问应逐步经由显式扩展 capability。
 - CLI / testhost 之外的宿主机能（进程、网络、时钟）尚无扩展声明。

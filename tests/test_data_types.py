@@ -46,12 +46,14 @@ def test_list():
 
 
 def test_dict():
+    from qy.sem.core import StringValue
+
     result = es('(dict "name" "Qy" "items" (list 1 2))')
     assert isinstance(result, DictValue)
     entries = dict(result.entries)
-    assert entries["name"] == "Qy"
-    assert isinstance(entries["items"], ListValue)
-    assert entries["items"].items == (1, 2)
+    assert entries[StringValue("name")] == StringValue("Qy")
+    assert isinstance(entries[StringValue("items")], ListValue)
+    assert entries[StringValue("items")].items == (1, 2)
     assert es('(dict? (dict "name" "Qy"))') is QY_T
     quoted = es("(dict '((name . Qy) (mode test)))")
     assert isinstance(quoted, DictValue)

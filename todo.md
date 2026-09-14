@@ -2074,15 +2074,18 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   - `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`，
     内核只保留通用 `register_file_module_loader` hook。
 - `HostObjectRef` 定义移入 `qy.sem.host.HostReference`，VM instance 只重导出。
+- 字符串字面量解析为 `StringValue`：语言运行时不再以宿主 `str` 定义字符串值；
+  Python 扩展在边界显式 `StringValue <-> str` / `NumberValue <-> int|float` 转换。
 - `tests/test_extensions.py`：内核包不得 import `qy.ext.*` / 宿主模块；
   扩展声明与 capability；扩展模块装载；`qy.core` 无 `py`；`qy.io` 无 `read-file`。
 - 文档：`docs/extensions.md`；`docs/package-structure.md` 增补 `ext/` 所有权与导入方向。
 
 ## 待迁移
 
-- Python 原生值（`str`/`int`/`list`/`tuple`/`dict`/`set`/`bool`/`None`）作为
-  runtime value 的迁移期互操作，逐步收敛到 `NumberValue`/`StringValue`/
-  `TupleValue` 等语义对象；`data.py` 中接受宿主 list/dict/tuple 的分支同步收紧。
+- 裸 `list`/`tuple`/`dict`/`set`/`bool`/`None` 作为 runtime value 的迁移期
+  互操作，逐步收敛到 `TupleValue`/`ListValue`/`DictValue`/`SetValue`/
+  `NoneValue`；`data.py` 中接受宿主 list/dict/tuple 的分支同步收紧
+  （字符串/数字已完成）。
 - `qy.project` / CLI 对文件系统、进程、时钟、网络的访问，逐步建模为显式扩展
   capability（`filesystem` / `process` / `clock` / `network`），实例按 profile 选择启用。
 - `qy.ext.testhost` 仍含 `run-file`/覆盖率等测试专属能力；`run-file` 直接调用

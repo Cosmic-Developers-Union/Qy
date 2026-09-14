@@ -521,11 +521,27 @@ class StringValue(ObjectValue):
     Strings are first-class runtime values, not host ``str`` references.  A
     backend may choose a contiguous character/byte layout, but the semantic
     value remains ``string`` rather than ``array[char]``.
+
+    Python-level ``==`` is intentionally permissive (same as ``NumberValue``):
+    a ``StringValue`` compares equal to another ``StringValue`` with the same
+    text, and to a raw host ``str``. This is a host-level convenience for the
+    transition period and embedding; Qy's ``eq``/``=`` operators do their own
+    semantic comparison.
     """
 
     value: str
 
     type_name: ClassVar[str] = "string"
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, StringValue):
+            return self.value == other.value
+        if isinstance(other, str):
+            return self.value == other
+        return NotImplemented
+
+    def __hash__(self) -> int:
+        return hash(("qy-string", self.value))
 
 
 @dataclass(frozen=True, slots=True)

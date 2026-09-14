@@ -51,11 +51,14 @@ def is_string_literal(name: str) -> bool:
 
 
 def parse_string_literal(name: str) -> object:
-    """Parse a string literal symbol name into a Python string.
+    """Parse a string literal symbol name into a Qy ``StringValue``.
 
-    Returns _MISSING if the name is not a valid string literal.
+    Returns _MISSING if the name is not a valid string literal. The result is
+    a semantic runtime value; host ``str`` must not define language semantics.
     """
     import ast
+
+    from qy.sem.core import StringValue
 
     try:
         value = ast.literal_eval(name)
@@ -63,7 +66,7 @@ def parse_string_literal(name: str) -> object:
         return _MISSING
     if not isinstance(value, str):
         return _MISSING
-    return value
+    return StringValue(value)
 
 
 _CHAR_NAMED: dict[str, str] = {
