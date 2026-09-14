@@ -2,16 +2,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
-from qy.core.operator_signature import Arity
-from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import EffectOperator
 from qy.display import format_value
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
-from qy.sem.core import StringValue
 from qy.session.runtime_space import RuntimeSpace as Environment
 
 
@@ -23,12 +18,6 @@ def module() -> StandardModule:
             Symbol("print"): print_operator,
             Symbol("echo"): EffectOperator(
                 "echo", _print, "print 的别名；打印值并返回最后一个值。"
-            ),
-            Symbol("read-file"): EffectOperator(
-                "read-file",
-                _read_file,
-                "读取文本文件内容并返回 string；宿主文件能力，参数为路径。",
-                signature=OperatorSignature("string", Arity(1, 1)),
             ),
         },
     )
@@ -60,21 +49,3 @@ def _resolve_literal(value: object, env: Environment) -> object:
         except EvaluationError:
             return value
     return value
-
-
-async def _read_file(args: tuple[object, ...], env: Environment) -> object:
-    if len(args) != 1:
-        raise EvaluationError("read-file expects exactly one path argument")
-    path_value = _resolve_literal(args[0], env)
-    if isinstance(path_value, StringValue):
-        path_text = path_value.value
-    elif isinstance(path_value, Symbol):
-        path_text = path_value.name
-    elif isinstance(path_value, str):
-        path_text = path_value
-    else:
-        raise EvaluationError(f"read-file: expected a path string, got {type(path_value).__name__}")
-    try:
-        return StringValue(Path(path_text).read_text(encoding="utf-8"))
-    except OSError as e:
-        raise EvaluationError(f"read-file: cannot read {path_text!r}: {e}") from e

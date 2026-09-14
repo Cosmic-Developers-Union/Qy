@@ -11,11 +11,8 @@ fallback 加载。
 
 from __future__ import annotations
 
-import importlib.util
-import types
 from collections.abc import Callable
 from collections.abc import Iterable
-from collections.abc import Mapping
 from pathlib import Path
 from typing import cast
 
@@ -23,12 +20,14 @@ from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 
 __all__ = [
+    "FileModuleLoader",
     "ModuleLoader",
     "load_file_module",
     "load_module",
     "load_module_async",
     "module_names",
     "register_default_module_loader",
+    "register_file_module_loader",
     "register_module",
     "register_module_loader",
     "standard_bindings",
@@ -36,9 +35,22 @@ __all__ = [
 ]
 
 type ModuleLoader = Callable[[], StandardModule]
+type FileModuleLoader = Callable[[Path], StandardModule]
 
 _MODULE_LOADERS: dict[str, ModuleLoader] = {}
+# File-suffix loaders are injected by extensions (e.g. qy.ext.python registers
+# ``.py``). The kernel registry itself never knows host file formats.
+_FILE_MODULE_LOADERS: dict[str, FileModuleLoader] = {}
 _BUILTINS_INSTALLED = False
+
+
+def register_file_module_loader(suffix: str, loader: FileModuleLoader) -> None:
+    """注册某后缀文件的模块加载器（供扩展注入）。."""
+    _FILE_MODULE_LOADERS[suffix] = loader
+
+
+def _file_module_loader(suffix: str) -> FileModuleLoader | None:
+    return _FILE_MODULE_LOADERS.get(suffix)
 
 
 def register_module(module: StandardModule) -> None:
@@ -170,8 +182,9 @@ def _load_file_module(name: str) -> StandardModule:
     path = path.resolve()
     if not path.is_file():
         raise KeyError(f"module file {name!r} does not exist")
-    if path.suffix == ".py":
-        return _load_python_file_module(path)
+    extension_loader = _file_module_loader(path.suffix)
+    if extension_loader is not None:
+        return extension_loader(path)
     if path.suffix == ".qy":
         from qy.async_utils import run_coro
 
@@ -191,32 +204,12 @@ async def _load_file_module_async(name: str) -> StandardModule:
     path = path.resolve()
     if not path.is_file():
         raise KeyError(f"module file {name!r} does not exist")
-    if path.suffix == ".py":
-        return _load_python_file_module(path)
+    extension_loader = _file_module_loader(path.suffix)
+    if extension_loader is not None:
+        return extension_loader(path)
     if path.suffix == ".qy":
         return await _load_qy_file_module_async(path)
     raise KeyError(f"unsupported module file type {path.suffix!r}")
-
-
-def _load_python_file_module(path: Path) -> StandardModule:
-    module_name = f"_qy_external_{abs(hash(path))}"
-    spec = importlib.util.spec_from_file_location(module_name, path)
-    if spec is None or spec.loader is None:
-        raise KeyError(f"cannot load Python module file {str(path)!r}")
-
-    python_module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(python_module)
-
-    if hasattr(python_module, "module"):
-        module_factory = python_module.module
-        if not callable(module_factory):
-            raise ValueError(f"{str(path)!r} module attribute must be callable")
-        return _coerce_standard_module(module_factory(), path)
-
-    if hasattr(python_module, "exports"):
-        return _module_from_exports(python_module.exports, path)
-
-    return _module_from_public_callables(python_module, path)
 
 
 async def _load_qy_file_module_async(path: Path) -> StandardModule:
@@ -245,60 +238,6 @@ async def _load_qy_file_module_async(path: Path) -> StandardModule:
         else:
             runtime_exports[symbol] = value
     return StandardModule(_file_module_name(path), runtime_exports, macro_exports)
-
-
-def _coerce_standard_module(value: object, path: Path) -> StandardModule:
-    if isinstance(value, StandardModule):
-        return value
-    return _module_from_exports(value, path)
-
-
-def _module_from_exports(value: object, path: Path) -> StandardModule:
-    if not isinstance(value, Mapping):
-        raise ValueError(f"{str(path)!r} exports must be a mapping")
-    exports: dict[Symbol, object] = {}
-    for name, exported_value in value.items():
-        symbol = name if isinstance(name, Symbol) else Symbol(str(name))
-        exports[symbol] = _coerce_python_export(symbol.name, exported_value)
-    return StandardModule(_file_module_name(path), exports)
-
-
-def _module_from_public_callables(module: types.ModuleType, path: Path) -> StandardModule:
-    exports: dict[Symbol, object] = {}
-    for name, value in vars(module).items():
-        if name.startswith("_") or not callable(value) or isinstance(value, type):
-            continue
-        export_names = {name}
-        if "_" in name:
-            export_names.add(name.replace("_", "-"))
-        for export_name in export_names:
-            exports[Symbol(export_name)] = _coerce_python_export(export_name, value)
-    return StandardModule(_file_module_name(path), exports)
-
-
-def _coerce_python_export(name: str, value: object) -> object:
-    from qy.core.operators import ControlOperator
-    from qy.core.operators import EffectOperator
-    from qy.core.operators import MetaOperator
-    from qy.core.operators import PureOperator
-    from qy.core.operators import ScopeOperator
-    from qy.macro import MacroDefinition
-    from qy.sem.runtime import UserFunction
-
-    if isinstance(
-        value,
-        PureOperator
-        | ScopeOperator
-        | ControlOperator
-        | EffectOperator
-        | MetaOperator
-        | MacroDefinition
-        | UserFunction,
-    ):
-        return value
-    if callable(value):
-        return PureOperator(name, value)
-    return value
 
 
 def _file_module_name(path: Path) -> str:

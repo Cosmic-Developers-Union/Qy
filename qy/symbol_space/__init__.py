@@ -88,23 +88,11 @@ def _load_char_module() -> StandardModule:
     return module()
 
 
-def _load_py_module() -> StandardModule:
-    from qy.symbol_space.python import operators as python_operators
-
-    return StandardModule("qy.py", python_operators())
-
-
 def _load_legacy_module() -> StandardModule:
     from qy.symbol_space.control import legacy_operators as control_legacy
     from qy.symbol_space.effects import legacy_operators as effects_legacy
 
     return StandardModule("qy.legacy", {**control_legacy(), **effects_legacy()})
-
-
-def _load_testhost_module() -> StandardModule:
-    from qy.symbol_space.testhost import module
-
-    return module()
 
 
 def _load_int8_module() -> StandardModule:
@@ -179,14 +167,34 @@ def _load_float128_module() -> StandardModule:
     return make_float128_space()
 
 
+def _install_extension_loaders() -> None:
+    """把已注册扩展声明的 module_name 接入模块系统。.
+
+    扩展模块只在显式 ``from <module_name> import ...`` 时装载；语言内核
+    不感知宿主实现。
+    """
+    from functools import partial
+
+    from qy.ext import extension_descriptors
+    from qy.ext import load_extension
+
+    for descriptor in extension_descriptors():
+        if descriptor.module_name is None:
+            continue
+        register_default_module_loader(
+            descriptor.module_name,
+            partial(load_extension, descriptor.name),
+        )
+
+
 def _install_builtin_loaders() -> None:
+    import qy.ext  # noqa: F401  (触发内置扩展注册)
+
     register_default_module_loader("qy.core", _load_core_module)
     register_default_module_loader("qy.io", _load_io_module)
     register_default_module_loader("qy.num", _load_num_module)
     register_default_module_loader("qy.str", _load_string_module)
     register_default_module_loader("qy.char", _load_char_module)
-    register_default_module_loader("qy.py", _load_py_module)
-    register_default_module_loader("qy.testhost", _load_testhost_module)
     register_default_module_loader("qy.legacy", _load_legacy_module)
     register_default_module_loader("qy.int8", _load_int8_module)
     register_default_module_loader("qy.int16", _load_int16_module)
@@ -200,6 +208,7 @@ def _install_builtin_loaders() -> None:
     register_default_module_loader("qy.float32", _load_float32_module)
     register_default_module_loader("qy.float64", _load_float64_module)
     register_default_module_loader("qy.float128", _load_float128_module)
+    _install_extension_loaders()
 
 
 _install_builtin_loaders()

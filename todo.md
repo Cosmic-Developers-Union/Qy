@@ -5,10 +5,11 @@
 
 最近一次本地基线（2026-09-14）：
 
-- `uv run python -m pytest -q`：1041 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
+- `uv run python -m pytest -q`：1048 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
 - `uv run ruff check .`：passed
 - `uv run ruff format --check .`：passed
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
+- 宿主边界：`qy/ext/` 扩展机制落地；`tests/test_extensions.py` 边界测试 7 项通过
 - `meta-interp/cases/` 19 个自举用例与 `qy run` 参考输出逐字节一致；
   `tests/qy` 行为用例 **54/54**、`examples/validation` 7 个验收样例全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
@@ -2051,6 +2052,40 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   瓶颈在解释执行本身、闭包分配与全局 lookup 的线性扫描，需要专门优化。
 - 环境用不可变 chain 建模，前向引用依赖 FALLBACK fallback；尚无 `set!`/mutation
   语义（语言核也刻意不提供）。
+
+---
+
+# 9¾. 宿主边界与扩展机制（qy/ext）
+
+目标：Qy 语言内核独立，宿主支持全部经标准扩展机制进入语言，二者界限清晰。
+
+## 已落地
+
+- `qy/ext/`：`ExtensionDescriptor` / `ExtensionCapability` / `ExtensionBinding`
+  声明模型 + 注册表（`descriptor.py` / `registry.py`）。
+- 内核 `qy.core` 不再混入宿主算子；容器构造器更名 `container_operators`
+  （产物是 Qy 语义值）。
+- 模块迁移（module_name 保持兼容）：
+  - `qy.symbol_space.python` → `qy.ext.python`（`qy.py`，capability `python-exec`）；
+  - `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost`）；
+  - `read-file` 从 `qy.io` 移入 `qy.ext.fs`（capability `filesystem`）；
+  - `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`，
+    内核只保留通用 `register_file_module_loader` hook。
+- `HostObjectRef` 定义移入 `qy.sem.host.HostReference`，VM instance 只重导出。
+- `tests/test_extensions.py`：内核包不得 import `qy.ext.*` / 宿主模块；
+  扩展声明与 capability；扩展模块装载；`qy.core` 无 `py`；`qy.io` 无 `read-file`。
+- 文档：`docs/extensions.md`；`docs/package-structure.md` 增补 `ext/` 所有权与导入方向。
+
+## 待迁移
+
+- Python 原生值（`str`/`int`/`list`/`tuple`/`dict`/`set`/`bool`/`None`）作为
+  runtime value 的迁移期互操作，逐步收敛到 `NumberValue`/`StringValue`/
+  `TupleValue` 等语义对象；`data.py` 中接受宿主 list/dict/tuple 的分支同步收紧。
+- `qy.project` / CLI 对文件系统、进程、时钟、网络的访问，逐步建模为显式扩展
+  capability（`filesystem` / `process` / `clock` / `network`），实例按 profile 选择启用。
+- 自举解释器对宿主能力的依赖（testhost 的 `cli-args`/`display`/`gensym` 等）
+  应迁移到专用扩展声明，而不是复用测试扩展。
+- 错误文本/对象 repr 中残留的宿主细节（`<qy.session.runtime_space...>` 等）。
 
 ---
 

@@ -1,0 +1,95 @@
+# Qy 扩展机制
+
+本文档定义 Qy 与宿主环境之间的边界与扩展模型。稳定语言语义以 `LANGUAGE.md`
+为准；包结构以 `docs/package-structure.md` 为准。
+
+## 1. 目标
+
+- Qy 语言内核独立：`qy.core` / `qy.frontend` / `qy.ir` / `qy.analysis` /
+  `qy.backend/vm/spec` 不得直接依赖宿主能力。
+- 宿主支持保留，但必须经过统一扩展边界：文件系统、进程、Python 执行、
+  测试基础设施等，一律建模为 **扩展（extension）**。
+- 语言侧只看到普通的 module / operator；扩展的宿主实现细节不进入语言模型。
+
+## 2. 扩展声明
+
+扩展由 `qy.ext.ExtensionDescriptor` 描述，声明是纯数据：
+
+| 字段 | 含义 |
+| --- | --- |
+| `name` | 扩展名，例如 `qy.ext.python` |
+| `module_name` | 语言侧 `from <module_name> import ...` 的名字；loader-only 扩展为 `None` |
+| `version` | 扩展版本 |
+| `description` | 面向维护者的说明 |
+| `capabilities` | 该扩展需要的宿主 capability（如 `python-exec`、`filesystem`） |
+| `bindings` | 对外 binding：`name` / `kind` / `doc` / `signature` / `capabilities` |
+
+`kind` 使用与 `OperatorKind` 相同的词汇（`pure` / `scope` / `control` /
+`effect` / `meta`），`value` 表示常量 binding。工具链（analyzer / LSP）只能依赖
+这些声明理解扩展算子，不得读取宿主实现。
+
+## 3. 注册与装载
+
+```python
+from qy.ext import ExtensionDescriptor, ExtensionCapability, ExtensionBinding, register_extension
+
+def module() -> StandardModule: ...
+
+DESCRIPTOR = ExtensionDescriptor(
+    name="qy.ext.example",
+    module_name="qy.example",
+    capabilities=(ExtensionCapability("network", "访问网络"),),
+    bindings=(ExtensionBinding("fetch", kind="effect", capabilities=("network",)),),
+)
+register_extension(DESCRIPTOR, module)
+```
+
+- `qy.ext.register_extension` 只登记声明与模块工厂，不执行宿主能力。
+- 模块系统把每个扩展的 `module_name` 注册为普通模块 loader；
+  扩展模块只在显式 `from` 时装载（符合“host reference/operator 必须通过
+  显式 import 进入 symbol-space-chain”）。
+- `load_extension(name)` 供工具链检查模块内容；语言求值入口仍然是普通 import。
+
+## 4. 宿主对象边界
+
+- 宿主对象跨边界统一包装为 `qy.sem.host.HostReference`（语义层 runtime value）。
+- VM instance 只重导出该类型（`qy.vm.instance.values.HostObjectRef` 为兼容别名）。
+- 扩展负责创建/解包 host reference，并把宿主异常转换成语言级错误
+  （`QyError` 子类），不得把宿主异常类型暴露给语言。
+
+## 5. 文件模块后缀
+
+`.qy` 文件模块由内核直接加载（语言原生格式）。其他后缀（例如 `.py`）由扩展
+通过 `qy.import_.registry.register_file_module_loader(suffix, loader)` 注册；
+内核 `import_` 注册表不包含任何宿主文件格式逻辑。
+
+## 6. 内置扩展
+
+| 扩展 | module_name | capability | 说明 |
+| --- | --- | --- | --- |
+| `qy.ext.python` | `qy.py` | `python-exec` | `py`：执行内嵌 async Python |
+| `qy.ext.python-modules` | —（loader-only） | `host-python-modules` | 把 `.py` 文件装载为 Qy 模块 |
+| `qy.ext.fs` | `qy.ext.fs` | `filesystem` | `read-file` |
+| `qy.ext.testhost` | `qy.testhost` | `filesystem` / `cli` / `introspection` / `coverage` | 测试与 CLI 基础设施 |
+
+标准 profile (`qy.core` + `qy.io`) 不预装任何宿主扩展。
+
+## 7. 迁移状态
+
+已完成：
+
+- `qy.symbol_space.python` → `qy.ext.python`（`qy.py` 仍为模块名）。
+- `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost` 仍为模块名）。
+- `read-file` 从 `qy.io` 移入 `qy.ext.fs`；`qy.io` 只保留语言 IO（`print`/`echo`）。
+- `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`；
+  内核 registry 只保留通用的 suffix loader hook。
+- `HostObjectRef` 定义移入 `qy.sem.host`，VM instance 只重导出。
+- `python_container_operators` 更名为 `container_operators`（Qy 语义容器）。
+
+待迁移（登记于 `todo.md`）：
+
+- Python 原生值（`str` / `int` / `list` / `tuple` / `dict` / `set` / `bool` / `None`）
+  作为 runtime value 的迁移期互操作，需逐步收敛到 `NumberValue` / `StringValue` /
+  `TupleValue` 等语义对象。
+- `qy.project` 对宿主文件系统/进程的访问应逐步经由显式扩展 capability。
+- CLI / testhost 之外的宿主机能（进程、网络、时钟）尚无扩展声明。

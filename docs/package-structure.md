@@ -47,6 +47,7 @@ qy/
       spec/          # VM 规格：opcode/ABI/state/effect/bytecode contract
   vm/                # Python VM implementation：machine/frame/state/scheduler/host
     instance/        # VM 运行实例：machine/frame/state/scheduler/host adapter
+  ext/               # 标准扩展机制：宿主能力唯一入口（descriptor/registry + 内置扩展）
   std/               # standard profile and standard library target package
   tools/
     check/           # analyzer / type checker
@@ -82,6 +83,7 @@ qy/
 - `backend/vm/spec`: 稳定 VM 规格，包括 bytecode、opcode、operand schema、ABI、abstract state、effect/continuation protocol；不得依赖某个 Python VM instance。
 - `vm`: Qy Register VM 的 Python 实现位置；实现 `backend/vm/spec`，不定义 VM target 规格。
 - `vm/instance`: 一次执行的可变运行实例，包括 machine、runtime frame、runtime state、scheduler、host adapter；只能实现 `backend/vm/spec`，不得定义 opcode/ABI 规格。
+- `ext`: Qy 与宿主环境之间**唯一**的官方边界。扩展用 `ExtensionDescriptor` 声明名字 / 可导入模块名 / 所需 capability / binding signature；宿主实现只出现在 `qy/ext/*`。语言内核（`core/frontend/ir/analysis/backend/vm/spec`）不得 import `qy.ext.*`；`qy.io` 等标准模块也不得内嵌宿主机能（文件系统、进程、Python 执行）。
 - `std`: standard profile 与标准库目标包；`qy/stdlib` 只是迁移期兼容目录。
 - `tools`: 面向维护者和编辑器的工具；读取同一 Qy 实例事实，不私造语言规则。
 - `cli`: 只编排 public API 和工具入口，不承载语言语义。
@@ -101,6 +103,8 @@ qy/
 - `backend/vm/spec -> lir/core/sem/errors`；不得依赖 `qy/vm`。
 - `backend/vm/emit -> backend/vm/spec/lir/diag`；不得重新解释 HIR/MIR 语义。
 - `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`。
+- `ext -> core/sem/import_`；实现宿主能力，但不得被内核反向依赖。
+- `symbol_space/io/lang stdlib -> ext` 仅允许 re-export 已声明扩展 binding，不得自行实现宿主机能。
 - `std -> public runtime adapters`。
 - `tools/cli -> public API`；不得定义私有语言语义。
 

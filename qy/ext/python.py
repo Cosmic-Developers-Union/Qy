@@ -1,4 +1,9 @@
 # coding: utf-8
+"""``qy.ext.python``：宿主 Python 执行扩展。.
+
+语言侧通过 ``(from qy.py import py)`` 显式引入；``py`` 声明了所需的
+``python-exec`` capability。宿主对象跨边界时统一包装为 ``HostReference``。
+"""
 
 from __future__ import annotations
 
@@ -13,6 +18,9 @@ from collections.abc import Awaitable
 from collections.abc import Callable
 from typing import cast
 
+from qy.core.operator_signature import Arity
+from qy.core.operator_signature import EffectSpec
+from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import ControlOperator
 from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
@@ -28,17 +36,21 @@ from qy.errors import QyError
 from qy.errors import QyPythonError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
+from qy.ext.descriptor import ExtensionBinding
+from qy.ext.descriptor import ExtensionCapability
+from qy.ext.descriptor import ExtensionDescriptor
+from qy.ext.registry import register_extension
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
+from qy.import_.module import StandardModule
 from qy.macro import MacroDefinition
 from qy.sem.core import T as QY_T
+from qy.sem.host import HostReference as HostObjectRef
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.symbol_space.data import python_container_operators
 from qy.symbol_space.effects import _await_cached_value
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
-from qy.vm.instance.values import HostObjectRef
 
 _PY_FUNCTION_NAME = "__qy_py__"
 _PY_FUNCTION_CACHE: dict[tuple[str, tuple[str, ...]], Callable[..., Awaitable[object]]] = {}
@@ -401,8 +413,43 @@ def _non_resumable_python_continuation() -> QyContinuation:
     return QyContinuation("python-error", False, resume)
 
 
-def operators() -> dict[Symbol, object]:
-    return {
-        Symbol("py"): EffectOperator("py", _py, "执行内嵌 async Python，并用 keyword 参数绑定值。"),
-        **python_container_operators(),
-    }
+_PY_SIGNATURE = OperatorSignature(
+    "any",
+    Arity(1),
+    argument_policy=("body", "eager"),
+    effects=(EffectSpec("python-error"),),
+)
+
+
+def module() -> StandardModule:
+    """``qy.py`` 模块：宿主 Python 执行扩展的唯一入口。."""
+    return StandardModule(
+        "qy.py",
+        {
+            Symbol("py"): EffectOperator(
+                "py",
+                _py,
+                "执行内嵌 async Python，并用 keyword 参数绑定值。",
+            ),
+        },
+    )
+
+
+DESCRIPTOR = ExtensionDescriptor(
+    name="qy.ext.python",
+    module_name="qy.py",
+    version="0.1",
+    description="宿主 Python 执行扩展：py 执行内嵌 async Python 代码。",
+    capabilities=(ExtensionCapability("python-exec", "执行宿主 Python 代码"),),
+    bindings=(
+        ExtensionBinding(
+            "py",
+            kind="effect",
+            doc="执行内嵌 async Python，并用 keyword 参数绑定值。",
+            signature=_PY_SIGNATURE,
+            capabilities=("python-exec",),
+        ),
+    ),
+)
+
+register_extension(DESCRIPTOR, module)

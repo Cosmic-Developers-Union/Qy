@@ -27,7 +27,7 @@ def register(group: click.Group) -> None:
         try:
             qy = Qy()
             if args:
-                from qy.symbol_space.testhost import set_cli_args
+                from qy.ext.testhost import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
             source = path.read_text(encoding="utf-8")

@@ -16,8 +16,8 @@ from __future__ import annotations
 from qy.import_.module import StandardModule
 from qy.import_.operators import operators as modules_operators
 from qy.symbol_space.control import operators as control_operators
+from qy.symbol_space.data import container_operators
 from qy.symbol_space.data import operators as chain_operators
-from qy.symbol_space.data import python_container_operators
 from qy.symbol_space.effects import operators as effects_operators
 
 
@@ -26,7 +26,7 @@ def module() -> StandardModule:
         "qy.core",
         {
             **chain_operators(),
-            **python_container_operators(),
+            **container_operators(),
             **control_operators(),
             **effects_operators(),
             **modules_operators(),

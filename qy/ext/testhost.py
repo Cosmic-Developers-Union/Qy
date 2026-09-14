@@ -1,4 +1,10 @@
 # coding: utf-8
+"""``qy.ext.testhost``：测试 / CLI 基础设施扩展。.
+
+语言侧通过 ``(from qy.testhost import ...)`` 引入。该扩展声明
+``filesystem`` / ``cli`` / ``coverage`` capability，只应由测试与工具链装载，
+不进入标准 profile。
+"""
 
 from __future__ import annotations
 
@@ -8,6 +14,10 @@ from pathlib import Path
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
+from qy.ext.descriptor import ExtensionBinding
+from qy.ext.descriptor import ExtensionCapability
+from qy.ext.descriptor import ExtensionDescriptor
+from qy.ext.registry import register_extension
 from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 from qy.sem.core import T as QY_T
@@ -275,3 +285,36 @@ async def _run_file_with_coverage(args: tuple[object, ...], env: Environment) ->
         return QY_T if result is not QY_NIL else QY_NIL
     except Exception:
         return QY_NIL
+
+
+DESCRIPTOR = ExtensionDescriptor(
+    name="qy.ext.testhost",
+    module_name="qy.testhost",
+    version="0.1",
+    description="测试 / CLI 基础设施扩展（目录、文件、CLI 参数、覆盖率）。",
+    capabilities=(
+        ExtensionCapability("filesystem", "读取目录与文件状态"),
+        ExtensionCapability("cli", "读取进程 CLI 参数"),
+        ExtensionCapability("introspection", "解析宿主模块导出与 display 格式化"),
+        ExtensionCapability("coverage", "启动/停止覆盖率收集（可选）"),
+    ),
+    bindings=(
+        ExtensionBinding("cli-args", kind="scope", doc="读取 CLI 传入的额外参数。"),
+        ExtensionBinding("list-dir", kind="scope", doc="列出目录项。"),
+        ExtensionBinding("path-join", kind="scope", doc="拼接路径。"),
+        ExtensionBinding("file?", kind="scope", doc="判断路径是否为文件。"),
+        ExtensionBinding("dir?", kind="scope", doc="判断路径是否为目录。"),
+        ExtensionBinding("qy-file?", kind="scope", doc="判断路径是否为 .qy 文件。"),
+        ExtensionBinding("lookup-export", kind="scope", doc="解析宿主模块导出。"),
+        ExtensionBinding("display", kind="scope", doc="按 Qy display 规则格式化值。"),
+        ExtensionBinding("raise-error", kind="scope", doc="以语言级错误终止求值。"),
+        ExtensionBinding("gensym", kind="scope", doc="生成全新 symbol。"),
+        ExtensionBinding("run-file", kind="scope", doc="运行 Qy 文件。"),
+        ExtensionBinding("run-file-with-coverage", kind="scope", doc="运行文件并收集覆盖率。"),
+        ExtensionBinding("start-coverage", kind="scope", doc="启动覆盖率收集。"),
+        ExtensionBinding("stop-coverage", kind="scope", doc="停止覆盖率收集。"),
+        ExtensionBinding("report-coverage", kind="scope", doc="生成覆盖率报告。"),
+    ),
+)
+
+register_extension(DESCRIPTOR, module)

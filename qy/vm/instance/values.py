@@ -9,18 +9,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qy.sem.host import HostObjectRef
+
 __all__ = ["HostObjectRef", "TailCall"]
-
-
-@dataclass(frozen=True, slots=True, eq=False)
-class HostObjectRef:
-    """Reference to a host (Python) object.
-
-    Wraps a Python object so it can be passed through Qy runtime without
-    being interpreted as a Qy value. Used for FFI and embedding scenarios.
-    """
-
-    value: object
 
 
 @dataclass(frozen=True, slots=True)

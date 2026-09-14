@@ -540,16 +540,23 @@ def _has(*args: object) -> object:
     )
 
 
-def python_container_operators() -> dict[Symbol, object]:
+def container_operators() -> dict[Symbol, object]:
+    """Qy 语义容器的构造/谓词算子（tuple / list / dict / set）。.
+
+    这些算子的结果都是 Qy runtime value（``TupleValue`` 等），不是宿主容器；
+    "Python 兼容" 输入只作为迁移期互操作，不定义语言语义。
+    """
     return {
-        Symbol("dict"): PureOperator("dict", _dict, "把 key/value 参数转换为 Python dict。"),
-        Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为 dict。"),
-        Symbol("list"): PureOperator("list", _list, "把参数转换为 Python list。"),
-        Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list。"),
-        Symbol("set"): PureOperator("set", _set, "把参数转换为 Python set。"),
-        Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set。"),
-        Symbol("tuple"): PureOperator("tuple", _tuple, "把参数转换为 Python tuple。"),
-        Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple。"),
+        Symbol("dict"): PureOperator(
+            "dict", _dict, "构造 Qy dict（key/value 交替参数或 entry chain）。"
+        ),
+        Symbol("dict?"): PureOperator("dict?", _dict_predicate, "判断值是否为空 dict 容器。"),
+        Symbol("list"): PureOperator("list", _list, "构造 Qy list 容器。"),
+        Symbol("list?"): PureOperator("list?", _list_predicate, "判断值是否为 list 容器。"),
+        Symbol("set"): PureOperator("set", _set, "构造 Qy set 容器。"),
+        Symbol("set?"): PureOperator("set?", _set_predicate, "判断值是否为 set 容器。"),
+        Symbol("tuple"): PureOperator("tuple", _tuple, "构造 Qy tuple 容器。"),
+        Symbol("tuple?"): PureOperator("tuple?", _tuple_predicate, "判断值是否为 tuple 容器。"),
     }
 
 
