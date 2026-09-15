@@ -249,6 +249,11 @@ source
   - 修正 `CONT_RESTORE` 被当作 terminator 的问题（`verify.py`/`lir/predicates.py`/spec 同步）；否则 `(+ (resume k a) (resume k b))` 组合 resume 会丢第一次 resume；
   - `tests/test_abstract_machine_vm.py`：多 shot、non-resumable、无 resume、嵌套 handler，以及 hello + 全部 validation 样例的 compat/abstract-machine 差分；全量 1097 passed；
   - compat dialect 仍拒绝 abstract-machine opcode；默认执行路径仍是 compat。
+- **本轮新增（layout 下沉 HIR → MIR → LIR）**：
+  - 新增中性类型 `qy/ir/layout.py`（`BindingSlot` / `SymbolSpaceLayout`），HIR 的 `HIRBindingSlot` / `HIRSymbolSpaceLayout` 改为其别名；
+  - `MIRProgram` / `LIRProgram` 增加 `symbol_spaces`；`mir.lower` 从 `ProgramIR` 携带，`mir.validate`、`lir.lower`、`lir.verify` 逐级保留；
+  - `tests/test_resolve_spaces.py::test_layout_sinks_from_hir_to_mir_and_lir` 断言 HIR == MIR == LIR；
+  - 仍待推进：MIR 指令 operand 直接携带 binding id/slot（现仍只带 symbol 名，LIR `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 重建）。
 
 ## 2.2 仍在过渡
 

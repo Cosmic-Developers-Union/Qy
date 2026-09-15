@@ -847,7 +847,7 @@ RUNTIME_EVAL, APPEND_RESULT, LOAD_NIL, LOAD_T, MOVE
 
 因此 L5 / L6 / L7 / L8 / L9 在 abstract-machine dialect 下**不再是空检查**。`SLOT_COMPLETE` 的 operand schema 为 `(LIRBindingAddr, src_reg)`；L9 以函数为单位比较 `(space, slot)` 是否重复 complete。`dump_lir` 在 layout 字段非空时会输出对应段（`pretty.py:39-46`）。
 
-HIR 层 `resolve.spaces` 已实现（见 §7.8 与 `qy/passes/resolve/spaces.py`），产出 `ProgramIR.symbol_spaces`；仍待推进：MIR 指令携带 binding id/slot，LIR 才能消费 HIR layout 而不是从指令流重建。
+HIR 层 `resolve.spaces` 已实现（见 §7.8 与 `qy/passes/resolve/spaces.py`），产出 `ProgramIR.symbol_spaces`，并由 `MIRProgram` / `LIRProgram` 用共享的 `qy.ir.layout.SymbolSpaceLayout` 携带下沉（`tests/test_resolve_spaces.py` 断言 HIR == MIR == LIR）。仍待推进：MIR 指令 operand 直接携带 binding id/slot；当前 LIR 的 `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 从指令流重建，与 HIR slot 一致。
 
 ### 7.9 VM 执行 abstract-machine dialect
 

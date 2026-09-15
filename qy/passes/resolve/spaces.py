@@ -10,11 +10,15 @@
 - 这是 HIR 层的 layout 事实来源。``hir.lower`` 在定义绑定时已经填充
   ``SymbolSpace.bindings``（symbol -> slot index）；本 pass 只负责把
   "哪些 space 属于本程序、id 是多少、parent 是谁" 显式化，不重新推导作用域。
+- 产出的事实会**下沉**：同一份 ``SymbolSpaceLayout`` 由 ``MIRProgram`` 与
+  ``LIRProgram`` 携带（类型见 ``qy.ir.layout``），不再让下层各自重建。
 - profile 预装空间（只含 ``builtin`` 绑定）会被过滤掉，不属于程序的 lexical
   layout。
-- 仍待推进：MIR 携带 binding id/slot（当前 MIR 的 ``DEFINE_ONCE`` /
-  ``LOAD_ENV`` 只带 symbol 名），LIR 才能真正从 HIR 事实而不是指令流重建
-  ``symbol_spaces``；pending binding / meta-space 尚未建模。
+- 仍待推进：MIR 的 ``DEFINE_ONCE`` / ``LOAD_ENV`` 指令 operand 仍只带 symbol
+  名，所以 LIR 的 ``SLOT_COMPLETE`` 地址仍由 ``passes/lir/spaces.py`` 从指令流
+  重建（与 HIR slot 一致）；要让指令 operand 直接携带 binding id/slot，需要改
+  MIR opcode operand schema（影响 optimize passes 与 bytecode 序列化）。
+  pending binding / meta-space 尚未建模。
 
 禁止：
 - 不执行 runtime evaluation，不改变 ``ProgramIR.body``。

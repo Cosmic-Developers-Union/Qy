@@ -33,6 +33,7 @@ class VerifyLIRPass(Pass):
             program.main,
             (*program.diagnostics, *diagnostics),
             program.dialect,
+            program.symbol_spaces,
         )
         return PassResult(
             success=not any(d.severity == "error" for d in diagnostics),

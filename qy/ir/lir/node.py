@@ -20,6 +20,7 @@ from typing import Literal
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.frontend.reader import Symbol
+from qy.ir.layout import SymbolSpaceLayout
 
 if TYPE_CHECKING:
     from qy.ir.lir.frame import LIRContinuationLayout
@@ -189,6 +190,8 @@ class LIRProgram:
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
     dialect: Literal["compat", "abstract-machine"] = "compat"
+    # Shared IR layout fact sunk from HIR via MIR (see qy.ir.layout).
+    symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
 
     @property
     def ok(self) -> bool:

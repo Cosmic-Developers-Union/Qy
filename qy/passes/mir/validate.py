@@ -32,6 +32,7 @@ class ValidateMIRPass(Pass):
             constants=program.constants,
             main=program.main,
             diagnostics=(*program.diagnostics, *diagnostics),
+            symbol_spaces=program.symbol_spaces,
         )
         return PassResult(
             success=not any(d.severity == "error" for d in diagnostics),

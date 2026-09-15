@@ -67,6 +67,24 @@ def test_profile_spaces_are_filtered_out():
     assert all(layout.name in {"let", "lambda", "Main", "defun:sum-to"} for layout in layouts)
 
 
+def test_layout_sinks_from_hir_to_mir_and_lir():
+    from qy.build.artifact import HIR
+    from qy.build.artifact import LIR
+    from qy.build.artifact import MIR
+    from qy.build.pipeline import lir_artifact
+    from qy.build.pipeline import mir_artifact
+
+    source = "(let ((f (lambda (a b) a))) (f 1 2))"
+    env = create_standard_runtime_space()
+    hir = hir_artifact(compile_source_to_kind(source, PipelineSession(env=env), kind=HIR))
+    mir = mir_artifact(compile_source_to_kind(source, PipelineSession(env=env), kind=MIR))
+    lir = lir_artifact(compile_source_to_kind(source, PipelineSession(env=env), kind=LIR))
+
+    assert hir.symbol_spaces
+    assert hir.symbol_spaces == mir.symbol_spaces
+    assert mir.symbol_spaces == lir.symbol_spaces
+
+
 def test_resolve_spaces_pass_is_in_default_pipeline_and_survives_validation():
     result = compile_source_to_kind(
         "(let ((x 1)) x)",

@@ -14,6 +14,7 @@ from typing import Literal
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
 from qy.frontend.reader import Symbol
+from qy.ir.layout import SymbolSpaceLayout
 
 __all__ = [
     "MIRBlock",
@@ -139,6 +140,8 @@ class MIRProgram:
     constants: MIRConstantPool = field(default_factory=MIRConstantPool)
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
+    # Shared IR layout fact sunk from HIR (see qy.ir.layout).
+    symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
 
     @property
     def ok(self) -> bool:

@@ -48,6 +48,7 @@ def lower_lir(program: MIRProgram, *, dialect: str = "compat") -> LIRProgram:
         program.main,
         diagnostics,
         dialect=resolved_dialect,
+        symbol_spaces=program.symbol_spaces,
     )
 
 

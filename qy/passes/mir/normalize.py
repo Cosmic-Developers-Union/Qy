@@ -605,6 +605,7 @@ class _MIRLowerer:
             self.constants,
             main_index,
             tuple(self.diagnostics),
+            program.symbol_spaces,
         )
 
     def lower_function(

@@ -17,6 +17,9 @@ from qy.frontend.reader import Form
 from qy.frontend.reader import SourceSpan
 from qy.frontend.reader import Symbol
 from qy.import_.parse import ImportSpec
+from qy.ir.layout import BindingSlot as HIRBindingSlot
+from qy.ir.layout import SymbolSpaceLayout
+from qy.ir.layout import SymbolSpaceLayout as HIRSymbolSpaceLayout
 
 __all__ = [
     "AllExpr",
@@ -153,30 +156,13 @@ class Binding:
 
 
 @dataclass(frozen=True, slots=True)
-class HIRBindingSlot:
-    """One once-complete binding slot in a HIR symbol-space layout."""
-
-    symbol: Symbol
-    index: int
-    source: BindingSource = "define"
-
-
-@dataclass(frozen=True, slots=True)
-class HIRSymbolSpaceLayout:
-    """Serializable symbol-space layout produced by ``resolve.spaces``."""
-
-    id: int
-    name: str
-    parent: int | None
-    slots: tuple[HIRBindingSlot, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
 class ProgramIR:
     body: tuple[IRExpr, ...]
     diagnostics: tuple[Diagnostic, ...] = ()
     # ``resolve.spaces`` output: stable space ids + symbol -> slot assignment.
-    symbol_spaces: tuple[HIRSymbolSpaceLayout, ...] = ()
+    # These are the shared IR layout facts (see ``qy.ir.layout``); SAME types
+    # are carried by MIR/LIR so the fact sinks down the pipeline.
+    symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
 
     @property
     def ok(self) -> bool:
