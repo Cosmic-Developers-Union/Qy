@@ -7,6 +7,7 @@ import asyncio
 import inspect
 from collections.abc import Callable
 from dataclasses import dataclass
+from dataclasses import field
 from typing import cast
 
 from qy.backend.vm.bytecode import BytecodeFunction
@@ -78,6 +79,19 @@ class _Frame:
     env: Environment
     parents: list[Environment]
     results: list[object]
+    # abstract-machine dialect: explicit handler stack + pending effect
+    handlers: list[_HandlerRecord] = field(default_factory=list)
+    pending_effect: object = None
+
+
+@dataclass(slots=True)
+class _HandlerRecord:
+    """One ``HANDLER_PUSH`` entry on a frame's explicit handler stack."""
+
+    handler_id: int
+    target: int
+    parent_id: int | None
+    specs: tuple[object, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -250,12 +264,20 @@ class RegisterVirtualMachine:
                 dest, callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
                 callee = frame.registers[_register(callee_register)]
-                frame.registers[_register(dest)] = await self._call(
-                    callee,
-                    args,
-                    instruction.span,
-                    frame.env,
-                )
+                try:
+                    call_value = await self._call(
+                        callee,
+                        args,
+                        instruction.span,
+                        frame.env,
+                    )
+                except QyEffectSignal as signal:
+                    # abstract-machine dialect: divert to the nearest matching
+                    # handler pushed in this frame instead of propagating.
+                    if self._dispatch_to_handler(frame, signal):
+                        return None
+                    raise
+                frame.registers[_register(dest)] = call_value
             case "TAIL_CALL":
                 callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
@@ -282,6 +304,89 @@ class RegisterVirtualMachine:
                     resumable=bool(resumable),
                     span=instruction.span,
                 )
+            # -- abstract-machine dialect --------------------------------------
+            case "SS_ENTER":
+                frame.parents.append(frame.env)
+                frame.env = frame.env.child()
+            case "SS_LEAVE":
+                frame.env = frame.parents.pop()
+            case "SLOT_COMPLETE":
+                address, source = operands
+                symbol = self._slot_symbol(frame, address)
+                value = frame.registers[_register(source)]
+                if symbol is not None and value is not _COMPILE_TIME_MACRO:
+                    frame.env.define_once(symbol, value)
+            case "HANDLER_PUSH":
+                handler_id, target, parent_id, specs = operands
+                frame.handlers.append(
+                    _HandlerRecord(
+                        _int(handler_id),
+                        _int(target),
+                        None if parent_id is None else _int(parent_id),
+                        specs if isinstance(specs, tuple) else (),
+                    )
+                )
+            case "HANDLER_POP":
+                if frame.handlers:
+                    frame.handlers.pop()
+            case "EFFECT_UNWIND":
+                effect_symbol, arg_register, cont_register = operands
+                effect_name = _symbol(effect_symbol).name
+                arg = frame.registers[_register(arg_register)]
+                continuation = frame.registers[_register(cont_register)]
+                resumable = (
+                    continuation.resumable if isinstance(continuation, QyContinuation) else True
+                )
+                raise QyEffectSignal(
+                    effect_name,
+                    arg,
+                    continuation,
+                    resumable=resumable,
+                    span=instruction.span,
+                )
+            case "EFFECT_DISPATCH":
+                fn_register, _handler_id, arg_register, cont_register = operands
+                pending = frame.pending_effect
+                if not isinstance(pending, tuple) or len(pending) != 2:
+                    raise QyRuntimeError(
+                        "EFFECT_DISPATCH reached without a pending effect",
+                        span=instruction.span,
+                    )
+                handler_fn_index, signal = cast("tuple[int, QyEffectSignal]", pending)
+                frame.registers[_register(fn_register)] = BytecodeFunctionValue(
+                    self.program.functions[_int(handler_fn_index)],
+                    frame.env,
+                    self.program,
+                )
+                frame.registers[_register(arg_register)] = signal.arg
+                frame.registers[_register(cont_register)] = signal.continuation
+                frame.pending_effect = None
+            case "CONT_CAPTURE":
+                cont_register, _layout_id, resume_target, _saved, dst_for_resume, multi_shot = (
+                    operands
+                )
+                frame.registers[_register(cont_register)] = self._capture_continuation(
+                    frame,
+                    resume_target=_int(resume_target),
+                    dst_for_resume=dst_for_resume,
+                    resumable=bool(multi_shot),
+                )
+            case "CONT_COPY":
+                dest, source = operands
+                frame.registers[_register(dest)] = frame.registers[_register(source)]
+            case "CONT_RESTORE":
+                cont_register, dst_register, value_register = operands
+                continuation = frame.registers[_register(cont_register)]
+                value = frame.registers[_register(value_register)]
+                if not isinstance(continuation, QyContinuation):
+                    raise QyRuntimeError(
+                        "CONT_RESTORE expects a continuation",
+                        span=instruction.span,
+                    )
+                # Non-terminating, like compat RESUME: the resumed value lands
+                # in dst and the handler body keeps running, so composed
+                # resumes such as (+ (resume k a) (resume k b)) work.
+                frame.registers[_register(dst_register)] = await continuation.resume(value)
         return None
 
     async def _call(
@@ -695,6 +800,92 @@ class RegisterVirtualMachine:
                 metadata={"value": continuation},
             )
         return await continuation.resume(value)
+
+    # -- abstract-machine helpers -------------------------------------------
+
+    def _slot_symbol(self, frame: _Frame, address: object) -> Symbol | None:
+        """Recover the bound symbol for a ``SLOT_COMPLETE`` address."""
+        space_id = getattr(address, "space", None)
+        slot_index = getattr(address, "slot", None)
+        if not isinstance(space_id, int) or not isinstance(slot_index, int):
+            return None
+        for layout in frame.function.symbol_spaces:
+            if getattr(layout, "id", None) != space_id:
+                continue
+            slots = getattr(layout, "slots", ())
+            if 0 <= slot_index < len(slots):
+                symbol = getattr(slots[slot_index], "symbol", None)
+                if isinstance(symbol, Symbol):
+                    return symbol
+        return None
+
+    def _dispatch_to_handler(self, frame: _Frame, signal: QyEffectSignal) -> bool:
+        """Divert *signal* to the nearest matching handler in this frame.
+
+        Returns True when the frame's pc has been redirected to the handler
+        dispatch block; False means the caller must keep propagating.
+        """
+        for record in reversed(frame.handlers):
+            for spec in record.specs:
+                if not isinstance(spec, tuple) or len(spec) != 2:
+                    continue
+                effect_symbol, handler_fn_index = spec
+                if not isinstance(effect_symbol, Symbol) or not isinstance(handler_fn_index, int):
+                    continue
+                if effect_symbol.name == signal.effect:
+                    frame.pending_effect = (handler_fn_index, signal)
+                    frame.pc = record.target
+                    return True
+        return False
+
+    def _capture_continuation(
+        self,
+        frame: _Frame,
+        *,
+        resume_target: int,
+        dst_for_resume: object,
+        resumable: bool,
+    ) -> QyContinuation:
+        """Capture this frame at *resume_target*, injecting into *dst_for_resume*.
+
+        The snapshot is immutable, so each ``resume`` re-enters a fresh frame
+        and multi-shot continuations fall out naturally (same as ``_perform``).
+        """
+        snapshot = _EffectFrame(
+            registers=tuple(frame.registers),
+            env=frame.env,
+            pc=resume_target,
+            parents=tuple(frame.parents),
+            results=tuple(frame.results),
+            function_value=frame.function_value,
+            function=frame.function,
+        )
+        vm = self
+
+        async def resume(value: object) -> object:
+            registers = list(snapshot.registers)
+            registers[_register(dst_for_resume)] = value
+            resume_frame = _Frame(
+                snapshot.function_value,
+                snapshot.function,
+                snapshot.pc,
+                registers,
+                snapshot.env,
+                list(snapshot.parents),
+                list(snapshot.results),
+                list(frame.handlers),
+            )
+            while resume_frame.pc < len(resume_frame.function.instructions):
+                instruction = resume_frame.function.instructions[resume_frame.pc]
+                resume_frame.pc += 1
+                result = await vm._execute_instruction(resume_frame, instruction)
+                if isinstance(result, _FrameResult):
+                    return result.value
+                if isinstance(result, _Frame):
+                    resume_frame = result
+            return None
+
+        return QyContinuation("<continuation>", resumable, resume)
 
 
 def evaluate_bytecode(program: BytecodeProgram, env: Environment | None = None) -> object:

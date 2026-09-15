@@ -243,6 +243,12 @@ source
   - 默认管线加入 `resolve.spaces`（`hir.lower` 之后、`hir.validate` 之前）；`hir.validate` 现在保留 `symbol_spaces`；
   - `tests/test_resolve_spaces.py` 6 passed；全量 1087 passed。
   - 仍待推进：MIR 指令携带 binding id/slot，LIR 才能消费 HIR layout 而不是重建。
+- **本轮新增（VM 执行 abstract-machine opcode）**：
+  - `backend/vm/spec/opcode.py` 与 `backend/vm/bytecode.py` 的 opcode 集加入 `SS_ENTER/SS_LEAVE/SLOT_COMPLETE/HANDLER_PUSH/HANDLER_POP/EFFECT_UNWIND/EFFECT_DISPATCH/CONT_CAPTURE/CONT_COPY/CONT_RESTORE`；`compile_lir_bytecode` 接受 `abstract-machine` dialect，并把 `LIRFunction.symbol_spaces` 带到 `BytecodeFunction`；
+  - `_Frame` 增加显式 `handlers` 栈与 `pending_effect`；`EFFECT_UNWIND` 抛 signal，持有 `HANDLER_PUSH` 的 frame 在 `CALL` 处捕获并跳 dispatch block；`EFFECT_DISPATCH` 写回 handler fn/arg/continuation；`CONT_CAPTURE` 用不可变快照（multi-shot 天然成立），`CONT_COPY` 别名，`CONT_RESTORE` **非终结**（写回 dst 后继续）；
+  - 修正 `CONT_RESTORE` 被当作 terminator 的问题（`verify.py`/`lir/predicates.py`/spec 同步）；否则 `(+ (resume k a) (resume k b))` 组合 resume 会丢第一次 resume；
+  - `tests/test_abstract_machine_vm.py`：多 shot、non-resumable、无 resume、嵌套 handler，以及 hello + 全部 validation 样例的 compat/abstract-machine 差分；全量 1097 passed；
+  - compat dialect 仍拒绝 abstract-machine opcode；默认执行路径仍是 compat。
 
 ## 2.2 仍在过渡
 

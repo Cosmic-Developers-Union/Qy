@@ -36,7 +36,26 @@ __all__ = ["compile_lir_bytecode"]
 
 _BYTECODE_OPCODES = frozenset(get_args(Opcode))
 _COMPAT_ONLY_LIR_OPCODES = frozenset({"LOAD_NIL", "LOAD_T", "BRANCH_NIL"})
-_SUPPORTED_COMPAT_LIR_OPCODES = _BYTECODE_OPCODES | _COMPAT_ONLY_LIR_OPCODES
+# Abstract-machine dialect opcodes: part of the VM opcode set (the VM is the Qy
+# abstract machine), but not legal in compat LIR.
+_ABSTRACT_MACHINE_OPCODES = frozenset(
+    {
+        "SS_ENTER",
+        "SS_LEAVE",
+        "SLOT_COMPLETE",
+        "HANDLER_PUSH",
+        "HANDLER_POP",
+        "EFFECT_UNWIND",
+        "EFFECT_DISPATCH",
+        "CONT_CAPTURE",
+        "CONT_COPY",
+        "CONT_RESTORE",
+    }
+)
+_SUPPORTED_COMPAT_LIR_OPCODES = (
+    _BYTECODE_OPCODES - _ABSTRACT_MACHINE_OPCODES
+) | _COMPAT_ONLY_LIR_OPCODES
+_SUPPORTED_ABSTRACT_MACHINE_LIR_OPCODES = _BYTECODE_OPCODES | _COMPAT_ONLY_LIR_OPCODES
 
 
 def _lir_to_bytecode_opcode(opcode: str) -> Opcode:
@@ -77,14 +96,16 @@ def _compile_function(function: LIRFunction) -> BytecodeFunction:
         function.params,
         function.register_count,
         tuple(_encode_instruction(i) for i in function.instructions),
+        function.symbol_spaces,
     )
 
 
 def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
-    """Compile compat-dialect LIR program to bytecode."""
-    if program.dialect != "compat":
+    """Compile LIR program (compat or abstract-machine dialect) to bytecode."""
+    if program.dialect not in ("compat", "abstract-machine"):
         diagnostic = Diagnostic(
-            f"compile_lir_bytecode only supports compat LIR, got dialect={program.dialect!r}",
+            f"compile_lir_bytecode only supports compat/abstract-machine LIR, "
+            f"got dialect={program.dialect!r}",
             severity="error",
         )
         return BytecodeProgram((), 0, (*program.diagnostics, diagnostic))
@@ -101,13 +122,18 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
 
 
 def _unsupported_opcode_diagnostics(program: LIRProgram) -> tuple[Diagnostic, ...]:
+    supported = (
+        _SUPPORTED_COMPAT_LIR_OPCODES
+        if program.dialect == "compat"
+        else _SUPPORTED_ABSTRACT_MACHINE_LIR_OPCODES
+    )
     diagnostics: list[Diagnostic] = []
     for function in program.functions:
         for index, instruction in enumerate(function.instructions):
-            if instruction.opcode not in _SUPPORTED_COMPAT_LIR_OPCODES:
+            if instruction.opcode not in supported:
                 diagnostics.append(
                     Diagnostic(
-                        f"compat LIR opcode {instruction.opcode!r} at "
+                        f"{program.dialect} LIR opcode {instruction.opcode!r} at "
                         f"{function.name.name}:{index} cannot be emitted to register VM bytecode",
                         severity="error",
                     )

@@ -518,7 +518,7 @@ CONT_INJECT  cont: LIRRegister, value_reg: LIRRegister
 ```
 
 - `CONT_COPY` 复制 continuation（multi-shot 默认）。
-- `CONT_RESTORE` 把 continuation 的 ss-chain / saved registers 恢复并跳到 `resume_target`，`value` 注入。
+- `CONT_RESTORE` 恢复 continuation 并把 `value` 注入 `resume_target`；它是**非终结指令**（与 compat `RESUME` 一致）：resume 的结果写回 `dst`，handler body 继续执行。这样 `(+ (resume k a) (resume k b))` 这类组合 resume 才能成立。
 - `CONT_INJECT` 仅注入 value；当前**未被任何 lowering pass emit**（即使 `effects.py` 也不 emit；见 §7 关键事实 6）。
 
 #### HANDLER_PUSH / HANDLER_POP
@@ -847,14 +847,15 @@ RUNTIME_EVAL, APPEND_RESULT, LOAD_NIL, LOAD_T, MOVE
 
 因此 L5 / L6 / L7 / L8 / L9 在 abstract-machine dialect 下**不再是空检查**。`SLOT_COMPLETE` 的 operand schema 为 `(LIRBindingAddr, src_reg)`；L9 以函数为单位比较 `(space, slot)` 是否重复 complete。`dump_lir` 在 layout 字段非空时会输出对应段（`pretty.py:39-46`）。
 
-仍待推进：HIR 层 `resolve.spaces`（把稳定 binding id / slot 从 HIR 带到 MIR）尚未实现；当前布局由 LIR 从指令流重建，而非 HIR 事实下沉。
+HIR 层 `resolve.spaces` 已实现（见 §7.8 与 `qy/passes/resolve/spaces.py`），产出 `ProgramIR.symbol_spaces`；仍待推进：MIR 指令携带 binding id/slot，LIR 才能消费 HIR layout 而不是从指令流重建。
 
-### 7.9 VM backend 拒绝 abstract-machine dialect
+### 7.9 VM 执行 abstract-machine dialect
 
-`qy/backend/vm/compiler.py:85-88` 拒绝 `dialect="abstract-machine"` 的 LIR：
+`qy/backend/vm/compiler.py` 现在接受两种 dialect：`compat` 与 `abstract-machine`。abstract-machine opcode（`SS_*` / `SLOT_COMPLETE` / `HANDLER_*` / `EFFECT_*` / `CONT_*`）已进入 VM opcode 集（`backend/vm/spec/opcode.py`），由 `qy/vm/instance/machine.py` 执行：
 
-```text
-compile_lir_bytecode only supports compat LIR
-```
+- `_Frame` 带显式 `handlers` 栈与 `pending_effect`；
+- `EFFECT_UNWIND` 抛 `QyEffectSignal`，持有 `HANDLER_PUSH` 的 frame 在 `CALL` 处捕获并跳到 dispatch block（`EFFECT_DISPATCH` 再把 handler fn / arg / continuation 写进寄存器）；
+- `CONT_CAPTURE` 用不可变快照捕获 frame（multi-shot 天然成立，与 compat `_perform` 同构）；`CONT_COPY` 为别名；`CONT_RESTORE` **非终结**，把 resume 结果写回 `dst` 后继续，因此 `(+ (resume k a) (resume k b))` 组合成立；
+- `SS_ENTER` / `SS_LEAVE` 对应 `ENTER_SCOPE` / `EXIT_SCOPE`，`SLOT_COMPLETE` 通过 `BytecodeFunction.symbol_spaces` 从 `(space, slot)` 反查符号后 `define_once`。
 
-这是当前 implementation 的硬性约束：abstract-machine dialect 目前用于 LIR verifier 与后续 LLVM/libqy 后端；默认执行路径仍是 `compat`。VM 执行 `HANDLER_* / CONT_* / EFFECT_*` 抽象机 opcode 是后续工作。
+compat dialect 仍然**拒绝** abstract-machine opcode（L14 结构约束）。`tests/test_abstract_machine_vm.py` 对 `examples/hello.qy` 与全部 validation 样例做 compat/abstract-machine 差分，结果一致。默认执行路径仍是 `compat`。

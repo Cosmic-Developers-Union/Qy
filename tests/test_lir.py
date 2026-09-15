@@ -656,7 +656,7 @@ def test_verify_lir_rejects_language_effect_opcodes_in_abstract_machine_dialect(
     assert any("language-level effect opcode PERFORM" in d.message for d in diagnostics)
 
 
-def test_compile_lir_bytecode_rejects_abstract_machine_lir():
+def test_compile_lir_bytecode_accepts_abstract_machine_lir():
     from qy.backend.vm.compiler import compile_lir_bytecode
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
@@ -679,11 +679,18 @@ def test_compile_lir_bytecode_rejects_abstract_machine_lir():
 
     bytecode = compile_lir_bytecode(program)
 
+    assert bytecode.ok
+    assert len(bytecode.functions) == 1
+
+
+def test_compile_lir_bytecode_rejects_unknown_dialect():
+    from qy.backend.vm.compiler import compile_lir_bytecode
+    from qy.ir.lir import LIRProgram
+
+    bytecode = compile_lir_bytecode(LIRProgram((), dialect="bogus"))  # ty: ignore[invalid-argument-type]
+
     assert not bytecode.ok
-    assert bytecode.functions == ()
-    assert any(
-        "only supports compat LIR" in diagnostic.message for diagnostic in bytecode.diagnostics
-    )
+    assert any("dialect" in diagnostic.message for diagnostic in bytecode.diagnostics)
 
 
 def _compile_lir(source: str, *, dialect: str):

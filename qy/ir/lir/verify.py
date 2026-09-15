@@ -18,7 +18,7 @@ from qy.ir.lir.node import LIRProgram
 
 __all__ = ["verify_lir"]
 
-_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT", "CONT_RESTORE", "EFFECT_UNWIND"})
+_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT", "EFFECT_UNWIND"})
 _JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
 
 # Opcodes that split an IR-level uninterruptible point in LIR — they must not

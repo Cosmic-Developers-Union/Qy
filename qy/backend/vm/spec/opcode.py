@@ -32,13 +32,20 @@ Opcode = Literal[
     "BUILD_TUPLE",
     "CACHE_EVAL",
     "CALL",
+    "CONT_CAPTURE",
+    "CONT_COPY",
+    "CONT_RESTORE",
     "DEFEFFECT",
     "DEFINE_MODULE",
     "DEFINE_ONCE",
+    "EFFECT_DISPATCH",
+    "EFFECT_UNWIND",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
     "FROM_IMPORT",
     "HANDLE",
+    "HANDLER_POP",
+    "HANDLER_PUSH",
     "JUMP",
     "JUMP_IF_FALSE",
     "LOAD_HOST",
@@ -53,6 +60,9 @@ Opcode = Literal[
     "RESUME",
     "RETURN",
     "RUNTIME_EVAL",
+    "SLOT_COMPLETE",
+    "SS_ENTER",
+    "SS_LEAVE",
     "STORE_LOCAL",
     "TAIL_CALL",
 ]
@@ -279,6 +289,77 @@ OPCODE_TABLE: dict[str, OpcodeInfo] = {
         operand_count=-1,  # func + variadic args
         has_dest=False,
         is_terminator=True,
+        is_branch=False,
+    ),
+    # -- abstract-machine dialect (LIR abstract-machine ops) -------------------
+    "SS_ENTER": OpcodeInfo(
+        name="SS_ENTER",
+        operand_count=1,  # space_id
+        has_dest=False,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "SS_LEAVE": OpcodeInfo(
+        name="SS_LEAVE",
+        operand_count=1,  # space_id
+        has_dest=False,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "SLOT_COMPLETE": OpcodeInfo(
+        name="SLOT_COMPLETE",
+        operand_count=2,  # LIRBindingAddr, src_reg
+        has_dest=False,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "HANDLER_PUSH": OpcodeInfo(
+        name="HANDLER_PUSH",
+        operand_count=4,  # handler_id, target, parent_id, specs
+        has_dest=False,
+        is_terminator=False,
+        is_branch=True,
+    ),
+    "HANDLER_POP": OpcodeInfo(
+        name="HANDLER_POP",
+        operand_count=1,  # handler_id
+        has_dest=False,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "EFFECT_UNWIND": OpcodeInfo(
+        name="EFFECT_UNWIND",
+        operand_count=3,  # effect_sym, arg_reg, cont_reg
+        has_dest=False,
+        is_terminator=True,
+        is_branch=True,
+    ),
+    "EFFECT_DISPATCH": OpcodeInfo(
+        name="EFFECT_DISPATCH",
+        operand_count=4,  # fn_reg, handler_id, arg_reg, cont_reg
+        has_dest=True,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "CONT_CAPTURE": OpcodeInfo(
+        name="CONT_CAPTURE",
+        operand_count=6,  # cont_reg, layout_id, resume_target, saved_regs, dst, multi_shot
+        has_dest=True,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "CONT_COPY": OpcodeInfo(
+        name="CONT_COPY",
+        operand_count=2,  # dst_reg, src_cont_reg
+        has_dest=True,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "CONT_RESTORE": OpcodeInfo(
+        name="CONT_RESTORE",
+        operand_count=3,  # cont_reg, dst_reg, value_reg
+        has_dest=False,
+        is_terminator=False,
         is_branch=False,
     ),
 }

@@ -52,13 +52,20 @@ Opcode = Literal[
     "BUILD_TUPLE",
     "CACHE_EVAL",
     "CALL",
+    "CONT_CAPTURE",
+    "CONT_COPY",
+    "CONT_RESTORE",
     "DEFEFFECT",
     "DEFINE_MODULE",
     "DEFINE_ONCE",
+    "EFFECT_DISPATCH",
+    "EFFECT_UNWIND",
     "ENTER_SCOPE",
     "EXIT_SCOPE",
     "FROM_IMPORT",
     "HANDLE",
+    "HANDLER_POP",
+    "HANDLER_PUSH",
     "JUMP",
     "JUMP_IF_FALSE",
     "LOAD_HOST",
@@ -73,6 +80,9 @@ Opcode = Literal[
     "RESUME",
     "RETURN",
     "RUNTIME_EVAL",
+    "SLOT_COMPLETE",
+    "SS_ENTER",
+    "SS_LEAVE",
     "STORE_LOCAL",
     "TAIL_CALL",
 ]
@@ -108,6 +118,9 @@ class BytecodeFunction:
     params: tuple[Symbol, ...]
     register_count: int
     instructions: tuple[Instruction, ...]
+    # Abstract-machine dialect only: symbol-space layout used by SLOT_COMPLETE
+    # to recover the bound symbol from a (space, slot) address.
+    symbol_spaces: tuple[object, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

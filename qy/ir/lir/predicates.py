@@ -245,9 +245,7 @@ _HANDLER_OPCODES = ("HANDLER_PUSH", "HANDLER_POP")
 
 # LIR terminators: an instruction after one of these is only reachable if it
 # is a block entry point (jump / handler / continuation target).
-_LIR_TERMINATORS = frozenset(
-    {"RETURN", "TAIL_CALL", "RAISE_EFFECT", "CONT_RESTORE", "EFFECT_UNWIND"}
-)
+_LIR_TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT", "EFFECT_UNWIND"})
 
 
 def _cfg_successors(func: LIRFunction, idx: int) -> list[int]:
