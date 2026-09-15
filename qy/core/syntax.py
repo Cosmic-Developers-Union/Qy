@@ -8,6 +8,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
+from typing import TypeGuard
 
 if TYPE_CHECKING:
     from qy.source.span import SourceSpan
@@ -102,7 +103,7 @@ def is_nil(obj: object) -> bool:
     return obj is nil or isinstance(obj, QyNil)
 
 
-def is_chain(obj: object) -> bool:
+def is_chain(obj: object) -> TypeGuard[Chain]:
     """判断对象是否为 Chain。."""
     return isinstance(obj, Chain)
 

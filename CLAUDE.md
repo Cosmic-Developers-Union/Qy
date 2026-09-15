@@ -135,7 +135,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 ## 技术栈
 
 - Python >=3.12，使用 `uv` 管理依赖
-- 依赖：lark（解析）、typer（CLI）、pygls（LSP）
+- 依赖：lark（解析）、click（CLI）、pygls（LSP）
 - 工具：ruff（lint+format）、ty（类型检查）、pytest（测试）、commitlint（提交信息）
 
 ## 备注

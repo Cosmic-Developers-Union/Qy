@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy.ir.hir.predicates; only used by qy/analysis/infer.py and scope.py
 from __future__ import annotations
 
 from typing import TYPE_CHECKING

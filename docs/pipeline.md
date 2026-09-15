@@ -29,6 +29,7 @@ source (文本)
 | Surface Normalize | `frontend.surface_normalize` | raw `list[Form]` | default-dialect `list[Form]`，如 `'x` → `(quote x)` | 否 | 否 |
 | Macro Expand | `macro.expand` | surface-dialect `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
 | HIR Lower | `hir.lower` | macroexpanded `CoreProgram` | `ProgramIR`（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
+| HIR Validate | `hir.validate` | `ProgramIR` | `ProgramIR` + H1–H14 diagnostics | 是，H1–H14 结构/effect/module 良构性 | 否 |
 | MIR Lower | `mir.lower` | `ProgramIR` | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
 | LIR Lower | `lir.lower` | `MIRProgram` | `LIRProgram`（Qy abstract machine IR，显式 frame / ss-chain / slot / continuation / handler） | 是 | 否 |
 | Bytecode Emit | `emit.bytecode` | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
@@ -65,6 +66,13 @@ source (文本)
 - 它必须显式建模 virtual stack frame、continuation frame、handler frame / effect marker、symbol-space-chain enter / leave / copy / restore、lookup operation、binding slot read / complete / pending effort；
 - `handle` / `perform` / `resume` 到 LIR 边界后不应再作为语言级指令存在，只能表现为 frame、continuation、ss-chain transition 与 CFG jump；
 - 它不能只是 bytecode opcode 的别名层。
+
+当前实现状态：LIR 有两个 dialect（`PipelineOptions.lir_dialect`）。
+
+- `compat`（默认，register VM 可编码）：`lower_compat_effects` 把 effect 占位符降成语言级 `HANDLE` / `PERFORM` / `RESUME` opcode；这是当前执行路径。
+- `abstract-machine`：`lower_effects` 把 effect 降成 `HANDLER_PUSH/POP`、`CONT_CAPTURE/COPY/RESTORE`、`EFFECT_UNWIND/DISPATCH`；`passes/lir/spaces.py` 再把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE` 并产出 `symbol_spaces` layout。这样 L5–L9 与 L10–L12 verifier 都有真实数据（L11/L12 为 CFG-aware 配对检查）。VM 尚不执行该 dialect，它供 verifier 与后续 backend 使用。
+
+尚未显式化：virtual stack 与 ss-chain transition 的运行时语义（layout 已有，VM 执行未实现）；HIR 层 `resolve.spaces` 仍待实现（当前 layout 由 LIR 从指令流重建）。
 
 ### Bytecode
 

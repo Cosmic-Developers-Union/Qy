@@ -279,6 +279,7 @@ def read_one(source: str, *, source_name: str | None = None) -> Form:
     return forms[0]
 
 
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=Symbol|Chain only; legacy Python-tuple compatibility API
 def read_tuple(source: str) -> list[TupleForm]:
     return [form_to_tuple(form) for form in read(source)]
 

@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy.ir.hir.predicates (public analyzer now lowers to HIR)
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,6 +17,7 @@ from qy.analysis.refs import operator_uses_eager_arguments
 from qy.analysis.refs import signature_argument_is_eager
 from qy.analysis.refs import signature_argument_type
 from qy.analysis.scope import Scope
+from qy.analysis.scope import binding_name
 from qy.analysis.scope import predeclare_callable_definitions
 from qy.analysis.scope import scope_after_form
 from qy.analysis.scope import scope_with_parameters
@@ -120,7 +122,7 @@ def infer(form: object, env: Environment, scope: Scope, diagnostics: list[Diagno
     if eager or operator_type in {"function", "unknown"}:
         for arg in args:
             infer(arg, env, scope, diagnostics)
-    if operator_type not in {"operator", "function", "unknown"}:
+    if operator_type not in {"operator", "function", "unknown", "any"}:
         diagnostics.append(Diagnostic(f"operator position is {operator_type}, not callable"))
     return "any"
 
@@ -382,61 +384,125 @@ def _infer_perform(
     return "any"
 
 
+def _is_on_form(form: object) -> bool:
+    """是否为 ``(on effect (args) k body...)`` handler 形式。."""
+    if not is_chain(form):
+        return False
+    return car(form) == Symbol("on")
+
+
+def _define_handler_parameters(scope: Scope, symbols: tuple[Symbol, ...]) -> Scope:
+    next_scope = scope
+    for symbol in symbols:
+        next_scope = next_scope.define(symbol)
+    return next_scope
+
+
 def _infer_handle(
     args: tuple[object, ...],
     env: Environment,
     scope: Scope,
     diagnostics: list[Diagnostic],
 ) -> TypeName:
+    """推断 handle。.
+
+    与 ``hir.lower`` 保持同一套 clause 语法，支持两种等价写法：
+
+    - 标准格式：``(handle expression ((effect (arg k) body...) ...))``
+    - on 格式：``(handle (on effect (arg k) body...) expression)``
+
+    on 格式的 effect 由 lowering 自动声明，因此 analyzer 不能对它报
+    "not declared"；标准格式仍要求先 ``defeffect``。
+    """
     _check_arity("handle", args, diagnostics, exact=2)
     if len(args) < 2:
         return "unknown"
-    expr, handler_form = args
-    result_type = infer(expr, env, scope, diagnostics)
-    if not is_chain(handler_form) and not is_nil(handler_form):
-        diagnostics.append(Diagnostic(f"handle clauses must be a list, got {handler_form!r}"))
+    first, second = args
+    if _is_on_form(first):
+        expression, handlers_form = second, first
+    else:
+        expression, handlers_form = first, second
+
+    result_type = infer(expression, env, scope, diagnostics)
+
+    if _is_on_form(handlers_form):
+        handlers_list: list[object] = [handlers_form]
+    elif is_nil(handlers_form):
+        handlers_list = []
+    elif is_chain(handlers_form) or isinstance(handlers_form, tuple):
+        try:
+            handlers_list = list(cast("Iterable[object]", handlers_form))
+        except ValueError:
+            diagnostics.append(
+                Diagnostic(f"handle clauses must be a proper list, got {handlers_form!r}")
+            )
+            return result_type
+    else:
+        diagnostics.append(Diagnostic(f"handle clauses must be a list, got {handlers_form!r}"))
         return result_type
 
-    try:
-        for clause in cast("Iterable[object]", handler_form) if is_chain(handler_form) else []:
-            if not is_chain(clause):
-                diagnostics.append(
-                    Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
-                )
-                continue
-            try:
-                clause_list = list(cast("Iterable[object]", clause))
-                if len(clause_list) < 3:
-                    diagnostics.append(
-                        Diagnostic(
-                            f"handle clause must be (effect (arg k) body...), got {clause!r}"
-                        )
-                    )
-                    continue
-                effect, params, *body = clause_list
-            except ValueError:
-                diagnostics.append(
-                    Diagnostic(f"handle clause must be a proper list, got {clause!r}")
-                )
-                continue
+    for clause in handlers_list:
+        if not is_chain(clause):
+            diagnostics.append(
+                Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
+            )
+            continue
+        try:
+            clause_list = list(cast("Iterable[object]", clause))
+        except ValueError:
+            diagnostics.append(Diagnostic(f"handle clause must be a proper list, got {clause!r}"))
+            continue
 
-            if isinstance(effect, Symbol):
-                if not effect_is_declared(effect, env, scope):
-                    diagnostics.append(
-                        Diagnostic(
-                            f"effect {effect.name!r} is not declared; add defeffect before handle"
-                        )
-                    )
-            else:
-                diagnostics.append(
-                    Diagnostic(f"handle effect name must be a symbol, got {effect!r}")
-                )
-            handler_scope = scope_with_parameters(params, scope, diagnostics, "handle")
-            result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
-    except ValueError:
-        diagnostics.append(
-            Diagnostic(f"handle clauses must be a proper list, got {handler_form!r}")
+        is_on_clause = (
+            len(clause_list) >= 4
+            and isinstance(clause_list[0], Symbol)
+            and clause_list[0].name == "on"
         )
+        if is_on_clause:
+            _, effect, params, *body = clause_list
+        elif len(clause_list) >= 3:
+            effect, params, *body = clause_list
+        else:
+            diagnostics.append(
+                Diagnostic(f"handle clause must be (effect (arg k) body...), got {clause!r}")
+            )
+            continue
+
+        if not isinstance(effect, Symbol):
+            diagnostics.append(Diagnostic(f"handle effect name must be a symbol, got {effect!r}"))
+            continue
+        # on 格式的 effect 由 lowering 自动声明；标准格式要求已声明。
+        if not is_on_clause and not effect_is_declared(effect, env, scope):
+            diagnostics.append(
+                Diagnostic(f"effect {effect.name!r} is not declared; add defeffect before handle")
+            )
+
+        if is_on_clause and is_nil(params):
+            param_symbols: tuple[Symbol, ...] = (Symbol("_v"), Symbol("k"))
+        elif is_chain(params) or isinstance(params, tuple) or is_nil(params):
+            params_list = (
+                chain_to_list(params)
+                if is_chain(params)
+                else (list(params) if isinstance(params, tuple) else [])
+            )
+            param_symbols = tuple(param for param in params_list if isinstance(param, Symbol))
+            for param in params_list:
+                if not isinstance(param, Symbol):
+                    diagnostics.append(
+                        Diagnostic(f"handle parameter must be a symbol, got {param!r}")
+                    )
+        else:
+            diagnostics.append(Diagnostic(f"handle parameters must be a list, got {params!r}"))
+            continue
+        # on 格式支持 (on effect (value) k body...)：k 独立 symbol 跟在参数列表后。
+        if is_on_clause and len(param_symbols) == 1 and body and isinstance(body[0], Symbol):
+            param_symbols = (param_symbols[0], body[0])
+            body = body[1:]
+        if len(param_symbols) != 2:
+            diagnostics.append(Diagnostic(f"handle parameters must be (arg k), got {params!r}"))
+            continue
+        handler_scope = _define_handler_parameters(scope, param_symbols)
+        result_type = _infer_body(tuple(body), env, handler_scope, diagnostics)
 
     return result_type
 
@@ -530,9 +596,10 @@ def _infer_define(
     if len(items) < 3:
         diagnostics.append(Diagnostic("define expects a name and a value"))
         return "unknown"
-    _, name, value = items[0], items[1], items[2]
-    if not isinstance(name, Symbol):
-        diagnostics.append(Diagnostic(f"define name must be a symbol, got {name!r}"))
+    _, raw_name, value = items[0], items[1], items[2]
+    name = binding_name(raw_name)
+    if name is None:
+        diagnostics.append(Diagnostic(f"define name must be a symbol, got {raw_name!r}"))
     elif scope.has_local(name):
         diagnostics.append(Diagnostic(f"symbol {name.name!r} is already bound in this scope"))
     infer(value, env, scope, diagnostics)

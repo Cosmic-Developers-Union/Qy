@@ -396,12 +396,19 @@ def _qy_callable_name(value: object) -> str | None:
 
 
 async def _call_qy_callable(value: object, args: tuple[object, ...], env: Environment) -> object:
+    from qy.sem.runtime import ComponentOperator
     from qy.vm.bytecode import BytecodeFunctionValue
 
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))
     if isinstance(value, UserFunction):
-        return await _await_cached_value(value(*args))
+        from qy.vm.instance.legacy_eval import call_user_function
+
+        return await _await_cached_value(call_user_function(value, args))
+    if isinstance(value, ComponentOperator):
+        from qy.vm.instance.legacy_eval import call_component_operator
+
+        return await _await_cached_value(call_component_operator(value, args))
     if isinstance(value, BytecodeFunctionValue):
         from qy.vm.instance.machine import call_function_value
 

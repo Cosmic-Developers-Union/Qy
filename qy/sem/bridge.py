@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=VM/runtime operate on sem values directly
 """Legacy runtime ↔ sem value 桥接层。.
 
 迁移期工具：在 VM 完全切换到 sem value 之前，提供双向转换。

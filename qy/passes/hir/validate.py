@@ -40,7 +40,9 @@ class ValidateHIRPass(Pass):
 
     def run(self, context: PassContext) -> PassResult:
         program = cast(ProgramIR, context.input_artifact)
-        diagnostics = check_program(program)
+        env = context.session.env
+        profile_effects = env.effect_names() if env is not None else frozenset()
+        diagnostics = check_program(program, profile_effects=profile_effects)
         validated = ProgramIR(
             body=program.body,
             diagnostics=(*program.diagnostics, *diagnostics),

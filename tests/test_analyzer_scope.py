@@ -132,6 +132,8 @@ def test_duplicate_define_reports_same_scope_error():
     assert any("'x' is already bound in this scope" in item.message for item in diagnostics)
 
 
-def test_define_cannot_rebind_host_symbol_in_same_scope():
+def test_define_can_shadow_outer_host_symbol():
+    # define 只检查当前 symbol-space；profile 的 + 位于链上后续节点，
+    # 因此当前空间可以 shadow 它（LANGUAGE.md "Symbol Space"）。
     diagnostics = type_check_source("(define + 99)")
-    assert any("'+' is already bound in this scope" in item.message for item in diagnostics)
+    assert not [d for d in diagnostics if d.severity == "error"]

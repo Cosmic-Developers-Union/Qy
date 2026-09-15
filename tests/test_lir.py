@@ -684,3 +684,294 @@ def test_compile_lir_bytecode_rejects_abstract_machine_lir():
     assert any(
         "only supports compat LIR" in diagnostic.message for diagnostic in bytecode.diagnostics
     )
+
+
+def _compile_lir(source: str, *, dialect: str):
+    from qy.build.artifact import LIR
+    from qy.build.pipeline import compile_source_to_kind
+    from qy.build.pipeline import lir_artifact
+    from qy.passes.pass_base import PipelineOptions
+    from qy.passes.pass_base import PipelineSession
+    from qy.session.runtime_space import create_standard_runtime_space
+
+    options = PipelineOptions(lir_dialect=dialect, error_threshold=10**6)
+    result = compile_source_to_kind(
+        source,
+        PipelineSession(env=create_standard_runtime_space()),
+        kind=LIR,
+        options=options,
+    )
+    return lir_artifact(result), result.diagnostics
+
+
+def test_lower_lir_abstract_machine_dialect_expands_effects():
+    from qy.ir.lir import verify_lir
+
+    source = """
+    (defeffect ask)
+    (let ()
+      (handle
+        (+ 1 (perform ask 41))
+        ((ask (arg k) (resume k arg)))))
+    """
+    program, _diagnostics = _compile_lir(source, dialect="abstract-machine")
+
+    assert program.dialect == "abstract-machine"
+    opcodes = [inst.opcode for func in program.functions for inst in func.instructions]
+    assert "HANDLER_PUSH" in opcodes
+    assert "HANDLER_POP" in opcodes
+    assert "EFFECT_DISPATCH" in opcodes
+    assert "CONT_CAPTURE" in opcodes
+    # No language-level effect opcodes or MIR placeholders survive.
+    assert not ({"HANDLE", "PERFORM", "RESUME"} & set(opcodes))
+    assert not (
+        {"EFFECT_HANDLE_BEGIN", "EFFECT_HANDLE_END", "EFFECT_PERFORM", "EFFECT_RESUME"}
+        & set(opcodes)
+    )
+    # Layout tables are populated so L5/L6/L7 are no longer vacuous.
+    assert any(func.frame_layout is not None for func in program.functions)
+    assert any(func.handlers for func in program.functions)
+    assert any(func.continuations for func in program.functions)
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert errors == [], [d.message for d in errors]
+
+
+def test_lir_verifier_rejects_handler_pop_without_push():
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("bad"),
+                (),
+                1,
+                (
+                    LIRInstruction("HANDLER_POP", (0,)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert any(
+        "HANDLER_POP" in d.message and "no matching HANDLER_PUSH" in d.message for d in errors
+    )
+
+
+def test_lir_verifier_rejects_unclosed_handler_push():
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("bad"),
+                (),
+                1,
+                (
+                    LIRInstruction("HANDLER_PUSH", (0, 3, -1, ())),
+                    LIRInstruction("JUMP", (3,)),
+                    LIRInstruction("LOAD_NIL", (0,)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert any("unclosed HANDLER_PUSH" in d.message for d in errors)
+
+
+def test_lir_verifier_accepts_handler_dispatch_block():
+    """HANDLER_POP on the dispatch path is matched by the HANDLER_PUSH header."""
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    # 0 HANDLER_PUSH(id=0, target=4)
+    # 1 CALL            ; normal path
+    # 2 HANDLER_POP
+    # 3 JUMP 5
+    # 4 EFFECT_DISPATCH ; handler path (entered with handler still pushed)
+    # 5 HANDLER_POP     ; pops the dispatch handler
+    # 6 RETURN
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("dispatch"),
+                (),
+                1,
+                (
+                    LIRInstruction("HANDLER_PUSH", (0, 4, -1, ())),
+                    LIRInstruction("CALL", (0, 0, ())),
+                    LIRInstruction("HANDLER_POP", (0,)),
+                    LIRInstruction("JUMP", (6,)),
+                    LIRInstruction("EFFECT_DISPATCH", (0, 0, 0, 0)),
+                    LIRInstruction("HANDLER_POP", (0,)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    diagnostics = verify_lir(program)
+    assert [d for d in diagnostics if d.severity == "error"] == []
+    assert not any("unreachable instruction" in d.message for d in diagnostics)
+
+
+def test_verifier_reachability_accepts_continuation_resume_target():
+    from qy.ir.lir import LIRContinuationLayout
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    # EFFECT_UNWIND is a terminator; index 2 is reachable via the captured
+    # continuation's resume target and must not be reported unreachable.
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("perform"),
+                (),
+                2,
+                (
+                    LIRInstruction("CONT_CAPTURE", (1, 0, 2, (), 0, True)),
+                    LIRInstruction("EFFECT_UNWIND", (Symbol("ask"), 0, 1)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+                continuations=(LIRContinuationLayout(id=0, resume_target=2),),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    diagnostics = verify_lir(program)
+    assert [d for d in diagnostics if d.severity == "error"] == []
+    assert not any("unreachable instruction" in d.message for d in diagnostics)
+
+
+def test_abstract_machine_lowering_assigns_symbol_spaces_and_slots():
+    source = """
+    (let ((x 10))
+      (define y 20)
+      (+ x y))
+    """
+    program, _diagnostics = _compile_lir(source, dialect="abstract-machine")
+
+    opcodes = [inst.opcode for func in program.functions for inst in func.instructions]
+    assert "SS_ENTER" in opcodes
+    assert "SS_LEAVE" in opcodes
+    assert "SLOT_COMPLETE" in opcodes
+
+    slots = [
+        slot for func in program.functions for space in func.symbol_spaces for slot in space.slots
+    ]
+    assert slots, "expected at least one binding slot"
+    for slot in slots:
+        assert slot.state == "completed"
+
+    # L8/L9 have data now and must still pass.
+    from qy.ir.lir import verify_lir
+
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert errors == [], [d.message for d in errors]
+
+
+def test_lir_verifier_rejects_duplicate_slot_complete_in_one_function():
+    from qy.ir.lir import LIRBindingAddr
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    address = LIRBindingAddr(0, 0)
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("dup"),
+                (),
+                1,
+                (
+                    LIRInstruction("SLOT_COMPLETE", (address, 0)),
+                    LIRInstruction("SLOT_COMPLETE", (address, 0)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert any("executes more than once" in d.message for d in errors)
+
+
+def test_lir_verifier_slot_complete_identity_is_function_local():
+    """Two functions may reuse (space 0, slot 0); that is not a duplicate."""
+    from qy.ir.lir import LIRBindingAddr
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import verify_lir
+
+    address = LIRBindingAddr(0, 0)
+
+    def make(name: str):
+        return LIRFunction(
+            Symbol(name),
+            (),
+            1,
+            (
+                LIRInstruction("SLOT_COMPLETE", (address, 0)),
+                LIRInstruction("RETURN", (0,)),
+            ),
+        )
+
+    program = LIRProgram((make("a"), make("b")), dialect="abstract-machine")
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert errors == [], [d.message for d in errors]
+
+
+def test_lir_verifier_rejects_slot_address_outside_declared_spaces():
+    from qy.ir.lir import LIRBindingAddr
+    from qy.ir.lir import LIRBindingSlot
+    from qy.ir.lir import LIRFunction
+    from qy.ir.lir import LIRInstruction
+    from qy.ir.lir import LIRProgram
+    from qy.ir.lir import LIRSymbolSpaceLayout
+    from qy.ir.lir import verify_lir
+
+    # Slot address points at space 7, but only space 0 is declared.
+    program = LIRProgram(
+        (
+            LIRFunction(
+                Symbol("badspace"),
+                (),
+                1,
+                (
+                    LIRInstruction("SLOT_COMPLETE", (LIRBindingAddr(7, 0), 0)),
+                    LIRInstruction("RETURN", (0,)),
+                ),
+                symbol_spaces=(
+                    LIRSymbolSpaceLayout(
+                        0,
+                        "root",
+                        slots=(LIRBindingSlot(LIRBindingAddr(7, 0), Symbol("x"), "completed"),),
+                    ),
+                ),
+            ),
+        ),
+        dialect="abstract-machine",
+    )
+
+    errors = [d for d in verify_lir(program) if d.severity == "error"]
+    assert any("does not match any symbol space" in d.message for d in errors)

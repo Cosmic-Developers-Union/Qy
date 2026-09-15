@@ -156,6 +156,20 @@ class RuntimeSpace:
     def bindings(self) -> dict[Symbol, object]:
         return self._space.all_bindings()
 
+    def effect_names(self) -> frozenset[str]:
+        """返回链上所有由 ``defeffect`` / profile 声明的 effect 名。.
+
+        静态检查（HIR H6/H8）需要知道 profile 预装的 effect（例如
+        ``assert-failed``），否则会对合法代码误报 "not declared"。
+        """
+        from qy.sem.runtime import EffectDefinition
+
+        names: set[str] = set()
+        for symbol, value in self.bindings().items():
+            if isinstance(value, EffectDefinition):
+                names.add(symbol.name)
+        return frozenset(names)
+
     def local_bindings(self) -> dict[Symbol, object]:
         return self._space.local_bindings()
 

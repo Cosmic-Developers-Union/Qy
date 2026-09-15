@@ -33,6 +33,7 @@ class Symbol:
         return self.name
 
 
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=Symbol|Chain only; legacy Python-tuple compatibility API
 class SpannedTuple(tuple):
     span: SourceSpan | None
 

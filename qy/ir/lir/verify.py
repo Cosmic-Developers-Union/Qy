@@ -69,8 +69,14 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
             continue
 
         saw_terminator = False
+        entry_points = _block_entry_points(func)
+        reachable = True
         for idx, inst in enumerate(func.instructions):
-            if saw_terminator:
+            if idx in entry_points:
+                # A new block begins (fall-through target, jump target,
+                # handler dispatch target, or continuation resume target).
+                reachable = True
+            if not reachable:
                 diagnostics.append(
                     Diagnostic(
                         f"LIR function {func.name.name} has unreachable instruction "
@@ -81,6 +87,7 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                 break
             if inst.opcode in _TERMINATORS:
                 saw_terminator = True
+                reachable = False
 
         if not saw_terminator:
             last_opcode = func.instructions[-1].opcode
@@ -163,6 +170,33 @@ def _phase1_predicate_diagnostics(program: LIRProgram) -> tuple[Diagnostic, ...]
     from qy.ir.lir.predicates import check_program as predicate_check_program
 
     return predicate_check_program(program)
+
+
+def _block_entry_points(func: object) -> set[int]:
+    """Collect instruction indices that begin a basic block.
+
+    A LIR instruction stream is flat, so an instruction that follows a
+    terminator is reachable when it is a control-flow target: a jump target,
+    a handler dispatch target, or a continuation resume target. Without this
+    set the linear "unreachable after terminator" scan would misreport
+    legitimate handler / resume blocks emitted by effect lowering.
+    """
+    instructions = getattr(func, "instructions", ())
+    entries: set[int] = {0}
+    for inst in instructions:
+        if inst.opcode in _JUMP_OPCODES and inst.operands:
+            target = inst.operands[-1]
+            if isinstance(target, int):
+                entries.add(target)
+    for handler in getattr(func, "handlers", ()):
+        target = getattr(handler, "handler_target", None)
+        if isinstance(target, int):
+            entries.add(target)
+    for continuation in getattr(func, "continuations", ()):
+        target = getattr(continuation, "resume_target", None)
+        if isinstance(target, int):
+            entries.add(target)
+    return entries
 
 
 def _verify_continuous_run(func: object, diagnostics: list[Diagnostic]) -> None:

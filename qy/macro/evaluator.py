@@ -154,6 +154,19 @@ async def _call_compile_time(
     if isinstance(callee, ScopeOperator | ControlOperator | MetaOperator):
         validate_operator_arity(callee, len(raw_args), span=span)
         return await _await_if_needed(callee.func(raw_args, env))
+    from qy.sem.runtime import ComponentOperator
+    from qy.sem.runtime import UserFunction
+
+    if isinstance(callee, UserFunction):
+        from qy.vm.instance.legacy_eval import call_user_function
+
+        args = await _eval_args(raw_args, env)
+        return await call_user_function(callee, args)
+    if isinstance(callee, ComponentOperator):
+        from qy.vm.instance.legacy_eval import call_component_operator
+
+        args = await _eval_args(raw_args, env)
+        return await call_component_operator(callee, args)
     if callable(callee):
         args = await _eval_args(raw_args, env)
         host_callable = cast(Callable[..., object], callee)

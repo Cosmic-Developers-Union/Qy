@@ -21,6 +21,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from qy.diag import Diagnostic
+from qy.diag import Severity
 
 if TYPE_CHECKING:
     from qy.ir.lir.frame import LIRFrameLayout
@@ -177,27 +178,24 @@ def l8_slot_address_in_space(program: LIRProgram) -> tuple[Diagnostic, ...]:
 
 
 def l9_slot_complete_at_most_once(program: LIRProgram) -> tuple[Diagnostic, ...]:
-    """同一 slot 不得被 ``SLOT_COMPLETE`` 多次执行（静态扫描指令流）。."""
-    out: list[Diagnostic] = []
-    completed: set[tuple[int, int]] = set()  # (space_id, slot_index)
-    # 第一遍：收集 layout 声明的所有 slot
-    declared: set[tuple[int, int]] = set()
-    for func in program.functions:
-        for space in getattr(func, "symbol_spaces", ()):
-            for idx, _slot in enumerate(space.slots):
-                declared.add((space.id, idx))
+    """同一 slot 不得被 ``SLOT_COMPLETE`` 多次执行（静态扫描指令流）。.
 
-    # 第二遍：扫描 SLOT_COMPLETE 指令
+    ``SLOT_COMPLETE`` 的 operand schema 是 ``(LIRBindingAddr, src_reg)``；
+    slot identity 取自 ``address`` 的 ``(space, slot)``。
+    """
+    out: list[Diagnostic] = []
     for func in program.functions:
+        # Slot identity is function-local: space ids are per-function.
+        completed: set[tuple[int, int]] = set()
         for inst in func.instructions:
-            if inst.opcode != "SLOT_COMPLETE" or len(inst.operands) < 2:
+            if inst.opcode != "SLOT_COMPLETE" or not inst.operands:
                 continue
-            space_id, slot_idx = inst.operands[0], inst.operands[1]
-            key: tuple[int, int] | None = None
-            if isinstance(space_id, int) and isinstance(slot_idx, int):
-                key = (space_id, slot_idx)
-            if key is None:
+            address = inst.operands[0]
+            space_id = getattr(address, "space", None)
+            slot_idx = getattr(address, "slot", None)
+            if not isinstance(space_id, int) or not isinstance(slot_idx, int):
                 continue
+            key = (space_id, slot_idx)
             if key in completed:
                 out.append(
                     Diagnostic(
@@ -223,30 +221,19 @@ def l10_scope_nesting(func: LIRFunction) -> tuple[Diagnostic, ...]:
     ``EXIT_SCOPE``（控制流不会跨函数边界泄漏；运行时 VM 直接丢弃 frame.env），
     因此函数末尾的 unclosed ENTER_SCOPE 在 LIR 中也合法。该谓词报告为
     ``warning``，不阻塞后续 pass。
+
+    compat dialect 用 ``ENTER_SCOPE``/``EXIT_SCOPE``，abstract-machine dialect
+    用 ``SS_ENTER``/``SS_LEAVE``；两者都检查。
     """
     out: list[Diagnostic] = []
-    depth = 0
-    for idx, inst in enumerate(func.instructions):
-        if inst.opcode == "ENTER_SCOPE":
-            depth += 1
-        elif inst.opcode == "EXIT_SCOPE":
-            depth -= 1
-            if depth < 0:
-                out.append(
-                    Diagnostic(
-                        f"LIR function {func.name.name} EXIT_SCOPE at {idx} "
-                        "with no matching ENTER_SCOPE",
-                        severity="warning",
-                    )
-                )
-                depth = 0
-    if depth > 0:
-        out.append(
-            Diagnostic(
-                f"LIR function {func.name.name} has unclosed ENTER_SCOPE (depth={depth})",
-                severity="warning",
-            )
+    out.extend(
+        _nesting_cfg(
+            func, push="ENTER_SCOPE", pop="EXIT_SCOPE", label="ENTER_SCOPE", severity="warning"
         )
+    )
+    out.extend(
+        _nesting_cfg(func, push="SS_ENTER", pop="SS_LEAVE", label="SS_ENTER", severity="warning")
+    )
     return tuple(out)
 
 
@@ -256,28 +243,117 @@ def l10_scope_nesting(func: LIRFunction) -> tuple[Diagnostic, ...]:
 
 _HANDLER_OPCODES = ("HANDLER_PUSH", "HANDLER_POP")
 
+# LIR terminators: an instruction after one of these is only reachable if it
+# is a block entry point (jump / handler / continuation target).
+_LIR_TERMINATORS = frozenset(
+    {"RETURN", "TAIL_CALL", "RAISE_EFFECT", "CONT_RESTORE", "EFFECT_UNWIND"}
+)
 
-def l11_handler_push_pop_nesting(func: LIRFunction) -> tuple[Diagnostic, ...]:
+
+def _cfg_successors(func: LIRFunction, idx: int) -> list[int]:
+    """Return the intra-function successors of instruction *idx*."""
+    instructions = func.instructions
+    count = len(instructions)
+    inst = instructions[idx]
+    opcode = inst.opcode
+    out: list[int] = []
+    if opcode == "JUMP":
+        target = inst.operands[-1] if inst.operands else None
+        if isinstance(target, int) and 0 <= target < count:
+            out.append(target)
+        return out
+    if opcode in ("JUMP_IF_FALSE", "BRANCH_NIL"):
+        if idx + 1 < count:
+            out.append(idx + 1)
+        target = inst.operands[-1] if inst.operands else None
+        if isinstance(target, int) and 0 <= target < count:
+            out.append(target)
+        return out
+    if opcode in _LIR_TERMINATORS:
+        # EFFECT_UNWIND transfers into a handler dispatch block; that block's
+        # handler depth is seeded from the matching HANDLER_PUSH instead.
+        return out
+    if idx + 1 < count:
+        out.append(idx + 1)
+    return out
+
+
+def _relax_depth(depth_at: dict[int, int], work: list[int], node: int, depth: int) -> None:
+    """Dataflow helper: record *depth* at *node* if not seen yet.
+
+    Conflicting depths at a join point are left as first-seen: the point of
+    this analysis is to catch push/pop underflow on reachable paths, not to
+    prove stack-depth uniformity (a later pass owns that).
+    """
+    if node not in depth_at:
+        depth_at[node] = depth
+        work.append(node)
+
+
+def _nesting_cfg(
+    func: LIRFunction, *, push: str, pop: str, label: str, severity: Severity = "error"
+) -> tuple[Diagnostic, ...]:
+    """CFG-aware push/pop nesting check.
+
+    A flat linear scan cannot see that a handler dispatch block is entered
+    with the handler frame already pushed, nor that a continuation resume
+    target is a block entry. Tracking depth over the CFG (with handler
+    targets seeded by their ``HANDLER_PUSH``) removes those false positives
+    while still reporting genuine underflow and unclosed frames.
+    """
+    instructions = func.instructions
+    count = len(instructions)
+    if count == 0:
+        return ()
+
     out: list[Diagnostic] = []
-    depth = 0
-    for idx, inst in enumerate(func.instructions):
-        if inst.opcode == "HANDLER_PUSH":
-            depth += 1
-        elif inst.opcode == "HANDLER_POP":
-            depth -= 1
-            if depth < 0:
+    depth_at: dict[int, int] = {0: 0}
+    work: list[int] = [0]
+    reported: set[int] = set()
+
+    while work:
+        idx = work.pop()
+        depth = depth_at[idx]
+        inst = instructions[idx]
+        next_depth = depth
+        if inst.opcode == push:
+            next_depth = depth + 1
+            target = inst.operands[1] if len(inst.operands) >= 2 else None
+            if isinstance(target, int) and 0 <= target < count:
+                _relax_depth(depth_at, work, target, depth + 1)
+        elif inst.opcode == pop:
+            if depth < 1:
+                if idx not in reported:
+                    reported.add(idx)
+                    out.append(
+                        Diagnostic(
+                            f"LIR function {func.name.name} {pop} at {idx} with no matching {push}",
+                            severity=severity,
+                        )
+                    )
+                next_depth = depth
+            else:
+                next_depth = depth - 1
+        for successor in _cfg_successors(func, idx):
+            _relax_depth(depth_at, work, successor, next_depth)
+
+    for idx, inst in enumerate(instructions):
+        if inst.opcode in ("RETURN", "TAIL_CALL"):
+            depth = depth_at.get(idx)
+            if depth is not None and depth > 0:
                 out.append(
                     Diagnostic(
-                        f"LIR function {func.name.name} HANDLER_POP at {idx} "
-                        "with no matching HANDLER_PUSH"
+                        f"LIR function {func.name.name} reaches {inst.opcode} at {idx} "
+                        f"with {depth} unclosed {label}",
+                        severity=severity,
                     )
                 )
-                depth = 0
-    if depth > 0:
-        out.append(
-            Diagnostic(f"LIR function {func.name.name} has unclosed HANDLER_PUSH (depth={depth})")
-        )
+                break
     return tuple(out)
+
+
+def l11_handler_push_pop_nesting(func: LIRFunction) -> tuple[Diagnostic, ...]:
+    return _nesting_cfg(func, push="HANDLER_PUSH", pop="HANDLER_POP", label="HANDLER_PUSH")
 
 
 # ─── L12 ─────────────────────────────────────────────────────────────────────
@@ -288,26 +364,7 @@ _FRAME_OPCODES = ("FRAME_ENTER", "FRAME_LEAVE")
 
 
 def l12_frame_enter_leave_nesting(func: LIRFunction) -> tuple[Diagnostic, ...]:
-    out: list[Diagnostic] = []
-    depth = 0
-    for idx, inst in enumerate(func.instructions):
-        if inst.opcode == "FRAME_ENTER":
-            depth += 1
-        elif inst.opcode == "FRAME_LEAVE":
-            depth -= 1
-            if depth < 0:
-                out.append(
-                    Diagnostic(
-                        f"LIR function {func.name.name} FRAME_LEAVE at {idx} "
-                        "with no matching FRAME_ENTER"
-                    )
-                )
-                depth = 0
-    if depth > 0:
-        out.append(
-            Diagnostic(f"LIR function {func.name.name} has unclosed FRAME_ENTER (depth={depth})")
-        )
-    return tuple(out)
+    return _nesting_cfg(func, push="FRAME_ENTER", pop="FRAME_LEAVE", label="FRAME_ENTER")
 
 
 # ─── L14 ─────────────────────────────────────────────────────────────────────

@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from pathlib import Path
 from typing import Any
 
 import click
@@ -35,22 +34,6 @@ def create_app() -> Any:
     from qy.cli._app import build_cli
 
     return build_cli()
-
-
-class _QyGroupFallback(click.Group):
-    """Backward-compatible alias retained for older imports/tests."""
-
-    def resolve_command(
-        self, ctx: click.Context, args: list[str]
-    ) -> tuple[str | None, click.Command | None, list[str]]:
-        try:
-            return super().resolve_command(ctx, args)
-        except click.UsageError:
-            if args and not args[0].startswith("-") and Path(args[0]).is_file():
-                command = self.get_command(ctx, "run")
-                if command is not None:
-                    return "run", command, args
-            raise
 
 
 # Re-export for external consumers (tests, benchmark CLI, etc.)

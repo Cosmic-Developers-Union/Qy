@@ -22,6 +22,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from collections.abc import Iterator
 from dataclasses import dataclass
+from dataclasses import replace
 from enum import Enum
 
 from qy.core import OperatorKind  # noqa: F401  -- re-exported for downstream predicate composition
@@ -114,6 +115,8 @@ class Scope:
     current_module: str | None = None
     # 当前 module 已 define 的 binding 集合（H9 用）。
     module_defined: frozenset[str] = frozenset()
+    # 当前 body 序列中已经生效的 ``defeffect`` 名字（H6 / H8 用）。
+    declared_effects: frozenset[str] = frozenset()
 
 
 def _diag(
@@ -198,11 +201,14 @@ def h3_node_shape(expr: IRExpr) -> tuple[Diagnostic, ...]:
             out.append(_diag("H3", "LetExpr has no bindings and no body", span=sp))
         case HandleExpr(expression=e, handlers=hs, span=sp) if len(hs) < 1 and e is None:
             out.append(_diag("H3", "HandleExpr has no expression and no handlers", span=sp))
-        case ModuleExpr(body=body, span=sp) if len(body) < 1:
+        case ModuleExpr(body=body, export_names=exports, macro_exports=macros, span=sp) if (
+            len(body) < 1
+        ):
             # macro.expand 会把 (macro ...) 从 body 中剥离到 module_macro_namespace，
             # 因此只导出宏的模块在 HIR 层的 body 可能为空（合法运行时模式）。
-            # 报告为 warning 而非 error。
-            out.append(_diag("H3", "ModuleExpr.body must be ≥ 1", span=sp, severity="warning"))
+            # 已有导出声明时不再报 warning。
+            if not exports and not macros:
+                out.append(_diag("H3", "ModuleExpr.body must be ≥ 1", span=sp, severity="warning"))
         case _:
             pass
     # 递归检查子节点
@@ -292,18 +298,24 @@ def h5_call_tail_position(call: CallExpr, scope: Scope) -> tuple[Diagnostic, ...
 def h6_handle_effect_declared(handle: HandleExpr, scope: Scope) -> tuple[Diagnostic, ...]:
     out: list[Diagnostic] = []
     for h in handle.handlers:
-        if not _effect_declared(h.effect, scope.space):
-            # Phase 1：以 warning 形式给出。``_auto_declare_on_effects`` 在
-            # lowering 时会隐式声明 assert-failed 等系统级 effect，static check
-            # 暂时无法识别这些"自动声明"——留待 lowering 重构后升为 error。
-            out.append(
-                _diag(
-                    "H6",
-                    f"HandleExpr handler effect {h.effect.name!r} is not declared via defeffect",
-                    severity="warning",
-                    span=handle.span,
-                )
+        # ``on`` 格式由 lowering 自动声明 effect，静态检查不对其报未声明。
+        if h.auto_declared:
+            continue
+        if h.effect.name in scope.declared_effects:
+            continue
+        if _effect_declared(h.effect, scope.space):
+            continue
+        # Phase 1：以 warning 形式给出。``_auto_declare_on_effects`` 在
+        # lowering 时会隐式声明 assert-failed 等系统级 effect，static check
+        # 暂时无法识别这些"自动声明"——留待 lowering 重构后升为 error。
+        out.append(
+            _diag(
+                "H6",
+                f"HandleExpr handler effect {h.effect.name!r} is not declared via defeffect",
+                severity="warning",
+                span=handle.span,
             )
+        )
     return tuple(out)
 
 
@@ -343,17 +355,19 @@ def _h7_in_handler(resume: ResumeExpr, scope: Scope) -> tuple[Diagnostic, ...]:
 
 
 def h8_perform_effect_declared(perform: PerformExpr, scope: Scope) -> tuple[Diagnostic, ...]:
-    if not _effect_declared(perform.effect, scope.space):
-        # 与 H6 同：低优先 warning，等 lowering 重构后升为 error。
-        return (
-            _diag(
-                "H8",
-                f"PerformExpr effect {perform.effect.name!r} is not declared via defeffect",
-                severity="warning",
-                span=perform.span,
-            ),
-        )
-    return ()
+    if perform.effect.name in scope.declared_effects or _effect_declared(
+        perform.effect, scope.space
+    ):
+        return ()
+    # 与 H6 同：低优先 warning，等 lowering 重构后升为 error。
+    return (
+        _diag(
+            "H8",
+            f"PerformExpr effect {perform.effect.name!r} is not declared via defeffect",
+            severity="warning",
+            span=perform.span,
+        ),
+    )
 
 
 # ─── H9 ──────────────────────────────────────────────────────────────────────
@@ -481,7 +495,9 @@ def h14_macro_body_raw_synced(macro: MacroExpr) -> tuple[Diagnostic, ...]:
 # ─── Program entry ───────────────────────────────────────────────────────────
 
 
-def check_program(program: ProgramIR) -> tuple[Diagnostic, ...]:
+def check_program(
+    program: ProgramIR, *, profile_effects: frozenset[str] = frozenset()
+) -> tuple[Diagnostic, ...]:
     """运行 H1-H14 全套检查并聚合诊断。.
 
     该入口同时是 ``ValidateHIRPass.run`` 调用的唯一对外 API。设计目标：
@@ -489,20 +505,46 @@ def check_program(program: ProgramIR) -> tuple[Diagnostic, ...]:
     - O(N) 单次 AST 遍历；
     - 任何子节点的 violation 都上浮到 ProgramIR.diagnostics。
 
+    ``profile_effects`` 是当前实例 profile 已声明的 effect 名（含标准 profile
+    预装的 ``assert-failed`` 等），用于 H6/H8 判断 effect 是否已声明。
+
     当 ``program.diagnostics`` 已经包含 error 级诊断时，跳过所有谓词检查
     ——这是有意为之的"二次错误抑制"：lower.py 在解析失败时也会产生错误
     节点（例如空 ``LetExpr``），这些节点不应被 H3 等规则再开一次罚单。
     """
     if not program.ok:
         return ()
-    out: list[Diagnostic] = []
-    scope = Scope(space=None)
-    for expr in program.body:
-        out.extend(_check(expr, scope))
-    return tuple(out)
+    return _check_body(program.body, Scope(space=None, declared_effects=profile_effects))
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
+
+
+def _declared_effect_name(expr: IRExpr) -> str | None:
+    """取出节点声明的 effect 名（``defeffect`` 可表现为 DefeffectExpr 或其 DefineExpr 包装）。."""
+    if isinstance(expr, DefeffectExpr):
+        return expr.name.name
+    if isinstance(expr, DefineExpr) and isinstance(expr.value, DefeffectExpr):
+        return expr.name.name
+    return None
+
+
+def _check_body(exprs: tuple[IRExpr, ...], scope: Scope) -> tuple[Diagnostic, ...]:
+    """按顺序检查一个 body，并按运行时顺序累积 ``defeffect`` 声明。.
+
+    ``defeffect`` 与 ``define`` 一样在 body 顺序中生效：只有先声明的 effect
+    才能被后续 ``handle`` / ``perform`` 引用。因此声明必须沿序列线程化，
+    不能只看单个节点。
+    """
+    out: list[Diagnostic] = []
+    declared = set(scope.declared_effects)
+    for expr in exprs:
+        inner = replace(scope, declared_effects=frozenset(declared))
+        out.extend(_check(expr, inner))
+        effect_name = _declared_effect_name(expr)
+        if effect_name is not None:
+            declared.add(effect_name)
+    return tuple(out)
 
 
 def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
@@ -518,10 +560,21 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
         case CallExpr() as call:
             out.extend(h4_call_continuous(call))
             out.extend(h5_call_tail_position(call, scope))
+            out.extend(_check(call.operator, scope))
+            for arg in call.args:
+                out.extend(_check(arg, scope))
 
         # H6 -- handler effect declared
         case HandleExpr() as h:
             out.extend(h6_handle_effect_declared(h, scope))
+            # ``on`` 格式的 handler 自动声明自身 effect，且对整个 handle
+            # （包括 expression 与其它 handler body）可见。
+            declared = set(scope.declared_effects)
+            for handler in h.handlers:
+                if handler.auto_declared:
+                    declared.add(handler.effect.name)
+            handle_scope = replace(scope, declared_effects=frozenset(declared))
+            out.extend(_check(h.expression, handle_scope))
             for handler in h.handlers:
                 inner = Scope(
                     space=(
@@ -532,17 +585,20 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
                     parent=Parent.HANDLE_BODY,
                     current_effect=handler.effect.name,
                     current_effect_resumable=_effect_is_resumable(handler.effect, scope.space),
+                    declared_effects=frozenset(declared),
                 )
-                for body_expr in handler.body:
-                    out.extend(_check(body_expr, inner))
+                out.extend(_check_body(handler.body, inner))
 
         # H7 -- ResumeExpr 必须出现在 handler body 内
         case ResumeExpr() as r:
             out.extend(_h7_in_handler(r, scope))
+            out.extend(_check(r.continuation, scope))
+            out.extend(_check(r.value, scope))
 
         # H8
         case PerformExpr() as p:
             out.extend(h8_perform_effect_declared(p, scope))
+            out.extend(_check(p.argument, scope))
 
         # H9
         case ModuleExpr() as m:
@@ -552,9 +608,9 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
                 parent=Parent.TOP,
                 current_module=m.name.name,
                 module_defined=_collect_defined_in_module(m),
+                declared_effects=scope.declared_effects,
             )
-            for body_expr in m.body:
-                out.extend(_check(body_expr, inner))
+            out.extend(_check_body(m.body, inner))
 
         # H11
         case QuoteExpr() as q:
@@ -565,28 +621,38 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
             out.extend(h12_define_once_in_space(d, scope))
             out.extend(_check(d.value, scope))
 
-        # H14
+        # H14 + macro body
         case MacroExpr() as mc:
             out.extend(h14_macro_body_raw_synced(mc))
+            out.extend(_check_body(mc.body, scope))
 
         # LetExpr 创建新空间，但 body 在新空间求值
         case LetExpr() as let:
-            inner = Scope(space=scope.space, parent=Parent.LET_BODY)
+            inner = Scope(
+                space=scope.space,
+                parent=Parent.LET_BODY,
+                declared_effects=scope.declared_effects,
+            )
             for binding in let.bindings:
                 out.extend(_check(binding.value, inner))
-            for body_expr in let.body:
-                out.extend(_check(body_expr, inner))
+            out.extend(_check_body(let.body, inner))
 
         # Lambda / Defun 创建新空间
         case LambdaExpr() as lam:
-            inner = Scope(space=scope.space, parent=Parent.FUNC_BODY)
-            for body_expr in lam.body:
-                out.extend(_check(body_expr, inner))
+            inner = Scope(
+                space=scope.space,
+                parent=Parent.FUNC_BODY,
+                declared_effects=scope.declared_effects,
+            )
+            out.extend(_check_body(lam.body, inner))
 
         case DefunExpr() as df:
-            inner = Scope(space=scope.space, parent=Parent.FUNC_BODY)
-            for body_expr in df.body:
-                out.extend(_check(body_expr, inner))
+            inner = Scope(
+                space=scope.space,
+                parent=Parent.FUNC_BODY,
+                declared_effects=scope.declared_effects,
+            )
+            out.extend(_check_body(df.body, inner))
 
         # Cond -- clause.result 在 tail position 候选
         case CondExpr() as cond:
@@ -594,11 +660,16 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
                 out.extend(_check(clause.condition, scope))
                 out.extend(_check(clause.result, _set_parent(scope, Parent.COND_RESULT)))
 
-        # Pipeline -- 最后一个 expr 在 tail position 候选
+        # Pipeline -- 最后一个 expr 在 tail position 候选；defeffect 顺序生效
         case PipelineExpr() as pipe:
+            declared = set(scope.declared_effects)
             for i, body_expr in enumerate(pipe.body):
                 parent = Parent.PIPELINE_LAST if i == len(pipe.body) - 1 else Parent.ARG
-                out.extend(_check(body_expr, _set_parent(scope, parent)))
+                inner = replace(scope, parent=parent, declared_effects=frozenset(declared))
+                out.extend(_check(body_expr, inner))
+                effect_name = _declared_effect_name(body_expr)
+                if effect_name is not None:
+                    declared.add(effect_name)
 
         # Parallel/All/Race -- 无 tail position
         case ParallelExpr(exprs=xs) | AllExpr(exprs=xs) | RaceExpr(exprs=xs):
@@ -609,11 +680,6 @@ def _check(expr: IRExpr, scope: Scope) -> tuple[Diagnostic, ...]:
         case ApplyExpr(function=f, args=args):
             out.extend(_check(f, scope))
             out.extend(_check(args, scope))
-
-        # Macro body 已经过单独检查
-        case MacroExpr(body=body):
-            for body_expr in body:
-                out.extend(_check(body_expr, scope))
 
         # Cache / RuntimeEval
         case CacheExpr(expression=inner) | RuntimeEvalExpr(expression=inner):
@@ -640,6 +706,7 @@ def _set_parent(scope: Scope, parent: Parent) -> Scope:
         current_effect_resumable=scope.current_effect_resumable,
         current_module=scope.current_module,
         module_defined=scope.module_defined,
+        declared_effects=scope.declared_effects,
     )
 
 
@@ -749,6 +816,8 @@ def _collect_defined_in_module(mod: ModuleExpr) -> frozenset[str]:
             out.add(expr.name.name)
         elif isinstance(expr, MacroExpr):
             out.add(expr.name.name)
+    # 宏导出在 macro.expand 阶段被剥离出 body，但仍算已定义导出。
+    out.update(mod.macro_exports)
     return frozenset(out)
 
 

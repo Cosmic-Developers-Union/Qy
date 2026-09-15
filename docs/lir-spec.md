@@ -831,11 +831,23 @@ RUNTIME_EVAL, APPEND_RESULT, LOAD_NIL, LOAD_T, MOVE
 
 `linearize.py` 不改写它们；`compat_effects.py` 不处理它们；没有 `slot_lowering` / `frame_lowering` pass 把它们映射到抽象机操作。
 
-### 7.8 `LIRFunction.frame_layout` / `symbol_spaces` 当前未被 populate
+### 7.8 `LIRFunction.frame_layout` / `symbol_spaces` 的 populate 状态
 
-`lower_lir`（`lower.py:45-50`）只构造 `LIRFunction(name, params, register_count, instructions)`；`frame_layout` 与 `symbol_spaces` 默认为空（`None` / `()`）。`lower_effects` 也不填充这两个字段。
+`compat` dialect 下 `lower_lir` 只构造 `LIRFunction(name, params, register_count, instructions)`；`frame_layout` 与 `symbol_spaces` 默认为空（`None` / `()`）。
 
-也就是说：当前 LIR 中**没有 frame / symbol-space layout 实例**——即使 `dump_lir` 在 layout 字段非空时会输出（`pretty.py:39-46`），生产路径下这些段不会显示。LLVM / libqy 等后端需要 layout 时，目前只能从 instruction stream 重建。
+`abstract-machine` dialect（`LowerLIRPass` 读取 `PipelineOptions.lir_dialect`）下，`_lower_function_abstract_machine` 现在会填充：
+
+- `frame_layout`：`kind="function"`、`register_count`、保守的 `saved_registers`；
+- `handlers`：由 `lower_effects` 产出，含 `handler_target` 与 `parent_handler`；
+- `continuations`：由 `lower_effects` 产出，含 `resume_target` 与 `multi_shot`；
+- `symbol_spaces`：由 `passes/lir/spaces.py`（`assign_symbol_spaces`）产出，把
+  `ENTER_SCOPE` / `EXIT_SCOPE` / `DEFINE_ONCE` 降成
+  `SS_ENTER(space_id)` / `SS_LEAVE(space_id)` / `SLOT_COMPLETE(LIRBindingAddr(space, slot), src_reg)`，
+  并按线性 scope 栈分配 space id 与 slot index。
+
+因此 L5 / L6 / L7 / L8 / L9 在 abstract-machine dialect 下**不再是空检查**。`SLOT_COMPLETE` 的 operand schema 为 `(LIRBindingAddr, src_reg)`；L9 以函数为单位比较 `(space, slot)` 是否重复 complete。`dump_lir` 在 layout 字段非空时会输出对应段（`pretty.py:39-46`）。
+
+仍待推进：HIR 层 `resolve.spaces`（把稳定 binding id / slot 从 HIR 带到 MIR）尚未实现；当前布局由 LIR 从指令流重建，而非 HIR 事实下沉。
 
 ### 7.9 VM backend 拒绝 abstract-machine dialect
 
@@ -845,4 +857,4 @@ RUNTIME_EVAL, APPEND_RESULT, LOAD_NIL, LOAD_T, MOVE
 compile_lir_bytecode only supports compat LIR
 ```
 
-这是当前 implementation 的硬性约束；abstract-machine dialect 仅供测试与未来 LLVM/libqy 后端使用。
+这是当前 implementation 的硬性约束：abstract-machine dialect 目前用于 LIR verifier 与后续 LLVM/libqy 后端；默认执行路径仍是 `compat`。VM 执行 `HANDLER_* / CONT_* / EFFECT_*` 抽象机 opcode 是后续工作。

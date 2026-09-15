@@ -9,7 +9,6 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import cast
 
-from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.frontend.cst import CstAtom
@@ -51,7 +50,7 @@ def dump_form(form: object, indent: int = 0) -> str:
             )
         except (TypeError, ValueError):
             # Improper list
-            chain_form = cast(Chain, form)
+            chain_form = form
             lines.append(f"{dump_form(chain_form.head, indent + 1)},")
             lines.append(f"{prefix}{INDENT}.")
             lines.append(f"{dump_form(chain_form.tail, indent + 1)},")

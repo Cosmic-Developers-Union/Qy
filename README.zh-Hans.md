@@ -44,7 +44,7 @@ compile-time effect，避免在未显式授权的情况下执行不透明的编�
 
 ## 使用
 
-求值文件（推荐显式子命令形式；`qy FILE` 隐式快捷方式在当前 typer 下是 dead code，详见 `qy/cli/__init__.py`）：
+求值文件（推荐显式子命令形式；`qy FILE` 是等价快捷方式，实现在 `qy/cli/_app.py`）：
 
 ```shell
 qy run examples/validation/00_host_arithmetic.qy

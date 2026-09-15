@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from collections.abc import Sized
 
 
-from qy.core.syntax import Chain
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import cons
@@ -60,6 +59,7 @@ __all__ = [
     "macroexpand_async",
     "macroexpand_source",
     "macroexpand_source_async",
+    "module_macro_names",
 ]
 
 MacroEffectPolicy = Literal["deny", "allow"]
@@ -96,7 +96,7 @@ def _get_args(form: object) -> tuple[object, ...]:
         if is_nil(rest):
             return ()
         if is_chain(rest):
-            return tuple(cast("Chain", rest))
+            return tuple(rest)
         # improper list
         return (rest,)
     if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
@@ -130,7 +130,7 @@ def _form_to_list(form: object) -> list[object]:
         if is_nil(form):
             return []
         try:
-            return list(cast("Chain", form))
+            return list(form)
         except ValueError:
             # improper list - 展开所有元素
             result = []
@@ -813,6 +813,17 @@ def _module_macro_namespace(env: Environment) -> dict[str, dict[Symbol, MacroDef
     except KeyError:
         value = env.cache_define(_MODULE_MACRO_NAMESPACE_CACHE_KEY, {})
     return cast(dict[str, dict[Symbol, MacroDefinition]], value)
+
+
+def module_macro_names(env: Environment, module_name: str) -> frozenset[str]:
+    """返回某模块在 macro 展开阶段被剥离到 compile-time namespace 的宏名。.
+
+    ``macro.expand`` 会把 ``(module M (macro m ...))`` 中的宏从 module body
+    剥离到模块宏命名空间。HIR 只看得到剥离后的 body，因此需要这个只读查询
+    来区分"未定义导出"与"宏导出"，避免对合法的宏导出误报。
+    """
+    macros = _module_macro_namespace(env).get(module_name, {})
+    return frozenset(symbol.name for symbol in macros)
 
 
 def _import_macros_from_form(form: object, context: MacroExpansionContext) -> None:

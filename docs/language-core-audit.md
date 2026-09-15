@@ -50,9 +50,10 @@
 
 ## B3. 初始 profile 与 host interop 边界未清
 
-**位置**：`qy/symbol_space/__init__.py`、`qy/symbol_space/core.py`、`qy/symbol_space/python.py`
+**位置**：`qy/symbol_space/__init__.py`、`qy/symbol_space/core.py`、`qy/ext/python.py`（host `py` 扩展，原 `qy/symbol_space/python.py` 已迁移）
 
-默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。`pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界；analyzer/LSP 仍不能消费实例化配置。
+默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。`pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界。
+**更新（本轮）**：`qy check` 已改为 canonical frontend + HIR verifier，LSP 诊断复用同一入口，因此 analyzer 现在消费的是与执行路径一致的实例事实。
 
 **偏差**：默认数字/字符串链段、默认是否预装算术等都可以是 standard profile 策略；但 profile 不能和语言核混写，Python host interop 也不应被误当成语言核心。analyzer/LSP 需要能读取当前 Qy 实例的完整初始链配置。
 

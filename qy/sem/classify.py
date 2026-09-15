@@ -83,13 +83,16 @@ def value_type(value: object) -> TypeName:
     from qy.macro import MacroDefinition
     from qy.sem.runtime import EffectDefinition
     from qy.sem.runtime import UserFunction
-    from qy.vm.bytecode import BytecodeFunctionValue
 
     if isinstance(
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return "operator"
-    if isinstance(value, UserFunction | BytecodeFunctionValue):
+    if isinstance(value, UserFunction):
+        return "function"
+    # 后端自己的可执行函数值（例如 VM 的 BytecodeFunctionValue）通过
+    # ``type_name = "function"`` 标记自身，避免 sem 反向 import 具体后端。
+    if getattr(value, "type_name", None) == "function":
         return "function"
     if isinstance(value, MacroDefinition):
         return "operator"

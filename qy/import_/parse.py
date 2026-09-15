@@ -6,7 +6,6 @@ import ast
 from dataclasses import dataclass
 from typing import cast
 
-from qy.core.syntax import Chain
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.frontend.reader import Symbol
@@ -29,7 +28,7 @@ def parse_from_import(expression: object) -> tuple[Symbol, tuple[ImportSpec, ...
     if is_chain(expression):
         if is_nil(expression):
             raise ValueError("from expects: (from module import name [as alias] ...)")
-        items = list(cast("Chain", expression))
+        items = list(expression)
     elif isinstance(expression, tuple):
         items = list(expression)
     else:
@@ -60,7 +59,7 @@ def _parse_import_items(items: list[object]) -> tuple[ImportSpec, ...]:
         # 处理嵌套的 Chain 或 tuple
         if is_chain(item):
             if not is_nil(item):
-                specs.extend(_parse_import_items(list(cast("Chain", item))))
+                specs.extend(_parse_import_items(list(item)))
             index += 1
             continue
         if isinstance(item, tuple):

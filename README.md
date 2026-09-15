@@ -62,8 +62,8 @@ Install optional command line tools:
 pip install 'QyLang[cli]'
 ```
 
-Evaluate a file (explicit subcommand form is recommended; the implicit
-`qy FILE` shortcut is dead code in current typer, see `qy/cli/__init__.py`):
+Evaluate a file (explicit subcommand form is recommended; `qy FILE` is an
+equivalent shortcut provided by `qy/cli/_app.py`):
 
 ```shell
 qy run examples/validation/00_host_arithmetic.qy

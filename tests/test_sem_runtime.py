@@ -11,6 +11,8 @@ from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.vm.instance.legacy_eval import call_component_operator
+from qy.vm.instance.legacy_eval import call_user_function
 
 
 def test_effect_definition_creation():
@@ -43,7 +45,7 @@ async def test_user_function_call():
         closure=env,
     )
 
-    result = await func(42)
+    result = await call_user_function(func, (42,))
     assert result == 42
 
 
@@ -59,7 +61,7 @@ async def test_user_function_arity_error():
     )
 
     with pytest.raises(QyArityError) as exc_info:
-        await func(42)
+        await call_user_function(func, (42,))
 
     assert "expects 2 arguments, got 1" in str(exc_info.value)
     assert exc_info.value.metadata["expected"] == 2
@@ -97,17 +99,17 @@ async def test_user_function_tail_call_loop():
             # 第二次调用返回正常值，结束循环
             return 42
 
-    import qy.sem.runtime
+    import qy.vm.instance.legacy_eval
 
-    original_eval = qy.sem.runtime._evaluate_tail_body
-    qy.sem.runtime._evaluate_tail_body = mock_eval  # ty: ignore[invalid-assignment]
+    original_eval = qy.vm.instance.legacy_eval._evaluate_tail_body
+    qy.vm.instance.legacy_eval._evaluate_tail_body = mock_eval  # ty: ignore[invalid-assignment]
 
     try:
-        result = await func(0)
+        result = await call_user_function(func, (0,))
         assert result == 42
         assert call_count[0] == 2  # 确认循环执行了两次
     finally:
-        qy.sem.runtime._evaluate_tail_body = original_eval
+        qy.vm.instance.legacy_eval._evaluate_tail_body = original_eval
 
 
 @pytest.mark.asyncio
@@ -140,7 +142,7 @@ async def test_component_operator_arity_error():
     comp = ComponentOperator(operators=(Symbol("op1"),), closure=env)
 
     with pytest.raises(QyArityError) as exc_info:
-        await comp()
+        await call_component_operator(comp, ())
 
     assert "expects at least 1 argument" in str(exc_info.value)
     assert exc_info.value.metadata["actual"] == 0

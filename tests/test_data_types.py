@@ -52,8 +52,9 @@ def test_dict():
     assert isinstance(result, DictValue)
     entries = dict(result.entries)
     assert entries[StringValue("name")] == StringValue("Qy")
-    assert isinstance(entries[StringValue("items")], ListValue)
-    assert entries[StringValue("items")].items == (1, 2)
+    items_entry = entries[StringValue("items")]
+    assert isinstance(items_entry, ListValue)
+    assert items_entry.items == (1, 2)
     assert es('(dict? (dict "name" "Qy"))') is QY_T
     quoted = es("(dict '((name . Qy) (mode test)))")
     assert isinstance(quoted, DictValue)

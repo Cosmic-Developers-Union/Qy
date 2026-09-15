@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=qy.ir.hir.predicates; only used by qy/analysis/infer.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -74,6 +75,37 @@ def scope_from_environment(env: Environment) -> Scope:
     return scope
 
 
+def quoted_symbol(form: object) -> Symbol | None:
+    """从 ``(quote name)`` form 中取出符号名。.
+
+    ``define`` / ``bind`` 允许把绑定名写成 syntax datum（``'name``），
+    这与 lowering / runtime 的 ``(define 'name value)`` 语义一致。
+    """
+    if not is_chain(form):
+        return None
+    try:
+        items = chain_to_list(form)
+    except ValueError:
+        return None
+    if len(items) == 2 and items[0] == Symbol("quote") and isinstance(items[1], Symbol):
+        return items[1]
+    return None
+
+
+def binding_name(form: object) -> Symbol | None:
+    """取出绑定位置的名字。.
+
+    binding 位置不做 surface dialect expansion，因此 ``(define 'name value)``
+    里的 ``'name`` 会以带前导引号的 symbol spelling 到达分析层；这里按
+    ``hir.lower`` 的同一规则剥掉引号，再回退到 ``(quote name)`` 形式。
+    """
+    if isinstance(form, Symbol):
+        if form.name.startswith("'") and len(form.name) > 1:
+            return Symbol(form.name[1:])
+        return form
+    return quoted_symbol(form)
+
+
 def scope_after_form(form: object, env: Environment, scope: Scope) -> Scope:
     if not is_chain(form):
         return scope
@@ -89,12 +121,11 @@ def scope_after_form(form: object, env: Environment, scope: Scope) -> Scope:
         if scope.has_local(form_list[1]):
             return scope
         return scope.define(form_list[1], "function")
-    if (
-        len(form_list) >= 2
-        and form_list[0] == Symbol("define")
-        and isinstance(form_list[1], Symbol)
-    ):
-        if scope.has_local(form_list[1]):
+    if len(form_list) >= 2 and form_list[0] == Symbol("define"):
+        name = binding_name(form_list[1])
+        if name is None:
+            return scope
+        if scope.has_local(name):
             return scope
         # 检查是否是 (define name (component ...))
         if len(form_list) >= 3 and is_chain(form_list[2]):
@@ -103,11 +134,19 @@ def scope_after_form(form: object, env: Environment, scope: Scope) -> Scope:
                 if value_list and value_list[0] == Symbol("component"):
                     # component 生成宏，所以类型是 operator
                     return scope.define(
-                        form_list[1], "operator", operator_kind="meta", eager_arguments=False
+                        name, "operator", operator_kind="meta", eager_arguments=False
                     )
+                if value_list and value_list[0] == Symbol("lambda"):
+                    return scope.define(name, "function")
             except (ValueError, TypeError):
                 pass
-        return scope.define(form_list[1], "any")
+        return scope.define(name, "any")
+    if len(form_list) >= 2 and form_list[0] == Symbol("bind"):
+        name = binding_name(form_list[1])
+        if name is None or scope.has_local(name):
+            return scope
+        # bind 把 symbol 与 value 绑定到 slot，效果等同当前 scope 的一次 define。
+        return scope.define(name, "any")
     if (
         len(form_list) >= 2
         and form_list[0] == Symbol("defeffect")

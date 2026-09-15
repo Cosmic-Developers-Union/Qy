@@ -67,6 +67,10 @@ class PipelineOptions:
     target: str | None = None
     dump_sink: Callable[[str, object], None] | None = None
     error_threshold: int = 1
+    # LIR dialect：默认 `compat`（register VM 可编码）。`abstract-machine`
+    # 会把语言级 effect 降成 HANDLER_* / CONT_* / EFFECT_* 抽象机指令，
+    # 供 verifier 与后续 backend 消费；当前 VM 尚不执行该 dialect。
+    lir_dialect: str = "compat"
 
 
 @dataclass(slots=True)

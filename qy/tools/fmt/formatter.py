@@ -95,7 +95,7 @@ def _format_chain(form: Chain | object, indent: int) -> str:
     if not is_chain(form):
         return "()"
 
-    chain_form = cast(Chain, form)
+    chain_form = form
 
     # Check if it's a quote form
     if _is_quote_form_chain(form):

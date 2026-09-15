@@ -45,9 +45,9 @@ tokens:
 	uv run scripts/tokens.py
 
 # ---------------------------------------------------------------------------
-# LLVM Native Backend (Phase Q)
-#    C Runtime: runtime/mqr.{c,h} → runtime/mqr.o → runtime/libmqr.a
-#    LLVM codegen: qy/llvm_codegen.py → .ll → .o → executable
+# LLVM Native Backend
+#    C Runtime: qy/resources/libqy/{include/qy.h,src/runtime.c} -> libqy.a
+#    LLVM codegen: qy/backend/llvm -> .ll -> .o -> executable
 # ---------------------------------------------------------------------------
 
 LLVM_DIR    ?= build/llvm
@@ -55,45 +55,38 @@ LLC         ?= llc
 CLANG       ?= clang
 CC          ?= $(CLANG)
 CFLAGS_C    := -Wall -Wextra -pedantic -std=c11
+LIBQY_DIR   := qy/resources/libqy
+LIBQY_INC   := $(LIBQY_DIR)/include
+LIBQY_OBJ   := $(LIBQY_DIR)/src/runtime.o
+LIBQY_A     := $(LIBQY_DIR)/libqy.a
 
 # -- C Runtime targets -------------------------------------------------------
 
-runtime/mqr.o: runtime/mqr.c runtime/mqr.h
-	$(CC) $(CFLAGS_C) -c runtime/mqr.c -o runtime/mqr.o
+$(LIBQY_OBJ): $(LIBQY_DIR)/src/runtime.c $(LIBQY_DIR)/include/qy.h
+	$(CC) $(CFLAGS_C) -I$(LIBQY_INC) -c $(LIBQY_DIR)/src/runtime.c -o $(LIBQY_OBJ)
 
-runtime/libmqr.a: runtime/mqr.o
+$(LIBQY_A): $(LIBQY_OBJ)
 	ar rcs $@ $<
 
-mqr: runtime/libmqr.a
-
-# -- MQR C unit tests -------------------------------------------------------
-
-C_TEST_SOURCES := $(wildcard runtime/test_*.c)
+.PHONY: libqy
+libqy: $(LIBQY_A)
 
 $(LLVM_DIR):
 	mkdir -p $(LLVM_DIR)
 
-test-mqr: runtime/libmqr.a | $(LLVM_DIR)
-	@set -e; for src in $(C_TEST_SOURCES); do \
-		name=$$(basename $$src .c); \
-		bin=$(LLVM_DIR)/$$name; \
-		echo "  CC  $$src"; \
-		$(CC) $(CFLAGS_C) -I. $$src runtime/libmqr.a -o $$bin && \
-		echo "  RUN $$bin" && $$bin || { echo "FAIL: $$src"; exit 1; }; \
-	done
-	@echo "  mqr tests: all passed"
-
-# -- LLVM IR generation (requires qy/llvm_codegen.py) ---------------------
+# -- LLVM IR generation -----------------------------------------------------
 #
 # Generate LLVM IR from Qy source:
 #   make llvm-gen SRC=examples/hello.qy
 #
-# Full pipeline (Qy → .ll → .o → a.out):
+# Full pipeline (Qy -> .ll -> .o -> a.out):
 #   make llvm SRC=examples/hello.qy OUT=/tmp/hello
 #
 # Run and compare with register VM:
 #   make llvm-verify SRC=examples/hello.qy
 #
+# NOTE: the LLVM backend currently emits IR for inspection/validation only;
+# the emitted IR is not guaranteed to pass `llc` yet. See docs/README.md.
 # ---------------------------------------------------------------------------
 
 .PHONY: llvm-gen
@@ -104,10 +97,10 @@ llvm-gen: | $(LLVM_DIR)
 	fi
 	@out="$(if $(OUT),$(OUT),$(LLVM_DIR)/$(notdir $(patsubst %.qy,%.ll,$(SRC))))"; \
 		echo "  gen  $(SRC) -> $$out"; \
-		uv run python -m qy llvm --ll $(SRC) > "$$out" 2>&1 && \
+		uv run python -m qy llvm $(SRC) > "$$out" 2>&1 && \
 		echo "  OK   $$out" || { cat "$$out"; exit 1; }
 
-# Compile .ll → .o
+# Compile .ll -> .o
 .PHONY: llvm-obj
 llvm-obj: | $(LLVM_DIR)
 	@if [ -z "$(IN)" ] || [ -z "$(OUT)" ]; then \
@@ -116,20 +109,20 @@ llvm-obj: | $(LLVM_DIR)
 	fi
 	$(LLC) -filetype=obj $(IN) -o $(OUT)
 
-# Link .o + mqr.o → executable
+# Link .o + libqy runtime -> executable
 .PHONY: llvm-link
-llvm-link: runtime/libmqr.a
+llvm-link: $(LIBQY_OBJ)
 	@if [ -z "$(OBJS)" ] || [ -z "$(OUT)" ]; then \
 		echo "Usage: make llvm-link OBJS=\"a.o b.o\" OUT=out [CLANG=$(CLANG)]"; \
 		exit 1; \
 	fi
-	$(CLANG) $(OBJS) runtime/mqr.o -o $(OUT)
+	$(CLANG) $(OBJS) $(LIBQY_OBJ) -o $(OUT)
 
-# Full pipeline: Qy → LLVM IR → object → executable → run
+# Full pipeline: Qy -> LLVM IR -> object -> executable -> run
 #   make llvm SRC=examples/hello.qy OUT=/tmp/hello
 #   make llvm SRC=examples/hello.qy OUT=/tmp/hello RUN=1
 .PHONY: llvm
-llvm: runtime/libmqr.a | $(LLVM_DIR)
+llvm: $(LIBQY_OBJ) | $(LLVM_DIR)
 	@if [ -z "$(SRC)" ]; then \
 		echo "Usage: make llvm SRC=path/to/file.qy OUT=/tmp/out [RUN=1]"; \
 		exit 1; \
@@ -137,12 +130,12 @@ llvm: runtime/libmqr.a | $(LLVM_DIR)
 	@out="$(if $(OUT),$(OUT),$(LLVM_DIR)/a.out)"; \
 	base=$(LLVM_DIR)/$$(basename "$(SRC)" .qy); \
 	echo "  [1/4] Qy -> LLVM IR  ($(SRC))"; \
-	uv run python -m qy llvm --ll $(SRC) > "$$base.ll" 2>&1 || { cat "$$base.ll"; exit 1; }; \
+	uv run python -m qy llvm $(SRC) > "$$base.ll" 2>&1 || { cat "$$base.ll"; exit 1; }; \
 	echo "  [2/4] llc -> object   ($$base.o)"; \
 	$(LLC) -filetype=obj "$$base.ll" -o "$$base.o" || { echo "llc failed"; exit 1; }; \
 	echo "  [3/4] clang -> binary  ($$out)"; \
-	$(CLANG) runtime/mqr.o "$$base.o" -o "$$out" || { echo "link failed"; exit 1; }; \
-	@if [ "$(RUN)" = "1" ]; then \
+	$(CLANG) $(LIBQY_OBJ) "$$base.o" -o "$$out" || { echo "link failed"; exit 1; }; \
+	if [ "$(RUN)" = "1" ]; then \
 		echo "  [4/4] run             ($$out)"; \
 		$$out || exit 1; \
 	else \
@@ -164,19 +157,19 @@ llvm-verify: llvm
 		exit 1; \
 	fi
 
-# Convenience: llvm-all — compile all examples to LLVM IR
+# Convenience: llvm-examples — compile all examples to LLVM IR
 .PHONY: llvm-examples
 llvm-examples: | $(LLVM_DIR)
 	@for f in examples/*.qy; do \
 		name=$$(basename $$f .qy); \
 		out=$(LLVM_DIR)/$$name.ll; \
 		echo "  gen  $$f -> $$out"; \
-		uv run python -m qy llvm --ll $$f > "$$out" 2>&1 || { echo "FAIL: $$f"; exit 1; }; \
+		uv run python -m qy llvm $$f > "$$out" 2>&1 || { echo "FAIL: $$f"; exit 1; }; \
 	done
 	@echo "  llvm-examples: all generated"
 
 clean-llvm:
-	rm -rf $(LLVM_DIR) runtime/*.o runtime/libmqr.a
+	rm -rf $(LLVM_DIR) $(LIBQY_OBJ) $(LIBQY_A)
 
 ## Dev Container
 dc-up:

@@ -13,8 +13,8 @@ from qy.errors import QyArityError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.sem.runtime import UserFunction
-from qy.sem.runtime import _evaluate_tail_body as evaluate_tail_body_async
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
+from qy.vm.instance.legacy_eval import _evaluate_tail_body as evaluate_tail_body_async
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 from qy.vm.instance.values import TailCall

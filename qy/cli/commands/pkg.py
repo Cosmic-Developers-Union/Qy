@@ -4,10 +4,15 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 
 from qy.cli._common import secho
+
+if TYPE_CHECKING:
+    from qy.project.manifest import Manifest
+    from qy.project.resolve import LocalManifestProvider
 
 
 def create_pkg_app() -> click.Group:
@@ -304,7 +309,7 @@ def create_pkg_app() -> click.Group:
     return pkg_group
 
 
-def _load_current_manifest() -> tuple[object, Path]:
+def _load_current_manifest() -> tuple[Manifest, Path]:
     """加载当前目录的 qy.toml。."""
     from qy.cli._common import secho
     from qy.project.manifest import parse_manifest_file
@@ -360,7 +365,7 @@ def _module_name(pkg_path: str) -> str:
     return parts[-1] if parts else pkg_path
 
 
-def _build_provider_from_manifest(manifest: object) -> object:
+def _build_provider_from_manifest(manifest: Manifest) -> LocalManifestProvider:
     """从当前清单构建 LocalManifestProvider（仅包含直接依赖）。."""
     from qy.project.fetch import get_cached
     from qy.project.manifest import parse_manifest_file

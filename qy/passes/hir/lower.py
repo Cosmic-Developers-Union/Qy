@@ -64,6 +64,7 @@ from qy.ir import SymbolRefExpr
 from qy.ir import SymbolSpace
 from qy.ir import UnresolvedSymbolExpr
 from qy.macro import CapturedForm
+from qy.macro.expand import module_macro_names
 from qy.project.module import remember_source_module
 from qy.sem.classify import literal_type
 from qy.sem.classify import operator_kind_for_value
@@ -845,7 +846,13 @@ def _lower_module(
         lowered = _lower_form(expression, module_scope, context)
         lowered_body.append(lowered)
         module_scope = _scope_after_form(expression, lowered, module_scope, context)
-    return ModuleExpr(name, tuple(lowered_body), tuple(export_names), get_span(form))
+    return ModuleExpr(
+        name,
+        tuple(lowered_body),
+        tuple(export_names),
+        get_span(form),
+        macro_exports=module_macro_names(context.env, name.name),
+    )
 
 
 def _lower_from(form: object, context: LoweringContext) -> IRExpr:
@@ -971,7 +978,15 @@ def _lower_handle(
         handler_scope = _define_parameters(handler_scope, param_symbols, context)
         lowered_body = _lower_body(tuple(body), handler_scope, context, tail=tail)
         result_type = _body_type(lowered_body)
-        handlers.append(EffectHandler(effect, param_symbols[0], param_symbols[1], lowered_body))
+        handlers.append(
+            EffectHandler(
+                effect,
+                param_symbols[0],
+                param_symbols[1],
+                lowered_body,
+                auto_declared=is_on_clause,
+            )
+        )
     return HandleExpr(lowered_expression, tuple(handlers), get_span(form), result_type)
 
 

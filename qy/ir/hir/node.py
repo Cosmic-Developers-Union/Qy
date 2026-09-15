@@ -338,6 +338,9 @@ class ModuleExpr:
     export_names: tuple[Symbol, ...] = ()
     span: SourceSpan | None = None
     type_name: TypeName = "any"
+    # macro.expand 会把 module 内宏剥离到 compile-time namespace；这里保留
+    # 宏导出名，供 H9 区分"未定义导出"与"宏导出"。
+    macro_exports: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +357,9 @@ class EffectHandler:
     arg_name: Symbol
     continuation_name: Symbol
     body: tuple[IRExpr, ...]
+    # ``on`` 格式的 handler 由 lowering 自动声明 effect（无需显式 defeffect），
+    # 静态检查据此避免对合法的 on 形式误报 "not declared"。
+    auto_declared: bool = False
 
 
 @dataclass(frozen=True, slots=True)

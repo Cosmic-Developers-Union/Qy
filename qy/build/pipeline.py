@@ -75,6 +75,14 @@ ARTIFACT_KIND_TO_TARGET_PASS: dict[str, str] = {
 
 
 def build_default_pipeline() -> Pipeline:
+    """构造 canonical source -> bytecode 管线。.
+
+    默认管线**不**运行 MIR 优化 pass。``qy.passes.build_optimization_pipeline``
+    里的 const_prop / const_fold / copy_prop / dce / cse / intern / reg_alloc /
+    cfg_simplify / inline 等目前只在隔离测试中验证，尚未证明能正确处理
+    language-level effect / continuation 控制流：把它们接进默认管线会破坏
+    effect、macro hygiene 与 meta-interp 用例（见 todo.md §Phase P）。
+    """
     pipeline = Pipeline()
     pipeline.add_pass(CstParsePass())
     pipeline.add_pass(ReaderMacroPass())

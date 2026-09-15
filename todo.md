@@ -3,7 +3,20 @@
 本文件不是最近一批工作的便签，而是 **Qy 从当前实现走到目标语言的完整路线图**。  
 历史批次与已完成细节看 `report.md`；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
 
-最近一次本地基线（2026-09-14）：
+最近一次本地基线（本轮整改后）：
+
+- `uv run python -m pytest -q`：1056 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
+- `uv run ruff check .`：passed
+- `uv run ruff format --check .`：passed
+- `uv run ty check .`：**0 diagnostics**（本轮清空）
+- `uv run qy check examples/hello.qy`：ok（analyzer 已改为 canonical frontend + HIR verifier）
+- HIR verifier 在 `examples/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
+- qytest `tests/qy` **54/54**、`examples/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
+- `make libqy` / `make llvm-gen` 可用；LLVM IR 仍不能通过 `llc`（见 §8½）
+- `qy/sem` 已不 import `qy.vm`；legacy `UserFunction` 求值路径移至 `qy/vm/instance/legacy_eval.py`
+- `rg QY_DELETE_AFTER qy`：7 处标记（stdlib shim、sem bridge、analysis infer/scope/refs、frontend tuple 兼容层）
+
+历史基线（2026-09-14）：
 
 - `uv run python -m pytest -q`：1048 passed, 1 skipped（skip 为 `QY_META_SELF=1` 才运行的自解释慢测试）
 - `uv run ruff check .`：passed
@@ -201,6 +214,23 @@ source
 - `evaluator.py` 已退出主求值路径；
 - `meta-interp/main.qy` 已形成可运行的 Qy-in-Qy 解释器，11 个用例与参考输出一致，
   阶段 2 自解释（解释自身源码）已打通（详见 §9½）。
+- **本轮整改（analyzer / verifier / 边界）**：
+  - `qy check` / LSP 诊断改为 canonical frontend（CST → surface → macro expand）+ `hir.lower` + H1–H14 verifier；analyzer 不再维护第二套语法/宏/作用域解释，`examples/hello.qy` 通过 `qy check`；
+  - HIR verifier 修复 `_check` 不递归 `CallExpr` 参数导致的 H6/H7/H8 覆盖缺口；`defeffect` 声明改为按 body 顺序线程化；`on` 形式 handler 的自动声明 effect 不再误报；模块宏导出携带 `macro_exports` 事实，H3/H9 在宏-only 模块上不再误报；
+  - `ty check .` 从 51 条收敛到 0（`is_chain` TypeGuard 化、`pkg.py` manifest 注解、`machine.py` 返回类型等）；
+  - 删除死代码：`qy/backend/vm/optimize.py`、`qy/ir/hir/build.py`、`qy/passes/surface/normalize.py`、`_QyGroupFallback`；补 7 处 `QY_DELETE_AFTER_*` 标记；
+  - `qy/sem` 不再 import `qy.vm`：legacy `UserFunction` / `ComponentOperator` 求值路径移至 `qy/vm/instance/legacy_eval.py`，`BytecodeFunctionValue` 用 `type_name="function"` 自描述；
+  - Makefile LLVM 目标改指真实 `qy/resources/libqy`（原引用不存在的 `runtime/mqr.*` 与已删除的 `qy/llvm_codegen.py`）。
+- **本轮整改（LIR abstract-machine 接线）**：
+  - `PipelineOptions.lir_dialect` 选择 LIR dialect；`lir.lower` 在 `abstract-machine` 下调用 `lower_effects` 并填充 `frame_layout` / `handlers` / `continuations`（`qy/passes/lir/lower.py`）；
+  - L5–L7 verifier 因此生效；L11/L12 改为 **CFG-aware** push/pop 配对（handler dispatch block 的深度由其 `HANDLER_PUSH` 播种），消除对合法 dispatch 路径的误报，同时保留真实 underflow / unclosed 检测；
+  - `verify_lir` 的 "unreachable after terminator" 改为识别 block entry（jump / handler / continuation resume target），不再把 resume block 误判为不可达；
+  - 新增 5 个测试（dialect 展开、underflow、unclosed、dispatch block、resume target）；`tests/test_lir.py` 37 passed。
+- **本轮整改（LIR symbol-space / slot）**：
+  - 新增 `qy/passes/lir/spaces.py::assign_symbol_spaces`：按线性 scope 栈把 `ENTER_SCOPE`/`EXIT_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`，并产出 `LIRFunction.symbol_spaces`；
+  - 修正 `SLOT_COMPLETE` operand schema 为 `(LIRBindingAddr, src_reg)`，L9 由恒空变为真实检查，且 slot identity 改为**按函数**比较（修复跨函数 `(0,0)` 误报）；L8 现在校验 slot address 指向存在的 space；
+  - L10 同时检查 compat 的 `ENTER_SCOPE/EXIT_SCOPE` 与 abstract-machine 的 `SS_ENTER/SS_LEAVE`，并保持 warning 严重级；
+  - 新增 4 个测试（layout/ops 产出、重复 SLOT_COMPLETE、函数局部 slot identity、space 越界）；全量 1065 passed。
 
 ## 2.2 仍在过渡
 
@@ -223,6 +253,7 @@ source
    `TupleAtom` 仍包含 `str | int | float | bool | bytes | None`；
    Lark reader 本身（`qy/frontend/reader.py`）已只产出 `Symbol | Chain`，
    泄漏点是 `form_to_tuple` / `TupleForm` / `read_tuple` / `write_tuple` 兼容 API；
+   该兼容层已加 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT` 标记；
 2. quoted literal 已在 reader 阶段变成 Python `str`（由 `_decode_string_symbol` 经 `ast.literal_eval` 解出），兼容 API 入口；
 3. `qy/sem/core.py` 里的 `ChainValue` 与 `qy/core/syntax.py` 的 syntax `Chain` 并存，
    raw AST / 兼容 API 仍通过 `form_to_tuple`/`TupleForm` 暴露 Python tuple；
@@ -241,11 +272,11 @@ source
 15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；
 16. `quasiquote` nested 路径仍依赖过时 `list/append` 假设；
 17. 默认 LIR 仍以 compat dialect 为主，但主 pipeline 已执行 `mir.validate` / `lir.verify`，bytecode emit 会拒绝非 VM compat opcode；
-18. LIR 尚未显式建模 virtual stack、continuation frame、handler frame、ss-chain transition、lookup operation、binding slot operation；
+18. LIR 已在 abstract-machine dialect 下显式建模 handler frame / continuation frame / symbol-space / binding slot：`lower_effects` + `passes/lir/spaces.py` 产出 `frame_layout` / `handlers` / `continuations` / `symbol_spaces`，并把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`，因此 L5–L12 verifier 在 abstract-machine dialect 下全部有数据（L11/L12 CFG-aware）；仍缺 virtual stack 的运行时语义、HIR 层 `resolve.spaces`（当前 layout 由 LIR 从指令流重建），且 VM 尚不执行抽象机 opcode；
 19. effect frame 仍主要由 VM 中的 Python 对象承担；
 20. pending-binding / incomplete-value effort 尚未实现；
-21. legacy `UserFunction` 仍让尾调用部分依赖旧 evaluator；
-22. docs 中仍有少量旧说法需要持续清理。
+21. legacy `UserFunction` 仍是 `lambda`/`defun` 的 Python callable 表示，其求值路径已从 `qy/sem/runtime.py` 移到 `qy/vm/instance/legacy_eval.py`（`sem` 不再反向依赖 `vm`），但尚未收敛到 bytecode function；
+22. docs 中仍有少量旧说法需要持续清理（本轮已修 `qy FILE` / typer / 管线顺序 / `effect.analyze` 状态）。
 
 ---
 
@@ -1650,6 +1681,8 @@ source → raw AST → surface dialect → macro expand → HIR → MIR → LIR
 ```
 
 LIR 是两条路径的分叉点，但 LLVM backend 不能依赖当前过渡期“近似 bytecode opcode”的 LIR。必须先完成 Phase I 的 Qy abstract machine LIR：virtual stack、continuation frame、handler frame、ss-chain transition、lookup、slot operation 全部显式后，LLVM codegen 才能把 verified LIR 当作稳定输入。
+
+**当前实际状态（本轮核实）**：`qy llvm` 能输出 LLVM IR 文本，`qy/resources/libqy`（`qy.h` + `runtime.c`，512 行）能编译为 `libqy.a`；但 emitter 产出的 IR **尚不能通过 `llc`**——存在 SSA 局部名重复（`%call.argv`）、`load` 上非法 `!llvm.index` 元数据、jump-target 标签后自跳转、寄存器槽未分配等问题。Makefile 的 `llvm` / `llvm-gen` / `libqy` 目标已改指真实 libqy 路径（原引用的 `runtime/mqr.*` 与 `qy/llvm_codegen.py` 都不存在）。在 emitter 修复前，LLVM 只作 IR 观察/验证，不产出可执行文件。
 
 **设计约束**：
 

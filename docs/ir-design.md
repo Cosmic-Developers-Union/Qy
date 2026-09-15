@@ -544,14 +544,11 @@ LIR 描述 Qy 抽象机器如何执行这些控制流。
 
 ## LIR 当前差距
 
-- 目前几乎是线性化 MIR；
-- 直接复用 bytecode opcode；
-- 只有 jump patch、register compaction、极小 peephole；
-- 没有独立 opcode vocabulary；
-- 没有 virtual stack / handler frame / continuation frame lowering；
-- 没有 ss-chain transition / lookup operation 显式建模；
+- `compat` dialect 目前几乎是线性化 MIR，直接复用 bytecode opcode；只有 jump patch、register compaction、极小 peephole；
+- `abstract-machine` dialect 已有独立 opcode vocabulary（`FRAME_* / SS_* / SLOT_* / CONT_* / HANDLER_* / EFFECT_*`）与 handler frame / continuation frame lowering，并填充 handler/continuation/frame layout；但 VM 尚不执行这些 opcode，默认执行路径仍是 compat；
+- ss-chain transition / lookup operation / binding slot operation 尚未显式建模（`symbol_spaces` 未填充，L8/L9 仍为空检查）；
 - 没有 host ABI lowering；
-- 没有独立 verifier。
+- 已有独立 verifier（`qy.ir.lir.verify.verify_lir` + `predicates` L1–L15；L11/L12 为 CFG-aware 配对检查）。
 
 ---
 

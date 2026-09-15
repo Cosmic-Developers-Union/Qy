@@ -1,4 +1,5 @@
 # coding: utf-8
+# QY_DELETE_AFTER_MIGRATION: target=qy.std (compat re-export shim; no long-term implementation)
 """Compatibility imports for the old ``qy.stdlib`` path."""
 
 from qy.std import LANGUAGE_CORE_MODULES

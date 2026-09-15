@@ -19,7 +19,7 @@ class LowerLIRPass(Pass):
 
     def run(self, context: PassContext) -> PassResult:
         mir = cast(MIRProgram, context.input_artifact)
-        program = lower_lir(mir)
+        program = lower_lir(mir, dialect=context.options.lir_dialect)
         upstream_ids = {id(d) for d in mir.diagnostics}
         new_diagnostics = tuple(d for d in program.diagnostics if id(d) not in upstream_ids)
         return PassResult(

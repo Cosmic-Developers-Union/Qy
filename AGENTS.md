@@ -54,7 +54,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/tools/fmt/`：formatter。
 - `qy/tools/lsp/`：language server。
 - `qy/benchmark/`：benchmark harness。
-- `qy/cli/`：Typer CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`export`、`completion`。
+- `qy/cli/`：click CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`export`、`completion`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例（`validation/`、`design/`、`host/`）。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。
@@ -141,5 +141,5 @@ make bench-check
 - 文档或总结默认中文；代码标识符、公共 API、错误类型和命令保持英文原文。
 - 不要把 `node_modules/`、`dist/`、`QyLang.egg-info/` 等生成物当作主要编辑目标。
 - 如需新增操作符，新语义必须走 MIR / LIR / bytecode / VM；不得继续走 `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator` 这套 legacy operator dispatch。
-- **CLI `qy FILE` 隐式重定向**：当前 `qy/cli/__init__.py` 的 `QyGroup.resolve_command` fallback 在 typer 0.26.8 / click 8.4.2 下不再被触发（parent `TyperGroup.resolve_command` 对未知命令不再抛 `click.UsageError`），属于 dead code。推荐显式使用 `qy run FILE` 形式。详见 `qy/cli/__init__.py` `QyGroup` 类 docstring。
+- **CLI `qy FILE` 隐式重定向**：CLI 已从 typer 迁移到 click；`qy/cli/_app.py` 的 `QyGroup.resolve_command` fallback 在当前 click 下**正常工作**：`qy FILE` 等价 `qy run FILE`。推荐仍使用显式 `qy run FILE` 形式以避免与未来子命令名冲突。
 - 每次完成工作后用一句话总结修改内容。
