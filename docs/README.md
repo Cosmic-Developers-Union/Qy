@@ -16,6 +16,7 @@ This directory contains all design documents and technical documentation for QyL
 - [grammar-spec.md](grammar-spec.md) - 端到端语法规范（lexer → CST → raw AST → surface → core → HIR → MIR → LIR → bytecode）一站式 review
 - [core-language-semantics.md](core-language-semantics.md) - 核心语言严格语义（抽象语法 / 静态语义 / 小步操作语义 / 效果系统 / 模块系统）
 - [wasm-backend.md](wasm-backend.md) - WebAssembly 后端（LIR → WAT、值编码、调用约定、支持范围、宿主 runtime）
+- [llvm-backend.md](llvm-backend.md) - LLVM 后端（LIR → LLVM IR、C ABI sret/byval、libqy 契约、支持范围）
 
 ## Language Design
 

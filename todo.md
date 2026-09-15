@@ -1688,7 +1688,16 @@ source → raw AST → surface dialect → macro expand → HIR → MIR → LIR
 
 LIR 是两条路径的分叉点，但 LLVM backend 不能依赖当前过渡期“近似 bytecode opcode”的 LIR。必须先完成 Phase I 的 Qy abstract machine LIR：virtual stack、continuation frame、handler frame、ss-chain transition、lookup、slot operation 全部显式后，LLVM codegen 才能把 verified LIR 当作稳定输入。
 
-**当前实际状态（本轮核实）**：`qy llvm` 能输出 LLVM IR 文本，`qy/resources/libqy`（`qy.h` + `runtime.c`，512 行）能编译为 `libqy.a`；但 emitter 产出的 IR **尚不能通过 `llc`**——存在 SSA 局部名重复（`%call.argv`）、`load` 上非法 `!llvm.index` 元数据、jump-target 标签后自跳转、寄存器槽未分配等问题。Makefile 的 `llvm` / `llvm-gen` / `libqy` 目标已改指真实 libqy 路径（原引用的 `runtime/mqr.*` 与 `qy/llvm_codegen.py` 都不存在）。在 emitter 修复前，LLVM 只作 IR 观察/验证，不产出可执行文件。
+**当前实际状态（已修复）**：`qy llvm` 输出合法 LLVM IR，`llc` → `clang`(+`qy/resources/libqy`) 可生成原生可执行文件，且 `00/02/03/09` validation 样例结果与 register VM 一致（`make llvm-verify` PASS）。本轮修复的关键问题：
+
+- `%qy_value` 布局改为与 `qy.h` 一致（`{ i8, [7 x i8], [3 x i64] }`）；
+- 采用 C ABI：32-byte 结构体以 `ptr sret(%qy_value) align 8` 返回、`ptr byval(%qy_value) align 8` 传参，并使用 opaque pointer（`ptr`）——早期按值传递导致运行时读到 tag 0；
+- 寄存器改为 entry block 的 `alloca`，def/use 走内存，去掉未定义的 `%reg_N` 与 SSA 名重复；
+- 去掉非法 `!llvm.index`、jump-target 自跳转；`%call.argv` 改用 GEP 索引；
+- 补全模块契约 `@qy_fn_table` / `@qy_fn_table_size` / `@qy_main` / `@main`。
+- Makefile：`llvm` 默认输出与 `llvm-verify` 对齐（原一个写 `a.out`、一个跑基线名）。
+
+详见 `docs/llvm-backend.md`。当前支持 int/nil/T/string、内建算术、无自由变量的函数、let/cond/pipeline；effect/module/macro/并行仍降为 nil 占位。
 
 **设计约束**：
 

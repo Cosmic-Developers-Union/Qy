@@ -127,7 +127,7 @@ llvm: $(LIBQY_OBJ) | $(LLVM_DIR)
 		echo "Usage: make llvm SRC=path/to/file.qy OUT=/tmp/out [RUN=1]"; \
 		exit 1; \
 	fi
-	@out="$(if $(OUT),$(OUT),$(LLVM_DIR)/a.out)"; \
+	@out="$(if $(OUT),$(OUT),$(LLVM_DIR)/$$(basename "$(SRC)" .qy))"; \
 	base=$(LLVM_DIR)/$$(basename "$(SRC)" .qy); \
 	echo "  [1/4] Qy -> LLVM IR  ($(SRC))"; \
 	uv run python -m qy llvm $(SRC) > "$$base.ll" 2>&1 || { cat "$$base.ll"; exit 1; }; \
