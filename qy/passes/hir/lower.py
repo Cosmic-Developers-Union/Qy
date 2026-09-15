@@ -241,7 +241,7 @@ def _lower_form(
                 case "defun":
                     return _lower_defun(form, scope, context)
                 case "defeffect":
-                    return _lower_defeffect(form, context)
+                    return _lower_defeffect(form, scope, context)
                 case "module":
                     return _lower_module(form, scope, context)
                 case "from":
@@ -327,7 +327,7 @@ def _lower_form(
             case "defun":
                 return _lower_defun(form, scope, context)
             case "defeffect":
-                return _lower_defeffect(form, context)
+                return _lower_defeffect(form, scope, context)
             case "module":
                 return _lower_module(form, scope, context)
             case "from":
@@ -780,10 +780,11 @@ def _lower_defun(
             get_span(form),
         ),
         get_span(form),
+        owner_space=scope.symbol_space,
     )
 
 
-def _lower_defeffect(form: object, context: LoweringContext) -> IRExpr:
+def _lower_defeffect(form: object, scope: Scope, context: LoweringContext) -> IRExpr:
     items = _form_to_list(form)
     if len(items) < 2:
         context.diagnostic("defeffect expects an effect name", form)
@@ -812,6 +813,7 @@ def _lower_defeffect(form: object, context: LoweringContext) -> IRExpr:
         name,
         DefeffectExpr(name, resumable, get_span(form)),
         get_span(form),
+        owner_space=scope.symbol_space,
     )
 
 
@@ -1244,6 +1246,13 @@ def _define_local(
             continuous=binding.continuous,
             value=binding.value,
         )
+    # Record the symbol -> slot assignment in the owner space. This is the
+    # HIR-level layout fact that ``resolve.spaces`` turns into a serializable
+    # layout; without it ``SymbolSpace.bindings`` stays empty forever.
+    space = binding.owner_space
+    if space is not None and binding.symbol not in space.bindings:
+        space.bindings[binding.symbol] = len(space.bindings)
+        space.sources[binding.symbol.name] = binding.source
     return scope.define(binding)
 
 
@@ -1417,7 +1426,7 @@ def _lower_define(form: object, scope: Scope, context: LoweringContext) -> IRExp
     else:
         name = _ensure_symbol(name_form, "define name", context)
     value = _lower_form(value_form, scope, context)
-    return DefineExpr(name, value, get_span(form), _type_of(value))
+    return DefineExpr(name, value, get_span(form), _type_of(value), owner_space=scope.symbol_space)
 
 
 def _lower_pipeline(

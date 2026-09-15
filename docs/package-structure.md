@@ -138,7 +138,7 @@ passes/
   core/desugar.py                # 占位
   core/validate.py               # 占位
   resolve/symbols.py             # 占位（解析实现在 hir/lower.py）
-  resolve/spaces.py              # 占位（解析实现在 hir/lower.py）
+  resolve/spaces.py              # 已实现（HIR symbol-space layout：id/parent/slot）
   resolve/imports.py             # 占位
   hir/lower.py                   # 已实现
   hir/lower_pass.py              # 已实现
@@ -175,6 +175,7 @@ frontend.cst_parse
 -> frontend.surface_normalize
 -> macro.expand
 -> hir.lower
+-> resolve.spaces
 -> hir.validate
 -> mir.lower
 -> mir.validate
@@ -478,5 +479,5 @@ debug/
 11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（当前仍保留兼容入口）
 12. ~~LIR effect lowering 接线~~：`passes/lir/effects.py` 由 `lir.lower` 在 `PipelineOptions.lir_dialect == "abstract-machine"` 时调用；`passes/lir/spaces.py` 进一步产出 `symbol_spaces` 并降成 `SS_*` / `SLOT_COMPLETE`。L5–L12 verifier 全部有数据（L11/L12 CFG-aware）。默认执行路径仍是 `compat`：VM 尚不执行抽象机 opcode。
 13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes 接入默认管线（当前 reg_alloc / cfg_simplify 会破坏 effect 程序，需先修复）。
-14. 待推进：VM 执行 abstract-machine opcode（`HANDLER_* / CONT_* / EFFECT_* / SS_* / SLOT_*`）；HIR 层 `resolve.spaces` 让 binding id/slot 从 HIR 下沉（当前 LIR layout 由指令流重建）；`resolve.* / core.* / closure.convert / effect.*` 等占位 pass 的归属（实现或删除）。
-15. 已完成：`qy check` 改为 canonical frontend + HIR verifier；HIR verifier 补 CallExpr 递归、effect 声明顺序跟踪、宏导出事实；清理死代码并补 `QY_DELETE_AFTER_*` 标记；`qy/sem` 不再反向依赖 `qy.vm`；LIR abstract-machine dialect 接线、symbol-space/slot layout 与 verifier 生效。
+14. 待推进：VM 执行 abstract-machine opcode（`HANDLER_* / CONT_* / EFFECT_* / SS_* / SLOT_*`）；MIR 携带 binding id/slot（当前 MIR 指令只带 symbol 名），LIR 才能真正消费 HIR layout；`resolve.symbols / resolve.imports / core.* / closure.convert / effect.*` 等占位 pass 的归属（实现或删除）。
+15. 已完成：`qy check` 改为 canonical frontend + HIR verifier；HIR verifier 补 CallExpr 递归、effect 声明顺序跟踪、宏导出事实；`resolve.spaces` 实现为 HIR 层 symbol-space layout（`ProgramIR.symbol_spaces`，含 id/parent/slot/source），并进入默认管线；清理死代码并补 `QY_DELETE_AFTER_*` 标记；`qy/sem` 不再反向依赖 `qy.vm`；LIR abstract-machine dialect 接线、symbol-space/slot layout 与 verifier 生效。

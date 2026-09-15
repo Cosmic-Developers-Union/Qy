@@ -25,6 +25,8 @@ from qy.ir.hir import DefunExpr
 from qy.ir.hir import EffectHandler
 from qy.ir.hir import FromImportExpr
 from qy.ir.hir import HandleExpr
+from qy.ir.hir import HIRBindingSlot
+from qy.ir.hir import HIRSymbolSpaceLayout
 from qy.ir.hir import IRExpr
 from qy.ir.hir import LambdaExpr
 from qy.ir.hir import LetBinding
@@ -93,6 +95,8 @@ __all__ = [
     "DefunExpr",
     "EffectHandler",
     "FromImportExpr",
+    "HIRBindingSlot",
+    "HIRSymbolSpaceLayout",
     "HandleExpr",
     "IRExpr",
     "LIRBindingAddr",

@@ -34,6 +34,8 @@ __all__ = [
     "DefunExpr",
     "EffectHandler",
     "FromImportExpr",
+    "HIRBindingSlot",
+    "HIRSymbolSpaceLayout",
     "HandleExpr",
     "IRExpr",
     "LambdaExpr",
@@ -89,6 +91,9 @@ class SymbolSpace:
     name: str
     bindings: dict[Symbol, int] = field(default_factory=dict)
     parent: SymbolSpace | None = None
+    # Cold metadata: symbol name -> binding source, filled by lowering so
+    # ``resolve.spaces`` can emit accurate slot metadata.
+    sources: dict[str, BindingSource] = field(default_factory=dict)
 
     def lookup_chain(self) -> list[SymbolSpace]:
         """Return the symbol-space-chain from this space to root."""
@@ -148,9 +153,30 @@ class Binding:
 
 
 @dataclass(frozen=True, slots=True)
+class HIRBindingSlot:
+    """One once-complete binding slot in a HIR symbol-space layout."""
+
+    symbol: Symbol
+    index: int
+    source: BindingSource = "define"
+
+
+@dataclass(frozen=True, slots=True)
+class HIRSymbolSpaceLayout:
+    """Serializable symbol-space layout produced by ``resolve.spaces``."""
+
+    id: int
+    name: str
+    parent: int | None
+    slots: tuple[HIRBindingSlot, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class ProgramIR:
     body: tuple[IRExpr, ...]
     diagnostics: tuple[Diagnostic, ...] = ()
+    # ``resolve.spaces`` output: stable space ids + symbol -> slot assignment.
+    symbol_spaces: tuple[HIRSymbolSpaceLayout, ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -246,6 +272,9 @@ class DefunExpr:
     body: tuple[IRExpr, ...]
     span: SourceSpan | None = None
     type_name: TypeName = "function"
+    # Owner symbol-space recorded at lowering time so `resolve.spaces` can
+    # build the slot layout without re-deriving scopes.
+    owner_space: SymbolSpace | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -254,6 +283,7 @@ class DefineExpr:
     value: IRExpr
     span: SourceSpan | None = None
     type_name: TypeName = "any"
+    owner_space: SymbolSpace | None = None
 
 
 @dataclass(frozen=True, slots=True)

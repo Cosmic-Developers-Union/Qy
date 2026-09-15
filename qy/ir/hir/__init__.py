@@ -30,6 +30,8 @@ from qy.ir.hir.node import DefunExpr
 from qy.ir.hir.node import EffectHandler
 from qy.ir.hir.node import FromImportExpr
 from qy.ir.hir.node import HandleExpr
+from qy.ir.hir.node import HIRBindingSlot
+from qy.ir.hir.node import HIRSymbolSpaceLayout
 from qy.ir.hir.node import IRExpr
 from qy.ir.hir.node import LambdaExpr
 from qy.ir.hir.node import LetBinding
@@ -65,6 +67,8 @@ __all__ = [
     "DefunExpr",
     "EffectHandler",
     "FromImportExpr",
+    "HIRBindingSlot",
+    "HIRSymbolSpaceLayout",
     "HandleExpr",
     "IRExpr",
     "LambdaExpr",

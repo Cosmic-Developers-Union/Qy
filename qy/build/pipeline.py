@@ -41,6 +41,7 @@ from qy.passes.pass_base import PassResult
 from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.passes.pipeline import Pipeline
+from qy.passes.resolve.spaces import ResolveSpacesPass
 
 __all__ = [
     "ARTIFACT_KIND_TO_TARGET_PASS",
@@ -66,7 +67,7 @@ ARTIFACT_KIND_TO_TARGET_PASS: dict[str, str] = {
     RAW_FORMS: "frontend.reader_macro",
     SURFACE_FORMS: "frontend.surface_normalize",
     CORE_AST: "macro.expand",
-    HIR: "hir.lower",
+    HIR: "resolve.spaces",
     HIR_VALIDATED: "hir.validate",
     MIR: "mir.validate",
     LIR: "lir.verify",
@@ -89,6 +90,7 @@ def build_default_pipeline() -> Pipeline:
     pipeline.add_pass(SurfaceNormalizePass())
     pipeline.add_pass(MacroExpandPass())
     pipeline.add_pass(LowerHIRPass())
+    pipeline.add_pass(ResolveSpacesPass())
     pipeline.add_pass(ValidateHIRPass())
     pipeline.add_pass(LowerMIRPass())
     pipeline.add_pass(ValidateMIRPass())

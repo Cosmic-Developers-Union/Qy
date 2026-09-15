@@ -374,6 +374,7 @@ def test_default_pipeline_stage_order():
         "frontend.surface_normalize",
         "macro.expand",
         "hir.lower",
+        "resolve.spaces",
         "hir.validate",
         "mir.lower",
         "mir.validate",

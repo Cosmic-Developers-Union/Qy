@@ -237,6 +237,12 @@ source
   - 符号在编译期解析，env 绑定快照进专用局部变量（避免寄存器复用覆盖）；缺失符号抛 `WasmUnsupportedError` 而非静默错误编译；
   - 端到端验证（`wat2wasm` + Node）：`00_host_arithmetic`、`02_symbol_space_let`、`03_functions_tail_call`、`09_register_vm_tail_call` 与 register VM 结果一致；`tests/test_wasm_backend.py` 9 passed；
   - 文档 `docs/wasm-backend.md`（已注册到 `docs/README.md`）。
+- **本轮新增（HIR `resolve.spaces`）**：
+  - `hir.lower` 现在把 symbol→slot 写入 `SymbolSpace.bindings`，并记录 `sources`（冷元数据）；`DefineExpr` / `DefunExpr` 记录 `owner_space`；
+  - 新增 `qy/passes/resolve/spaces.py::ResolveSpacesPass`：收集 lowering 期创建的 lexical space，分配稳定 id、parent 链与 slot（symbol/index/source），产出 `HIRSymbolSpaceLayout` 并挂到 `ProgramIR.symbol_spaces`；profile 预装空间（只含 `builtin` 绑定）被过滤；
+  - 默认管线加入 `resolve.spaces`（`hir.lower` 之后、`hir.validate` 之前）；`hir.validate` 现在保留 `symbol_spaces`；
+  - `tests/test_resolve_spaces.py` 6 passed；全量 1087 passed。
+  - 仍待推进：MIR 指令携带 binding id/slot，LIR 才能消费 HIR layout 而不是重建。
 
 ## 2.2 仍在过渡
 
