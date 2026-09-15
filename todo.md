@@ -231,6 +231,12 @@ source
   - 修正 `SLOT_COMPLETE` operand schema 为 `(LIRBindingAddr, src_reg)`，L9 由恒空变为真实检查，且 slot identity 改为**按函数**比较（修复跨函数 `(0,0)` 误报）；L8 现在校验 slot address 指向存在的 space；
   - L10 同时检查 compat 的 `ENTER_SCOPE/EXIT_SCOPE` 与 abstract-machine 的 `SS_ENTER/SS_LEAVE`，并保持 warning 严重级；
   - 新增 4 个测试（layout/ops 产出、重复 SLOT_COMPLETE、函数局部 slot identity、space 越界）；全量 1065 passed。
+- **本轮新增（WebAssembly 后端）**：
+  - `qy/backend/wasm/`（`abi.py` 值编码 + `emit.py` LIR→WAT）+ `qy/resources/wasm/runtime.js`（JS 宿主 runtime）+ `qy wasm` CLI；
+  - 每个 LIR function 编成一个 wasm function，统一签名 `(argc i32, argv i32) -> i64`，内建算子走函数表 trampoline + `call_indirect`；扁平 CFG 用 `loop`/`br_table` dispatcher；
+  - 符号在编译期解析，env 绑定快照进专用局部变量（避免寄存器复用覆盖）；缺失符号抛 `WasmUnsupportedError` 而非静默错误编译；
+  - 端到端验证（`wat2wasm` + Node）：`00_host_arithmetic`、`02_symbol_space_let`、`03_functions_tail_call`、`09_register_vm_tail_call` 与 register VM 结果一致；`tests/test_wasm_backend.py` 9 passed；
+  - 文档 `docs/wasm-backend.md`（已注册到 `docs/README.md`）。
 
 ## 2.2 仍在过渡
 

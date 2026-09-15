@@ -43,6 +43,7 @@ qy/
     emit/
   backend/
     llvm/            # optional LLVM validation backend
+    wasm/            # WebAssembly backend: LIR -> WAT + abi（宿主 runtime 在 qy/resources/wasm/）
     vm/              # VM target：spec + bytecode emit, not a second runtime backend
       spec/          # VM 规格：opcode/ABI/state/effect/bytecode contract
   vm/                # Python VM implementation：machine/frame/state/scheduler/host
@@ -79,6 +80,8 @@ qy/
 - `ir/lir`: 表达 Qy abstract machine：layout、ABI、virtual stack、continuation frame、handler frame、symbol-space-chain transition、lookup operation、slot operation、fixup、peephole、debug injection。
 - `passes`: 只放变换和分析，按“阶段 + 主题”组织；IR model 不得 import `passes`。
 - `backend`: 非核心验证/输出后端；不得引入第二 runtime backend。
+- `backend/llvm`: LLVM IR 输出后端（验证用），宿主 runtime 在 `qy/resources/libqy/`。
+- `backend/wasm`: WebAssembly text（WAT）输出后端（验证用），宿主 runtime 在 `qy/resources/wasm/runtime.js`；只消费 compat LIR，不定义 opcode 规格。
 - `backend/vm`: VM target 的规格、bytecode emit、验证与适配；不是 Python VM 实现。
 - `backend/vm/spec`: 稳定 VM 规格，包括 bytecode、opcode、operand schema、ABI、abstract state、effect/continuation protocol；不得依赖某个 Python VM instance。
 - `vm`: Qy Register VM 的 Python 实现位置；实现 `backend/vm/spec`，不定义 VM target 规格。
@@ -101,6 +104,7 @@ qy/
 - `ir.* -> source/diag/errors/reader type`；不得 import `passes`、`vm`、`std`。
 - `passes -> ir/core/sem/session/diag`；不得把语义补丁写进 CLI 或 VM。
 - `backend/vm/spec -> lir/core/sem/errors`；不得依赖 `qy/vm`。
+- `backend/wasm -> lir/backend/wasm/abi`；不得重新解释 HIR/MIR 语义，也不得被内核反向依赖。
 - `backend/vm/emit -> backend/vm/spec/lir/diag`；不得重新解释 HIR/MIR 语义。
 - `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`。
 - `ext -> core/sem/import_`；实现宿主能力，但不得被内核反向依赖。
@@ -214,7 +218,7 @@ frontend.cst_parse          # 已实现
 -> lir.normalize
 -> optimize.const_fold / optimize.dce / optimize.inline
 -> emit.bytecode            # 已实现
--> backend（LLVM / VM）
+-> backend（LLVM / WASM / VM）
 ```
 
 最重要的 pass：

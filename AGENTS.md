@@ -42,6 +42,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
   - `qy/backend/vm/`：register VM target — bytecode emit / verifier；**不是第二 runtime backend**。
   - `qy/backend/vm/spec/`：VM 稳定契约 — bytecode / opcode / ABI / state / effect protocol；**不得**依赖某个 Python VM instance。
   - `qy/backend/llvm/`：LLVM 验证后端；不取代 register VM。
+  - `qy/backend/wasm/`：WebAssembly 验证后端（LIR → WAT，宿主 runtime 在 `qy/resources/wasm/runtime.js`）；不取代 register VM。
 - `qy/vm/`：Register VM 的 Python 实现位置；实现 `qy/backend/vm/spec`，**不定义** VM target 规格。
 - `qy/vm/instance/`：一次执行的可变运行实例（machine / frame / state / scheduler / host adapter）；**只能实现** `qy/backend/vm/spec`，不得定义 opcode / ABI 规格。
 - `qy/runtime.py`：`Qy` / `AsyncQy` 主类 API，串联完整管线。
@@ -54,7 +55,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/tools/fmt/`：formatter。
 - `qy/tools/lsp/`：language server。
 - `qy/benchmark/`：benchmark harness。
-- `qy/cli/`：click CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`export`、`completion`。
+- `qy/cli/`：click CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`wasm`、`export`、`completion`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：Qy 语言示例（`validation/`、`design/`、`host/`）。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。

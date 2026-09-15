@@ -118,6 +118,11 @@ uv run qy mir examples/hello.qy
 uv run qy lir examples/hello.qy
 uv run qy bytecode examples/hello.qy
 
+# WebAssembly 后端（LIR -> WAT；宿主 runtime 在 qy/resources/wasm/runtime.js）
+uv run qy wasm examples/validation/00_host_arithmetic.qy > program.wat
+wat2wasm program.wat -o program.wasm
+node qy/resources/wasm/runtime.js program.wasm
+
 # 构建
 uv build
 ```

@@ -73,6 +73,7 @@ def build_cli() -> click.Group:
     from qy.cli.commands.pkg import create_pkg_app
     from qy.cli.commands.repl import register as register_repl
     from qy.cli.commands.run import register as register_run
+    from qy.cli.commands.wasm import register as register_wasm
 
     register_run(qy_cli)
     register_repl(qy_cli)
@@ -82,6 +83,7 @@ def build_cli() -> click.Group:
     register_completion(qy_cli)
     register_export(qy_cli)
     register_llvm(qy_cli)
+    register_wasm(qy_cli)
     fmt_cmd.register(qy_cli)
     check_cmd.register(qy_cli)
     lsp_cmd.register(qy_cli)
