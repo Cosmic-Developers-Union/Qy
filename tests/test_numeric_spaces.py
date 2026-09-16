@@ -13,8 +13,8 @@ from qy.errors import QyTypeError
 from qy.sem.core import Int32Value
 from qy.sem.core import IntValue
 from qy.sem.core import UInt8Value
-from qy.symbol_space.numeric_spaces import make_int32_space
-from qy.symbol_space.numeric_spaces import make_uint8_space
+from qy.std.numeric_spaces import make_int32_space
+from qy.std.numeric_spaces import make_uint8_space
 
 S = Symbol
 

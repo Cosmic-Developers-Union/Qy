@@ -1,16 +1,16 @@
 # coding: utf-8
-"""测试 qy.symbol_space.profile 算子文档模块。."""
+"""测试 qy.std.profile 算子文档模块。."""
 
 from __future__ import annotations
 
-from qy.symbol_space.profile import OperatorDoc
-from qy.symbol_space.profile import OperatorModuleDoc
-from qy.symbol_space.profile import collect_supported_operators
-from qy.symbol_space.profile import format_operator_docs
+from qy.std.profile import OperatorDoc
+from qy.std.profile import OperatorModuleDoc
+from qy.std.profile import collect_supported_operators
+from qy.std.profile import format_operator_docs
 
 
 def test_import_profile_from_std():
-    """测试可以从 qy.symbol_space.profile 导入算子文档相关类型。."""
+    """测试可以从 qy.std.profile 导入算子文档相关类型。."""
     assert OperatorDoc is not None
     assert OperatorModuleDoc is not None
     assert collect_supported_operators is not None

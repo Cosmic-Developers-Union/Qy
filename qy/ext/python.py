@@ -48,7 +48,7 @@ from qy.macro import MacroDefinition
 from qy.sem.host import HostReference as HostObjectRef
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.symbol_space.effects import _await_cached_value
+from qy.std.effects import _await_cached_value
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 

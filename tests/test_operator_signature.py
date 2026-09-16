@@ -6,8 +6,8 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.syntax import Symbol
 from qy.runtime import Qy
-from qy.symbol_space import STANDARD_PROFILE_MODULES
-from qy.symbol_space import standard_profile_bindings
+from qy.std import STANDARD_PROFILE_MODULES
+from qy.std import standard_profile_bindings
 
 S = Symbol
 
@@ -103,7 +103,7 @@ def test_truthy_has_standard_profile_signature():
 
 def test_collect_supported_operators_covers_profile():
     """collect_supported_operators lists all standard profile symbols."""
-    from qy.symbol_space.profile import collect_supported_operators
+    from qy.std.profile import collect_supported_operators
 
     qy = Qy()
     supported_names: set[str] = set()

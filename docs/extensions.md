@@ -89,8 +89,8 @@ register_extension(DESCRIPTOR, module)
 
 已完成：
 
-- `qy.symbol_space.python` → `qy.ext.python`（`qy.py` 仍为模块名）。
-- `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost` 仍为模块名）。
+- 历史 `qy.symbol_space.python` → `qy.ext.python`（`qy.py` 仍为模块名）。
+- 历史 `qy.symbol_space.testhost` → `qy.ext.testhost`（`qy.testhost` 仍为模块名）。
 - `read-file` 从 `qy.io` 移入 `qy.ext.fs`；`qy.io` 只保留语言 IO（`print`/`echo`）。
 - `.py` 文件模块加载从 `qy/import_/registry.py` 移入 `qy.ext.python-modules`；
   内核 registry 只保留通用的 suffix loader hook。

@@ -50,14 +50,14 @@
 
 ## B3. 初始 profile 与 host interop 边界未清
 
-**位置**：`qy/symbol_space/__init__.py`、`qy/symbol_space/core.py`、`qy/ext/python.py`（host `py` 扩展，原 `qy/symbol_space/python.py` 已迁移）
+**位置**：`qy/std/__init__.py`、`qy/std/core.py`、`qy/ext/python.py`（host `py` 扩展，原 `qy/symbol_space/python.py` 已迁移）
 
 默认 prelude 已经不再自动加载 `qy.py`，且 `qy.core` 也不再暴露 `list`、`tuple`、`dict`、`set`。`pre-symbol-space-chain` 仍未形成显式可读模型，standard profile / minimal profile / 项目注入 profile 之间也还没有正式边界。
 **更新（本轮）**：`qy check` 已改为 canonical frontend + HIR verifier，LSP 诊断复用同一入口，因此 analyzer 现在消费的是与执行路径一致的实例事实。
 
 **偏差**：默认数字/字符串链段、默认是否预装算术等都可以是 standard profile 策略；但 profile 不能和语言核混写，Python host interop 也不应被误当成语言核心。analyzer/LSP 需要能读取当前 Qy 实例的完整初始链配置。
 
-`STANDARD_PROFILE_MODULES` 已作为默认 profile 的显式事实，由 `create_standard_runtime_space()` 和 profile 初始化共享。`qy.num` / `qy.str` / `qy.char` / `qy.py` 已从 legacy `qy/stdlib/` 迁入 `qy/symbol_space/`。
+`STANDARD_PROFILE_MODULES` 已作为默认 profile 的显式事实，由 `create_standard_runtime_space()` 和 profile 初始化共享。`qy.num` / `qy.str` / `qy.char` / `qy.py` 已从 legacy `qy/stdlib/` 迁入 `qy/std/`。
 
 **处置方向**：
 
@@ -142,7 +142,7 @@
 | --- | --- | --- | --- |
 | B1 | 多 backend / 兼容 API 残留 | P0 | ✅ 已完成 |
 | B2 | `define` 查 parent，不能 shadow 外层 | P0 | ✅ 已完成（fold 语义已落地） |
-| B3 | 默认环境加载 host interop | P0 | 部分完成（stdlib 已迁入 symbol_space） |
+| B3 | 默认环境加载 host interop | P0 | 部分完成（stdlib 已迁入 qy.std） |
 | B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 基本完成（legacy 重复实现已删除） |
 | B5 | `component` / legacy API 残留 | P1 | ✅ 已缓解（仅 legacy 显式引入） |
 | B6 | `RuntimeMetaCallExpr` | P1 | ✅ 已完成（节点与 opcode 已删除） |

@@ -46,8 +46,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/vm/`：Register VM 的 Python 实现位置；实现 `qy/backend/vm/spec`，**不定义** VM target 规格。
 - `qy/vm/instance/`：一次执行的可变运行实例（machine / frame / state / scheduler / host adapter）；**只能实现** `qy/backend/vm/spec`，不得定义 opcode / ABI 规格。
 - `qy/runtime.py`：`Qy` / `AsyncQy` 主类 API，串联完整管线。
-- `qy/std/`：标准库目标包；新增标准能力应优先进入这里。
-- `qy/stdlib/`：迁移期兼容 shim（仅 `__init__.py` re-export 自 `qy.std`）；**不得**新增长期实现。
+- `qy/std/`：标准 profile 与标准库的唯一实现位置（内置符号空间 `qy.core` / `qy.io` / `qy.num` / `qy.str` / `qy.char` / 数值空间等都在这里）；新增标准能力应进入这里。历史 `qy/symbol_space/` 与 `qy/stdlib/` 已删除。
 
 ### 工具与 CLI
 
@@ -101,7 +100,7 @@ make bench-check
 - 导入风格由 Ruff/isort 管理，当前配置偏好单行导入。
 - 禁止包内相对导入，使用 `from qy.xxx import ...`。
 - 目标包结构见 `docs/package-structure.md`。**不得**长期同时保留同名 `name.py` 与 `name/`；旧 `.py` 文件迁移时先把 public API 搬入目标 package `__init__.py`，再删除旧文件。`todo.md` §A0.2 与 `docs/package-structure.md` §5.1 列出已完成的迁移。
-- 标准库目标命名为 `qy.std`；`qy.stdlib` 只作为兼容迁移 shim 存在。
+- 标准库目标是 `qy.std`；不得重新引入 `qy.symbol_space` / `qy.stdlib` 路径。
 - 工程层包（`diag/source/session/build/project/import_/analysis/debug/errors`）只提供编译器基础设施，不得承载具体语言阶段语义。
 - VM 必须区分 target spec 与 Python implementation：`qy/backend/vm/spec` 定义契约，`qy/vm` 实现该契约，`qy/vm/instance` 保存一次执行的可变状态；instance **不得**定义 opcode / ABI 规格。
 - 删除 legacy 文件前必须满足 `docs/package-structure.md` 的删除前置条件；不得让兼容 shim 无限期保留。

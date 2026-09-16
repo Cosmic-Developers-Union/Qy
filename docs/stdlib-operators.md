@@ -135,16 +135,16 @@
 
 ## 当前状态
 
-`qy/stdlib/` 仅保留 `__init__.py` 兼容 shim，把 `StandardModule` /
+标准库实现位于 `qy/std/`（历史 `qy/stdlib/` shim 已删除），把 `StandardModule` /
 `register_module` / `LANGUAGE_CORE_MODULES` / `PRELUDE_MODULES` /
 `STANDARD_PROFILE_MODULES` / `OPTIONAL_STDLIB_MODULES` 等从 `qy.std`
 re-export。`qy.std` 是当前实际承载标准库算子（`qy.num` / `qy.str` /
 `qy.char` / `qy.io` 等）的目标包。
 
 历史 `qy.stdlib.arithmetic` / `qy.stdlib.strings` 子模块已不存在；
-`+ - * /` 等数值算子由 standard profile（`qy/symbol_space/numeric_spaces.py` +
+`+ - * /` 等数值算子由 standard profile（`qy/std/numeric_spaces.py` +
 profile 注册表）直接预装进 `pre-symbol-space-chain`，字符串算子由
-`qy.symbol_space.strings` 承载，不再走旧的 `str-*` family。
+`qy.std.strings` 承载，不再走旧的 `str-*` family。
 
 下一步应先完成 runtime `string` 与 `pre-symbol-space-chain` 的正式模型
 （见 `todo.md` Phase D 与 Phase M），再按本草案重写字符串库；不要在旧

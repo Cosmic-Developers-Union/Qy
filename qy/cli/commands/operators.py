@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import click
 
-from qy.symbol_space.profile import format_operator_docs
+from qy.std.profile import format_operator_docs
 
 
 def register(group: click.Group) -> None:

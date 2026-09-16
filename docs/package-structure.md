@@ -87,7 +87,7 @@ qy/
 - `vm`: Qy Register VM 的 Python 实现位置；实现 `backend/vm/spec`，不定义 VM target 规格。
 - `vm/instance`: 一次执行的可变运行实例，包括 machine、runtime frame、runtime state、scheduler、host adapter；只能实现 `backend/vm/spec`，不得定义 opcode/ABI 规格。
 - `ext`: Qy 与宿主环境之间**唯一**的官方边界。扩展用 `ExtensionDescriptor` 声明名字 / 可导入模块名 / 所需 capability / binding signature；宿主实现只出现在 `qy/ext/*`。语言内核（`core/frontend/ir/analysis/backend/vm/spec`）不得 import `qy.ext.*`；`qy.io` 等标准模块也不得内嵌宿主机能（文件系统、进程、Python 执行）。
-- `std`: standard profile 与标准库目标包；`qy/stdlib` 只是迁移期兼容目录。
+- `std`: standard profile 与标准库目标包；内置符号空间实现全部位于此包，`symbol_space/` 与 `qy/stdlib` 兼容目录已删除。
 - `tools`: 面向维护者和编辑器的工具；读取同一 Qy 实例事实，不私造语言规则。
 - `cli`: 只编排 public API 和工具入口，不承载语言语义。
 
@@ -108,7 +108,7 @@ qy/
 - `backend/vm/emit -> backend/vm/spec/lir/diag`；不得重新解释 HIR/MIR 语义。
 - `vm/instance -> backend/vm/spec/core/sem/runtime values/errors/debug`。
 - `ext -> core/sem/import_`；实现宿主能力，但不得被内核反向依赖。
-- `symbol_space/io/lang stdlib -> ext` 仅允许 re-export 已声明扩展 binding，不得自行实现宿主机能。
+- `std -> ext` 仅允许 re-export 已声明扩展 binding，不得自行实现宿主机能。
 - `std -> public runtime adapters`。
 - `tools/cli -> public API`；不得定义私有语言语义。
 
@@ -286,7 +286,7 @@ qy emit main.qy --target=lir
 - `qy/formatter.py` -> `qy/tools/fmt/`。
 - `qy/lsp.py` -> `qy/tools/lsp/`。
 - `qy/benchmark.py` -> `qy/tools/bench.py` 或 `bench/`。
-- `qy/stdlib/*` -> `qy/std/*`。
+- `qy/stdlib/*` -> `qy/std/*`（已完成，兼容 shim 已删除）。
 
 # 5.1 删除计划
 
@@ -352,7 +352,7 @@ qy emit main.qy --target=lir
 - ~~`qy/runtime_values.py`~~：已删除 ✅。
 - ~~`qy/environment.py`~~：已删除。`Environment` 现为 `RuntimeSpace` 的类型别名 ✅。
 - ~~`qy/operator_docs.py`~~：已删除 ✅。
-- `qy/stdlib/`：仅保留兼容入口 `__init__.py`，长期实现已迁入 `qy/std` / `qy/symbol_space/`；不得新增长期实现。
+- `qy/std/`：standard profile 与内置符号空间的唯一实现位置；`qy/symbol_space/` 与 `qy/stdlib/` 均已删除。
 - ~~`qy/python_codegen.py`~~：已删除 ✅。
 - `qy/operators.py`、`qy/operator_runtime.py`、`qy/operator_signature.py`：operator metadata/schema 进入 core/std/profile 统一模型后删除或拆迁。**当前状态**：`qy/core/operators.py` 已承载 operator 类型层级，`qy/core/operator_signature.py` 已承载签名模型；legacy 迁移完成。
 - `qy/symbol_utils.py`：当前仍在 `qy/core/symbol_utils.py`，承载符号工具函数。**当前状态**：已迁移至 core，不再是 legacy 文件。
@@ -469,14 +469,14 @@ debug/
 1. ~~固定本文档、`AGENTS.md`、`CLAUDE.md`、`todo.md` 中的目标结构。~~ ✅
 2. ~~建立 compiler infrastructure 包：`diag/source/session/build/project/import_/analysis/debug/errors`。~~ ✅
 3. ~~建立 VM 分层：`qy/backend/vm/spec/` 与 `qy/vm/instance/`。~~ ✅
-4. ~~建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。~~ ✅（`qy/stdlib/` 仅剩兼容入口，功能迁入 `qy/std` / `qy/symbol_space/`）
+4. ~~建立 `qy/std/` 目标包，停止新增 `qy/stdlib/` 文件。~~ ✅（功能全部迁入 `qy/std`，`qy/symbol_space/` 与 `qy/stdlib/` 兼容目录已删除）
 5. ~~修复 `passes` 命名错位：`lower_mir.py` 必须是 HIR -> MIR，`lower_lir.py` 必须是 MIR -> LIR。~~ ✅
 6. ~~解决同名 `macro`、`cli`、`errors` 冲突。~~ ✅
 7. ~~解决 `ir/hir`、`ir/mir`、`ir/lir` 冲突。~~ ✅
 8. ~~迁移 source/diag/session/project/import/build 的 legacy 文件。~~ ✅
 9. ~~按 VM target spec / Python VM implementation 分层迁移 VM 文件，再删除 top-level 旧文件。~~ ✅
 10. ~~迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。~~ ✅
-11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（当前仍保留兼容入口）
+11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（兼容 shim 已删除）
 12. ~~LIR effect lowering 接线 + VM 执行~~：`passes/lir/effects.py` 由 `lir.lower` 在 `PipelineOptions.lir_dialect == "abstract-machine"` 时调用；`passes/lir/spaces.py` 产出 `symbol_spaces` 并降成 `SS_*` / `SLOT_COMPLETE`。VM 现在执行 abstract-machine opcode（显式 handler 栈 + `QyContinuation` 快照；`CONT_RESTORE` 非终结），`tests/test_abstract_machine_vm.py` 与 compat 差分一致。默认执行路径仍为 `compat`。
 13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes 接入默认管线（当前 reg_alloc / cfg_simplify 会破坏 effect 程序，需先修复）。
 14. 待推进：MIR 指令 operand 直接携带 binding id/slot（当前 `DEFINE_ONCE`/`LOAD_ENV` 仍只带 symbol 名，LIR 的 `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 从指令流重建，与 HIR slot 一致）；`resolve.symbols / resolve.imports / core.* / closure.convert / effect.*` 等占位 pass 的归属（实现或删除）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。

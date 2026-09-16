@@ -5,7 +5,7 @@
 对包路径 (``foo/bar``) 与文件路径 (``./mod.qy``、``./mod.py``) 的
 fallback 加载。
 
-它本身不知道任何具体模块的内容；具体加载器在 ``qy.symbol_space`` 与
+它本身不知道任何具体模块的内容；具体加载器在 ``qy.std`` 与
 ``qy.import_.operators`` 启动时调用 ``register_module_loader`` 注入。
 """
 
@@ -77,8 +77,8 @@ def _ensure_builtins_installed() -> None:
     if _BUILTINS_INSTALLED:
         return
     _BUILTINS_INSTALLED = True
-    # qy.symbol_space 在 import-time 把内置 loader 注入注册表
-    import qy.symbol_space  # noqa: F401
+    # qy.std 在 import-time 把内置 loader 注入注册表
+    import qy.std  # noqa: F401
 
 
 def module_names() -> tuple[str, ...]:

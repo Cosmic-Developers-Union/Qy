@@ -35,8 +35,8 @@ KERNEL_PACKAGES = (
 
 FORBIDDEN_KERNEL_IMPORTS = (
     "qy.ext",
-    "qy.symbol_space.python",
-    "qy.symbol_space.testhost",
+    "qy.std.python",
+    "qy.std.testhost",
 )
 
 
