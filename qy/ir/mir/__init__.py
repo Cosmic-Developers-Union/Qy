@@ -583,8 +583,11 @@ def register_operand_positions(instruction: MIRInstruction) -> tuple[int, ...]:
     match instruction.opcode:
         case "LOAD_HOST" | "LOAD_CONST" | "LOAD_ENV" | "MAKE_FUNCTION" | "MAKE_MACRO":
             return (0,) if operands else ()
-        case "MOVE" | "RUNTIME_EVAL" | "EFFECT_RESUME":
+        case "MOVE" | "RUNTIME_EVAL":
             return tuple(range(min(2, len(operands)))) if len(operands) >= 2 else ()
+        case "EFFECT_RESUME":
+            # operands: (dst, cont_reg, value_reg) —— 三个都是寄存器
+            return tuple(range(min(3, len(operands))))
         case "STORE_LOCAL" | "DEFINE_ONCE":
             return (1,) if len(operands) >= 2 else ()
         case "CALL":
@@ -622,6 +625,9 @@ def register_def_position(instruction: MIRInstruction) -> int | None:
             return 0
         case "EFFECT_HANDLE_END":
             return 1 if len(instruction.operands) >= 2 else None
+        case "EFFECT_RESUME":
+            # operands: (dst, cont_reg, value_reg)
+            return 0 if instruction.operands else None
         case _:
             return None
 

@@ -520,3 +520,60 @@ def test_intern_key_distinguishes_t_and_none():
     from qy.passes.optimize.intern import _intern_key
 
     assert _intern_key(T) != _intern_key(NONE)
+
+
+def test_effect_resume_exposes_all_three_register_operands():
+    """EFFECT_RESUME(dst, cont, value) 三个操作数都是寄存器。."""
+    from qy.ir.mir import register_def_position
+    from qy.ir.mir import register_operand_positions
+
+    inst = MIRInstruction("EFFECT_RESUME", (5, 0, 4))
+
+    assert register_operand_positions(inst) == (0, 1, 2)
+    assert register_def_position(inst) == 0
+
+
+def test_reg_alloc_remaps_effect_resume_value_register():
+    """回归：value 寄存器漏重映射会让 resume 传回旧寄存器里的值。."""
+    source = """
+    (defeffect ping)
+    (handle (perform ping 42) ((ping (v k) (resume k (+ v 8)))))
+    """
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    env = create_standard_runtime_space()
+    result = compile_source_to_bytecode(
+        source,
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    assert not [d for d in result.diagnostics if d.severity == "error"]
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[-1] == IntValue(50)
+
+
+def test_effect_multi_handle_under_full_optimization():
+    """回归：两个 handle + resume 的算术结果在全量优化下必须保持一致。."""
+    source = """
+    (defeffect ask)
+    (handle (perform ask 7) ((ask (x k) (resume k (+ x 35)))))
+    (handle (+ 1 (perform ask 10)) ((ask (v k) (resume k (* v 3)))))
+    """
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    env = create_standard_runtime_space()
+    result = compile_source_to_bytecode(
+        source,
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[-2:] == [IntValue(42), IntValue(31)]
