@@ -296,6 +296,18 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 优化 pass 正确性（第二批）：CFG/活跃区间/寄存器表收口。`cfg_simplify` /
+    `licm` / `loop_opt` / `analysis.liveness` 各自复制了一份只认 JUMP/BRANCH 的 CFG
+    后继，都把 `EFFECT_PERFORM` 的 resume 块当不可达；现统一到
+    `qy.ir.mir.terminator_targets` / `terminator_target_positions`。liveness 从未收集
+    terminator 的寄存器使用，`reg_alloc` 手写 per-opcode 重映射且漏项；现在
+    `qy.ir.mir` 提供唯一的寄存器表（`register_operand_positions` /
+    `register_def_position` / `terminator_*`）供 liveness 与 reg_alloc 共用。
+    `intern` 不再按 `hash` 去重（`T`/`none` 同为 `hash(())`）也不再合并 identity
+    可观察的 symbol/字符串常量。实测 S3 11/86→0/86、S5 42/86→11/86；
+    剩余：S5 的 11 个失败全部是 effect 语料（疑似 continuation 保存寄存器集合
+    与合并后的活跃区间不一致，LIR 侧 `saved_registers=tuple(range(register_count))`
+    仍是保守全集），下一轮定位；S4 仅剩 1 个 inline 语料。
   - 优化 pass 正确性（第一批）：修复 `const_prop` 的两个缺陷（把 CALL 参数寄存器号
     替换成常量池下标 → 运行期读错寄存器；未排除被 shadow 的字面量/算子名，且文档承诺的
     `LOAD_ENV` 字面量降级从未实现）与 `const_fold` 的两个缺陷（shadow 的算子名仍按内置
