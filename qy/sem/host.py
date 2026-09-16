@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["HostObjectRef", "HostReference"]
+__all__ = ["HostReference"]
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -23,7 +23,3 @@ class HostReference:
     """
 
     value: object
-
-
-# Legacy alias kept for the VM instance layer and existing imports.
-HostObjectRef = HostReference

@@ -8,8 +8,8 @@ from qy.runtime import AsyncQy as Qy
 from qy.sem.core import DictValue
 from qy.sem.core import ListValue
 from qy.sem.core import StringValue
+from qy.sem.host import HostReference
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.vm.instance.values import HostObjectRef
 
 S = Symbol
 
@@ -197,7 +197,7 @@ return object()
         '''
     )
 
-    assert isinstance(result, HostObjectRef)
+    assert isinstance(result, HostReference)
 
 
 async def test_py_rejects_invalid_python_parameter_names():

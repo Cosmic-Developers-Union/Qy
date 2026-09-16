@@ -735,12 +735,12 @@ def test_backward_compatibility_imports():
     from qy.core.syntax import nil as QY_EMPTY_CHAIN
     from qy.core.syntax import nil as QY_EMPTY_LIST
     from qy.core.syntax import nil as QY_NIL
+    from qy.sem.host import HostReference
     from qy.sem.runtime import UserFunction
     from qy.session.runtime_space import RuntimeSpace as Environment
-    from qy.vm.instance.values import HostObjectRef
 
     assert Environment is not None
-    assert HostObjectRef is not None
+    assert HostReference is not None
     assert QY_EMPTY_CHAIN is not None
     assert QY_EMPTY_LIST is not None
     assert QY_NIL is not None

@@ -9,9 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qy.sem.host import HostObjectRef
-
-__all__ = ["HostObjectRef", "TailCall"]
+__all__ = ["TailCall"]
 
 
 @dataclass(frozen=True, slots=True)

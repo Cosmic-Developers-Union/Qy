@@ -254,11 +254,29 @@ source
   - `MIRProgram` / `LIRProgram` 增加 `symbol_spaces`；`mir.lower` 从 `ProgramIR` 携带，`mir.validate`、`lir.lower`、`lir.verify` 逐级保留；
   - `tests/test_resolve_spaces.py::test_layout_sinks_from_hir_to_mir_and_lir` 断言 HIR == MIR == LIR；
   - 仍待推进：MIR 指令 operand 直接携带 binding id/slot（现仍只带 symbol 名，LIR `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 重建）。
+- **本轮整改（值模型 / syntax datum / literal / std / CLI / 死代码）**：
+  - 值模型收口：`qy.core.syntax` 成为 `Symbol` / `Chain` / `QyNil` / `Form` / `get_span` 与
+    Qy 自身对象 `nil` / `T` / `none` 的唯一真源；删除 `qy.sem` 重复 datum
+    （`DatumValue`/`SymbolValue`/`NilValue`/`ChainValue`）与 `qy.sem.bridge`；
+  - raw AST 收口：删除 `qy/frontend/form.py` 与 tuple 兼容 API
+    （`form_to_tuple`/`read_tuple`/`write_tuple`/`TupleForm`/`SpannedTuple`/`DottedTuple` 等），
+    `Form = Symbol | Chain | QyNil`；`surface.py` 的 tuple 版实现删除；
+    `macro/hygiene.py` 改为 chain 表示并保留 span；
+  - quasiquote 展开统一到 `qy/core/quasiquote.py`，macro expand 与 HIR lowering 共用；
+  - literal 不再物化：`try_default_literal` 返回 `IntValue`/`FloatValue`，
+    MIR quote 不再把字符串 spelling 解成宿主 `str`（`quote` 一律返回 syntax datum）；
+  - 修复 VM `runtime eval`：`machine._eval_form` 不再把 Chain 转成宿主 tuple 后入管线；
+  - 标准库收口：`qy/symbol_space/*` 全部迁入 `qy/std/*`，删除 `qy/symbol_space` 与 `qy/stdlib`；
+  - CLI：`main()` 统一处理 click usage error（不再抛裸 traceback）；
+    `ast`/`run`/`fmt`/`check`/`typecheck` 支持 `-` stdin；`completion` 从真实 group
+    派生命令清单（修复漏 `pkg`）；`pkg publish` / `pkg update` 无 registry 时显式失败；
+  - 死代码清理：删除 `vm/instance/{scheduler,host}.py`、`session/options.py`、
+    `analysis/{infer,scope,refs,escape,effects}.py`、`sem.host.HostObjectRef` 别名、
+    根目录过期 demo（`component_demo.qy`/`test-cov.qy`）；`roadmap.yaml` 迁入 `docs/` 并注册。
 
 ## 2.2 仍在过渡
 
-- raw AST 仍是 `Symbol | str | tuple[...]`，与目标 `symbol / immutable chain` 不一致；
-- Python `str/int/list/tuple/dict/set/bool/None` 仍大量直接充当 runtime value；
+- Python `str/int/list/tuple/dict/set/bool/None` 仍大量直接充当 runtime value（host 边界与兼容容错处）；
 - `eq` 仍由 Python `is` 支撑；
 - `cond` / VM truthiness 仍受 Python 假值污染；
 - `pre-symbol-space-chain` 仍更像展平 root + literal resolver；

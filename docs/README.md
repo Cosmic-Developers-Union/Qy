@@ -18,6 +18,10 @@ This directory contains all design documents and technical documentation for QyL
 - [wasm-backend.md](wasm-backend.md) - WebAssembly 后端（LIR → WAT、值编码、调用约定、支持范围、宿主 runtime）
 - [llvm-backend.md](llvm-backend.md) - LLVM 后端（LIR → LLVM IR、C ABI sret/byval、libqy 契约、支持范围）
 
+## Roadmap
+
+- [roadmap.yaml](roadmap.yaml) - 最终产品定义与不可漂移事实（语言真源索引，YAML）
+
 ## Language Design
 
 - [op.md](op.md) - Operator design and semantics

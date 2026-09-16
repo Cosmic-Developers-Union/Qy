@@ -19,11 +19,11 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `docs/package-structure.md`：目标包结构真源；新增目录、迁移旧 `.py` 文件、`stdlib -> std` 时先对齐这里。
 - `qy/diag/`：统一诊断系统（`diagnostic.py`、`reporter.py`、`fixit.py`）。
 - `qy/source/`：源码位置（`file.py`、`span.py`、`sourcemap.py`）。
-- `qy/session/`：编译会话、配置、feature flags、profile facts（`config.py`、`context.py`、`options.py`、`runtime_space.py`、`pre_ss.py`、`profile.py`）。
+- `qy/session/`：编译会话、配置、feature flags、profile facts（`config.py`、`context.py`、`runtime_space.py`、`pre_ss.py`、`profile.py`、`number_ops.py`）。
 - `qy/build/`：pipeline driver、artifact、cache、build graph（`pipeline.py`、`artifact.py`、`cache.py`、`graph.py`、`driver.py`）。
 - `qy/project/`：`qy.toml`、package/module、项目依赖与 source roots。
 - `qy/import_/`：import resolver/module loader/from-fold bridge；尾随下划线用于避开 Python 关键字。
-- `qy/analysis/`：scope/ref/escape/liveness/effect analysis。
+- `qy/analysis/`：liveness analysis（scope/ref/escape/effect 分析已收敛到 canonical frontend + HIR verifier，旧 `infer.py`/`scope.py`/`refs.py`/`escape.py`/`effects.py` 已删除）。
 - `qy/debug/`：IR dump、trace、VM debug、LLVM command log。
 - `qy/errors/`：语言级异常、runtime error、compile error、internal compiler error 分类。
 
@@ -44,7 +44,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
   - `qy/backend/llvm/`：LLVM 验证后端；不取代 register VM。
   - `qy/backend/wasm/`：WebAssembly 验证后端（LIR → WAT，宿主 runtime 在 `qy/resources/wasm/runtime.js`）；不取代 register VM。
 - `qy/vm/`：Register VM 的 Python 实现位置；实现 `qy/backend/vm/spec`，**不定义** VM target 规格。
-- `qy/vm/instance/`：一次执行的可变运行实例（machine / frame / state / scheduler / host adapter）；**只能实现** `qy/backend/vm/spec`，不得定义 opcode / ABI 规格。
+- `qy/vm/instance/`：一次执行的可变运行实例（machine / frame / state）；**只能实现** `qy/backend/vm/spec`，不得定义 opcode / ABI 规格。
 - `qy/runtime.py`：`Qy` / `AsyncQy` 主类 API，串联完整管线。
 - `qy/std/`：标准 profile 与标准库的唯一实现位置（内置符号空间 `qy.core` / `qy.io` / `qy.num` / `qy.str` / `qy.char` / 数值空间等都在这里）；新增标准能力应进入这里。历史 `qy/symbol_space/` 与 `qy/stdlib/` 已删除。
 

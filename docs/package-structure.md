@@ -68,7 +68,7 @@ qy/
 - `build`: build graph、artifact、cache、pipeline driver；只编排阶段，不实现阶段语义。
 - `project`: `qy.toml`、package、module root、依赖、项目级 profile 配置；不执行 lowering/VM。
 - `import_`: import resolver、module loader、from/fold 与 build graph 的连接层；不直接求值 module body。
-- `analysis`: 作用域、引用、逃逸、活跃变量、effect analysis、类型/签名检查；不执行 runtime evaluation。
+- `analysis`: 活跃变量分析（liveness）；作用域/引用/逃逸/类型检查已收敛到 canonical frontend + HIR verifier，不执行 runtime evaluation。
 - `debug`: IR dump、trace、VM debug、LLVM command log；debug 输出不得修正语义。
 - `errors`: 语言级异常、runtime error、compile error、internal compiler error 分类；Span 最终应来自 `source`。
 - `frontend`: 只负责读取 source、构造 raw AST、执行 default surface dialect；不得提前创建 runtime value。
@@ -85,7 +85,7 @@ qy/
 - `backend/vm`: VM target 的规格、bytecode emit、验证与适配；不是 Python VM 实现。
 - `backend/vm/spec`: 稳定 VM 规格，包括 bytecode、opcode、operand schema、ABI、abstract state、effect/continuation protocol；不得依赖某个 Python VM instance。
 - `vm`: Qy Register VM 的 Python 实现位置；实现 `backend/vm/spec`，不定义 VM target 规格。
-- `vm/instance`: 一次执行的可变运行实例，包括 machine、runtime frame、runtime state、scheduler、host adapter；只能实现 `backend/vm/spec`，不得定义 opcode/ABI 规格。
+- `vm/instance`: 一次执行的可变运行实例，包括 machine、runtime frame、runtime state；只能实现 `backend/vm/spec`，不得定义 opcode/ABI 规格。
 - `ext`: Qy 与宿主环境之间**唯一**的官方边界。扩展用 `ExtensionDescriptor` 声明名字 / 可导入模块名 / 所需 capability / binding signature；宿主实现只出现在 `qy/ext/*`。语言内核（`core/frontend/ir/analysis/backend/vm/spec`）不得 import `qy.ext.*`；`qy.io` 等标准模块也不得内嵌宿主机能（文件系统、进程、Python 执行）。
 - `std`: standard profile 与标准库目标包；内置符号空间实现全部位于此包，`symbol_space/` 与 `qy/stdlib` 兼容目录已删除。
 - `tools`: 面向维护者和编辑器的工具；读取同一 Qy 实例事实，不私造语言规则。
@@ -406,7 +406,10 @@ diag/
 session/
   config.py
   context.py
-  options.py
+  profile.py
+  pre_ss.py
+  runtime_space.py
+  number_ops.py
 
 build/
   pipeline.py

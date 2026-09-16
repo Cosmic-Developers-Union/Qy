@@ -45,7 +45,7 @@ from qy.ext.descriptor import ExtensionDescriptor
 from qy.ext.registry import register_extension
 from qy.import_.module import StandardModule
 from qy.macro import MacroDefinition
-from qy.sem.host import HostReference as HostObjectRef
+from qy.sem.host import HostReference
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std.effects import _await_cached_value
@@ -261,7 +261,7 @@ def _qy_to_python(value: object, env: Environment) -> object:
     from qy.sem.core import SetValue
     from qy.sem.core import TupleValue
 
-    if isinstance(value, HostObjectRef):
+    if isinstance(value, HostReference):
         return value.value
     if value is QY_NIL or value is QY_T:
         return value
@@ -329,7 +329,7 @@ def _python_to_qy(value: object) -> object:
         return value
     if isinstance(value, QyCons):
         return map_qy_cons(value, _python_to_qy)
-    if isinstance(value, HostObjectRef | Symbol):
+    if isinstance(value, HostReference | Symbol):
         return value
     if value is None:
         return QY_NONE
@@ -349,7 +349,7 @@ def _python_to_qy(value: object) -> object:
         )
     if isinstance(value, set):
         return SetValue(tuple(_python_to_qy(item) for item in value))
-    return HostObjectRef(value)
+    return HostReference(value)
 
 
 def _is_qy_callable(value: object) -> bool:

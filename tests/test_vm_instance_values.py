@@ -3,32 +3,32 @@
 
 from __future__ import annotations
 
-from qy.vm.instance.values import HostObjectRef
+from qy.sem.host import HostReference
 from qy.vm.instance.values import TailCall
 
 
 def test_host_object_ref_creation():
-    """测试创建 HostObjectRef。."""
+    """测试创建 HostReference。."""
     obj = {"key": "value"}
-    ref = HostObjectRef(value=obj)
+    ref = HostReference(value=obj)
     assert ref.value is obj
 
 
 def test_host_object_ref_wraps_any_object():
-    """测试 HostObjectRef 可以包装任何对象。."""
+    """测试 HostReference 可以包装任何对象。."""
     # 包装字典
-    dict_ref = HostObjectRef(value={"a": 1})
+    dict_ref = HostReference(value={"a": 1})
     assert dict_ref.value == {"a": 1}
 
     # 包装列表
-    list_ref = HostObjectRef(value=[1, 2, 3])
+    list_ref = HostReference(value=[1, 2, 3])
     assert list_ref.value == [1, 2, 3]
 
     # 包装函数
     def func():
         return 42
 
-    func_ref = HostObjectRef(value=func)
+    func_ref = HostReference(value=func)
     assert func_ref.value() == 42  # ty: ignore[call-non-callable]
 
     # 包装类实例
@@ -37,21 +37,21 @@ def test_host_object_ref_wraps_any_object():
             self.x = x
 
     obj = TestClass(10)
-    obj_ref = HostObjectRef(value=obj)
+    obj_ref = HostReference(value=obj)
     assert obj_ref.value.x == 10  # ty: ignore[unresolved-attribute]
 
 
 def test_host_object_ref_equality():
-    """测试 HostObjectRef 的相等性。.
+    """测试 HostReference 的相等性。.
 
-    HostObjectRef 使用 eq=False，所以即使包装相同的对象，
-    两个不同的 HostObjectRef 实例也不相等。
+    HostReference 使用 eq=False，所以即使包装相同的对象，
+    两个不同的 HostReference 实例也不相等。
     """
     obj = {"key": "value"}
-    ref1 = HostObjectRef(value=obj)
-    ref2 = HostObjectRef(value=obj)
+    ref1 = HostReference(value=obj)
+    ref2 = HostReference(value=obj)
 
-    # 不同的 HostObjectRef 实例不相等（eq=False）
+    # 不同的 HostReference 实例不相等（eq=False）
     assert ref1 is not ref2
     # 但包装的对象是同一个
     assert ref1.value is ref2.value
@@ -147,9 +147,9 @@ def test_tail_call_inequality():
 
 
 def test_host_object_ref_immutable():
-    """测试 HostObjectRef 是不可变的。."""
+    """测试 HostReference 是不可变的。."""
     obj = {"key": "value"}
-    ref = HostObjectRef(value=obj)
+    ref = HostReference(value=obj)
 
     try:
         ref.value = {"new": "value"}  # ty: ignore[invalid-assignment]

@@ -109,6 +109,7 @@ from qy.sem.core import DictValue
 from qy.sem.core import ListValue
 from qy.sem.core import SetValue
 from qy.sem.core import TupleValue
+from qy.sem.host import HostReference
 from qy.sem.runtime import EffectDefinition
 from qy.session import ProfileConfig
 from qy.session import RuntimeSpace
@@ -128,7 +129,6 @@ from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.machine import RegisterVirtualMachine
 from qy.vm.instance.machine import evaluate_bytecode_async
-from qy.vm.instance.values import HostObjectRef
 
 __version__ = "0.0.4"
 __author__ = "Ge"
@@ -155,7 +155,7 @@ __all__ = [
     "Environment",
     "EvaluationError",
     "Form",
-    "HostObjectRef",
+    "HostReference",
     "Instruction",
     "LIRBindingAddr",
     "LIRBindingSlot",
