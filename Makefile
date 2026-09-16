@@ -1,4 +1,4 @@
-.PHONY: bench bench-baseline bench-check clean build check release lint test
+.PHONY: bench bench-baseline bench-check ci clean build check release lint test
 
 BENCH_BASELINE ?= benchmarks/baseline.json
 BENCH_MAX_REGRESSION_PERCENT ?= 10
@@ -24,6 +24,12 @@ build: clean
 
 check:
 	uv run twine check dist/*
+
+ci:
+	uv run ruff check .
+	uv run ruff format --check .
+	uv run ty check .
+	uv run python -m pytest -q
 
 lint:
 	uv run ruff check .
