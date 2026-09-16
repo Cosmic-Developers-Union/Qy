@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 from qy.build.artifact import HIR_VALIDATED
+from qy.build.pipeline import bytecode_artifact
+from qy.build.pipeline import compile_source_to_bytecode
 from qy.build.pipeline import compile_source_to_kind
 from qy.build.pipeline import hir_artifact
 from qy.ir.hir import HIRSymbolSpaceLayout
 from qy.ir.hir import ProgramIR
 from qy.passes.hir.lower import lower_source
 from qy.passes.pass_base import PassContext
+from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.passes.resolve.spaces import ResolveSpacesPass
 from qy.passes.resolve.spaces import collect_symbol_spaces
@@ -107,3 +110,16 @@ def test_resolve_spaces_pass_is_idempotent():
     assert isinstance(first.artifact, ProgramIR)
     assert isinstance(second.artifact, ProgramIR)
     assert first.artifact.symbol_spaces == second.artifact.symbol_spaces
+
+
+def test_layout_survives_into_bytecode_program():
+    """HIR 下沉的 layout 必须一路到达 bytecode，不得在 backend 边界丢失。."""
+    result = compile_source_to_bytecode(
+        "(define x 1) (+ x 1)",
+        PipelineSession(env=create_standard_runtime_space()),
+        options=PipelineOptions(error_threshold=10**6),
+    )
+    program = bytecode_artifact(result)
+
+    assert program.symbol_spaces
+    assert any(slot.symbol.name == "x" for layout in program.symbol_spaces for slot in layout.slots)

@@ -29,6 +29,8 @@ from qy.diag import Diagnostic
 if TYPE_CHECKING:
     from qy.core.syntax import Symbol
     from qy.errors import SourceSpan
+    from qy.ir.layout import SymbolSpaceLayout
+    from qy.ir.lir import LIRSymbolSpaceLayout
 
 __all__ = [
     "BytecodeFunction",
@@ -118,9 +120,9 @@ class BytecodeFunction:
     params: tuple[Symbol, ...]
     register_count: int
     instructions: tuple[Instruction, ...]
-    # Abstract-machine dialect only: symbol-space layout used by SLOT_COMPLETE
-    # to recover the bound symbol from a (space, slot) address.
-    symbol_spaces: tuple[object, ...] = ()
+    # Abstract-machine dialect only: per-function symbol-space layout used by
+    # SLOT_COMPLETE to recover the bound symbol from a (space, slot) address.
+    symbol_spaces: tuple[LIRSymbolSpaceLayout, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,11 +133,14 @@ class BytecodeProgram:
         functions: 函数列表
         main: 主函数索引（默认为 0）
         diagnostics: 诊断信息
+        symbol_spaces: 从 HIR 经 MIR/LIR 下沉的程序级 symbol-space layout
+            （``qy.ir.layout.SymbolSpaceLayout``）；不再在 backend 边界丢失。
     """
 
     functions: tuple[BytecodeFunction, ...]
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
+    symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
 
     @property
     def ok(self) -> bool:

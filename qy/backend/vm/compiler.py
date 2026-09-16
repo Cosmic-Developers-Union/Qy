@@ -118,6 +118,7 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
         tuple(_compile_function(f) for f in program.functions),
         program.main,
         program.diagnostics,
+        program.symbol_spaces,
     )
 
 
