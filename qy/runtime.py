@@ -62,6 +62,13 @@ class _QyBase:
         argument_evaluator: ArgumentEvaluator | None = None,
         signature: OperatorSignature | None = None,
     ) -> Callable[..., object]:
+        """注册 pure 算子（**legacy operator dispatch 路径**）。.
+
+        这是嵌入与迁移期的兼容入口：新语言语义必须走 MIR / LIR / bytecode / VM，
+        不得继续扩展 ``PureOperator`` / ``ScopeOperator`` / ``ControlOperator`` /
+        ``EffectOperator`` / ``MetaOperator`` 这套 dispatch（见 AGENTS.md）。
+        这些类不再从 ``qy`` 顶层导出，内部位置是 ``qy.core.operators``。
+        """
         registered = self.env.register_pure(
             name,
             func,

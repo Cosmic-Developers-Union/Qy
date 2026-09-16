@@ -34,11 +34,6 @@ from qy.build.pipeline import mir_artifact
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
 from qy.core.operator_signature import OperatorSignature
-from qy.core.operators import ControlOperator
-from qy.core.operators import EffectOperator
-from qy.core.operators import MetaOperator
-from qy.core.operators import PureOperator
-from qy.core.operators import ScopeOperator
 from qy.core.syntax import NONE as QY_NONE
 from qy.core.syntax import Chain as QyChain
 from qy.core.syntax import Chain as QyCons
@@ -146,11 +141,9 @@ __all__ = [
     "BytecodeFunctionValue",
     "BytecodeProgram",
     "CallExpr",
-    "ControlOperator",
     "Diagnostic",
     "DictValue",
     "EffectDefinition",
-    "EffectOperator",
     "EffectSpec",
     "Environment",
     "EvaluationError",
@@ -174,7 +167,6 @@ __all__ = [
     "MIRInstruction",
     "MIRProgram",
     "MIRTerminator",
-    "MetaOperator",
     "NoneValue",
     "OperatorDoc",
     "OperatorModuleDoc",
@@ -183,7 +175,6 @@ __all__ = [
     "PipelineSession",
     "ProfileConfig",
     "ProgramIR",
-    "PureOperator",
     "Qy",
     "QyAggregateError",
     "QyArityError",
@@ -208,7 +199,6 @@ __all__ = [
     "ReaderSyntaxError",
     "RegisterVirtualMachine",
     "RuntimeSpace",
-    "ScopeOperator",
     "SetValue",
     "SourceSpan",
     "Symbol",

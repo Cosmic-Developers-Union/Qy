@@ -281,6 +281,15 @@ source
     实测 86 个语料在开启优化后有 46/86 行为不一致（仅简化子集已 28/86），
     因此**不默认开启**，证据记录在 docs/package-structure.md §3.1；下一步是让
     optimize pass 正确处理 language-level effect / continuation 控制流。
+  - legacy 分阶段退役（第一步）：`qy/macro/evaluator.py` 不再导入
+    `qy.vm.instance.frame.QyContinuation` 与 `legacy_eval`（编译期 effect 用本地
+    `_CompileTimeContinuation`，UserFunction/ComponentOperator 在编译期环境自行求值），
+    `qy/macro/` 已不依赖 `qy.vm`；`PureOperator`/`ScopeOperator`/`ControlOperator`/
+    `EffectOperator`/`MetaOperator` 不再从 `qy` 顶层导出（内部位置 `qy.core.operators`），
+    `Qy.register_*` 明确标注为 legacy operator dispatch 兼容入口；
+  - layout 下沉补链：`BytecodeProgram.symbol_spaces` 携带 HIR 下沉的程序级 layout，
+    不再在 backend 边界丢失（`BytecodeFunction.symbol_spaces` 类型收紧为
+    `LIRSymbolSpaceLayout`）；剩余差距是 MIR operand 携带 binding id/slot；
   - 死代码清理：删除 `vm/instance/{scheduler,host}.py`、`session/options.py`、
     `analysis/{infer,scope,refs,escape,effects}.py`、`sem.host.HostObjectRef` 别名、
     根目录过期 demo（`component_demo.qy`/`test-cov.qy`）；`roadmap.yaml` 迁入 `docs/` 并注册。

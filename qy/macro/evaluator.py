@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import cast
 
 from qy.core.operator_runtime import validate_operator_arity
@@ -31,12 +32,12 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.errors import QyArityError
+from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.frontend.reader import SourceSpan
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.vm.instance.frame import QyContinuation
 
 __all__ = ["evaluate_compile_time_body"]
 
@@ -157,15 +158,11 @@ async def _call_compile_time(
     from qy.sem.runtime import UserFunction
 
     if isinstance(callee, UserFunction):
-        from qy.vm.instance.legacy_eval import call_user_function
-
         args = await _eval_args(raw_args, env)
-        return await call_user_function(callee, args)
+        return await _call_user_function(callee, args, env)
     if isinstance(callee, ComponentOperator):
-        from qy.vm.instance.legacy_eval import call_component_operator
-
         args = await _eval_args(raw_args, env)
-        return await call_component_operator(callee, args)
+        return await _call_component_operator(callee, args, env)
     if callable(callee):
         args = await _eval_args(raw_args, env)
         host_callable = cast(Callable[..., object], callee)
@@ -280,11 +277,72 @@ def _truthy(value: object) -> bool:
     return not is_nil(value)
 
 
-def _identity_continuation(effect_name: str, *, resumable: bool) -> QyContinuation:
-    async def resume(value: object) -> object:
+@dataclass(frozen=True, slots=True)
+class _CompileTimeContinuation:
+    """宏编译期 effect 的 identity continuation。.
+
+    compile-time evaluator 不得依赖 register VM，因此不复用 VM 的
+    ``QyContinuation``（后者携带捕获帧与 resume 快照）。这里只提供
+    effect / resumable / resume 这一最小语义接口。
+    """
+
+    effect: str
+    resumable: bool
+
+    async def resume(self, value: object) -> object:
+        if not self.resumable:
+            raise QyEffectError(
+                f"effect {self.effect!r} is not resumable",
+                metadata={"effect": self.effect, "value": value},
+            )
         return value
 
-    return QyContinuation(effect_name, resumable, resume)
+
+async def _call_user_function(
+    function: object, args: tuple[object, ...], env: Environment
+) -> object:
+    """在 compile-time 环境执行 ``UserFunction`` body。."""
+    from qy.sem.runtime import UserFunction
+
+    assert isinstance(function, UserFunction)
+    if len(args) != len(function.params):
+        raise QyArityError(
+            f"{function.name.name} expects {len(function.params)} arguments, got {len(args)}",
+            span=function.name.span,
+            metadata={
+                "expected": len(function.params),
+                "actual": len(args),
+                "function": function.name.name,
+            },
+        )
+    closure = function.closure if function.closure is not None else env
+    local_env = closure.child(dict(zip(function.params, args, strict=True)))
+    result: object = nil
+    for form in function.body:
+        result = await _eval_form(form, local_env)
+    return result
+
+
+async def _call_component_operator(
+    operator: object, args: tuple[object, ...], env: Environment
+) -> object:
+    """在 compile-time 环境执行 ``ComponentOperator`` 的组合序列。."""
+    from qy.sem.runtime import ComponentOperator
+
+    assert isinstance(operator, ComponentOperator)
+    if not args:
+        raise QyArityError("component operator expects at least 1 argument", metadata={"actual": 0})
+    closure = operator.closure if operator.closure is not None else env
+    first, *rest = args
+    result: object = first
+    for index, callee in enumerate(operator.operators):
+        call_args = (result, *rest) if index == 0 else (result,)
+        result = await _eval_form(list_to_chain([callee, *call_args]), closure)
+    return result
+
+
+def _identity_continuation(effect_name: str, *, resumable: bool) -> _CompileTimeContinuation:
+    return _CompileTimeContinuation(effect_name, resumable)
 
 
 async def _await_if_needed(value: object) -> object:

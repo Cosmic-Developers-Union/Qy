@@ -93,7 +93,11 @@ source (文本)
 - `Qy.evaluate_program(source)` — 求值多 form 程序，返回结果列表
 - `Qy.evaluate_file(path)` — 求值文件
 - `Qy.fmt(source)` — 格式化源码
-- `Qy.register_pure` / `register_scope` / `register_control` / `register_effect` / `register_meta` — 注册自定义算子
+- `Qy.register_pure` / `register_scope` / `register_control` / `register_effect` /
+  `register_meta` / `register_evaluation` / `register_syntax` — 注册自定义算子（**legacy
+  operator dispatch 兼容入口**；新语义必须走 MIR / LIR / bytecode / VM。
+  `PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` /
+  `MetaOperator` 不再是 ``qy`` 顶层公共 API，内部位置是 ``qy.core.operators``）
 
 ### 管线 API
 
