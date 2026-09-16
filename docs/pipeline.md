@@ -26,10 +26,12 @@ source (文本)
 | --- | --- | --- | --- | --- | --- |
 | CST 解析 | `frontend.cst_parse` | 源码字符串 | `CstProgram`（trivia-preserving CST） | 是，parser error | 否 |
 | Reader Macro | `frontend.reader_macro` | `CstProgram` | raw `list[Form]`；每个 form 是 `symbol` 或不可变 `chain` | 是，reader macro error | 否 |
+| Raw Validate | `raw.validate` | raw `list[Form]` | 同一个 raw `list[Form]`（守卫不变量） | 是，非 datum 节点 | 否 |
 | Surface Normalize | `frontend.surface_normalize` | raw `list[Form]` | default-dialect `list[Form]`，如 `'x` → `(quote x)` | 否 | 否 |
 | Macro Expand | `macro.expand` | surface-dialect `list[Form]` | `MacroExpansion(forms, diagnostics, traces)` | 是，展开错误、compile-time effect 错误 | 是，compile-time facade 捕获环境快照 |
 | HIR Lower | `hir.lower` | macroexpanded `CoreProgram` | `ProgramIR`（resolved binding、structured control、operator/effect/module facts） | 是，未解析符号、arity、module import 等 | 是，只读取实例事实 |
 | HIR Validate | `hir.validate` | `ProgramIR` | `ProgramIR` + H1–H14 diagnostics | 是，H1–H14 结构/effect/module 良构性 | 否 |
+| Effect Analyze | `effect.analyze` | `ProgramIR` | 同一个 `ProgramIR` + effect 事实（declared/performed/handled/escaping/…） | 是，EA1 escaping effect（hint） | 否 |
 | MIR Lower | `mir.lower` | `ProgramIR` | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
 | LIR Lower | `lir.lower` | `MIRProgram` | `LIRProgram`（Qy abstract machine IR，显式 frame / ss-chain / slot / continuation / handler） | 是 | 否 |
 | Bytecode Emit | `emit.bytecode` | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |

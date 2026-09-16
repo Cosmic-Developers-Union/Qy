@@ -132,23 +132,15 @@ passes/
   frontend/cst_parse.py          # 已实现
   frontend/reader_macro.py       # 已实现
   frontend/surface_normalize.py  # 已实现（surface 规约的唯一实现）
-  raw/validate.py                # 占位
-  macro/expand.py                # 已实现
-  macro/hygiene.py               # 占位（hygiene 实现在 qy/macro/hygiene.py）
-  core/desugar.py                # 占位
-  core/validate.py               # 占位
-  resolve/symbols.py             # 占位（解析实现在 hir/lower.py）
+  raw/validate.py                # 已实现（raw AST 只能是 symbol/chain/nil）
+  macro/expand.py                # 已实现（hygiene 由 qy/macro/hygiene.py 实现，无独立 pass）
   resolve/spaces.py              # 已实现（HIR symbol-space layout：id/parent/slot）
-  resolve/imports.py             # 占位
-  hir/lower.py                   # 已实现
+  hir/lower.py                   # 已实现（symbol 解析 / import 解析都在这里）
   hir/lower_pass.py              # 已实现
   hir/validate.py                # 已实现（H1-H14）
-  closure/convert.py             # 占位
-  effect/lower.py                # 占位
-  effect/analyze.py              # 占位
-  effect/flatten.py              # 占位
+  closure/convert.py             # 未实现（唯一保留的 closure 迁移目标）
+  effect/analyze.py              # 已实现（effect 事实 + EA1 escaping hint）
   control/tailcall.py            # 已实现，仅 build_optimization_pipeline 子管线
-  control/loop.py                # 占位
   control/cfg_simplify.py        # 已实现，仅 build_optimization_pipeline 子管线
   mir/lower_pass.py              # 已实现
   mir/normalize.py               # 已实现
@@ -160,23 +152,32 @@ passes/
   lir/peephole.py                # 已实现
   lir/effects.py                 # 已实现并接线（abstract-machine dialect，PipelineOptions.lir_dialect）
   lir/spaces.py                  # 已实现（SS_ENTER/SS_LEAVE/SLOT_COMPLETE + symbol_spaces layout）
-  lir/normalize.py               # 占位
   lir/verify.py                  # 已实现
   optimize/*.py                  # 已实现，仅 build_optimization_pipeline 子管线
-  emit/bytecode.py               # 已实现
-  emit/llvm_prepare.py           # 占位（LLVM 输出在 qy/backend/llvm/）
+  emit/bytecode.py               # 已实现（LLVM 输出在 qy/backend/llvm/）
 ```
+
+已删除的重复占位（职责已被现有实现覆盖，不再保留空文件）：
+`macro/hygiene.py`（→ `qy/macro/hygiene.py`）、`core/desugar.py`（→
+`qy/frontend/surface.py` + `qy/core/quasiquote.py`）、`core/validate.py`（→
+`hir.lower` + H1–H14）、`resolve/symbols.py` / `resolve/imports.py`（→ `hir.lower` +
+`qy/import_`）、`control/loop.py`（→ `control/loop_opt.py`）、`lir/normalize.py`
+（→ `lir/linearize` + `lir/peephole` + `lir/compact`）、`emit/llvm_prepare.py`
+（→ `qy/backend/llvm/`）、`effect/lower.py` / `effect/flatten.py`（effect lowering
+是 LIR 职责，见 `docs/ir-design.md`），以及空的 `passes/surface/` 目录。
 
 当前实际管线 pass 顺序（`build_default_pipeline()`，`qy/build/pipeline.py`）：
 
 ```text
 frontend.cst_parse
 -> frontend.reader_macro
+-> raw.validate
 -> frontend.surface_normalize
 -> macro.expand
 -> hir.lower
 -> resolve.spaces
 -> hir.validate
+-> effect.analyze
 -> mir.lower
 -> mir.validate
 -> lir.lower（内部: linearize -> lower_compat_effects -> peephole -> compact_registers）
@@ -193,32 +194,24 @@ meta-interp 用例（寄存器分配与 CFG 简化尚未正确处理 language-le
 目标 pass 顺序（完整管线）：
 
 ```text
-frontend.cst_parse          # 已实现
--> frontend.reader_macro    # 已实现
+frontend.cst_parse             # 已实现
+-> frontend.reader_macro       # 已实现
+-> raw.validate                # 已实现
 -> frontend.surface_normalize  # 已实现
--> macro.expand             # 已实现
--> macro.hygiene
--> core.desugar
--> core.validate
--> resolve.imports
--> resolve.spaces
--> resolve.symbols
--> hir.lower                # 已实现
--> hir.validate
--> closure.convert
--> effect.analyze
--> effect.lower
--> effect.flatten
--> control.tailcall
--> control.loop
--> control.cfg_simplify
--> mir.normalize            # 内部工具模块，由 mir.lower 调用
--> mir.validate
--> lir.lower                # 已实现
--> lir.verify
--> lir.normalize
--> optimize.const_fold / optimize.dce / optimize.inline
--> emit.bytecode            # 已实现
+-> macro.expand                # 已实现
+-> resolve.spaces              # 已实现
+-> hir.lower                   # 已实现
+-> hir.validate                # 已实现
+-> effect.analyze              # 已实现
+-> closure.convert             # 未实现
+-> control.tailcall            # 已实现，仅优化子管线
+-> control.cfg_simplify        # 已实现，仅优化子管线
+-> mir.normalize               # 内部工具模块，由 mir.lower 调用
+-> mir.validate                # 已实现
+-> lir.lower                   # 已实现
+-> lir.verify                  # 已实现
+-> optimize.const_fold / optimize.dce / optimize.inline   # 仅优化子管线
+-> emit.bytecode               # 已实现
 -> backend（LLVM / WASM / VM）
 ```
 
@@ -239,10 +232,11 @@ qy emit main.qy --target=lir
 
 `--after=<pass-id>` 表示运行到该 pass 后 dump artifact；`--target=<artifact>` 表示运行到目标产物后停止。
 
-**当前状态**：`resolve.spaces` / `effect.analyze` / `effect.flatten` / `closure.convert`
-等仍是占位；它们描述的职责目前分布在 `hir/lower.py`（解析、binding layout）与
-`lir/lower.py`（effect 到 compat opcode）中。占位文件保留为明确的迁移目标，
-不再标注为"已实现"。
+**当前状态**：`raw.validate`、`resolve.spaces`、`effect.analyze` 已实现并接入默认管线；
+`closure.convert` 是唯一保留的未实现 pass（closure/env 捕获目前由 `hir.lower` 的
+symbol-space 链隐式承担）。effect lowering 不是独立 pass：它是 LIR 职责
+（`lir/lower.py` + `passes/lir/effects.py` / `compat_effects.py`），因为
+`handle`/`perform`/`resume` 到 LIR 边界后不应再作为语言级指令存在。
 
 # 4. 同名模块冲突（已全部解决）
 
@@ -482,5 +476,5 @@ debug/
 11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（兼容 shim 已删除）
 12. ~~LIR effect lowering 接线 + VM 执行~~：`passes/lir/effects.py` 由 `lir.lower` 在 `PipelineOptions.lir_dialect == "abstract-machine"` 时调用；`passes/lir/spaces.py` 产出 `symbol_spaces` 并降成 `SS_*` / `SLOT_COMPLETE`。VM 现在执行 abstract-machine opcode（显式 handler 栈 + `QyContinuation` 快照；`CONT_RESTORE` 非终结），`tests/test_abstract_machine_vm.py` 与 compat 差分一致。默认执行路径仍为 `compat`。
 13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes 接入默认管线（当前 reg_alloc / cfg_simplify 会破坏 effect 程序，需先修复）。
-14. 待推进：MIR 指令 operand 直接携带 binding id/slot（当前 `DEFINE_ONCE`/`LOAD_ENV` 仍只带 symbol 名，LIR 的 `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 从指令流重建，与 HIR slot 一致）；`resolve.symbols / resolve.imports / core.* / closure.convert / effect.*` 等占位 pass 的归属（实现或删除）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
+14. 待推进：MIR 指令 operand 直接携带 binding id/slot（当前 `DEFINE_ONCE`/`LOAD_ENV` 仍只带 symbol 名，LIR 的 `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 从指令流重建，与 HIR slot 一致）；占位 pass 归属已收口（`raw.validate` / `resolve.spaces` / `effect.analyze` 实现并接入；重复占位已删除；仅 `closure.convert` 仍未实现）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
 15. 已完成：`qy check` 改为 canonical frontend + HIR verifier；HIR verifier 补 CallExpr 递归、effect 声明顺序跟踪、宏导出事实；`resolve.spaces` 实现为 HIR 层 symbol-space layout（`ProgramIR.symbol_spaces`，含 id/parent/slot/source），并**下沉到 MIR/LIR**（共享 `qy.ir.layout` 类型，见 `tests/test_resolve_spaces.py::test_layout_sinks_from_hir_to_mir_and_lir`）；清理死代码并补 `QY_DELETE_AFTER_*` 标记；`qy/sem` 不再反向依赖 `qy.vm`；LIR abstract-machine dialect 接线 + VM 执行；LLVM/WASM 验证后端可用。

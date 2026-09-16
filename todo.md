@@ -270,6 +270,12 @@ source
   - CLI：`main()` 统一处理 click usage error（不再抛裸 traceback）；
     `ast`/`run`/`fmt`/`check`/`typecheck` 支持 `-` stdin；`completion` 从真实 group
     派生命令清单（修复漏 `pkg`）；`pkg publish` / `pkg update` 无 registry 时显式失败；
+  - 占位 pass 收口：实现 `raw.validate`（raw AST 只能是 symbol/chain/nil）与
+    `effect.analyze`（declared/performed/handled/escaping/discarded/multi-shot/parallel
+    事实 + EA1 hint），两者接入默认管线；删除 10 个已被现有实现覆盖的重复占位
+    （`macro/hygiene`、`core/desugar`、`core/validate`、`resolve/{symbols,imports}`、
+    `control/loop`、`lir/normalize`、`emit/llvm_prepare`、`effect/{lower,flatten}`）
+    与空的 `passes/surface/`；`closure.convert` 是唯一保留的未实现 pass；
   - 死代码清理：删除 `vm/instance/{scheduler,host}.py`、`session/options.py`、
     `analysis/{infer,scope,refs,escape,effects}.py`、`sem.host.HostObjectRef` 别名、
     根目录过期 demo（`component_demo.qy`/`test-cov.qy`）；`roadmap.yaml` 迁入 `docs/` 并注册。

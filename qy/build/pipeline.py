@@ -25,6 +25,7 @@ from qy.frontend.cst import CstProgram
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRProgram
 from qy.ir.mir import MIRProgram
+from qy.passes.effect.analyze import EffectAnalyzePass
 from qy.passes.emit.bytecode import EmitBytecodePass
 from qy.passes.frontend.cst_parse import CstParsePass
 from qy.passes.frontend.reader_macro import ReaderMacroPass
@@ -41,6 +42,7 @@ from qy.passes.pass_base import PassResult
 from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.passes.pipeline import Pipeline
+from qy.passes.raw.validate import ValidateRawPass
 from qy.passes.resolve.spaces import ResolveSpacesPass
 
 __all__ = [
@@ -87,11 +89,13 @@ def build_default_pipeline() -> Pipeline:
     pipeline = Pipeline()
     pipeline.add_pass(CstParsePass())
     pipeline.add_pass(ReaderMacroPass())
+    pipeline.add_pass(ValidateRawPass())
     pipeline.add_pass(SurfaceNormalizePass())
     pipeline.add_pass(MacroExpandPass())
     pipeline.add_pass(LowerHIRPass())
     pipeline.add_pass(ResolveSpacesPass())
     pipeline.add_pass(ValidateHIRPass())
+    pipeline.add_pass(EffectAnalyzePass())
     pipeline.add_pass(LowerMIRPass())
     pipeline.add_pass(ValidateMIRPass())
     pipeline.add_pass(LowerLIRPass())

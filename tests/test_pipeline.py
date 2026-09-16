@@ -372,11 +372,13 @@ def test_default_pipeline_stage_order():
     assert [p.name for p in pipeline.passes] == [
         "frontend.cst_parse",
         "frontend.reader_macro",
+        "raw.validate",
         "frontend.surface_normalize",
         "macro.expand",
         "hir.lower",
         "resolve.spaces",
         "hir.validate",
+        "effect.analyze",
         "mir.lower",
         "mir.validate",
         "lir.lower",
