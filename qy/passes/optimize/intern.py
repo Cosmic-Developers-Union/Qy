@@ -17,6 +17,7 @@ from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_function
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -84,13 +85,7 @@ def _remap_constants(function: MIRFunction, old_to_new: dict[int, int]) -> MIRFu
     if not changed:
         return function
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        tuple(new_blocks),
-        function.entry,
-    )
+    return rebuild_function(function, blocks=tuple(new_blocks))
 
 
 _SAFE_INTERN_BASES: tuple[type, ...] = ()

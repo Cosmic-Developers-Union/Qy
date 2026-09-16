@@ -10,6 +10,7 @@ Simplifies MIR control flow graphs:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from qy.ir.mir import MIRBlock
@@ -70,13 +71,7 @@ def _simplify_function(function: MIRFunction) -> MIRFunction:
         for b in (blocks[bid] for bid in sorted(blocks.keys()))
     )
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        new_blocks,
-        id_map.get(entry, 0),
-    )
+    return replace(function, blocks=new_blocks, entry=id_map.get(entry, 0))
 
 
 def _find_reachable(entry: MIRBlockId, blocks: dict[MIRBlockId, MIRBlock]) -> set[MIRBlockId]:

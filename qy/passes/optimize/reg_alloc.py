@@ -21,6 +21,7 @@ from qy.ir.mir import register_operand_positions
 from qy.ir.mir import register_tuple_positions
 from qy.ir.mir import terminator_register_positions
 from qy.ir.mir import terminator_register_tuple_positions
+from qy.passes.optimize.facts import rebuild_function
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -58,8 +59,9 @@ def _allocate_registers(function: MIRFunction) -> MIRFunction:
 
     info = compute_liveness(function)
     intervals = info.intervals.intervals
+    referenced = _referenced_registers(function)
 
-    if not intervals:
+    if not intervals and not referenced:
         return function
 
     param_count = len(function.params)
@@ -85,16 +87,54 @@ def _allocate_registers(function: MIRFunction) -> MIRFunction:
             physical_map[next_physical] = end
             next_physical += 1
 
+    # 活跃区间未覆盖的寄存器也必须重编号：否则旧编号会与新的物理编号冲突，
+    # 或超出缩减后的 register_count（历史缺陷：LIR 报 out-of-range register）。
+    for vreg in sorted(referenced):
+        if vreg in reg_to_physical:
+            continue
+        reg_to_physical[vreg] = next_physical
+        next_physical += 1
+
     new_blocks = tuple(_remap_block(block, reg_to_physical) for block in function.blocks)
     new_register_count = max(next_physical, len(function.params))
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        new_register_count,
-        new_blocks,
-        function.entry,
-    )
+    return rebuild_function(function, blocks=new_blocks, register_count=new_register_count)
+
+
+def _referenced_registers(function: MIRFunction) -> set[int]:
+    """函数内出现过的全部虚拟寄存器（指令 + terminator，含寄存器元组）。."""
+    from qy.ir.mir import terminator_register_positions
+    from qy.ir.mir import terminator_register_tuple_positions
+
+    registers: set[int] = set()
+
+    def _add(value: object) -> None:
+        if isinstance(value, int):
+            registers.add(value)
+
+    def _add_tuple(value: object) -> None:
+        if isinstance(value, tuple):
+            for item in value:
+                _add(item)
+
+    for block in function.blocks:
+        for inst in block.instructions:
+            operands = inst.operands
+            for index in register_operand_positions(inst):
+                if index < len(operands):
+                    _add(operands[index])
+            for index in register_tuple_positions(inst):
+                if index < len(operands):
+                    _add_tuple(operands[index])
+        terminator = block.terminator
+        operands = terminator.operands
+        for index in terminator_register_positions(terminator):
+            if index < len(operands):
+                _add(operands[index])
+        for index in terminator_register_tuple_positions(terminator):
+            if index < len(operands):
+                _add_tuple(operands[index])
+    return registers
 
 
 def _remap_block(block: MIRBlock, reg_map: dict[int, int]) -> MIRBlock:

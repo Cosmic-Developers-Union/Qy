@@ -18,6 +18,7 @@ from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import terminator_targets
+from qy.passes.optimize.facts import rebuild_function
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -111,13 +112,7 @@ def _hoist_in_function(function: MIRFunction) -> MIRFunction:
 
     new_blocks = tuple(blocks_map[b.id] for b in function.blocks if b.id in blocks_map)
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        new_blocks,
-        function.entry,
-    )
+    return rebuild_function(function, blocks=tuple(new_blocks))
 
 
 def _is_loop_invariant(inst: MIRInstruction, loop_defs: set[int]) -> bool:

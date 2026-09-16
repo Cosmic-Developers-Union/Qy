@@ -16,6 +16,7 @@ from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.passes.optimize.facts import rebuild_function
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -68,13 +69,7 @@ def _eliminate_dead_stores(function: MIRFunction) -> MIRFunction:
             new_blocks.append(MIRBlock(block.id, tuple(new_instructions), block.terminator))
         blocks = new_blocks
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        tuple(blocks),
-        function.entry,
-    )
+    return rebuild_function(function, blocks=tuple(new_blocks))
 
 
 def _is_dead_store(inst: MIRInstruction, uses: dict[int, int]) -> bool:

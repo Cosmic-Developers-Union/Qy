@@ -11,6 +11,7 @@ from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.passes.optimize.facts import rebuild_function
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -64,10 +65,4 @@ def _optimize_function(function: MIRFunction) -> MIRFunction:
     if not changed:
         return function
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        tuple(new_blocks),
-        function.entry,
-    )
+    return rebuild_function(function, blocks=tuple(new_blocks))

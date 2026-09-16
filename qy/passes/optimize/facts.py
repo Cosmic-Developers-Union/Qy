@@ -21,7 +21,7 @@ from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 
-__all__ = ["rebuild_program", "shadowed_names"]
+__all__ = ["rebuild_function", "rebuild_program", "shadowed_names"]
 
 
 def shadowed_names(program: MIRProgram) -> frozenset[str]:
@@ -42,6 +42,25 @@ def shadowed_names(program: MIRProgram) -> frozenset[str]:
                             if isinstance(alias, Symbol):
                                 names.add(alias.name)
     return frozenset(names)
+
+
+def rebuild_function(
+    function: MIRFunction,
+    *,
+    blocks: tuple[object, ...] | None = None,
+    register_count: int | None = None,
+) -> MIRFunction:
+    """Rebuild *function* preserving every fact except the replaced fields.
+
+    必须用这个 helper 而不是位置参数构造 ``MIRFunction(...)``：``space_id``
+    等事实一旦丢失，MIR↔layout 的关联就断了（LIR 侧不会再发 ``SLOT_COMPLETE``）。
+    """
+    updates: dict[str, object] = {}
+    if blocks is not None:
+        updates["blocks"] = blocks
+    if register_count is not None:
+        updates["register_count"] = register_count
+    return replace(function, **updates)
 
 
 def rebuild_program(

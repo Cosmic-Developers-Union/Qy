@@ -296,6 +296,19 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 优化正确性（第三批）：effect 重编号与内联健全性收口（见
+    `docs/package-structure.md` §3.1）。`EFFECT_RESUME(dst, cont, value)` 的 value
+    寄存器此前未被 `reg_alloc` 重编号（resume 传回陈旧值）；
+    `optimize.inline` / `aggressive_inline` 各自复制了一份实现且都缺闭包守卫
+    （闭包变量被内联 → `unresolved symbol`）、形参未替换为实参寄存器、`_offset_instruction`
+    兜底给所有 int 操作数加偏移、effect 守卫写的是不存在的 opcode；现两份实现收口到
+    `passes/optimize/inline_core.py`。另外修掉：`const_prop` 未核对宿主 env 覆盖、
+    `reg_alloc` 未映射无活跃区间的寄存器（LIR out-of-range）、位置参数重建
+    `MIRFunction` 丢掉 `space_id`（LIR 不再发 `SLOT_COMPLETE`）、`instr_sched` 丢
+    `LIRProgram.symbol_spaces`。实测 86 语料在 S1-S5 全部子集下与未优化结果一致
+    （`scripts/optimize_frontier.py`），收益 -16% 指令 / -58% 寄存器；默认开启仍有
+    14 个测试失败（llvm/wasm 后端常量形态 9、async core 3、开关断言 2），
+    已记入 §3.1，留给下一轮。
   - 优化 pass 正确性（第二批）：CFG/活跃区间/寄存器表收口。`cfg_simplify` /
     `licm` / `loop_opt` / `analysis.liveness` 各自复制了一份只认 JUMP/BRANCH 的 CFG
     后继，都把 `EFFECT_PERFORM` 的 resume 块当不可达；现统一到

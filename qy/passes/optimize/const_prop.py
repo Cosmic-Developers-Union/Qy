@@ -15,6 +15,9 @@ literal resolver），因此这一步把每次求值都发生的 symbol-space �
 - 只有当该拼写在**整个程序**内没有被任何 ``DEFINE_ONCE`` / ``STORE_LOCAL``
   绑定（``define`` 允许 shadow 字面量拼写）且没有被 ``from`` 导入同名绑定
   （``ImportSpec.alias``）时才改写；
+- 还必须核对**真实运行时 env**：宿主可以向实例 env 注入任意绑定（包括字面量拼写），
+  因此要求 ``env.resolve(symbol) == 默认字面量``；字符串 / 字符的 identity 目前是
+  可观察的（``=`` 按 identity 比较），一律不改写；
 - 只改写 literal resolver 能解析的拼写（``default_literal_type`` 非 None）；
 - 不改写 CALL / BUILD_TUPLE 的操作数：MIR 用虚拟寄存器传参，把寄存器号换成
   常量池下标会读错寄存器（历史缺陷，见本条修复）。
@@ -58,8 +61,9 @@ class ConstPropagationPass(Pass):
             pool.intern(value)
 
         shadowed = shadowed_names(program)
+        env = context.session.env
         new_functions = tuple(
-            _rewrite_function(function, pool, shadowed) for function in program.functions
+            _rewrite_function(function, pool, shadowed, env) for function in program.functions
         )
         return PassResult(
             success=True,
@@ -68,12 +72,15 @@ class ConstPropagationPass(Pass):
 
 
 def _rewrite_function(
-    function: MIRFunction, pool: MIRConstantPool, shadowed: frozenset[str]
+    function: MIRFunction,
+    pool: MIRConstantPool,
+    shadowed: frozenset[str],
+    env: object | None,
 ) -> MIRFunction:
     blocks = tuple(
         MIRBlock(
             block.id,
-            tuple(_rewrite_instruction(inst, pool, shadowed) for inst in block.instructions),
+            tuple(_rewrite_instruction(inst, pool, shadowed, env) for inst in block.instructions),
             block.terminator,
         )
         for block in function.blocks
@@ -81,17 +88,43 @@ def _rewrite_function(
     return replace(function, blocks=blocks)
 
 
+#: 只有这些字面量类别的 identity 不可观察，才可以安全地替换成常量。
+#: - number：``=`` 按值比较；
+#: - nil / T / none：自身对象单例。
+#: string / char 被排除：``(= "abc" "abc")`` 目前为 ``nil``（按 identity 比较）。
+_SAFE_LITERAL_KINDS = frozenset({"number", "nil", "T", "none"})
+
+
 def _rewrite_instruction(
-    instruction: MIRInstruction, pool: MIRConstantPool, shadowed: frozenset[str]
+    instruction: MIRInstruction,
+    pool: MIRConstantPool,
+    shadowed: frozenset[str],
+    env: object | None,
 ) -> MIRInstruction:
     if instruction.opcode != "LOAD_ENV" or len(instruction.operands) < 2:
         return instruction
     dest, symbol = instruction.operands[0], instruction.operands[1]
     if not isinstance(dest, int) or not isinstance(symbol, Symbol):
         return instruction
-    if symbol.name in shadowed or default_literal_type(symbol) is None:
+    kind = default_literal_type(symbol)
+    if symbol.name in shadowed or kind not in _SAFE_LITERAL_KINDS:
         return instruction
     value = try_default_literal(symbol)
     if value is MISSING:
         return instruction
+    if not _env_agrees(env, symbol, value):
+        return instruction
     return MIRInstruction("LOAD_CONST", (dest, pool.intern(value)), instruction.span)
+
+
+def _env_agrees(env: object | None, symbol: Symbol, default: object) -> bool:
+    """真实 env 必须把该拼写解析成同一个字面量值（宿主可以注入覆盖）。."""
+    from qy.session.runtime_space import RuntimeSpace
+
+    if not isinstance(env, RuntimeSpace):
+        return False
+    try:
+        resolved = env.resolve(symbol)
+    except Exception:
+        return False
+    return bool(resolved == default)

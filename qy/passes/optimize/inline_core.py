@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from qy.core.syntax import Symbol
@@ -245,12 +246,12 @@ def inline_into(
     new_blocks.append(continuation_block)
     new_blocks.extend(inlined_blocks)
 
-    return MIRFunction(
-        caller.name,
-        caller.params,
-        caller.register_count + callee.register_count,
-        tuple(new_blocks),
-        caller.entry,
+    # 内联后的代码属于 caller 的 symbol-space（callee 的空间副作用已在
+    # is_inlinable 中排除），因此继承 caller 的 space_id。
+    return replace(
+        caller,
+        register_count=caller.register_count + callee.register_count,
+        blocks=tuple(new_blocks),
     )
 
 
@@ -335,7 +336,7 @@ def remap_fn_indices(fn: MIRFunction, index_map: dict[int, int]) -> MIRFunction:
 
     if not changed:
         return fn
-    return MIRFunction(fn.name, fn.params, fn.register_count, tuple(new_blocks), fn.entry)
+    return replace(fn, blocks=tuple(new_blocks))
 
 
 def drop_functions(

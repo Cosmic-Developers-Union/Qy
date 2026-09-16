@@ -253,8 +253,17 @@ frontend.cst_parse
   `qy.ir.mir` 寄存器表）都在内核里，两个 pass 只保留策略（单调用点 vs 多调用点 +
   指令预算 + 深度）。
 
-在把 `optimize=True` 设为默认之前仍需：全量测试在 optimize 下跑通、确认对
-bytecode 体积/性能有实际收益，并按 `todo.md` 记录开启条件。
+在把 `optimize=True` 设为默认之前仍缺（实测把默认翻转后 14 个测试失败）：
+
+1. **llvm / wasm 验证后端**（9 个失败）不支持优化后的常量形态，例如
+   `WasmUnsupportedError: LOAD_HOST with unsupported value IntValue(42)`：折叠产生的
+   常量没有进入这些后端的常量池路径；
+2. **async core 的 3 个失败**：`CACHE_EVAL` / `PARALLEL_GATHER` / `RUNTIME_EVAL`
+   路径在优化下结果不一致（`APPEND_RESULT` 数量与宿主协程的 await 行为）；
+3. `tests/test_pass_optimization.py` 中两个断言默认关闭的开关测试需要同步。
+
+收益实测（86 语料合计）：指令数 1867 → 1568（**-16%**），寄存器数 1276 → 533
+（**-58%**）；递归 fib(18) 408ms → 380ms。
 
 目标 pass 顺序（完整管线）：
 

@@ -640,3 +640,98 @@ def test_inline_core_is_the_single_source_for_both_passes():
     assert not hasattr(basic, "_offset_instruction")
     assert not hasattr(aggressive, "_offset_instruction")
     assert basic.inline_into is aggressive.inline_into
+
+
+def test_const_prop_respects_host_environment_override():
+    """宿主 env 覆盖字面量拼写时不得替换成默认字面量。."""
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.core.syntax import Symbol as QySymbol
+    from qy.session.runtime_space import RuntimeSpace
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    # env 把字面量拼写 "1" 覆盖为 10
+    env = RuntimeSpace({QySymbol("1"): IntValue(10)}, create_standard_runtime_space())
+    result = compile_source_to_bytecode(
+        "(+ 1 2)",
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[-1] == IntValue(12)
+
+
+def test_optimization_preserves_function_space_id():
+    """回归：位置参数重建 MIRFunction 会丢掉 space_id，LIR 不再发 SLOT_COMPLETE。."""
+    from qy.build.pipeline import compile_source_to_kind
+    from qy.build.pipeline import lir_artifact
+    from qy.build.pipeline import mir_artifact
+
+    source = """
+    (define top 1)
+    (defun f (a) (define inner 2) (+ a inner))
+    (f 5)
+    """
+    env = standard_environment()
+    program = mir_artifact(
+        compile_source_to_kind(
+            source,
+            PipelineSession(env=env),
+            kind="mir",
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+    )
+
+    space_ids = {fn.name.name: fn.space_id for fn in program.functions}
+    assert space_ids["<main>"] >= 0
+    assert space_ids["f"] >= 0
+
+    lir = lir_artifact(
+        compile_source_to_kind(
+            source,
+            PipelineSession(env=env),
+            kind="lir",
+            options=PipelineOptions(
+                error_threshold=10**6, lir_dialect="abstract-machine", optimize=True
+            ),
+        )
+    )
+    from qy.ir.lir import LIRBindingAddr
+
+    addresses = [
+        inst.operands[0]
+        for function in lir.functions
+        for inst in function.instructions
+        if inst.opcode == "SLOT_COMPLETE" and isinstance(inst.operands[0], LIRBindingAddr)
+    ]
+    assert {address.space for address in addresses} >= {
+        layout.id for layout in lir.symbol_spaces if layout.name in ("Main", "defun:f")
+    }
+
+
+def test_reg_alloc_maps_every_referenced_register():
+    """回归：未进入活跃区间的寄存器也必须重编号，否则 LIR 报 out-of-range。."""
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    source = """
+    (let ()
+      (defeffect ask)
+      (handle
+        (let () (perform ask 1) 42)
+        ((ask (arg k) (resume k arg)))))
+    """
+    env = create_standard_runtime_space()
+    result = compile_source_to_bytecode(
+        source,
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    assert not [d for d in result.diagnostics if d.severity == "error"]
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[-1] == IntValue(42)

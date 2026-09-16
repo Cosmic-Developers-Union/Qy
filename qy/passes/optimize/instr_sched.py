@@ -12,6 +12,7 @@ lowering, before bytecode emission).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from dataclasses import replace
 from typing import cast
 
 from qy.ir.lir import LIRFunction
@@ -55,10 +56,8 @@ class InstructionSchedulePass(Pass):
     def run(self, context: PassContext) -> PassResult:
         program = cast(LIRProgram, context.input_artifact)
         new_functions = tuple(_schedule_function(f) for f in program.functions)
-        return PassResult(
-            success=True,
-            artifact=LIRProgram(new_functions, program.main, program.diagnostics, program.dialect),
-        )
+        # 只替换 functions，保留 symbol_spaces 等 layout 事实。
+        return PassResult(success=True, artifact=replace(program, functions=new_functions))
 
 
 def _schedule_function(function: LIRFunction) -> LIRFunction:
