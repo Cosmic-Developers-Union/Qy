@@ -199,11 +199,11 @@ frontend.cst_parse
 | S1 仅简化（const_prop/const_fold/copy_prop/dce/dse） | **0/86** |
 | S2 + cse / strength_reduce | **0/86** |
 | S3 + cfg_simplify / tailcall / licm / loop_opt | **0/86** |
-| S4 + inline / aggressive_inline / scalar_replace / intern | 1/86 |
-| S5 + reg_alloc | 11/86 |
+| S4 + inline / aggressive_inline / scalar_replace / intern | **0/86** |
+| S5 + reg_alloc | **0/86** |
 
-即：**编译期化简与全部控制流阶段已在全语料上语义干净**；不一致只剩 inline（1）与
-reg_alloc（11）。
+即：**86 个语料在全部优化子集下与未优化结果一致**（`optimize=True` 目前仍非默认，
+见下方开关说明）。
 
 已修复的真实缺陷（S1 11/86 → 0，S3 11/86 → 0，S5 42/86 → 11）：
 
@@ -236,8 +236,25 @@ reg_alloc（11）。
   对它们按 identity 比较，`(= "abc" "abc")` 为 `nil`）。现在只对数值与自身对象
   单例去重。
 
-剩余不一致只剩 S4 的 `inline`（1 个语料）与 S5 的 `reg_alloc`（11 个语料）；在这些
-pass 处理完剩余控制流/活跃区间问题之前，默认管线保持无优化，`optimize=True` 只用于实验。
+随后又修复了 effect 重编号与内联健全性：
+
+- `qy.ir.mir.register_operand_positions` 漏了 `EFFECT_RESUME` 的 value 寄存器
+  （`EFFECT_RESUME(dst, cont, value)` 只返回前两个位置），`reg_alloc` 重编号后 resume
+  会传回旧寄存器里的陈旧值：`(handle (perform ping 42) ((ping (v k) (resume k (+ v 8)))))`
+  在 optimize=True 下得到 8 而非 50。现在位置为 (0,1,2)，且 `register_def_position`
+  返回 0（resume 结果寄存器）；
+- `optimize.inline` 与 `optimize.aggressive_inline` 各自复制了一份内联实现，都缺少
+  闭包健全性：把引用闭包变量的 lambda 内联进调用者，导致 `unresolved symbol 'f'`；
+  形参在 MIR 里按名字读取，内联时又没有替换成实参寄存器；`_offset_instruction` 的兜底
+  分支还会给**所有** int 操作数加偏移（常量池下标 / 函数下标 / space id 都会被改坏）；
+  effect 守卫写的是 `HANDLE`/`PERFORM` 等从未存在的 opcode，属于死代码。
+  现在两份实现收口到 `qy/passes/optimize/inline_core.py`（“唯一事实源”）：健全性判定
+  （闭包变量 / 空间副作用 / 嵌套 lambda / effect）、形参替换、寄存器位移（走
+  `qy.ir.mir` 寄存器表）都在内核里，两个 pass 只保留策略（单调用点 vs 多调用点 +
+  指令预算 + 深度）。
+
+在把 `optimize=True` 设为默认之前仍需：全量测试在 optimize 下跑通、确认对
+bytecode 体积/性能有实际收益，并按 `todo.md` 记录开启条件。
 
 目标 pass 顺序（完整管线）：
 

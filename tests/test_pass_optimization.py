@@ -577,3 +577,66 @@ def test_effect_multi_handle_under_full_optimization():
     outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
 
     assert outcome[-2:] == [IntValue(42), IntValue(31)]
+
+
+# ---------------------------------------------------------------------------
+# 内联健全性（inline / aggressive_inline 共用 inline_core）
+# ---------------------------------------------------------------------------
+
+
+def test_inline_refuses_closure_capturing_lambda():
+    """引用闭包变量的函数不得内联（内联后会解析到调用者 env）。."""
+    from qy.build.pipeline import compile_source_to_kind
+    from qy.build.pipeline import mir_artifact
+    from qy.passes.optimize.inline_core import is_inlinable
+    from qy.passes.optimize.inline_core import lexical_names
+    from qy.session.runtime_space import create_standard_runtime_space
+
+    source = """
+    (define compose (lambda (f g) (lambda (x) (f (g x)))))
+    ((compose (lambda (x) (+ x 1)) (lambda (x) (* x 2))) 10)
+    """
+    env = create_standard_runtime_space()
+    program = mir_artifact(compile_source_to_kind(source, PipelineSession(env=env), kind="mir"))
+    lexical = lexical_names(program)
+    inner = next(fn for fn in program.functions if any(p.name == "f" for p in fn.params))
+
+    assert not is_inlinable(inner, lexical)
+
+
+def test_aggressive_inline_preserves_higher_order_results():
+    """回归：aggressive_inline 曾把闭包变量内联进调用者，报 unresolved symbol。."""
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    source = (
+        "(define compose (lambda (f g) (lambda (x) (f (g x)))))\n"
+        "(define inc (lambda (x) (+ x 1)))\n"
+        "(define double (lambda (x) (* x 2)))\n"
+        "((compose inc double) 10)\n"
+        "(define twice (lambda (f x) (f (f x))))\n"
+        "(twice inc 5)\n"
+    )
+    env = create_standard_runtime_space()
+    result = compile_source_to_bytecode(
+        source,
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    assert not [d for d in result.diagnostics if d.severity == "error"]
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[3] == IntValue(21)
+    assert outcome[5] == IntValue(7)
+
+
+def test_inline_core_is_the_single_source_for_both_passes():
+    """两个内联 pass 都不得再自带 _inline_into / _offset_instruction 副本。."""
+    import qy.passes.optimize.aggressive_inline as aggressive
+    import qy.passes.optimize.inline as basic
+
+    assert not hasattr(basic, "_offset_instruction")
+    assert not hasattr(aggressive, "_offset_instruction")
+    assert basic.inline_into is aggressive.inline_into
