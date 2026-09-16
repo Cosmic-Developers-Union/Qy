@@ -17,9 +17,9 @@ from qy.core.operators import OperatorKind
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
+from qy.core.syntax import T
 from qy.core.syntax import nil
 from qy.frontend.reader import Symbol
-from qy.sem.core import T
 
 __all__ = [
     "literal_type",
@@ -29,10 +29,10 @@ __all__ = [
 
 
 def literal_type(value: object) -> TypeName:
-    from qy.sem.core import NONE
+    from qy.core.syntax import NONE
+    from qy.core.syntax import NoneValue
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
-    from qy.sem.core import NoneValue
     from qy.sem.core import NumberValue
     from qy.sem.core import SetValue
     from qy.sem.core import StringValue

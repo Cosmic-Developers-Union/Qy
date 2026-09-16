@@ -27,6 +27,7 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import map_chain as map_qy_cons
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
@@ -44,7 +45,6 @@ from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
 from qy.import_.module import StandardModule
 from qy.macro import MacroDefinition
-from qy.sem.core import T as QY_T
 from qy.sem.host import HostReference as HostObjectRef
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
@@ -251,12 +251,12 @@ class _ChainWrapper(metaclass=_ChainWrapperMeta):
 
 
 def _qy_to_python(value: object, env: Environment) -> object:
+    from qy.core.syntax import NONE as QY_NONE
     from qy.core.syntax import Chain
+    from qy.core.syntax import NoneValue
     from qy.core.syntax import is_chain
-    from qy.sem.core import NONE as QY_NONE
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
-    from qy.sem.core import NoneValue
     from qy.sem.core import NumberValue
     from qy.sem.core import SetValue
     from qy.sem.core import TupleValue
@@ -319,7 +319,7 @@ def _symbol_to_python(value: Symbol) -> object:
 
 
 def _python_to_qy(value: object) -> object:
-    from qy.sem.core import NONE as QY_NONE
+    from qy.core.syntax import NONE as QY_NONE
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
     from qy.sem.core import SetValue

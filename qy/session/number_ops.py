@@ -30,6 +30,7 @@ from collections.abc import Callable
 from typing import cast
 
 from qy.core.operators import PureOperator
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
@@ -45,7 +46,6 @@ from qy.sem.core import Int64Value
 from qy.sem.core import IntegerValue
 from qy.sem.core import IntValue
 from qy.sem.core import NumberValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import UInt8Value
 from qy.sem.core import UInt16Value
 from qy.sem.core import UInt32Value

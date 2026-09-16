@@ -8,6 +8,9 @@ from typing import cast
 
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import NONE as QY_NONE
+from qy.core.syntax import NoneValue
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import car as chain_car
 from qy.core.syntax import cdr as chain_cdr
 from qy.core.syntax import chain_to_list
@@ -20,12 +23,9 @@ from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
-from qy.sem.core import NONE as QY_NONE
 from qy.sem.core import DictValue
 from qy.sem.core import ListValue
-from qy.sem.core import NoneValue
 from qy.sem.core import SetValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import TupleValue
 
 

@@ -24,13 +24,9 @@ from typing import ClassVar
 from typing import cast
 
 __all__ = [
-    "NIL",
-    "NONE",
     "ArrayValue",
-    "ChainValue",
     "CharValue",
     "ComplexValue",
-    "DatumValue",
     "DictValue",
     "Float16Value",
     "Float32Value",
@@ -45,16 +41,11 @@ __all__ = [
     "IntValue",
     "IntegerValue",
     "ListValue",
-    "NilValue",
-    "NoneValue",
     "NumberValue",
     "ObjectValue",
     "RationalValue",
     "SetValue",
     "StringValue",
-    "SymbolValue",
-    "T",
-    "TValue",
     "TupleValue",
     "UInt8Value",
     "UInt16Value",
@@ -70,71 +61,13 @@ class Value:
     ``Value`` is the semantic domain faced by all execution backends.  Concrete
     subclasses define language-visible runtime kinds; Python payload classes
     used by one backend are not part of this definition.
+
+    Syntax datum (``symbol`` / ``chain``) 与 Qy 自身对象 (``nil`` / ``T`` /
+    ``none``) 的真源在 `qy.core.syntax`；本模块只负责其余 runtime value
+    （number / string / object family 与容器）。
     """
 
     type_name: ClassVar[str] = "value"
-
-
-class DatumValue(Value):
-    """A runtime value that can also be syntax datum."""
-
-
-@dataclass(frozen=True, slots=True)
-class SymbolValue(DatumValue):
-    """A runtime symbol value."""
-
-    name: str
-
-    type_name: ClassVar[str] = "symbol"
-
-
-@dataclass(frozen=True, slots=True)
-class NilValue(DatumValue):
-    """Qy's unique ``nil`` value.
-
-    ``nil`` is the empty chain and the only false value for core conditional
-    semantics.  It is still an atom because only a non-empty chain is non-atom.
-    """
-
-    type_name: ClassVar[str] = "nil"
-
-
-@dataclass(frozen=True, slots=True)
-class ChainValue(DatumValue):
-    """An immutable non-empty chain cell.
-
-    ``tail`` is a general ``Value`` so improper chains remain representable.
-    Proper chains are the subset that eventually end in ``NIL``.
-    """
-
-    head: Value
-    tail: Value
-
-    type_name: ClassVar[str] = "chain"
-
-
-@dataclass(frozen=True, slots=True)
-class TValue(Value):
-    """Qy's unique canonical true value."""
-
-    type_name: ClassVar[str] = "t"
-
-
-@dataclass(frozen=True, slots=True)
-class NoneValue(Value):
-    """Qy's unique ``none`` value.
-
-    ``none`` is a language-level value.  It is represented by this singleton in
-    Qy code; Python ``None`` remains an implementation sentinel and host-interop
-    value, not the semantic object exposed by the standard profile.
-    """
-
-    type_name: ClassVar[str] = "none"
-
-
-NIL = NilValue()
-T = TValue()
-NONE = NoneValue()
 
 
 _NO_PEER = object()
@@ -721,7 +654,6 @@ def _require_array_element_type(value_type: type[Value]) -> None:
     if value_type is Value:
         return
     if value_type in {
-        DatumValue,
         ObjectValue,
         NumberValue,
         IntegerValue,

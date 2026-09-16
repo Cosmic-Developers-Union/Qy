@@ -7,9 +7,14 @@
 - 提供 runtime value 类型（UserFunction、EffectDefinition、ComponentOperator 等）
 
 当前：
-- core.py 已定义完整 value hierarchy
+- core.py 定义 number / string / object family 值模型
 - runtime.py 提供运行时值（UserFunction、EffectDefinition、ComponentOperator）
-- bridge.py 提供迁移期转换
+- host.py 提供 host reference 包装
+
+边界：
+- 语法 datum（symbol / chain）与 Qy 自身对象（nil / T / none）的真源是
+  `qy.core.syntax`，本包不得重复定义
+- 宿主值 ↔ Qy 语义值的转换属于 `qy.ext` 扩展边界，本包不提供桥接层
 
 禁止：
 - 不得反向依赖 parser、CLI 或 std
@@ -17,15 +22,9 @@
 - 不得混入工具链逻辑
 """
 
-from qy.sem.bridge import from_qy_value
-from qy.sem.bridge import to_qy_value
-from qy.sem.core import NIL
-from qy.sem.core import NONE
 from qy.sem.core import ArrayValue
-from qy.sem.core import ChainValue
 from qy.sem.core import CharValue
 from qy.sem.core import ComplexValue
-from qy.sem.core import DatumValue
 from qy.sem.core import DictValue
 from qy.sem.core import Float32Value
 from qy.sem.core import FloatValue
@@ -35,31 +34,22 @@ from qy.sem.core import Int64Value
 from qy.sem.core import IntegerValue
 from qy.sem.core import IntValue
 from qy.sem.core import ListValue
-from qy.sem.core import NilValue
-from qy.sem.core import NoneValue
 from qy.sem.core import NumberValue
 from qy.sem.core import ObjectValue
 from qy.sem.core import RationalValue
 from qy.sem.core import SetValue
 from qy.sem.core import StringValue
-from qy.sem.core import SymbolValue
-from qy.sem.core import T
 from qy.sem.core import TupleValue
-from qy.sem.core import TValue
 from qy.sem.core import Value
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 
 __all__ = [
-    "NIL",
-    "NONE",
     "ArrayValue",
-    "ChainValue",
     "CharValue",
     "ComplexValue",
     "ComponentOperator",
-    "DatumValue",
     "DictValue",
     "EffectDefinition",
     "Float32Value",
@@ -70,19 +60,12 @@ __all__ = [
     "IntValue",
     "IntegerValue",
     "ListValue",
-    "NilValue",
-    "NoneValue",
     "NumberValue",
     "ObjectValue",
     "RationalValue",
     "SetValue",
     "StringValue",
-    "SymbolValue",
-    "T",
-    "TValue",
     "TupleValue",
     "UserFunction",
     "Value",
-    "from_qy_value",
-    "to_qy_value",
 ]

@@ -39,11 +39,15 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import NONE as QY_NONE
 from qy.core.syntax import Chain as QyChain
 from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import NoneValue
 from qy.core.syntax import QyNil
 from qy.core.syntax import QyNil as QyEmptyChain
 from qy.core.syntax import QyNil as QyEmptyList
+from qy.core.syntax import T as QY_T
+from qy.core.syntax import TValue as QyT
 from qy.core.syntax import nil as QY_EMPTY_CHAIN
 from qy.core.syntax import nil as QY_EMPTY_LIST
 from qy.core.syntax import nil as QY_NIL
@@ -109,14 +113,10 @@ from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import AsyncQy
 from qy.runtime import Qy
-from qy.sem.core import NONE as QY_NONE
 from qy.sem.core import DictValue
 from qy.sem.core import ListValue
-from qy.sem.core import NoneValue
 from qy.sem.core import SetValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import TupleValue
-from qy.sem.core import TValue as QyT
 from qy.sem.runtime import EffectDefinition
 from qy.session import ProfileConfig
 from qy.session import RuntimeSpace

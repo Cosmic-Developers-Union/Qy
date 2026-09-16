@@ -13,6 +13,7 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -24,7 +25,6 @@ from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
-from qy.sem.core import T as QY_T
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
@@ -93,10 +93,10 @@ def _complex_truthy(value: object) -> object:
     Handles Python host values (False, None, 0, "", empty containers)
     alongside Qy values (QY_NIL, empty chain).
     """
-    from qy.sem.core import NONE as QY_NONE
+    from qy.core.syntax import NONE as QY_NONE
+    from qy.core.syntax import NoneValue
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
-    from qy.sem.core import NoneValue
     from qy.sem.core import SetValue
     from qy.sem.core import TupleValue
 

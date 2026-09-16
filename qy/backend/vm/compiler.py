@@ -78,7 +78,7 @@ def _lir_to_bytecode_operands(opcode: str, operands: tuple[object, ...]) -> tupl
 
         return (operands[0], nil)
     if opcode == "LOAD_T":
-        from qy.sem.core import T
+        from qy.core.syntax import T
 
         return (operands[0], T)
     return operands

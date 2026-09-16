@@ -20,7 +20,7 @@ def peephole(instructions: list[LIRInstruction]) -> list[LIRInstruction]:
     already been patched to absolute indices.  Removing a JUMP shifts all
     subsequent indices but does not update other jump targets.
     """
-    from qy.sem.core import T
+    from qy.core.syntax import T
 
     result = list(instructions)
     changed = True

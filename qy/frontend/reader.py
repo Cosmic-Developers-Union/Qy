@@ -363,7 +363,7 @@ def write_program(forms: Iterable[Form]) -> str:
 
 
 def write_tuple(form: TupleForm) -> str:
-    from qy.sem.core import T
+    from qy.core.syntax import T
 
     if form is nil:
         return "nil"

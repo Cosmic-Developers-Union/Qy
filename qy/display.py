@@ -5,21 +5,21 @@ from __future__ import annotations
 from typing import cast
 
 from qy.core.syntax import Chain
+from qy.core.syntax import T
 from qy.core.syntax import is_chain
 from qy.core.syntax import nil
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import TupleForm
 from qy.frontend.reader import write_tuple
-from qy.sem.core import T
 
 __all__ = ["format_value"]
 
 
 def format_value(value: object) -> str:
-    from qy.sem.core import NONE
+    from qy.core.syntax import NONE
+    from qy.core.syntax import NoneValue
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
-    from qy.sem.core import NoneValue
     from qy.sem.core import NumberValue
     from qy.sem.core import SetValue
     from qy.sem.core import StringValue

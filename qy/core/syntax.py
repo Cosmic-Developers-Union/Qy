@@ -1,5 +1,12 @@
 # coding: utf-8
-"""Qy core syntax data structures."""
+"""Qy core syntax datum and canonical self-objects.
+
+本模块是 Qy 语法 datum 与规范自对象的唯一真源：
+
+- 语法 datum 只有 ``symbol`` 与不可变 ``chain``；
+- ``nil`` / ``T`` / ``none`` 是 Qy 自身对象，三者同处本模块，不由 `qy.sem` 重复定义；
+- Python ``None`` 只是宿主互操作值，不等同于 ``none``。
+"""
 
 from __future__ import annotations
 
@@ -8,14 +15,19 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from dataclasses import field
 from typing import TYPE_CHECKING
+from typing import ClassVar
 from typing import TypeGuard
 
 if TYPE_CHECKING:
     from qy.source.span import SourceSpan
 
 __all__ = [
+    "NONE",
     "Chain",
+    "NoneValue",
     "QyNil",
+    "T",
+    "TValue",
     "car",
     "cdr",
     "chain_to_list",
@@ -46,6 +58,37 @@ class QyNil:
 
 
 nil = QyNil()
+
+
+@dataclass(frozen=True, slots=True)
+class TValue:
+    """Qy 的规范真值对象 ``T``。.
+
+    ``T`` 与 ``nil`` / ``none`` 同属 Qy 自身对象；它不是 Python ``True``。
+    """
+
+    type_name: ClassVar[str] = "t"
+
+    def __str__(self) -> str:
+        return "T"
+
+
+@dataclass(frozen=True, slots=True)
+class NoneValue:
+    """Qy 的 ``none`` 对象。.
+
+    ``none`` 是语言级对象；Python ``None`` 只是实现内部的宿主互操作值，
+    标准 profile 暴露的是这里的单例。
+    """
+
+    type_name: ClassVar[str] = "none"
+
+    def __str__(self) -> str:
+        return "none"
+
+
+T = TValue()
+NONE = NoneValue()
 
 
 @dataclass(frozen=True, slots=True)

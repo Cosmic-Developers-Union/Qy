@@ -19,11 +19,11 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
+from qy.core.syntax import T
 from qy.core.syntax import nil
 from qy.diag import Diagnostic
 from qy.errors import EvaluationError
 from qy.macro import MacroDefinition
-from qy.sem.core import T
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 from qy.session.pre_ss import default_literal_type

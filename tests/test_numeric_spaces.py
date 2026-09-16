@@ -5,13 +5,13 @@ from typing import Any
 
 import pytest
 
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
 from qy.frontend.reader import Symbol
 from qy.sem.core import Int32Value
 from qy.sem.core import IntValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import UInt8Value
 from qy.symbol_space.numeric_spaces import make_int32_space
 from qy.symbol_space.numeric_spaces import make_uint8_space

@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectSignal
 from qy.sem.core import FloatValue
 from qy.sem.core import Int32Value
 from qy.sem.core import IntValue
-from qy.sem.core import T as QY_T
 from qy.session.number_ops import _add
 from qy.session.number_ops import _div
 from qy.session.number_ops import _mul

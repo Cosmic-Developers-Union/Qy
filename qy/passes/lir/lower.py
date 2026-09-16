@@ -125,8 +125,8 @@ def _normalize_loads(instructions: list) -> list:
     must not run ``peephole`` (it can change instruction count), so the
     count-preserving subset is applied directly.
     """
+    from qy.core.syntax import T as QY_T
     from qy.ir.lir import LIRInstruction
-    from qy.sem.core import T as QY_T
 
     out = []
     for inst in instructions:

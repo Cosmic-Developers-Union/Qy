@@ -19,6 +19,7 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -35,7 +36,6 @@ from qy.frontend.reader import DottedTuple
 from qy.frontend.reader import SourceSpan
 from qy.frontend.reader import Symbol
 from qy.frontend.reader import get_span
-from qy.sem.core import T as QY_T
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.frame import QyContinuation
 

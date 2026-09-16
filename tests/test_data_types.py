@@ -1,5 +1,6 @@
 import pytest
 
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyTypeError
@@ -9,7 +10,6 @@ from qy.runtime import evaluate_source
 from qy.sem.core import DictValue
 from qy.sem.core import ListValue
 from qy.sem.core import SetValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import TupleValue
 from qy.session.runtime_space import RuntimeSpace as Environment
 

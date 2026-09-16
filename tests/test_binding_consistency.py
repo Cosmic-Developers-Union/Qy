@@ -136,7 +136,7 @@ def test_string_spelling_consistent() -> None:
 
 def test_eq_identity_vs_num_equality() -> None:
     """Test that eq uses value equality for atoms and = is numeric value equality."""
-    from qy.sem.core import T as QY_T
+    from qy.core.syntax import T as QY_T
 
     qy = Qy()
 

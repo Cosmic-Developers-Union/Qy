@@ -9,6 +9,7 @@ during the transition period. Outputs StringValue where applicable.
 from __future__ import annotations
 
 from qy.core.operators import PureOperator
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
@@ -16,7 +17,6 @@ from qy.import_.module import StandardModule
 from qy.sem.core import CharValue
 from qy.sem.core import IntValue
 from qy.sem.core import StringValue
-from qy.sem.core import T as QY_T
 from qy.sem.core import TupleValue
 
 

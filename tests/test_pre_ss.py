@@ -5,10 +5,10 @@ import pytest
 
 from qy.core.symbol_space import MISSING as _MISSING
 from qy.core.symbol_space import SymbolSpace
+from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyResolveError
 from qy.frontend.reader import Symbol
-from qy.sem.core import T as QY_T
 from qy.session.pre_ss import create_lisp_ss
 from qy.session.pre_ss import create_literal_ss
 from qy.session.pre_ss import create_number_ss
@@ -76,7 +76,7 @@ def test_parse_number_literal():
 
 def test_create_lisp_ss():
     """Test lisp-ss creation."""
-    from qy.sem.core import NONE as QY_NONE
+    from qy.core.syntax import NONE as QY_NONE
 
     lisp = create_lisp_ss()
 
@@ -187,7 +187,7 @@ def test_create_pre_ssc_with_stdlib():
 
 def test_resolve_literal_in_pre_ss_lisp_values():
     """Test resolving Lisp values through pre-ss (chain walk via resolve)."""
-    from qy.sem.core import NONE as QY_NONE
+    from qy.core.syntax import NONE as QY_NONE
 
     pre_ss = create_pre_ssc()
 

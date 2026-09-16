@@ -177,10 +177,10 @@ def create_lisp_ss() -> SymbolSpace:
     This is the foundational symbol-space providing Lisp's truth values.
     """
     from qy.core.symbol_space import SymbolSpace
+    from qy.core.syntax import NONE
+    from qy.core.syntax import T
     from qy.core.syntax import nil
     from qy.frontend.reader import Symbol
-    from qy.sem.core import NONE
-    from qy.sem.core import T
 
     return SymbolSpace(
         {
@@ -292,10 +292,10 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
 
     Chain: parent (optional) → lisp-ss → number-ss → char-ss → string-ss.
     """
+    from qy.core.syntax import NONE
+    from qy.core.syntax import T
     from qy.core.syntax import nil
     from qy.frontend.reader import Symbol
-    from qy.sem.core import NONE
-    from qy.sem.core import T
 
     if parent is None:
         lisp = create_lisp_ss()
@@ -335,9 +335,9 @@ def try_default_literal(symbol: Symbol) -> object:
 
     Returns _MISSING if the symbol cannot be resolved.
     """
+    from qy.core.syntax import NONE
+    from qy.core.syntax import T
     from qy.core.syntax import nil
-    from qy.sem.core import NONE
-    from qy.sem.core import T
 
     name = symbol.name
     if name == "T" or name == "true":
@@ -396,9 +396,9 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
     value = try_default_literal(symbol)
     if value is _MISSING:
         return None
+    from qy.core.syntax import NONE
+    from qy.core.syntax import T
     from qy.core.syntax import nil
-    from qy.sem.core import NONE
-    from qy.sem.core import T
 
     if value is nil:
         return "nil"

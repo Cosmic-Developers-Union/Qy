@@ -53,9 +53,9 @@ def _make_integer_space(
     bits: int,
 ) -> StandardModule:
     """Generate a hardware integer space module."""
+    from qy.core.syntax import T as QY_T
     from qy.core.syntax import nil as QY_NIL
     from qy.import_.module import StandardModule
-    from qy.sem.core import T as QY_T
 
     def _non_resumable_continuation(effect_name: str) -> QyContinuation:
         """Create a non-resumable continuation for numeric errors."""
@@ -329,9 +329,9 @@ def _make_float_space(
     bits: int,
 ) -> StandardModule:
     """Generate a hardware float space module."""
+    from qy.core.syntax import T as QY_T
     from qy.core.syntax import nil as QY_NIL
     from qy.import_.module import StandardModule
-    from qy.sem.core import T as QY_T
 
     def _non_resumable_continuation(effect_name: str) -> QyContinuation:
         """Create a non-resumable continuation for numeric errors."""

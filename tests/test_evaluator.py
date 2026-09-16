@@ -725,10 +725,10 @@ def test_backward_compatibility_imports():
     """测试核心类型可从规范模块导入。."""
     from qy.core.syntax import Chain as QyChain
     from qy.core.syntax import Chain as QyCons
+    from qy.core.syntax import T as QY_T
     from qy.core.syntax import nil as QY_EMPTY_CHAIN
     from qy.core.syntax import nil as QY_EMPTY_LIST
     from qy.core.syntax import nil as QY_NIL
-    from qy.sem.core import T as QY_T
     from qy.sem.runtime import UserFunction
     from qy.session.runtime_space import RuntimeSpace as Environment
     from qy.vm.instance.values import HostObjectRef

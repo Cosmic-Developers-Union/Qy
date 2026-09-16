@@ -1,10 +1,10 @@
 import pytest
 
+from qy.core.syntax import NONE as QY_NONE
 from qy.errors import EvaluationError
 from qy.frontend.reader import Symbol
 from qy.import_.registry import load_module
 from qy.runtime import AsyncQy as Qy
-from qy.sem.core import NONE as QY_NONE
 from qy.sem.core import DictValue
 from qy.sem.core import ListValue
 from qy.sem.core import StringValue

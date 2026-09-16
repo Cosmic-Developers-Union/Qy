@@ -406,9 +406,9 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
 
     from qy.core.syntax import Chain
     from qy.core.syntax import QyNil
+    from qy.core.syntax import TValue
     from qy.frontend.reader import Symbol
     from qy.import_.parse import ImportSpec
-    from qy.sem.core import TValue
     from qy.sem.runtime import EffectDefinition
 
     def encode_value(value: object) -> dict:
