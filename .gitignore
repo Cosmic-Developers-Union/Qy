@@ -62,7 +62,9 @@ db.sqlite3
 db.sqlite3-journal
 
 # Flask stuff:
-instance/
+# 根锚定：`instance/` 会连带匹配 qy/vm/instance/，导致 rg 等工具在递归搜索时
+# 静默跳过 VM 实例源码目录（git 本身能靠下方 negation 兜住，但 ignore crate 不会）。
+/instance/
 .webassets-cache
 
 # Scrapy stuff:
@@ -351,7 +353,6 @@ dist
 .pnp.*
 
 !qy/build
-!qy/vm/instance
 
 .vscode
 

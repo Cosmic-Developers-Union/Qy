@@ -137,6 +137,11 @@ make bench-check
 
 ## 工作注意事项
 
+- `.gitignore` 中的目录规则必须根锚定（如 `/instance/`）。未锚定的通用规则
+  （裸 `instance/`）会连带匹配 `qy/vm/instance/`：git 自身对被跟踪文件不判 ignore，
+  但 ripgrep 在递归遍历时会静默跳过整个子树，导致 grep 类审计漏掉真实代码。
+  `tests/test_target_architecture_guards.py::test_rg_sees_every_tracked_qy_source_file`
+  守卫该不变量；跨目录审计建议加 `rg --no-ignore` 复核。
 - 当前仓库可能存在用户未提交改动；开始编辑前先看 `git status --short`，不要覆盖或回退非本次任务的修改。
 - 文档或总结默认中文；代码标识符、公共 API、错误类型和命令保持英文原文。
 - 不要把 `node_modules/`、`dist/`、`QyLang.egg-info/` 等生成物当作主要编辑目标。

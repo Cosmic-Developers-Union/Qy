@@ -96,3 +96,46 @@ def test_vm_bytecode_emit_rejects_abstract_machine_lir_opcode():
     assert any(
         "cannot be emitted to register VM bytecode" in d.message for d in bytecode.diagnostics
     )
+
+
+def test_rg_sees_every_tracked_qy_source_file():
+    """`rg`（以及同用 ignore crate 的工具）必须能看到全部已跟踪源码。.
+
+    `.gitignore` 里未锚定的通用目录规则（例如裸 `instance/`）会连带匹配
+    `qy/vm/instance/`。git 自身对被跟踪文件不判 ignore，但 ripgrep 在递归遍历时
+    会**静默跳过**该目录整个子树，导致 grep 类审计漏掉真实代码。这里直接以
+    `rg --files` 的可见文件集为准做守卫。
+    """
+    import pathlib
+    import shutil
+    import subprocess
+
+    if shutil.which("rg") is None:
+        import pytest
+
+        pytest.skip("ripgrep is not installed")
+
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    tracked = {
+        path
+        for path in subprocess.run(
+            ["git", "ls-files", "qy"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+        if path.endswith(".py")
+    }
+    visible = set(
+        subprocess.run(
+            ["rg", "--files", "qy"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+    )
+
+    missing = sorted(tracked - visible)
+    assert missing == [], f"rg cannot see tracked qy sources: {missing}"
