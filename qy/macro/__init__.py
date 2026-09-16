@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import ClassVar
 from typing import cast
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ __all__ = [
     "MacroExpansionOptions",
     "MacroExpansionServices",
     "MacroExpansionTrace",
+    "MacroFunction",
     "MacroRename",
     "MacroScope",
     "MacroSourceMapEntry",
@@ -39,6 +41,23 @@ __all__ = [
 @dataclass(frozen=True, slots=True)
 class CapturedForm:
     value: object
+
+
+@dataclass(frozen=True, slots=True)
+class MacroFunction:
+    """Compile-time function value（macro body 里的 ``lambda`` / ``defun``）。.
+
+    compile-time 命名空间不能依赖 register VM：这里的函数值只由
+    ``qy.macro.evaluator`` 执行，永远不会进入 bytecode / VM。它与运行时的
+    ``BytecodeFunctionValue`` 是两类不同的可执行值，各自属于所在阶段。
+    """
+
+    name: Symbol
+    params: tuple[Symbol, ...]
+    body: tuple[object, ...]
+    closure: Environment
+
+    type_name: ClassVar[str] = "function"
 
 
 @dataclass(frozen=True, slots=True)

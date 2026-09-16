@@ -294,6 +294,12 @@ source
     completion 与 hover 现在读取与 `qy check`/analyzer 相同的 HIR 事实，
     能识别 `define`/`let`/参数/handler 参数/`defeffect` 等 lexical binding
     （此前只读 surface forms、看不到局部与宏展开后的定义）；
+  - compile-time 函数值：新增 `qy.macro.MacroFunction`，编译期求值器自行处理
+    `lambda` / `defun`（不再经过运行期算子），修复了 round 1 引入的两处回归
+    （macro body 内的 `(lambda ...)` 与 `(defun ...)` + 调用此前会得到 VM 函数值
+    而无法在编译期调用）；编译期调用 VM 函数值现在给出明确诊断而不是静默失败；
+    仍待推进：`macro/expand.py::_prepopulate_module_locals` 的 module-local 占位仍需
+    "运行时可调用"，暂时继续使用 legacy `UserFunction`（见 §2.3 第 21 条）；
   - legacy 分阶段退役（第二步）：`qy.std.control` 的 `lambda` / `defun` 算子
     （值位置路径，如 `(apply lambda '((x) ...))`）改为经完整管线编成
     `BytecodeFunctionValue`，不再构造 legacy `UserFunction`；实测语料中

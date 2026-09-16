@@ -72,6 +72,10 @@ async def _eval_form(form: object, env: Environment) -> object:
         return await _eval_cond(args, env)
     if operator == Symbol("define"):
         return await _eval_define(args, env)
+    if operator == Symbol("lambda"):
+        return _eval_lambda(args, env)
+    if operator == Symbol("defun"):
+        return _eval_defun(args, env)
     if operator == Symbol("assert"):
         return await _eval_assert(args, env, form)
 
@@ -107,6 +111,46 @@ async def _eval_define(args: tuple[object, ...], env: Environment) -> object:
         raise QyArityError("define expects a symbol and a value")
     value = await _eval_form(args[1], env)
     return env.define(args[0], value)
+
+
+def _eval_lambda(args: tuple[object, ...], env: Environment) -> object:
+    """构造 compile-time function value。.
+
+    compile-time 命名空间不依赖 register VM，因此 ``lambda`` 在这里直接得到
+    ``MacroFunction``，由 ``_call_compile_time`` 执行；它不会变成 VM 的
+    ``BytecodeFunctionValue``。
+    """
+    from qy.macro import MacroFunction
+
+    if len(args) < 2:
+        raise QyArityError("lambda expects a parameter list and body")
+    params_form = args[0]
+    params_items = _form_to_list(params_form) if not is_nil(params_form) else []
+    params: list[Symbol] = []
+    for param in params_items:
+        if not isinstance(param, Symbol):
+            raise QyTypeError(f"lambda parameter must be a symbol, got {param!r}")
+        params.append(param)
+    return MacroFunction(Symbol("<lambda>"), tuple(params), tuple(args[1:]), env)
+
+
+def _eval_defun(args: tuple[object, ...], env: Environment) -> object:
+    """在 compile-time 环境定义函数（``MacroFunction``），并返回该值。."""
+    from qy.macro import MacroFunction
+
+    if len(args) < 3:
+        raise QyArityError("defun expects a name, parameter list, and body")
+    name = args[0]
+    if not isinstance(name, Symbol):
+        raise QyTypeError(f"defun name must be a symbol, got {name!r}")
+    params_form = args[1]
+    params_items = _form_to_list(params_form) if not is_nil(params_form) else []
+    params: list[Symbol] = []
+    for param in params_items:
+        if not isinstance(param, Symbol):
+            raise QyTypeError(f"defun parameter must be a symbol, got {param!r}")
+        params.append(param)
+    return env.define(name, MacroFunction(name, tuple(params), tuple(args[2:]), env))
 
 
 async def _eval_assert(args: tuple[object, ...], env: Environment, form: object) -> object:
@@ -154,15 +198,24 @@ async def _call_compile_time(
     if isinstance(callee, ScopeOperator | ControlOperator | MetaOperator):
         validate_operator_arity(callee, len(raw_args), span=span)
         return await _await_if_needed(callee.func(raw_args, env))
+    from qy.macro import MacroFunction
     from qy.sem.runtime import ComponentOperator
-    from qy.sem.runtime import UserFunction
 
-    if isinstance(callee, UserFunction):
+    if isinstance(callee, MacroFunction):
         args = await _eval_args(raw_args, env)
-        return await _call_user_function(callee, args, env)
+        return await _call_macro_function(callee, args, env)
     if isinstance(callee, ComponentOperator):
         args = await _eval_args(raw_args, env)
         return await _call_component_operator(callee, args, env)
+    if getattr(callee, "type_name", None) == "function":
+        # BytecodeFunctionValue 等 VM 值不能也不应该在编译期执行（macro
+        # compile-time 不得依赖 register VM）。给出明确诊断而不是让
+        # callable() 分支静默失败。
+        raise QyRuntimeError(
+            "compile-time evaluation cannot call a register-VM function value; "
+            "compile-time code must use lambda/defun evaluated by the compile-time evaluator",
+            span=span,
+        )
     if callable(callee):
         args = await _eval_args(raw_args, env)
         host_callable = cast(Callable[..., object], callee)
@@ -298,13 +351,13 @@ class _CompileTimeContinuation:
         return value
 
 
-async def _call_user_function(
+async def _call_macro_function(
     function: object, args: tuple[object, ...], env: Environment
 ) -> object:
-    """在 compile-time 环境执行 ``UserFunction`` body。."""
-    from qy.sem.runtime import UserFunction
+    """在 compile-time 环境执行 ``MacroFunction`` body。."""
+    from qy.macro import MacroFunction
 
-    assert isinstance(function, UserFunction)
+    assert isinstance(function, MacroFunction)
     if len(args) != len(function.params):
         raise QyArityError(
             f"{function.name.name} expects {len(function.params)} arguments, got {len(args)}",

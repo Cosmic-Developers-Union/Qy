@@ -1,7 +1,10 @@
 import pytest
 
+from qy.async_utils import run_coro
 from qy.core.syntax import Symbol
 from qy.errors import EvaluationError
+from qy.frontend.reader import read_one
+from qy.macro.evaluator import evaluate_compile_time_body
 from qy.runtime import evaluate_source
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 
@@ -237,3 +240,41 @@ def test_macro_hygiene_handle_params_do_not_capture_call_site_symbols():
         )
         == 99
     )
+
+
+def test_compile_time_lambda_can_be_called_during_expansion():
+    """Compile-time lambda 必须是编译期函数值，不能变成 VM 函数值。."""
+    assert evaluate_source("(macro m () ((lambda (x) (+ x 1)) 41))\n(m)") == 42
+
+
+def test_compile_time_defun_can_be_called_during_expansion():
+    assert evaluate_source("(macro m () (defun h (x) (+ x 2)) (h 40))\n(m)") == 42
+
+
+def test_compile_time_function_value_is_macro_function():
+    """编译期 lambda 得到 MacroFunction（而非 sem.UserFunction / VM 值）。."""
+    from qy.macro import MacroFunction
+    from qy.sem.runtime import UserFunction
+    from qy.vm.bytecode import BytecodeFunctionValue
+
+    env = standard_environment()
+    value = run_coro(
+        evaluate_compile_time_body(
+            (read_one("(lambda (x) x)"),),
+            env,
+        )
+    )
+
+    assert isinstance(value, MacroFunction)
+    assert not isinstance(value, UserFunction | BytecodeFunctionValue)
+
+
+def test_compile_time_recursion_through_defun():
+    source = """
+    (macro m ()
+      (defun f (n) (cond ((= n 0) 0) ((< 0 n) (+ n (f (- n 1))))))
+      (f 5))
+    (m)
+    """
+
+    assert evaluate_source(source) == 15

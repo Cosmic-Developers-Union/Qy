@@ -528,6 +528,11 @@ async def _macroexpand_module_form(
 
 
 def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
+    # 注意：这里的 module-local defun 占位必须"运行时可调用"，因为导出的宏会把
+    # 对它的引用 alias 到宏定义点 env，运行期再由 VM 调用。compile-time 专属的
+    # ``MacroFunction`` 无法被 VM 执行，因此此处仍用 legacy ``UserFunction``
+    # （执行路径 qy.vm.instance.legacy_eval）。等 compile-time namespace 建模
+    # 完成、module-local 定义有运行期表示后再切换（见 todo.md §2.3 第 21 条）。
     from qy.sem.runtime import EffectDefinition
     from qy.sem.runtime import UserFunction
 
