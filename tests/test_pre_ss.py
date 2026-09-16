@@ -389,3 +389,25 @@ def test_parse_number_literal_edge_cases():
     assert parse_number_literal("1.5e-3") == FloatValue(1.5e-3)
     assert parse_number_literal("inf") is _MISSING
     assert parse_number_literal("nan") is _MISSING
+
+
+def test_try_default_literal_returns_semantic_number_values():
+    """数字 spelling 必须解析成 Qy 语义数值，而不是宿主 int/float。."""
+    from qy.core.syntax import T
+    from qy.core.syntax import nil
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+    from qy.session.pre_ss import default_literal_type
+    from qy.session.pre_ss import try_default_literal
+
+    assert try_default_literal(S("1")) == IntValue(1)
+    assert isinstance(try_default_literal(S("1")), IntValue)
+    assert isinstance(try_default_literal(S("1.5")), FloatValue)
+    assert try_default_literal(S("T")) is T
+    assert try_default_literal(S("nil")) is nil
+    assert try_default_literal(S("not-a-literal")) is _MISSING
+
+    assert default_literal_type(S("1")) == "number"
+    assert default_literal_type(S("1.5")) == "number"
+    assert default_literal_type(S('"x"')) == "string"
+    assert default_literal_type(S("not-a-literal")) is None

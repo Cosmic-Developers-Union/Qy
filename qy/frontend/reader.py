@@ -21,11 +21,9 @@ datum 类型（``Symbol`` / ``Chain`` / ``nil``）的真源是 `qy.core.syntax`�
 
 from __future__ import annotations
 
-import ast
 import json
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
-from typing import cast
 
 import lark
 
@@ -276,10 +274,6 @@ def write_program(forms: Iterable[Form]) -> str:
 
 def _is_string_symbol(name: str) -> bool:
     return name.startswith('"') or name.startswith('r"')
-
-
-def _decode_string_symbol(symbol: Symbol) -> str:
-    return cast(str, ast.literal_eval(symbol.name))
 
 
 def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[str, str]:

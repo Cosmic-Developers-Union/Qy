@@ -33,7 +33,9 @@ def test_tagged_literal_calls_user_operator():
     env = standard_environment()
     for sym, val in load_module("qy.str").exports.items():
         env.define(sym, val)
-    evaluate_source('(defun t (source) (string-concat "template:" source))', env)
+    # 默认 tagged literal 展开为 (t (quote "hello {name}"))；quote 返回 syntax
+    # datum（字符串拼写在 datum 中仍是 symbol），因此算子需要 eval 取回字符串值。
+    evaluate_source('(defun t (source) (string-concat "template:" (eval source)))', env)
 
     from qy.sem.core import StringValue
 

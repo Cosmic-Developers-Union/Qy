@@ -760,3 +760,18 @@ def test_standard_environment_available():
     assert env.resolve(Symbol("+")) is not None
     assert env.resolve(Symbol("-")) is not None
     assert env.resolve(Symbol("*")) is not None
+
+
+def test_quote_returns_syntax_datum_not_host_value():
+    """Quote 返回 syntax datum：字符串/数字拼写在 datum 中仍是 symbol。."""
+    env = standard_environment()
+
+    quoted_string = evaluate(L(Symbol("quote"), Symbol('"abc"')), env)
+    assert quoted_string == Symbol('"abc"')
+
+    quoted_number = evaluate(L(Symbol("quote"), Symbol("42")), env)
+    assert quoted_number == Symbol("42")
+
+    # 嵌套与顶层保持一致
+    nested = evaluate(L(Symbol("car"), L(Symbol("quote"), L(Symbol('"abc"')))), env)
+    assert nested == Symbol('"abc"')

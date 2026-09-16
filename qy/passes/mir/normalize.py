@@ -20,8 +20,6 @@ from typing import cast
 from qy.core.syntax import Symbol
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
-from qy.frontend.reader import _decode_string_symbol
-from qy.frontend.reader import _is_string_symbol
 from qy.ir import AllExpr
 from qy.ir import ApplyExpr
 from qy.ir import AssertExpr
@@ -128,7 +126,7 @@ class _FunctionLowerer:
             return _LoweredExpression(register)
         if isinstance(expression, QuoteExpr):
             register = self.register()
-            self.emit_load_const(register, _quote_data(expression.form), span=expression.span)
+            self.emit_load_const(register, expression.form, span=expression.span)
             return _LoweredExpression(register)
         if isinstance(expression, SymbolRefExpr | UnresolvedSymbolExpr):
             register = self.register()
@@ -631,9 +629,3 @@ class _MIRLowerer:
 
 def _span_of(expression: object) -> SourceSpan | None:
     return cast(SourceSpan | None, getattr(expression, "span", None))
-
-
-def _quote_data(value: object) -> object:
-    if isinstance(value, Symbol) and _is_string_symbol(value.name):
-        return _decode_string_symbol(value)
-    return value

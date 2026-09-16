@@ -357,16 +357,9 @@ def try_default_literal(symbol: Symbol) -> object:
         if result is not _MISSING:
             return result
 
-    try:
-        return int(name)
-    except ValueError:
-        pass
-    try:
-        return float(name)
-    except ValueError:
-        pass
-
-    return _MISSING
+    # 数值 spelling 必须解析成 Qy 语义值（IntValue/FloatValue），
+    # 不得把宿主 int/float 直接当作 runtime value。
+    return parse_number_literal(name)
 
 
 def resolve_default_literal(symbol: Symbol) -> object:
@@ -399,6 +392,7 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
     from qy.core.syntax import NONE
     from qy.core.syntax import T
     from qy.core.syntax import nil
+    from qy.sem.core import NumberValue
 
     if value is nil:
         return "nil"
@@ -406,8 +400,6 @@ def default_literal_type(symbol: Symbol) -> TypeName | None:
         return "T"
     if value is NONE:
         return "none"
-    if isinstance(value, bool):
-        return "bool"
-    if isinstance(value, int | float):
+    if isinstance(value, NumberValue):
         return "number"
     return None

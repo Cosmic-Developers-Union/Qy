@@ -25,14 +25,11 @@ def _decode_string_module(symbol: Symbol) -> Symbol:
 
 def parse_from_import(expression: object) -> tuple[Symbol, tuple[ImportSpec, ...]]:
     # 转换为 list 以统一处理
-    if is_chain(expression):
-        if is_nil(expression):
-            raise ValueError("from expects: (from module import name [as alias] ...)")
-        items = list(expression)
-    elif isinstance(expression, tuple):
-        items = list(expression)
-    else:
+    if not is_chain(expression):
         raise ValueError("from expects: (from module import name [as alias] ...)")
+    if is_nil(expression):
+        raise ValueError("from expects: (from module import name [as alias] ...)")
+    items = list(expression)
 
     if len(items) < 4:
         raise ValueError("from expects: (from module import name [as alias] ...)")
