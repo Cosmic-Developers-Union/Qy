@@ -18,8 +18,8 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from qy.core.syntax import Form
     from qy.frontend.cst import CstAtom
-    from qy.frontend.reader import Form
 
 __all__ = [
     "ReaderMacroEntry",

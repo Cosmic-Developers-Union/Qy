@@ -5,8 +5,8 @@ import pytest
 
 from qy.core.symbol_space import MISSING
 from qy.core.symbol_space import SymbolSpace
+from qy.core.syntax import Symbol
 from qy.errors import QyRuntimeError
-from qy.frontend.reader import Symbol
 from qy.import_ import fold
 from qy.import_ import unfold
 from qy.import_.resolver import detect_conflicts

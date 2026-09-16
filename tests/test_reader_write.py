@@ -1,35 +1,53 @@
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import form_to_tuple
-from qy.frontend.reader import read_one_tuple
-from qy.frontend.reader import read_tuple
-from qy.frontend.reader import tuple_to_form
+from typing import cast
+
+from qy.core.syntax import Chain
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol as _Symbol
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
+from qy.frontend.reader import read
+from qy.frontend.reader import read_one
 from qy.frontend.reader import write
 from qy.frontend.reader import write_program
-from qy.frontend.reader import write_tuple
-from qy.frontend.reader import write_tuple_program
 
-S = Symbol
+S = _Symbol
 
 
-def test_code_to_tuple_exchange_form():
-    assert read_tuple('(load "my docs") (+ 1 2)') == [
-        (S("load"), "my docs"),
-        (S("+"), S("1"), S("2")),
-    ]
-    assert read_one_tuple('(let (("abc" 1)) abc "abc")') == (
-        S("let"),
-        (("abc", S("1")),),
-        S("abc"),
-        "abc",
-    )
+def L(*items: object, tail: Form | None = None) -> Form:
+    return list_to_chain(list(items), tail=tail)
 
 
-def test_tuple_exchange_form_to_qy_form():
-    exchange_form = (S("embed"), (S("load"), S("docs")), S(":model"), S("text-embedding"))
-    qy_form = (S("embed"), (S("load"), S("docs")), S(":model"), S("text-embedding"))
+def test_read_raw_ast_is_symbol_and_chain_only():
+    forms = read('(load "my docs") (+ 1 2)')
 
-    assert tuple_to_form(exchange_form) == qy_form
-    assert form_to_tuple(qy_form) == exchange_form
+    assert len(forms) == 2
+    first, second = forms
+    assert isinstance(first, Chain)
+    assert chain_to_list(first)[0] == S("load")
+    assert isinstance(second, Chain)
+    assert [cast(_Symbol, item).name for item in chain_to_list(second)] == ["+", "1", "2"]
+
+
+def test_read_one_returns_chain():
+    form = read_one('(let (("abc" 1)) abc "abc")')
+
+    assert is_chain(form)
+    items = chain_to_list(form)
+    assert items[0] == S("let")
+    assert is_chain(items[1])
+
+
+def test_improper_chain_is_dotted_pair():
+    form = read_one("(a . b)")
+
+    assert is_chain(form)
+    assert car(form) == S("a")
+    assert cdr(form) == S("b")
+    assert not is_nil(cdr(form))
 
 
 def test_write_qy_form():
@@ -37,27 +55,21 @@ def test_write_qy_form():
     assert write(S("hello world")) == '"hello world"'
     assert write(S("(not a list)")) == '"(not a list)"'
     assert write(S("hello\nworld")) == r'"hello\nworld"'
-    assert write((S("+"), S("1"), S("2"))) == "(+ 1 2)"
+    assert write(L(S("+"), S("1"), S("2"))) == "(+ 1 2)"
     assert write(S('"hello"')) == '"hello"'
     assert write(S('"hello world"')) == '"hello world"'
 
 
-def test_write_tuple_exchange_form():
-    source = write_tuple((S("embed"), (S("load"), "my docs"), S(":size"), 800))
-
-    assert source == '(embed (load "my docs") :size 800)'
-    assert read_one_tuple(source) == (S("embed"), (S("load"), "my docs"), S(":size"), S("800"))
+def test_write_dotted_pair():
+    assert write(L(S("a"), S("b"), tail=S("c"))) == "(a b . c)"
 
 
-def test_write_programs():
-    qy_forms = [S("abc"), (S("+"), S("1"), S("2"))]
-    tuple_forms = [S("abc"), (S("+"), 1, 2)]
+def test_write_program():
+    forms: list[Form] = [S("abc"), L(S("+"), S("1"), S("2"))]
 
-    assert write_program(qy_forms) == "abc\n(+ 1 2)"
-    assert write_tuple_program(tuple_forms) == "abc\n(+ 1 2)"
-    assert read_tuple(write_tuple_program(tuple_forms)) == qy_forms
+    assert write_program(forms) == "abc\n(+ 1 2)"
 
 
-def test_string_literal_round_trips_through_tuple():
-    assert write_tuple("abc") == '"abc"'
-    assert write_tuple("hello world") == '"hello world"'
+def test_string_literal_write():
+    assert write(S('"abc"')) == '"abc"'
+    assert write(S('"hello world"')) == '"hello world"'

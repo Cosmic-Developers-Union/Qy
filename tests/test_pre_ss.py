@@ -5,10 +5,10 @@ import pytest
 
 from qy.core.symbol_space import MISSING as _MISSING
 from qy.core.symbol_space import SymbolSpace
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyResolveError
-from qy.frontend.reader import Symbol
 from qy.session.pre_ss import create_lisp_ss
 from qy.session.pre_ss import create_literal_ss
 from qy.session.pre_ss import create_number_ss

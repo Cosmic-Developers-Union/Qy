@@ -17,6 +17,7 @@ from qy.backend.vm.bytecode import Register
 from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
+from qy.core.syntax import Symbol
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
@@ -24,7 +25,6 @@ from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.sem.core import TupleValue
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
@@ -485,24 +485,20 @@ class RegisterVirtualMachine:
             error.add_frame(frame)
 
     async def _eval_form(self, form: object, env: Environment) -> object:
-        from typing import cast
 
         from qy.build.pipeline import bytecode_artifact
         from qy.build.pipeline import compile_core_forms_to_bytecode_async
-        from qy.core.syntax import Chain
-        from qy.core.syntax import Chain as QyCons
-        from qy.core.syntax import chain_to_tuple as qy_cons_to_tuple
-        from qy.frontend.reader import Form
-        from qy.frontend.reader import Symbol as _Symbol
+        from qy.core.syntax import Symbol as _Symbol
+        from qy.core.syntax import is_chain
         from qy.passes.pass_base import PipelineSession
 
-        if isinstance(form, QyCons):
-            form = qy_cons_to_tuple(form)
-        if not isinstance(form, _Symbol | tuple | Chain):
+        # raw AST 只有 symbol 与 chain；runtime eval 必须把 syntax datum
+        # 原样送入管线，不得先转成宿主 tuple。
+        if not (isinstance(form, _Symbol) or is_chain(form)):
             return form
         session = PipelineSession(env=env)
         result = await compile_core_forms_to_bytecode_async(
-            [cast(Form, form)],
+            [form],
             session,
         )
         bytecode = bytecode_artifact(result)
@@ -954,7 +950,7 @@ async def evaluate_form_async(expression: object, env: Environment) -> object:
 
     from qy.build.pipeline import bytecode_artifact
     from qy.build.pipeline import compile_forms_to_bytecode_async
-    from qy.frontend.reader import Form
+    from qy.core.syntax import Form
     from qy.passes.pass_base import PipelineSession
 
     if isinstance(expression, Symbol):

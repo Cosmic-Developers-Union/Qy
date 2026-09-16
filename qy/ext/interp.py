@@ -16,6 +16,7 @@ from __future__ import annotations
 import itertools
 
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import Symbol
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import EvaluationError
@@ -23,7 +24,6 @@ from qy.ext.descriptor import ExtensionBinding
 from qy.ext.descriptor import ExtensionCapability
 from qy.ext.descriptor import ExtensionDescriptor
 from qy.ext.registry import register_extension
-from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 from qy.session.runtime_space import RuntimeSpace as Environment
 

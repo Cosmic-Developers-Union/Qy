@@ -1,7 +1,7 @@
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.errors import EvaluationError
-from qy.frontend.reader import Symbol
 from qy.runtime import evaluate_source
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 

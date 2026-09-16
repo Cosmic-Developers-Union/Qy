@@ -27,7 +27,9 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
+from qy.core.syntax import get_span
 from qy.core.syntax import map_chain as map_qy_cons
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
@@ -41,8 +43,6 @@ from qy.ext.descriptor import ExtensionBinding
 from qy.ext.descriptor import ExtensionCapability
 from qy.ext.descriptor import ExtensionDescriptor
 from qy.ext.registry import register_extension
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.import_.module import StandardModule
 from qy.macro import MacroDefinition
 from qy.sem.host import HostReference as HostObjectRef

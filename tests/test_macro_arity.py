@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.errors import QyArityError
-from qy.frontend.reader import Symbol
 from qy.macro import MacroDefinition
 
 
@@ -24,7 +25,7 @@ async def test_macro_definition_expand():
     macro = MacroDefinition(
         name=Symbol("test-macro"),
         params=(Symbol("x"),),
-        body=((Symbol("quote"), Symbol("expanded")),),
+        body=(list_to_chain([Symbol("quote"), Symbol("expanded")]),),
         closure=env,
     )
 
@@ -39,7 +40,7 @@ async def test_macro_definition_arity_error():
     macro = MacroDefinition(
         name=Symbol("test-macro"),
         params=(Symbol("x"), Symbol("y")),
-        body=((Symbol("quote"), Symbol("expanded")),),
+        body=(list_to_chain([Symbol("quote"), Symbol("expanded")]),),
         closure=env,
     )
 

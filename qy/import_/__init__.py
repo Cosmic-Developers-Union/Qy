@@ -53,7 +53,7 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
     from qy.core.symbol_space import SymbolSpace
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
 __all__ = [
     "FoldSpec",

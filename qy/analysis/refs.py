@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     from qy.core import OperatorKind
     from qy.core import TypeName
     from qy.core.operator_signature import OperatorSignature
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
     from qy.session.runtime_space import RuntimeSpace as Environment
 
 from qy.core.operator_signature import format_arity_message

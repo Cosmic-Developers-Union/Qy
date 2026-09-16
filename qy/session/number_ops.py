@@ -30,11 +30,11 @@ from collections.abc import Callable
 from typing import cast
 
 from qy.core.operators import PureOperator
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
 from qy.sem.core import Float16Value
 from qy.sem.core import Float32Value
 from qy.sem.core import Float128Value

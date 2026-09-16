@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.errors import QyArityError
-from qy.frontend.reader import Symbol
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction

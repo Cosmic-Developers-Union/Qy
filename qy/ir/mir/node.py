@@ -11,9 +11,9 @@ from dataclasses import dataclass
 from dataclasses import field
 from typing import Literal
 
+from qy.core.syntax import Symbol
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.ir.layout import SymbolSpaceLayout
 
 __all__ = [

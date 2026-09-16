@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from qy.core.syntax import Symbol
 from qy.errors import QyArityError
-from qy.frontend.reader import Symbol
 from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
@@ -123,9 +123,9 @@ async def _tail_cond(
     env: Environment,
     fn: UserFunction,
 ) -> object:
+    from qy.core.syntax import get_span
     from qy.core.syntax import nil
     from qy.errors import QyTypeError
-    from qy.frontend.reader import get_span
     from qy.vm.instance.machine import evaluate_form_async
 
     for clause in args:
@@ -147,8 +147,8 @@ async def _tail_let(
     fn: UserFunction,
 ) -> object:
     from qy.core.symbol_utils import ensure_symbol
+    from qy.core.syntax import get_span
     from qy.errors import QyTypeError
-    from qy.frontend.reader import get_span
     from qy.vm.instance.machine import evaluate_form_async
 
     if len(args) < 2:

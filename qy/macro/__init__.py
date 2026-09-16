@@ -18,9 +18,9 @@ from typing import cast
 
 if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.errors import QyArityError
-from qy.frontend.reader import Form
-from qy.frontend.reader import Symbol
 
 __all__ = [
     "CapturedForm",

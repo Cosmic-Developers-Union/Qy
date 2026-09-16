@@ -42,10 +42,12 @@ from qy.core.operators import ScopeOperator
 from qy.core.syntax import NONE as QY_NONE
 from qy.core.syntax import Chain as QyChain
 from qy.core.syntax import Chain as QyCons
+from qy.core.syntax import Form
 from qy.core.syntax import NoneValue
 from qy.core.syntax import QyNil
 from qy.core.syntax import QyNil as QyEmptyChain
 from qy.core.syntax import QyNil as QyEmptyList
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import TValue as QyT
 from qy.core.syntax import nil as QY_EMPTY_CHAIN
@@ -69,21 +71,11 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
 from qy.errors import format_qy_error
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
 from qy.frontend.reader import ReaderSyntaxError
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import TupleForm
-from qy.frontend.reader import form_to_tuple
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
-from qy.frontend.reader import read_one_tuple
-from qy.frontend.reader import read_tuple
-from qy.frontend.reader import tuple_to_form
 from qy.frontend.reader import write
 from qy.frontend.reader import write_program
-from qy.frontend.reader import write_tuple
-from qy.frontend.reader import write_tuple_program
 from qy.ir import Binding
 from qy.ir import CallExpr
 from qy.ir import LiteralExpr
@@ -157,7 +149,6 @@ __all__ = [
     "ControlOperator",
     "Diagnostic",
     "DictValue",
-    "DottedTuple",
     "EffectDefinition",
     "EffectOperator",
     "EffectSpec",
@@ -223,7 +214,6 @@ __all__ = [
     "Symbol",
     "SymbolRefExpr",
     "TraceFrame",
-    "TupleForm",
     "TupleValue",
     "UnresolvedSymbolExpr",
     "analyze",
@@ -246,7 +236,6 @@ __all__ = [
     "dump_program",
     "emit",
     "evaluate_bytecode_async",
-    "form_to_tuple",
     "format_form",
     "format_operator_docs",
     "format_program",
@@ -259,14 +248,9 @@ __all__ = [
     "mir_artifact",
     "read",
     "read_one",
-    "read_one_tuple",
-    "read_tuple",
     "standard_environment",
-    "tuple_to_form",
     "type_check_source",
     "verify_mir",
     "write",
     "write_program",
-    "write_tuple",
-    "write_tuple_program",
 ]

@@ -20,17 +20,15 @@ from collections.abc import Iterable
 from typing import cast
 
 from qy.core.syntax import Chain
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import cons
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
-from qy.frontend.form import DottedTuple
-from qy.frontend.form import Form
-from qy.frontend.form import SpannedTuple
-from qy.frontend.form import Symbol
-from qy.frontend.form import get_span
 from qy.source.span import SourceSpan
 
 __all__ = ["expand_surface_dialect"]
@@ -63,10 +61,6 @@ def _expand_surface_form(form: object, *, in_quasiquote: bool) -> object:
         return form
     if isinstance(form, Chain):
         return _expand_surface_chain(form, in_quasiquote=in_quasiquote)
-    if isinstance(form, DottedTuple):
-        return _expand_surface_dotted_tuple(form, in_quasiquote=in_quasiquote)
-    if isinstance(form, tuple):
-        return _expand_surface_tuple(form, in_quasiquote=in_quasiquote)
     return form
 
 
@@ -322,101 +316,6 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
 
     expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)
     return list_to_chain([items[0], bindings, *list(expanded_body)], span=span)
-
-
-def _expand_surface_tuple(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if not form:
-        return SpannedTuple((), get_span(form))
-    head = form[0]
-    if not isinstance(head, Symbol):
-        return SpannedTuple(
-            _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
-        )
-
-    match head.name:
-        case "define":
-            return _expand_define_surface(form, in_quasiquote=in_quasiquote)
-        case "defun" | "macro":
-            return _expand_named_body_surface(form, in_quasiquote=in_quasiquote)
-        case "lambda":
-            return _expand_lambda_surface(form, in_quasiquote=in_quasiquote)
-        case "let":
-            return _expand_let_surface(form, in_quasiquote=in_quasiquote)
-        case "defeffect" | "exports" | "from" | "import":
-            return SpannedTuple(form, get_span(form))
-        case "module":
-            if len(form) <= 2:
-                return SpannedTuple(form, get_span(form))
-            body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-            return SpannedTuple((form[0], form[1], *body), get_span(form))
-        case "quasiquote":
-            if len(form) != 2:
-                return SpannedTuple(
-                    _expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form)
-                )
-            return SpannedTuple(
-                (
-                    form[0],
-                    _expand_surface_form(form[1], in_quasiquote=True),
-                ),
-                get_span(form),
-            )
-
-    return SpannedTuple(_expand_surface_sequence(form, in_quasiquote=in_quasiquote), get_span(form))
-
-
-def _expand_surface_dotted_tuple(form: DottedTuple, *, in_quasiquote: bool) -> DottedTuple:
-    return DottedTuple(
-        _expand_surface_sequence(tuple(form), in_quasiquote=in_quasiquote),
-        _expand_surface_form(cast(Form, form.tail), in_quasiquote=in_quasiquote),
-        get_span(form),
-    )
-
-
-def _expand_define_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    values = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], *values), get_span(form))
-
-
-def _expand_named_body_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 3:
-        return SpannedTuple(form, get_span(form))
-    body = _expand_surface_sequence(tuple(form[3:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], form[2], *body), get_span(form))
-
-
-def _expand_lambda_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], form[1], *body), get_span(form))
-
-
-def _expand_let_surface(form: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(form) <= 2:
-        return SpannedTuple(form, get_span(form))
-    bindings = form[1]
-    if isinstance(bindings, tuple):
-        bindings = SpannedTuple(
-            (
-                _expand_let_binding_surface(binding, in_quasiquote=in_quasiquote)
-                if isinstance(binding, tuple)
-                else binding
-                for binding in bindings
-            ),
-            get_span(bindings),
-        )
-    body = _expand_surface_sequence(tuple(form[2:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((form[0], bindings, *body), get_span(form))
-
-
-def _expand_let_binding_surface(binding: tuple[object, ...], *, in_quasiquote: bool) -> Form:
-    if len(binding) <= 1:
-        return SpannedTuple(binding, get_span(binding))
-    values = _expand_surface_sequence(tuple(binding[1:]), in_quasiquote=in_quasiquote)
-    return SpannedTuple((binding[0], *values), get_span(binding))
 
 
 def _expand_surface_symbol(symbol: Symbol, *, in_quasiquote: bool) -> object:

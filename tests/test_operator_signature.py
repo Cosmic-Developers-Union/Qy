@@ -4,7 +4,7 @@ from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.runtime import Qy
 from qy.symbol_space import STANDARD_PROFILE_MODULES
 from qy.symbol_space import standard_profile_bindings

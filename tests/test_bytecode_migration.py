@@ -10,7 +10,7 @@ from qy.backend.vm import deserialize_bytecode
 from qy.backend.vm import dump_bytecode
 from qy.backend.vm import pretty_print_bytecode
 from qy.backend.vm import serialize_bytecode
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 
 
 def test_bytecode_types():

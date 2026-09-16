@@ -15,9 +15,13 @@ if TYPE_CHECKING:
     from collections.abc import Sized
 
 
+from qy.core.quasiquote import expand_quasiquote
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import cons
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
@@ -28,11 +32,7 @@ from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
 from qy.frontend.reader import ReaderSyntaxError
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.frontend.reader import read
 from qy.import_.parse import parse_from_import
 from qy.import_.registry import load_module
@@ -40,7 +40,6 @@ from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.macro import MacroExpansionServices
 from qy.macro.hygiene import MacroRename
-from qy.macro.hygiene import _tuple_like
 from qy.macro.hygiene import apply_hygiene
 from qy.macro.scope import MacroScope
 from qy.macro.trace import MacroExpansionTrace
@@ -69,23 +68,19 @@ _MODULE_MACRO_NAMESPACE_CACHE_KEY = ("qy", "module_macro_namespace")
 
 
 # ============================================================================
-# Chain/Tuple 统一操作辅助函数
+# Chain form 操作辅助函数
 # ============================================================================
 
 
 def _is_list_form(form: object) -> bool:
-    """检查 form 是否为 list 形式（Chain 或 tuple）。."""
-    if is_chain(form):
-        return not is_nil(form)
-    return isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0
+    """检查 form 是否为非空 list 形式（非空 chain）。."""
+    return is_chain(form) and not is_nil(form)
 
 
 def _get_operator(form: object) -> object | None:
     """获取 list form 的 operator（第一个元素）。."""
     if is_chain(form) and not is_nil(form):
         return car(form)
-    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
-        return form[0]
     return None
 
 
@@ -97,10 +92,8 @@ def _get_args(form: object) -> tuple[object, ...]:
             return ()
         if is_chain(rest):
             return tuple(rest)
-        # improper list
+        # improper list：tail 本身是最后一个参数
         return (rest,)
-    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0:
-        return form[1:]
     return ()
 
 
@@ -119,8 +112,6 @@ def _form_length(form: object) -> int:
                 count += 1
                 current = cdr(current)
             return count + 1
-    if isinstance(form, tuple):
-        return len(form)
     return 0
 
 
@@ -132,7 +123,7 @@ def _form_to_list(form: object) -> list[object]:
         try:
             return list(form)
         except ValueError:
-            # improper list - 展开所有元素
+            # improper list - 展开所有元素（含 tail）
             result = []
             current = form
             while is_chain(current):
@@ -141,19 +132,22 @@ def _form_to_list(form: object) -> list[object]:
             if not is_nil(current):
                 result.append(current)
             return result
-    if isinstance(form, tuple):
-        return list(form)
     return []
 
 
+def _form_items_and_tail(form: object) -> tuple[list[object], object]:
+    """把 chain 拆成「元素列表, tail」；proper list 的 tail 是 nil。."""
+    items: list[object] = []
+    current = form
+    while is_chain(current):
+        items.append(car(current))
+        current = cdr(current)
+    return items, current
+
+
 def _list_to_form(items: list[object], original: object) -> object:
-    """将 Python list 转换回 form，保持原始类型和 span。."""
-    span = get_span(original)
-    if is_chain(original) or (not isinstance(original, tuple)):
-        # 如果原始是 Chain 或非 tuple，返回 Chain
-        return list_to_chain(items, span=span)
-    # 保持 tuple 类型
-    return _tuple_like(cast(tuple, original), items)
+    """将 Python list 转换回 chain，保留原 form 的 span。."""
+    return list_to_chain(items, span=get_span(original))
 
 
 def _slice_form(form: object, start: int, end: int | None = None) -> list[object]:
@@ -380,7 +374,7 @@ async def _macroexpand_form(
         if len(args) != 1:
             return form
         return await _macroexpand_form(
-            _expand_quasiquote(args[0], depth=0),
+            expand_quasiquote(args[0], depth=0),
             context,
             depth=depth,
         )
@@ -560,105 +554,6 @@ def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
                 env.define(items[1], EffectDefinition(items[1], resumable=True))
 
 
-def _expand_quasiquote(form: object, *, depth: int = 0) -> object:
-    # 处理 Chain
-    if is_chain(form) and not is_nil(form):
-        op = car(form)
-        if op == Symbol("unquote"):
-            if depth == 0:
-                rest = cdr(form)
-                if is_chain(rest) and not is_nil(rest) and is_nil(cdr(rest)):
-                    return car(rest)
-                return form
-            rest = cdr(form)
-            if is_chain(rest) and not is_nil(rest):
-                inner = _expand_quasiquote(car(rest), depth=depth - 1)
-                return list_to_chain(
-                    [Symbol("list"), Symbol("unquote"), inner], span=get_span(form)
-                )
-            return form
-        if op == Symbol("quasiquote"):
-            rest = cdr(form)
-            if is_chain(rest) and not is_nil(rest):
-                inner = _expand_quasiquote(car(rest), depth=depth + 1)
-                return list_to_chain(
-                    [Symbol("list"), Symbol("quasiquote"), inner], span=get_span(form)
-                )
-            return form
-        return _expand_quasiquote_chain(form, depth=depth)
-
-    # 处理 tuple（兼容旧代码）
-    if isinstance(form, tuple) and not isinstance(form, DottedTuple) and form:
-        op = form[0]
-        if op == Symbol("unquote"):
-            if depth == 0:
-                return form[1] if len(form) == 2 else form
-            return (Symbol("list"), Symbol("unquote"), _expand_quasiquote(form[1], depth=depth - 1))
-        if op == Symbol("quasiquote"):
-            inner = _expand_quasiquote(form[1] if len(form) == 2 else form, depth=depth + 1)
-            return (Symbol("list"), Symbol("quasiquote"), inner)
-        return _expand_quasiquote_tuple(form, depth=depth)
-    if isinstance(form, DottedTuple):
-        return (Symbol("quote"), form)
-    return (Symbol("quote"), form)
-
-
-def _expand_quasiquote_chain(form: object, *, depth: int) -> object:
-    """展开 Chain 形式的 quasiquote。."""
-    if is_nil(form):
-        return list_to_chain([Symbol("quote"), nil], span=get_span(form))
-
-    head_form = car(form)
-    tail = cdr(form)
-
-    # 检查 unquote-splicing
-    if (
-        is_chain(head_form)
-        and not is_nil(head_form)
-        and car(head_form) == Symbol("unquote-splicing")
-        and depth == 0
-    ):
-        rest_of_head = cdr(head_form)
-        if is_chain(rest_of_head) and not is_nil(rest_of_head):
-            spliced = car(rest_of_head)
-        else:
-            spliced = head_form
-        rest = (
-            _expand_quasiquote_chain(tail, depth=depth)
-            if is_chain(tail)
-            else list_to_chain([Symbol("quote"), tail])
-        )
-        return list_to_chain([Symbol("append"), spliced, rest], span=get_span(form))
-
-    head = _expand_quasiquote(head_form, depth=depth)
-    rest = (
-        _expand_quasiquote_chain(tail, depth=depth)
-        if is_chain(tail)
-        else list_to_chain([Symbol("quote"), tail])
-    )
-    return list_to_chain([Symbol("cons"), head, rest], span=get_span(form))
-
-
-def _expand_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
-    if not form:
-        return (Symbol("quote"), ())
-    head_form = form[0]
-    tail = form[1:]
-    if (
-        isinstance(head_form, tuple)
-        and not isinstance(head_form, DottedTuple)
-        and head_form
-        and head_form[0] == Symbol("unquote-splicing")
-        and depth == 0
-    ):
-        spliced = head_form[1] if len(head_form) == 2 else head_form
-        rest = _expand_quasiquote_tuple(tail, depth=depth)
-        return (Symbol("append"), spliced, rest)
-    head = _expand_quasiquote(head_form, depth=depth)
-    rest = _expand_quasiquote_tuple(tail, depth=depth)
-    return (Symbol("cons"), head, rest)
-
-
 async def _expand_macro(
     macro: MacroDefinition,
     args: tuple[object, ...],
@@ -711,10 +606,11 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
     param_symbols = []
     rest_param = None
 
-    # 检查是否是点对语法 (a b . rest)
-    if isinstance(params, DottedTuple):
-        # 点对语法：固定参数在 tuple 中，rest 参数在 tail 中
-        for param in params:
+    # 检查是否是点对语法 (a b . rest)：improper chain 的 tail 即 rest 参数
+    param_items, param_tail = _form_items_and_tail(params) if _is_list_form(params) else ([], nil)
+    if not is_nil(param_tail):
+        # 点对语法：固定参数在 chain 元素中，rest 参数在 tail 中
+        for param in param_items:
             if not isinstance(param, Symbol):
                 raise QyTypeError(
                     f"macro parameter must be a symbol, got {param!r}",
@@ -722,16 +618,14 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
                 )
             param_symbols.append(param)
 
-        if not isinstance(params.tail, Symbol):
+        if not isinstance(param_tail, Symbol):
             raise QyTypeError(
-                f"macro rest parameter must be a symbol, got {params.tail!r}",
-                span=get_span(params.tail),
+                f"macro rest parameter must be a symbol, got {param_tail!r}",
+                span=get_span(param_tail),
             )
-        rest_param = params.tail
+        rest_param = param_tail
     else:
         # 普通列表或 &body 语法
-        param_items = _form_to_list(params) if _is_list_form(params) else []
-
         for i, param in enumerate(param_items):
             if not isinstance(param, Symbol):
                 raise QyTypeError(
@@ -794,8 +688,6 @@ def _normalize_macro_result(value: object) -> object:
         normalized_head = _normalize_macro_result(car(value))
         normalized_tail = _normalize_macro_result(cdr(value))
         return cons(normalized_head, normalized_tail, span=get_span(value))
-    if isinstance(value, tuple):
-        return _tuple_like(value, [_normalize_macro_result(item) for item in value])
     return value
 
 

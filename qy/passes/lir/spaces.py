@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.ir.lir import LIRBindingAddr
 from qy.ir.lir import LIRBindingSlot
 from qy.ir.lir import LIRInstruction

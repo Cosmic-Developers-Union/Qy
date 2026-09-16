@@ -13,11 +13,12 @@ from pathlib import Path
 import pytest
 
 from qy.core.syntax import Chain as QyChain
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
 from qy.errors import QyError
 from qy.errors import QyResolveError
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.runtime import evaluate
 from qy.runtime import evaluate_async
@@ -35,6 +36,11 @@ from qy.session.runtime_space import create_standard_runtime_space as standard_e
 # -- evaluate / evaluate_async tests -----------------------------------------
 
 
+def L(*items: object) -> object:
+    """构造一个 Qy call form（chain）。."""
+    return list_to_chain(list(items))
+
+
 def test_evaluate_symbol():
     """测试 evaluate 解析符号。."""
     env = standard_environment()
@@ -49,7 +55,7 @@ def test_evaluate_arithmetic():
     env = standard_environment()
 
     # (+ 1 2 3)
-    expr = (Symbol("+"), 1, 2, 3)
+    expr = L(Symbol("+"), 1, 2, 3)
     result = evaluate(expr, env)
     assert result == 6
 
@@ -59,7 +65,7 @@ def test_evaluate_nested_expression():
     env = standard_environment()
 
     # (+ (* 2 3) (- 10 5))
-    expr = (Symbol("+"), (Symbol("*"), 2, 3), (Symbol("-"), 10, 5))
+    expr = L(Symbol("+"), L(Symbol("*"), 2, 3), L(Symbol("-"), 10, 5))
     result = evaluate(expr, env)
     assert result == 11
 
@@ -67,7 +73,7 @@ def test_evaluate_nested_expression():
 def test_evaluate_with_default_environment():
     """测试 evaluate 使用默认环境。."""
     # (+ 1 2)
-    expr = (Symbol("+"), 1, 2)
+    expr = L(Symbol("+"), 1, 2)
     result = evaluate(expr)
     assert result == 3
 
@@ -77,10 +83,10 @@ def test_evaluate_let_binding():
     env = standard_environment()
 
     # (let ((x 10) (y 20)) (+ x y))
-    expr = (
+    expr = L(
         Symbol("let"),
-        ((Symbol("x"), 10), (Symbol("y"), 20)),
-        (Symbol("+"), Symbol("x"), Symbol("y")),
+        L(L(Symbol("x"), 10), L(Symbol("y"), 20)),
+        L(Symbol("+"), Symbol("x"), Symbol("y")),
     )
     result = evaluate(expr, env)
     assert result == 30
@@ -91,8 +97,8 @@ def test_evaluate_lambda_and_call():
     env = standard_environment()
 
     # ((lambda (x y) (+ x y)) 10 20)
-    expr = (
-        (Symbol("lambda"), (Symbol("x"), Symbol("y")), (Symbol("+"), Symbol("x"), Symbol("y"))),
+    expr = L(
+        L(Symbol("lambda"), L(Symbol("x"), Symbol("y")), L(Symbol("+"), Symbol("x"), Symbol("y"))),
         10,
         20,
     )
@@ -105,7 +111,7 @@ def test_evaluate_quote():
     env = standard_environment()
 
     # (quote (+ 1 2))
-    expr = (Symbol("quote"), (Symbol("+"), 1, 2))
+    expr = L(Symbol("quote"), L(Symbol("+"), 1, 2))
     result = evaluate(expr, env)
 
     # quote 应该返回未求值的表达式
@@ -469,7 +475,7 @@ async def test_evaluate_file_async_with_effects():
 def test_evaluate_body_single_expression():
     """测试 evaluate_body 评估单个表达式。."""
     env = standard_environment()
-    body = ((Symbol("+"), 1, 2),)
+    body = (L(Symbol("+"), 1, 2),)
     result = evaluate_body(body, env)
     assert result == 3
 
@@ -478,9 +484,9 @@ def test_evaluate_body_multiple_expressions():
     """测试 evaluate_body 评估多个表达式并返回最后一个。."""
     env = standard_environment()
     body = (
-        (Symbol("define"), Symbol("x"), 10),
-        (Symbol("define"), Symbol("y"), 20),
-        (Symbol("+"), Symbol("x"), Symbol("y")),
+        L(Symbol("define"), Symbol("x"), 10),
+        L(Symbol("define"), Symbol("y"), 20),
+        L(Symbol("+"), Symbol("x"), Symbol("y")),
     )
     result = evaluate_body(body, env)
     assert result == 30
@@ -502,10 +508,10 @@ def test_evaluate_body_with_side_effects():
     """测试 evaluate_body 评估有副作用的表达式。."""
     env = standard_environment()
     body = (
-        (Symbol("define"), Symbol("a"), 1),
-        (Symbol("define"), Symbol("b"), 2),
-        (Symbol("define"), Symbol("c"), 3),
-        (Symbol("+"), Symbol("a"), Symbol("b"), Symbol("c")),
+        L(Symbol("define"), Symbol("a"), 1),
+        L(Symbol("define"), Symbol("b"), 2),
+        L(Symbol("define"), Symbol("c"), 3),
+        L(Symbol("+"), Symbol("a"), Symbol("b"), Symbol("c")),
     )
     result = evaluate_body(body, env)
     assert result == 6
@@ -518,7 +524,7 @@ def test_evaluate_body_with_side_effects():
 async def test_evaluate_body_async_single_expression():
     """测试 evaluate_body_async 评估单个表达式。."""
     env = standard_environment()
-    body = ((Symbol("*"), 2, 3),)
+    body = (L(Symbol("*"), 2, 3),)
     result = await evaluate_body_async(body, env)
     assert result == 6
 
@@ -548,9 +554,9 @@ async def test_evaluate_body_async_preserves_environment():
     env = standard_environment()
 
     body = (
-        (Symbol("define"), Symbol("a"), 1),
-        (Symbol("define"), Symbol("b"), 2),
-        (Symbol("define"), Symbol("c"), 3),
+        L(Symbol("define"), Symbol("a"), 1),
+        L(Symbol("define"), Symbol("b"), 2),
+        L(Symbol("define"), Symbol("c"), 3),
     )
 
     await evaluate_body_async(body, env)

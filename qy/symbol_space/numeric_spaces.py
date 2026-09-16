@@ -18,9 +18,9 @@ from typing import Any
 from typing import cast
 
 from qy.core.operators import PureOperator
+from qy.core.syntax import Symbol
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
 from qy.sem.core import IntValue
 from qy.vm.instance.frame import QyContinuation
 

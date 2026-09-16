@@ -16,7 +16,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import cast
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.import_.module import StandardModule
 
 __all__ = [

@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
 from qy.import_.operators import _is_special_form
 from qy.import_.operators import _parse_export_names
 

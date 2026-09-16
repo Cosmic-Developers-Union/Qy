@@ -1,10 +1,10 @@
 from qy.core.syntax import NONE as QY_NONE
 from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_EMPTY_LIST
 from qy.core.syntax import nil as QY_NIL
-from qy.frontend.reader import Symbol
 from qy.runtime import evaluate_source
 
 S = Symbol

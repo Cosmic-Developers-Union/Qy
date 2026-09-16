@@ -20,8 +20,8 @@ from qy.build.artifact import SURFACE_FORMS
 from qy.build.artifact import RawFormProgram
 from qy.build.artifact import SurfaceProgram
 from qy.core.program import CoreProgram
+from qy.core.syntax import Form
 from qy.frontend.cst import CstProgram
-from qy.frontend.form import Form
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRProgram
 from qy.ir.mir import MIRProgram

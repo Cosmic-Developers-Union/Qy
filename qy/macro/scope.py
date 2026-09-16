@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.macro import MacroDefinition
 
 __all__ = ["MacroScope"]

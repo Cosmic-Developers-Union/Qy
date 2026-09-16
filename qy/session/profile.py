@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from qy.core.symbol_space import SymbolSpace
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
 __all__ = [
     "LiteralResolver",

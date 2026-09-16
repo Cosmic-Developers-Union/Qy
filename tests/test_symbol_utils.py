@@ -6,8 +6,8 @@ from __future__ import annotations
 import pytest
 
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import Symbol
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
 
 
 def test_ensure_symbol_with_symbol():

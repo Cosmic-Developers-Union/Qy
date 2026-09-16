@@ -3,15 +3,16 @@
 
 source -> raw AST 解析器，基于 Lark S-expression 解析器。
 
-raw AST 由以下组成：
-- Symbol：带 span 的符号
-- SpannedTuple：带 span 的 tuple
-- DottedTuple：带 span 的 dotted pair
+raw AST 只由以下两类 datum 组成：
+- ``Symbol``：带 span 的符号拼写
+- ``Chain``：不可变 chain（dotted pair 表示为 improper chain）
+
+datum 类型（``Symbol`` / ``Chain`` / ``nil``）的真源是 `qy.core.syntax`；
+本模块只负责 source -> raw AST，不再提供 Python tuple 形式的兼容表示。
 
 当前：
 - 这是主要的 reader 实现位置。
-- Surface dialect 展开嵌入在此模块中，后续应拆分为 qy/frontend/surface.py。
-- raw AST 仍在从 Python tuple 向 immutable chain 迁移中。
+- Surface dialect 展开实现在 `qy.frontend.surface`。
 
 禁止：
 - 不得提前将 number/string 等 literal 物化为 Python 值。
@@ -22,7 +23,6 @@ from __future__ import annotations
 
 import ast
 import json
-import math
 from collections.abc import Iterable
 from typing import TYPE_CHECKING
 from typing import cast
@@ -30,6 +30,8 @@ from typing import cast
 import lark
 
 from qy.core.syntax import Chain
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import cons
@@ -38,15 +40,6 @@ from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil
 from qy.errors import QySyntaxError
-from qy.frontend.form import DottedTuple
-from qy.frontend.form import Form
-from qy.frontend.form import SpannedTuple
-from qy.frontend.form import Symbol
-from qy.frontend.form import TupleAtom
-from qy.frontend.form import TupleForm
-from qy.frontend.form import chain_to_spanned_tuple
-from qy.frontend.form import get_span
-from qy.frontend.form import spanned_tuple_to_chain
 from qy.source.span import SourceSpan
 
 if TYPE_CHECKING:
@@ -55,40 +48,15 @@ if TYPE_CHECKING:
 
 __all__ = [
     "GRAMMAR",
-    "Chain",
-    "DottedTuple",
-    "Form",
     "ReaderSyntaxError",
-    "SourceSpan",
-    "SpannedTuple",
-    "Symbol",
-    "TupleForm",
-    "_decode_string_symbol",
-    "_is_string_symbol",
-    "car",
-    "cdr",
-    "chain_to_spanned_tuple",
-    "cons",
     "expand_surface_dialect",
-    "form_to_tuple",
-    "get_span",
-    "is_chain",
-    "is_nil",
-    "list_to_chain",
-    "nil",
     "parse_cst",
     "read",
     "read_cst",
     "read_one",
-    "read_one_tuple",
     "read_raw",
-    "read_tuple",
-    "spanned_tuple_to_chain",
-    "tuple_to_form",
     "write",
     "write_program",
-    "write_tuple",
-    "write_tuple_program",
 ]
 
 
@@ -279,59 +247,12 @@ def read_one(source: str, *, source_name: str | None = None) -> Form:
     return forms[0]
 
 
-# QY_DELETE_AFTER_SEMANTIC_REPLACEMENT: target=Symbol|Chain only; legacy Python-tuple compatibility API
-def read_tuple(source: str) -> list[TupleForm]:
-    return [form_to_tuple(form) for form in read(source)]
-
-
-def read_one_tuple(source: str) -> TupleForm:
-    return form_to_tuple(read_one(source))
-
-
-def form_to_tuple(form: object) -> TupleForm:
-    if isinstance(form, Symbol):
-        if _is_string_symbol(form.name):
-            return _decode_string_symbol(form)
-        return form
-    if isinstance(form, Chain):
-        # 转换 Chain 到 tuple
-        items = []
-        current = form
-        while is_chain(current):
-            items.append(form_to_tuple(car(current)))
-            current = cdr(current)
-        # 处理 improper list
-        if not is_nil(current):
-            return (*items, Symbol("."), form_to_tuple(current))
-        return tuple(items)
-    if isinstance(form, DottedTuple):
-        return (
-            *tuple(form_to_tuple(item) for item in form),
-            Symbol("."),
-            form_to_tuple(cast(Form, form.tail)),
-        )
-    if isinstance(form, tuple):
-        return tuple(form_to_tuple(item) for item in form)
-    raise TypeError(f"expected qy form, got {type(form).__name__}")
-
-
-def tuple_to_form(form: TupleForm) -> Form:
-    if isinstance(form, str):
-        return Symbol(json.dumps(form, ensure_ascii=False))
-    if isinstance(form, Symbol):
-        return form
-    if isinstance(form, tuple):
-        return tuple(tuple_to_form(item) for item in form)
-    raise TypeError(f"expected symbolic tuple form, got literal {type(form).__name__}")
-
-
 def write(form: object) -> str:
     if isinstance(form, Symbol):
         if _is_string_symbol(form.name):
             return form.name
         return _encode_symbol(form.name)
     if isinstance(form, Chain):
-        # 处理 Chain
         items = []
         current = form
         while is_chain(current):
@@ -346,55 +267,11 @@ def write(form: object) -> str:
         if len(items) == 2 and items[0] == "quasiquote":
             return "`" + items[1]
         return f"({' '.join(items)})"
-    if isinstance(form, DottedTuple):
-        head = " ".join(write(item) for item in form)
-        return f"({head} . {write(cast(Form, form.tail))})"
-    if isinstance(form, tuple):
-        if _is_surface_quote(form):
-            return "'" + write(form[1])
-        if _is_surface_quasiquote(form):
-            return "`" + write(form[1])
-        return f"({' '.join(write(item) for item in form)})"
     raise TypeError(f"expected qy form, got {type(form).__name__}")
 
 
 def write_program(forms: Iterable[Form]) -> str:
     return "\n".join(write(form) for form in forms)
-
-
-def write_tuple(form: TupleForm) -> str:
-    from qy.core.syntax import T
-
-    if form is nil:
-        return "nil"
-    if form is T:
-        return "T"
-    if isinstance(form, Chain):
-        return _write_cons(form)
-    if isinstance(form, str):
-        return json.dumps(form, ensure_ascii=False)
-    if isinstance(form, Symbol):
-        return write(form)
-    if isinstance(form, DottedTuple):
-        head = " ".join(write_tuple(item) for item in form)
-        return f"({head} . {write_tuple(cast(TupleForm, form.tail))})"
-    if isinstance(form, tuple):
-        return f"({' '.join(write_tuple(item) for item in form)})"
-    return _encode_literal(form)
-
-
-def write_tuple_program(forms: Iterable[TupleForm]) -> str:
-    return "\n".join(write_tuple(form) for form in forms)
-
-
-def _decode_quoted_symbol(token: str, span: SourceSpan | None = None) -> str:
-    try:
-        value = ast.literal_eval(token)
-    except (SyntaxError, ValueError) as e:
-        raise ReaderSyntaxError(str(e), span=span) from e
-    if not isinstance(value, str):
-        raise ReaderSyntaxError(f"expected quoted symbol, got {token}", span=span)
-    return value
 
 
 def _is_string_symbol(name: str) -> bool:
@@ -412,17 +289,6 @@ def _split_tagged_literal(token: str, span: SourceSpan | None = None) -> tuple[s
     return token[:quote_index], token[quote_index:]
 
 
-def _write_cons(value: Chain) -> str:
-    parts: list[str] = []
-    current: object = value
-    while isinstance(current, Chain):
-        parts.append(write_tuple(cast(TupleForm, current.head)))
-        current = current.tail
-    if current is nil:
-        return f"({' '.join(parts)})"
-    return f"({' '.join(parts)} . {write_tuple(cast(TupleForm, current))})"
-
-
 def _dot_index(items: tuple[object, ...]) -> int | None:
     for index, item in enumerate(items):
         if isinstance(item, lark.Token) and item.type == "DOT":
@@ -436,16 +302,6 @@ def _span_from_line_column(line: int | None, column: int | None) -> SourceSpan |
     return SourceSpan(None, line, column, line, column)
 
 
-def _is_surface_quote(form: tuple[object, ...]) -> bool:
-    """Check if a tuple form is ``(quote x)`` — a surface dialect quote."""
-    return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quote"
-
-
-def _is_surface_quasiquote(form: tuple[object, ...]) -> bool:
-    """Check if a tuple form is ``(quasiquote x)`` — a surface dialect quasiquote."""
-    return len(form) == 2 and isinstance(form[0], Symbol) and form[0].name == "quasiquote"
-
-
 def _encode_symbol(name: str) -> str:
     if _can_write_bare(name):
         return name
@@ -456,26 +312,6 @@ def _can_write_bare(name: str) -> bool:
     if not name:
         return False
     return not any(char.isspace() or char in """()"';""" for char in name)
-
-
-def _encode_literal(value: TupleAtom) -> str:
-    if isinstance(value, bytes):
-        raise TypeError("cannot write Python bytes literal as qy source; use Symbol(...)")
-    if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False)
-    if value is True:
-        return "true"
-    if value is False:
-        return "false"
-    if value is None:
-        return "none"
-    if isinstance(value, int):
-        return str(value)
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise TypeError(f"cannot write non-finite float literal {value!r} as qy source")
-        return repr(value)
-    raise TypeError(f"cannot write literal {type(value).__name__} as qy source")
 
 
 # ============================================================================
@@ -538,12 +374,9 @@ def read_cst(
                     [Symbol("quote", span), Symbol(literal, span)],
                     span=span,
                 )
-                return cast(
-                    Form,
-                    list_to_chain(
-                        [Symbol(tag, span), quote_form],
-                        span=span,
-                    ),
+                return list_to_chain(
+                    [Symbol(tag, span), quote_form],
+                    span=span,
                 )
             case _:  # pragma: no cover
                 return Symbol(text, span)
@@ -561,20 +394,15 @@ def read_cst(
             result: object = tail_form
             for head in reversed(heads):
                 result = cons(head, result, span=span)
-            return cast(Form, result)
+            return result
         # Proper list
         items = [
             _convert_node(child) for child in lst.children if isinstance(child, (CstAtom, CstList))
         ]
-        return cast(Form, list_to_chain(items, span=span))
+        return list_to_chain(items, span=span)
 
     forms: list[Form] = []
     for node in cst.children:
         if isinstance(node, (CstAtom, CstList)):
             forms.append(_convert_node(node))
     return forms
-
-
-# ============================================================================
-# 兼容层函数（迁移期使用）
-# ============================================================================

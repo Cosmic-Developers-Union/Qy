@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from qy.core.operator_signature import TypeName
     from qy.core.symbol_space import SymbolSpace
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
 from qy.core.symbol_space import MISSING as _MISSING
 
@@ -178,9 +178,9 @@ def create_lisp_ss() -> SymbolSpace:
     """
     from qy.core.symbol_space import SymbolSpace
     from qy.core.syntax import NONE
+    from qy.core.syntax import Symbol
     from qy.core.syntax import T
     from qy.core.syntax import nil
-    from qy.frontend.reader import Symbol
 
     return SymbolSpace(
         {
@@ -293,9 +293,9 @@ def create_literal_ss(parent: SymbolSpace | None = None) -> SymbolSpace:
     Chain: parent (optional) → lisp-ss → number-ss → char-ss → string-ss.
     """
     from qy.core.syntax import NONE
+    from qy.core.syntax import Symbol
     from qy.core.syntax import T
     from qy.core.syntax import nil
-    from qy.frontend.reader import Symbol
 
     if parent is None:
         lisp = create_lisp_ss()

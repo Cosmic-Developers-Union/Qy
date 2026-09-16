@@ -10,14 +10,15 @@ from typing import TYPE_CHECKING
 from typing import Literal
 from typing import cast
 
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
-from qy.core.syntax import chain_to_list
+from qy.core.syntax import cdr
+from qy.core.syntax import cons
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.errors import EvaluationError as QyResolutionError
-from qy.frontend.reader import SpannedTuple
-from qy.frontend.reader import Symbol
 from qy.macro import CapturedForm
 from qy.macro import MacroDefinition
 from qy.session.pre_ss import default_literal_type
@@ -66,24 +67,93 @@ class MacroRename:
     kind: Literal["binding", "definition-site"]
 
 
-def _tuple_like(original: tuple[object, ...], values: list[object]) -> tuple[object, ...]:
-    if isinstance(original, SpannedTuple):
-        return SpannedTuple(values, original.span)
-    return tuple(values)
+def _chain_items(form: object) -> list[object] | None:
+    """把 proper chain 拆成元素列表；非 chain 或 improper chain 返回 None。."""
+    if not is_chain(form):
+        return None
+    items: list[object] = []
+    current = form
+    while is_chain(current):
+        items.append(car(current))
+        current = cdr(current)
+    if not is_nil(current):
+        return None
+    return items
 
 
-def _chain_form_to_tuple(value: object) -> tuple[object, ...] | object:
-    """Recursively convert Chain to tuple for hygiene processing."""
-    if is_chain(value):
-        return tuple(_chain_form_to_tuple(item) for item in chain_to_list(value))
-    return value
+def _rebuild(form: object, items: list[object]) -> object:
+    """用新元素重建与原 form 同 span 的 chain。."""
+    return list_to_chain(items, span=get_span(form))
 
 
-def _tuple_to_chain_form(value: object) -> object:
-    """Recursively convert tuple back to Chain after hygiene processing."""
-    if isinstance(value, tuple):
-        return list_to_chain([_tuple_to_chain_form(item) for item in value])
-    return value
+def _rewrite_default_items(
+    items: list[object],
+    macro: MacroDefinition,
+    context: MacroExpansionContext,
+    call_site_ids: set[int],
+    renamed_locals: dict[str, str],
+    renames: list[MacroRename],
+    rename_seen: set[tuple[str, str, str]],
+) -> list[object]:
+    return [
+        _rewrite_hygienic_form(
+            item,
+            macro,
+            context,
+            call_site_ids,
+            renamed_locals,
+            renames,
+            rename_seen,
+            captured=False,
+        )
+        for item in items
+    ]
+
+
+def _rewrite_chain_elements(
+    value: object,
+    macro: MacroDefinition,
+    context: MacroExpansionContext,
+    call_site_ids: set[int],
+    renamed_locals: dict[str, str],
+    renames: list[MacroRename],
+    rename_seen: set[tuple[str, str, str]],
+    *,
+    captured: bool = False,
+) -> object:
+    """逐元素重写 chain（含 improper tail），保留结构与 span。."""
+    span = get_span(value)
+    elements: list[object] = []
+    current = value
+    while is_chain(current):
+        elements.append(
+            _rewrite_hygienic_form(
+                car(current),
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+                captured=captured,
+            )
+        )
+        current = cdr(current)
+    if is_nil(current):
+        return list_to_chain(elements, span=span)
+    result = _rewrite_hygienic_form(
+        current,
+        macro,
+        context,
+        call_site_ids,
+        renamed_locals,
+        renames,
+        rename_seen,
+        captured=captured,
+    )
+    for item in reversed(elements):
+        result = cons(item, result, span=span)
+    return result
 
 
 def apply_hygiene(
@@ -115,12 +185,11 @@ def _collect_form_ids(value: object, result: set[int]) -> None:
     if isinstance(value, CapturedForm):
         _collect_form_ids(value.value, result)
         return
-    if isinstance(value, tuple):
-        for item in value:
-            _collect_form_ids(item, result)
-    elif is_chain(value):
-        for item in chain_to_list(value):
-            _collect_form_ids(item, result)
+    if is_chain(value):
+        current: object = value
+        while is_chain(current):
+            _collect_form_ids(car(current), result)
+            current = cdr(current)
 
 
 def _rewrite_hygienic_form(
@@ -146,38 +215,16 @@ def _rewrite_hygienic_form(
             captured=True,
         )
     if captured or id(value) in call_site_ids:
-        if isinstance(value, tuple):
-            return _tuple_like(
-                value,
-                [
-                    _rewrite_hygienic_form(
-                        item,
-                        macro,
-                        context,
-                        call_site_ids,
-                        renamed_locals,
-                        renames,
-                        rename_seen,
-                        captured=True,
-                    )
-                    for item in value
-                ],
-            )
         if is_chain(value):
-            return list_to_chain(
-                [
-                    _rewrite_hygienic_form(
-                        item,
-                        macro,
-                        context,
-                        call_site_ids,
-                        renamed_locals,
-                        renames,
-                        rename_seen,
-                        captured=True,
-                    )
-                    for item in chain_to_list(value)
-                ]
+            return _rewrite_chain_elements(
+                value,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+                captured=True,
             )
         return value
     if isinstance(value, Symbol):
@@ -209,194 +256,125 @@ def _rewrite_hygienic_form(
         if operator in {Symbol("quasiquote"), Symbol("unquote"), Symbol("unquote-splicing")}:
             return value
 
-        # Convert to list for processing
-        items = chain_to_list(value)
+        items = _chain_items(value)
+        if items is None:
+            # improper chain：逐元素重写，保留 dotted tail
+            return _rewrite_chain_elements(
+                value,
+                macro,
+                context,
+                call_site_ids,
+                renamed_locals,
+                renames,
+                rename_seen,
+            )
 
         # Handle special forms that need custom rewriting
-        # Convert Chain to tuple, process, then convert back
         if operator == Symbol("define") and len(items) >= 3:
-            # Convert bindings to tuple if they are Chain
-            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
-            rewritten = _rewrite_hygienic_define(
-                as_tuple,
-                macro,
-                context,
-                call_site_ids,
-                renamed_locals,
-                renames,
-                rename_seen,
-            )
-            return _tuple_to_chain_form(rewritten)
-
-        if operator == Symbol("let") and len(items) >= 2:
-            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
-            rewritten = _rewrite_hygienic_let(
-                as_tuple,
-                macro,
-                context,
-                call_site_ids,
-                renamed_locals,
-                renames,
-                rename_seen,
-            )
-            return _tuple_to_chain_form(rewritten)
-
-        if operator == Symbol("lambda") and len(items) >= 2:
-            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
-            rewritten = _rewrite_hygienic_callable(
-                as_tuple,
-                macro,
-                context,
-                call_site_ids,
-                renamed_locals,
-                renames,
-                rename_seen,
-                params_index=1,
-                body_start=2,
-            )
-            return _tuple_to_chain_form(rewritten)
-
-        if operator == Symbol("defun") and len(items) >= 3:
-            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
-            rewritten = _rewrite_hygienic_callable(
-                as_tuple,
-                macro,
-                context,
-                call_site_ids,
-                renamed_locals,
-                renames,
-                rename_seen,
-                params_index=2,
-                body_start=3,
-            )
-            return _tuple_to_chain_form(rewritten)
-
-        if operator == Symbol("handle") and len(items) == 3:
-            as_tuple = cast(tuple[object, ...], _chain_form_to_tuple(value))
-            rewritten = _rewrite_hygienic_handle(
-                as_tuple,
-                macro,
-                context,
-                call_site_ids,
-                renamed_locals,
-                renames,
-                rename_seen,
-            )
-            return _tuple_to_chain_form(rewritten)
-
-        # Default: rewrite all items
-        return list_to_chain(
-            [
-                _rewrite_hygienic_form(
-                    item,
+            return _rebuild(
+                value,
+                _rewrite_hygienic_define(
+                    items,
                     macro,
                     context,
                     call_site_ids,
                     renamed_locals,
                     renames,
                     rename_seen,
-                    captured=False,
-                )
-                for item in items
-            ]
-        )
+                ),
+            )
 
-    if not isinstance(value, tuple):
-        return value
-    if not value:
-        return value
+        if operator == Symbol("let") and len(items) >= 2:
+            return _rebuild(
+                value,
+                _rewrite_hygienic_let(
+                    items,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                ),
+            )
 
-    operator = value[0]
-    if operator == Symbol("quote"):
-        return value
-    if operator in {Symbol("quasiquote"), Symbol("unquote"), Symbol("unquote-splicing")}:
-        return value
-    if operator == Symbol("define"):
-        return _rewrite_hygienic_define(
+        if operator == Symbol("lambda") and len(items) >= 2:
+            return _rebuild(
+                value,
+                _rewrite_hygienic_callable(
+                    items,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                    params_index=1,
+                    body_start=2,
+                ),
+            )
+
+        if operator == Symbol("defun") and len(items) >= 3:
+            return _rebuild(
+                value,
+                _rewrite_hygienic_callable(
+                    items,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                    params_index=2,
+                    body_start=3,
+                ),
+            )
+
+        if operator == Symbol("handle") and len(items) == 3:
+            return _rebuild(
+                value,
+                _rewrite_hygienic_handle(
+                    items,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                ),
+            )
+
+        # Default: rewrite all items
+        return _rebuild(
             value,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-        )
-    if operator == Symbol("let"):
-        return _rewrite_hygienic_let(
-            value,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-        )
-    if operator == Symbol("lambda"):
-        return _rewrite_hygienic_callable(
-            value,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-            params_index=1,
-            body_start=2,
-        )
-    if operator == Symbol("defun"):
-        return _rewrite_hygienic_callable(
-            value,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-            params_index=2,
-            body_start=3,
-        )
-    if operator == Symbol("handle"):
-        return _rewrite_hygienic_handle(
-            value,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-        )
-    return _tuple_like(
-        value,
-        [
-            _rewrite_hygienic_form(
-                item,
+            _rewrite_default_items(
+                items,
                 macro,
                 context,
                 call_site_ids,
                 renamed_locals,
                 renames,
                 rename_seen,
-                captured=False,
-            )
-            for item in value
-        ],
-    )
+            ),
+        )
+
+    return value
 
 
 def _rewrite_hygienic_define(
-    form: tuple[object, ...],
+    items: list[object],
     macro: MacroDefinition,
     context: MacroExpansionContext,
     call_site_ids: set[int],
     renamed_locals: dict[str, str],
     renames: list[MacroRename],
     rename_seen: set[tuple[str, str, str]],
-) -> tuple[object, ...]:
-    if len(form) < 3:
-        return form
+) -> list[object]:
+    if len(items) < 3:
+        return items
     body_mapping = dict(renamed_locals)
     rewritten_name = _rewrite_binding_symbol(
-        form[1],
+        items[1],
         context,
         call_site_ids,
         renames,
@@ -404,7 +382,7 @@ def _rewrite_hygienic_define(
         body_mapping,
     )
     rewritten_value = _rewrite_hygienic_form(
-        form[2],
+        items[2],
         macro,
         context,
         call_site_ids,
@@ -413,40 +391,33 @@ def _rewrite_hygienic_define(
         rename_seen,
         captured=False,
     )
-    return _tuple_like(form, [form[0], rewritten_name, rewritten_value])
+    return [items[0], rewritten_name, rewritten_value]
 
 
 def _rewrite_hygienic_let(
-    form: tuple[object, ...],
+    items: list[object],
     macro: MacroDefinition,
     context: MacroExpansionContext,
     call_site_ids: set[int],
     renamed_locals: dict[str, str],
     renames: list[MacroRename],
     rename_seen: set[tuple[str, str, str]],
-) -> tuple[object, ...]:
-    if len(form) < 2 or not isinstance(form[1], tuple):
-        return _tuple_like(
-            form,
-            [
-                _rewrite_hygienic_form(
-                    item,
-                    macro,
-                    context,
-                    call_site_ids,
-                    renamed_locals,
-                    renames,
-                    rename_seen,
-                    captured=False,
-                )
-                for item in form
-            ],
+) -> list[object]:
+    if len(items) < 2:
+        return _rewrite_default_items(
+            items, macro, context, call_site_ids, renamed_locals, renames, rename_seen
         )
-    bindings_form = form[1]
+    bindings_form = items[1]
+    bindings_items = _chain_items(bindings_form)
+    if bindings_items is None:
+        return _rewrite_default_items(
+            items, macro, context, call_site_ids, renamed_locals, renames, rename_seen
+        )
     body_mapping = dict(renamed_locals)
     rewritten_bindings: list[object] = []
-    for binding in bindings_form:
-        if not isinstance(binding, tuple) or len(binding) != 2:
+    for binding in bindings_items:
+        binding_items = _chain_items(binding)
+        if binding_items is None or len(binding_items) != 2:
             rewritten_bindings.append(
                 _rewrite_hygienic_form(
                     binding,
@@ -460,7 +431,7 @@ def _rewrite_hygienic_let(
                 )
             )
             continue
-        name, expr = binding
+        name, expr = binding_items
         rewritten_expr = _rewrite_hygienic_form(
             expr,
             macro,
@@ -479,28 +450,15 @@ def _rewrite_hygienic_let(
             rename_seen,
             body_mapping,
         )
-        rewritten_bindings.append(_tuple_like(binding, [rewritten_name, rewritten_expr]))
-    rewritten_body = [
-        _rewrite_hygienic_form(
-            item,
-            macro,
-            context,
-            call_site_ids,
-            body_mapping,
-            renames,
-            rename_seen,
-            captured=False,
-        )
-        for item in form[2:]
-    ]
-    return _tuple_like(
-        form,
-        [form[0], _tuple_like(bindings_form, rewritten_bindings), *rewritten_body],
+        rewritten_bindings.append(_rebuild(binding, [rewritten_name, rewritten_expr]))
+    rewritten_body = _rewrite_default_items(
+        items[2:], macro, context, call_site_ids, body_mapping, renames, rename_seen
     )
+    return [items[0], _rebuild(bindings_form, rewritten_bindings), *rewritten_body]
 
 
 def _rewrite_hygienic_callable(
-    form: tuple[object, ...],
+    items: list[object],
     macro: MacroDefinition,
     context: MacroExpansionContext,
     call_site_ids: set[int],
@@ -510,26 +468,13 @@ def _rewrite_hygienic_callable(
     *,
     params_index: int,
     body_start: int,
-) -> tuple[object, ...]:
-    if len(form) <= params_index or not isinstance(form[params_index], tuple):
-        return _tuple_like(
-            form,
-            [
-                _rewrite_hygienic_form(
-                    item,
-                    macro,
-                    context,
-                    call_site_ids,
-                    renamed_locals,
-                    renames,
-                    rename_seen,
-                    captured=False,
-                )
-                for item in form
-            ],
+) -> list[object]:
+    params_form = items[params_index] if len(items) > params_index else None
+    params_items = _chain_items(params_form)
+    if params_items is None:
+        return _rewrite_default_items(
+            items, macro, context, call_site_ids, renamed_locals, renames, rename_seen
         )
-    params_form = form[params_index]
-    assert isinstance(params_form, tuple)
     body_mapping = dict(renamed_locals)
     rewritten_params = [
         _rewrite_binding_symbol(
@@ -540,68 +485,38 @@ def _rewrite_hygienic_callable(
             rename_seen,
             body_mapping,
         )
-        for param in params_form
+        for param in params_items
     ]
-    prefix = [
-        _rewrite_hygienic_form(
-            item,
-            macro,
-            context,
-            call_site_ids,
-            renamed_locals,
-            renames,
-            rename_seen,
-            captured=False,
-        )
-        for item in form[:params_index]
-    ]
-    rewritten_body = [
-        _rewrite_hygienic_form(
-            item,
-            macro,
-            context,
-            call_site_ids,
-            body_mapping,
-            renames,
-            rename_seen,
-            captured=False,
-        )
-        for item in form[body_start:]
-    ]
-    return _tuple_like(
-        form,
-        [*prefix, _tuple_like(params_form, rewritten_params), *rewritten_body],
+    prefix = _rewrite_default_items(
+        items[:params_index], macro, context, call_site_ids, renamed_locals, renames, rename_seen
     )
+    rewritten_body = _rewrite_default_items(
+        items[body_start:], macro, context, call_site_ids, body_mapping, renames, rename_seen
+    )
+    return [*prefix, _rebuild(params_form, rewritten_params), *rewritten_body]
 
 
 def _rewrite_hygienic_handle(
-    form: tuple[object, ...],
+    items: list[object],
     macro: MacroDefinition,
     context: MacroExpansionContext,
     call_site_ids: set[int],
     renamed_locals: dict[str, str],
     renames: list[MacroRename],
     rename_seen: set[tuple[str, str, str]],
-) -> tuple[object, ...]:
-    if len(form) != 3 or not isinstance(form[2], tuple):
-        return _tuple_like(
-            form,
-            [
-                _rewrite_hygienic_form(
-                    item,
-                    macro,
-                    context,
-                    call_site_ids,
-                    renamed_locals,
-                    renames,
-                    rename_seen,
-                    captured=False,
-                )
-                for item in form
-            ],
+) -> list[object]:
+    if len(items) != 3:
+        return _rewrite_default_items(
+            items, macro, context, call_site_ids, renamed_locals, renames, rename_seen
+        )
+    handlers_form = items[2]
+    handlers_items = _chain_items(handlers_form)
+    if handlers_items is None:
+        return _rewrite_default_items(
+            items, macro, context, call_site_ids, renamed_locals, renames, rename_seen
         )
     rewritten_expr = _rewrite_hygienic_form(
-        form[1],
+        items[1],
         macro,
         context,
         call_site_ids,
@@ -610,10 +525,10 @@ def _rewrite_hygienic_handle(
         rename_seen,
         captured=False,
     )
-    handlers_form = form[2]
     rewritten_handlers: list[object] = []
-    for clause in handlers_form:
-        if not isinstance(clause, tuple) or len(clause) < 3 or not isinstance(clause[1], tuple):
+    for clause in handlers_items:
+        clause_items = _chain_items(clause)
+        if clause_items is None or len(clause_items) < 3:
             rewritten_handlers.append(
                 _rewrite_hygienic_form(
                     clause,
@@ -627,7 +542,22 @@ def _rewrite_hygienic_handle(
                 )
             )
             continue
-        params_form = clause[1]
+        params_form = clause_items[1]
+        params_items = _chain_items(params_form)
+        if params_items is None:
+            rewritten_handlers.append(
+                _rewrite_hygienic_form(
+                    clause,
+                    macro,
+                    context,
+                    call_site_ids,
+                    renamed_locals,
+                    renames,
+                    rename_seen,
+                    captured=False,
+                )
+            )
+            continue
         clause_mapping = dict(renamed_locals)
         rewritten_params = [
             _rewrite_binding_symbol(
@@ -638,29 +568,24 @@ def _rewrite_hygienic_handle(
                 rename_seen,
                 clause_mapping,
             )
-            for param in params_form
+            for param in params_items
         ]
-        rewritten_body = [
-            _rewrite_hygienic_form(
-                item,
-                macro,
-                context,
-                call_site_ids,
-                clause_mapping,
-                renames,
-                rename_seen,
-                captured=False,
-            )
-            for item in clause[2:]
-        ]
+        rewritten_body = _rewrite_default_items(
+            clause_items[2:],
+            macro,
+            context,
+            call_site_ids,
+            clause_mapping,
+            renames,
+            rename_seen,
+        )
         rewritten_handlers.append(
-            _tuple_like(
-                clause, [clause[0], _tuple_like(params_form, rewritten_params), *rewritten_body]
+            _rebuild(
+                clause,
+                [clause_items[0], _rebuild(params_form, rewritten_params), *rewritten_body],
             )
         )
-    return _tuple_like(
-        form, [form[0], rewritten_expr, _tuple_like(handlers_form, rewritten_handlers)]
-    )
+    return [items[0], rewritten_expr, _rebuild(handlers_form, rewritten_handlers)]
 
 
 def _rewrite_binding_symbol(

@@ -27,7 +27,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Final
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 
 __all__ = [
     "MISSING",

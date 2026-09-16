@@ -12,6 +12,7 @@ from typing import cast
 import pytest
 
 from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
@@ -179,10 +180,10 @@ class TestImproperList:
 
     def test_list_to_chain_with_tail(self):
         """测试带 tail 的列表转换。."""
-        c = list_to_chain([1, 2], tail=3)  # (1 2 . 3)
+        c = list_to_chain([1, 2], tail=Symbol("3"))  # (1 2 . 3)
         assert car(c) == 1
         assert car(cdr(c)) == 2
-        assert cdr(cdr(c)) == 3
+        assert cdr(cdr(c)) == Symbol("3")
 
     def test_chain_to_list_improper_raises(self):
         """测试 improper list 转 list 抛出异常。."""

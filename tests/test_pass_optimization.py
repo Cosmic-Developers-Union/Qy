@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.frontend.reader import read
 from qy.ir.lir import LIRProgram
 from qy.ir.mir import MIRBlock

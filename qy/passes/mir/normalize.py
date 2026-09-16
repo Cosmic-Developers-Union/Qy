@@ -17,11 +17,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import cast
 
-from qy.core.syntax import list_to_chain
+from qy.core.syntax import Symbol
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import _decode_string_symbol
 from qy.frontend.reader import _is_string_symbol
 from qy.ir import AllExpr
@@ -638,8 +636,4 @@ def _span_of(expression: object) -> SourceSpan | None:
 def _quote_data(value: object) -> object:
     if isinstance(value, Symbol) and _is_string_symbol(value.name):
         return _decode_string_symbol(value)
-    if isinstance(value, DottedTuple):
-        return list_to_chain((_quote_data(item) for item in value), _quote_data(value.tail))
-    if isinstance(value, tuple):
-        return list_to_chain(_quote_data(item) for item in value)
     return value

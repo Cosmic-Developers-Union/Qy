@@ -12,10 +12,10 @@ from typing import Literal
 
 from qy.core import OperatorKind
 from qy.core import TypeName
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.diag import Diagnostic
-from qy.frontend.reader import Form
 from qy.frontend.reader import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.import_.parse import ImportSpec
 from qy.ir.layout import BindingSlot as HIRBindingSlot
 from qy.ir.layout import SymbolSpaceLayout

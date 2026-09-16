@@ -8,7 +8,7 @@ from qy import MIRTerminator
 from qy import dump_mir
 from qy import verify_mir
 from qy.backend.vm.compiler import compile_lir_bytecode
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefineExpr

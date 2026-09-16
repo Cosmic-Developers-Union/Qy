@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import Symbol
+from qy.core.syntax import get_span
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 
 __all__ = ["ensure_symbol"]
 

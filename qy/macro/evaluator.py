@@ -19,11 +19,13 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import cons
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
@@ -32,10 +34,7 @@ from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.frontend.reader import DottedTuple
 from qy.frontend.reader import SourceSpan
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.frame import QyContinuation
 
@@ -188,11 +187,6 @@ async def _eval_quasiquote(value: object, env: Environment, *, depth: int) -> ob
             return _rebuild_call(operator, (await _eval_quasiquote(args[0], env, depth=depth + 1),))
     if is_chain(value):
         return await _eval_quasiquote_chain(value, env, depth=depth)
-    if isinstance(value, tuple) and not isinstance(value, DottedTuple):
-        items: list[object] = []
-        for item in value:
-            items.append(await _eval_quasiquote(item, env, depth=depth))
-        return tuple(items)
     return value
 
 
@@ -245,16 +239,12 @@ def _chain_from_items(items: list[object], tail: object) -> object:
 
 
 def _is_call_form(form: object) -> bool:
-    if is_chain(form):
-        return not is_nil(form)
-    return isinstance(form, tuple) and not isinstance(form, DottedTuple) and len(form) > 0
+    return is_chain(form) and not is_nil(form)
 
 
 def _operator_of(form: object) -> object:
     if is_chain(form):
         return car(form)
-    if isinstance(form, tuple) and form:
-        return form[0]
     raise QyTypeError(f"expected call form, got {form!r}")
 
 
@@ -266,8 +256,6 @@ def _args_of(form: object) -> tuple[object, ...]:
         if is_chain(rest):
             return tuple(chain_to_list(rest))
         return (rest,)
-    if isinstance(form, tuple) and form:
-        return form[1:]
     return ()
 
 
@@ -276,8 +264,6 @@ def _form_to_list(form: object) -> list[object]:
         return []
     if is_chain(form):
         return chain_to_list(form)
-    if isinstance(form, tuple):
-        return list(form)
     raise QyTypeError(f"expected list form, got {form!r}")
 
 

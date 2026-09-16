@@ -16,19 +16,19 @@ from qy.core.operator_signature import OperatorSignature
 from qy.core.operator_signature import format_arity_message
 from qy.core.operator_signature import lookup_operator_signature
 from qy.core.operators import value_uses_eager_arguments
+from qy.core.quasiquote import expand_quasiquote
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
+from qy.core.syntax import nil
 from qy.diag import Diagnostic
 from qy.errors import EvaluationError
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
 from qy.frontend.reader import ReaderSyntaxError
-from qy.frontend.reader import SpannedTuple
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.frontend.reader import read
 from qy.import_.loader import resolve_known_module
 from qy.import_.parse import parse_from_import
@@ -210,15 +210,12 @@ def _lower_form(
 
     if isinstance(form, Symbol):
         return _lower_symbol(form, scope, context, symbol_as_data=symbol_as_data)
-    if isinstance(form, DottedTuple):
-        context.diagnostic("dotted form cannot be evaluated as a call", form)
-        return LiteralExpr(form, "unknown", get_span(form))
-
-    # 支持 Chain
     if is_chain(form):
         operator = car(form)
-        args_chain = cdr(form)
-        args = chain_to_list(args_chain) if not is_nil(args_chain) else []
+        args = _proper_chain_items(cdr(form))
+        if args is None:
+            context.diagnostic("dotted form cannot be evaluated as a call", form)
+            return LiteralExpr(form, "unknown", get_span(form))
 
         if isinstance(operator, Symbol):
             match operator.name:
@@ -298,97 +295,40 @@ def _lower_form(
             tail,
         )
 
-    # 支持 tuple（向后兼容）
-    if not isinstance(form, tuple):
-        return LiteralExpr(_canonicalize_host_value(form), literal_type(form), get_span(form))
-    if not form:
-        return LiteralExpr(form, "nil", get_span(form))
+    return LiteralExpr(_canonicalize_host_value(form), literal_type(form), get_span(form))
 
-    operator = form[0]
-    args = tuple(form[1:])
-    if isinstance(operator, Symbol):
-        match operator.name:
-            case "quote":
-                return _lower_quote(args, context, form)
-            case "quasiquote":
-                return _lower_quasiquote(args, scope, context, form, tail=tail)
-            case "eval":
-                return _lower_eval(args, scope, context, form)
-            case "macro":
-                return _lower_macro(form, scope, context)
-            case "cond":
-                return _lower_cond(args, scope, context, form, tail=tail)
-            case "let":
-                return _lower_let(args, scope, context, form, tail=tail)
-            case "lambda":
-                return _lower_lambda(args, scope, context, form)
-            case "component":
-                return _lower_component(args, scope, context, form)
-            case "defun":
-                return _lower_defun(form, scope, context)
-            case "defeffect":
-                return _lower_defeffect(form, scope, context)
-            case "module":
-                return _lower_module(form, scope, context)
-            case "from":
-                return _lower_from(form, context)
-            case "perform":
-                return _lower_perform(args, scope, context, form)
-            case "handle":
-                return _lower_handle(args, scope, context, form, tail=tail)
-            case "resume":
-                return _lower_resume(args, scope, context, form)
-            case "assert":
-                return _lower_assert(args, scope, context, form)
-            case "define":
-                return _lower_define(form, scope, context)
-            case "pipeline":
-                return _lower_pipeline(args, scope, context, form, tail=tail)
-            case "parallel":
-                return _lower_parallel(args, scope, context, form)
-            case "all":
-                return _lower_all(args, scope, context, form)
-            case "race":
-                return _lower_race(args, scope, context, form)
-            case "apply":
-                return _lower_apply(args, scope, context, form)
-            case "cache":
-                return _lower_cache(args, scope, context, form)
 
-    operator_expr = _lower_form(operator, scope, context)
-    if isinstance(operator_expr, SymbolRefExpr) and operator_expr.binding.operator_kind == "meta":
-        context.diagnostic(
-            f"meta operator {operator_expr.symbol.name!r} can only run during macro expansion",
-            form,
-        )
-        return UnresolvedSymbolExpr(operator_expr.symbol, get_span(form))
-
-    args_as_data = _call_uses_non_eager_arguments(operator_expr)
-    lowered_args = tuple(
-        _lower_form(
-            arg,
-            scope,
-            context,
-            symbol_as_data=args_as_data and not _argument_is_eager(operator_expr, idx),
-        )
-        for idx, arg in enumerate(args)
-    )
-    return CallExpr(
-        operator_expr,
-        lowered_args,
-        get_span(form),
-        _infer_call_type(operator, tuple(lowered_args), operator_expr, context, form),
-        tail,
-    )
+def _proper_chain_items(chain: object) -> list[object] | None:
+    """把 proper chain 拆成元素列表；非 chain 或 improper chain 返回 None。."""
+    if is_nil(chain):
+        return []
+    if not is_chain(chain):
+        return None
+    items: list[object] = []
+    current: object = chain
+    while is_chain(current):
+        items.append(car(current))
+        current = cdr(current)
+    return items if is_nil(current) else None
 
 
 def _form_to_list(form: object) -> list[object]:
-    """将 form（Chain 或 tuple）转换为 list。."""
+    """将 form（Chain）转换为 list；improper chain 返回元素列表。."""
     if is_chain(form):
-        return chain_to_list(form)
-    if isinstance(form, tuple):
-        return list(form)
+        items, tail = _chain_items_and_tail(form)
+        if not is_nil(tail):
+            items.append(tail)
+        return items
     return []
+
+
+def _chain_items_and_tail(chain: object) -> tuple[list[object], object]:
+    items: list[object] = []
+    current = chain
+    while is_chain(current):
+        items.append(car(current))
+        current = cdr(current)
+    return items, current
 
 
 def _get_form_item(form: object, index: int) -> object | None:
@@ -396,8 +336,6 @@ def _get_form_item(form: object, index: int) -> object | None:
     if is_chain(form):
         items = chain_to_list(form)
         return items[index] if index < len(items) else None
-    if isinstance(form, tuple):
-        return form[index] if index < len(form) else None
     return None
 
 
@@ -405,8 +343,6 @@ def _form_length(form: object) -> int:
     """获取 form 的长度。."""
     if is_chain(form):
         return len(chain_to_list(form))
-    if isinstance(form, tuple):
-        return len(form)
     return 0
 
 
@@ -495,7 +431,7 @@ def _lower_symbol(
 def _lower_quote(args: tuple[object, ...], context: LoweringContext, form: object) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"quote expects exactly one argument, got {len(args)}", form)
-        return QuoteExpr(SpannedTuple(), get_span(form))
+        return QuoteExpr(nil, get_span(form))
     return QuoteExpr(cast(Form, args[0]), get_span(form))
 
 
@@ -509,82 +445,9 @@ def _lower_quasiquote(
 ) -> IRExpr:
     if len(args) != 1:
         context.diagnostic(f"quasiquote expects exactly one argument, got {len(args)}", form)
-        return QuoteExpr(SpannedTuple(), get_span(form))
-    expanded = _expand_quasiquote_form(args[0])
+        return QuoteExpr(nil, get_span(form))
+    expanded = expand_quasiquote(args[0])
     return _lower_form(expanded, scope, context, tail=tail)
-
-
-def _expand_quasiquote_form(form: object, *, depth: int = 0) -> object:
-    from qy.frontend.reader import DottedTuple as _DottedTuple
-
-    # 支持 Chain
-    if is_chain(form):
-        items = chain_to_list(form)
-        if items:
-            op = items[0]
-            if isinstance(op, Symbol) and op.name == "unquote":
-                if depth == 0:
-                    return items[1] if len(items) == 2 else form
-                return (
-                    Symbol("list"),
-                    Symbol("unquote"),
-                    _expand_quasiquote_form(items[1], depth=depth - 1),
-                )
-            if isinstance(op, Symbol) and op.name == "quasiquote":
-                inner = _expand_quasiquote_form(
-                    items[1] if len(items) == 2 else form, depth=depth + 1
-                )
-                return (Symbol("list"), Symbol("quasiquote"), inner)
-            return _build_quasiquote_tuple(tuple(items), depth=depth)
-        return (Symbol("quote"), form)
-
-    # 支持 tuple
-    if isinstance(form, tuple) and not isinstance(form, _DottedTuple) and form:
-        op = form[0]
-        if isinstance(op, Symbol) and op.name == "unquote":
-            if depth == 0:
-                return form[1] if len(form) == 2 else form
-            return (
-                Symbol("list"),
-                Symbol("unquote"),
-                _expand_quasiquote_form(form[1], depth=depth - 1),
-            )
-        if isinstance(op, Symbol) and op.name == "quasiquote":
-            inner = _expand_quasiquote_form(form[1] if len(form) == 2 else form, depth=depth + 1)
-            return (Symbol("list"), Symbol("quasiquote"), inner)
-        return _build_quasiquote_tuple(form, depth=depth)
-    return (Symbol("quote"), form)
-
-
-def _build_quasiquote_tuple(form: tuple[object, ...], *, depth: int) -> object:
-    from qy.frontend.reader import DottedTuple as _DottedTuple
-
-    if not form:
-        return (Symbol("quote"), ())
-    head_form = form[0]
-    tail_form = form[1:]
-
-    # 检查 head_form 是否是 unquote-splicing
-    head_items = None
-    if is_chain(head_form):
-        head_items = chain_to_list(head_form)
-    elif isinstance(head_form, tuple) and not isinstance(head_form, _DottedTuple):
-        head_items = list(head_form)
-
-    if (
-        head_items
-        and head_items
-        and isinstance(head_items[0], Symbol)
-        and head_items[0].name == "unquote-splicing"
-        and depth == 0
-    ):
-        spliced = head_items[1] if len(head_items) == 2 else head_form
-        rest = _build_quasiquote_tuple(tail_form, depth=depth)
-        return (Symbol("append"), spliced, rest)
-
-    head = _expand_quasiquote_form(head_form, depth=depth)
-    rest = _build_quasiquote_tuple(tail_form, depth=depth)
-    return (Symbol("cons"), head, rest)
 
 
 def _lower_eval(
@@ -663,8 +526,8 @@ def _lower_let(
         return LetExpr((), (), get_span(form), "unknown")
     bindings_form, *body = args
 
-    # 接受 Chain、tuple 或 nil 作为绑定列表
-    if not (is_chain(bindings_form) or isinstance(bindings_form, tuple) or is_nil(bindings_form)):
+    # 接受 Chain 或 nil 作为绑定列表
+    if not (is_chain(bindings_form) or is_nil(bindings_form)):
         context.diagnostic(f"let bindings must be a list, got {bindings_form!r}", bindings_form)
         return LetExpr(
             (),
@@ -931,11 +794,11 @@ def _lower_handle(
     lowered_expression = _lower_form(expression, scope, context, tail=tail)
     handlers: list[EffectHandler] = []
 
-    # 接受 Chain、tuple 或 nil 作为 handler 列表
+    # 接受 Chain 或 nil 作为 handler 列表
     if _is_on_form(handlers_form):
         # on 格式: (on effect (arg k) body...) 形式
         handlers_list = [handlers_form]
-    elif not (is_chain(handlers_form) or isinstance(handlers_form, tuple) or is_nil(handlers_form)):
+    elif not (is_chain(handlers_form) or is_nil(handlers_form)):
         context.diagnostic(f"handle clauses must be a list, got {handlers_form!r}", handlers_form)
         return HandleExpr(lowered_expression, (), get_span(form), _type_of(lowered_expression))
     else:
@@ -1272,8 +1135,8 @@ def _parameter_symbols(
     context_name: str,
     context: LoweringContext,
 ) -> tuple[Symbol, ...]:
-    # 接受 Chain、tuple 或 nil 作为参数列表
-    if is_chain(params) or isinstance(params, tuple) or is_nil(params):
+    # 接受 Chain 或 nil 作为参数列表
+    if is_chain(params) or is_nil(params):
         params_list = _form_to_list(params) if not is_nil(params) else []
     else:
         context.diagnostic(f"{context_name} parameters must be a list, got {params!r}", params)
@@ -1410,7 +1273,7 @@ def _is_special_form(form: object, name: str) -> bool:
     if is_chain(form):
         items = chain_to_list(form)
         return len(items) > 0 and items[0] == Symbol(name)
-    return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+    return False
 
 
 def _lower_define(form: object, scope: Scope, context: LoweringContext) -> IRExpr:

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.import_.module import StandardModule
 
 

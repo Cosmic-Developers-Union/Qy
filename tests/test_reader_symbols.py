@@ -1,5 +1,5 @@
+from qy.core.syntax import Symbol
 from qy.core.syntax import list_to_chain
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 
 S = Symbol

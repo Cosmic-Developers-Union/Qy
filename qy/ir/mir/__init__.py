@@ -9,9 +9,9 @@ explicit for later bytecode lowering.
 
 from __future__ import annotations
 
+from qy.core.syntax import Symbol
 from qy.diag import Diagnostic
 from qy.errors import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.ir.mir.node import MIRBlock
 from qy.ir.mir.node import MIRBlockId
 from qy.ir.mir.node import MIRConstantPool

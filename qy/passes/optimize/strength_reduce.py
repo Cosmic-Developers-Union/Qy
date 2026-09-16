@@ -97,7 +97,7 @@ def _try_reduce(
     if op_def is None or op_def.opcode != "LOAD_ENV":
         return None
 
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
     sym = op_def.operands[1]
     sym_name = sym.name if isinstance(sym, Symbol) else str(sym)

@@ -9,14 +9,13 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import cast
 
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.frontend.cst import CstAtom
 from qy.frontend.cst import CstList
 from qy.frontend.cst import CstProgram
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
-from qy.frontend.reader import Symbol
 
 __all__ = ["dump_cst", "dump_form", "dump_program"]
 
@@ -33,13 +32,6 @@ def dump_form(form: object, indent: int = 0) -> str:
     prefix = INDENT * indent
     if isinstance(form, Symbol):
         return f"{prefix}Symbol({form.name!r})"
-    if isinstance(form, DottedTuple):
-        lines: list[str] = [f"{prefix}DottedTuple("]
-        lines.extend(f"{dump_form(item, indent + 1)}," for item in form)
-        lines.append(f"{prefix}{INDENT}.")
-        lines.append(f"{dump_form(cast(Form, form.tail), indent + 1)},")
-        lines.append(f"{prefix})")
-        return "\n".join(lines)
     if is_nil(form):
         return f"{prefix}EmptyChain()"
     if is_chain(form):

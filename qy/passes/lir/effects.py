@@ -60,8 +60,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from qy.core.syntax import Symbol
 from qy.errors import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.ir.lir import LIRContinuationLayout
 from qy.ir.lir import LIRHandlerLayout
 from qy.ir.lir import LIRInstruction

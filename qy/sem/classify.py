@@ -17,9 +17,9 @@ from qy.core.operators import OperatorKind
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import T
 from qy.core.syntax import nil
-from qy.frontend.reader import Symbol
 
 __all__ = [
     "literal_type",

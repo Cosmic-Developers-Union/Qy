@@ -11,11 +11,11 @@ from qy.backend.vm.bytecode import BytecodeProgram
 from qy.core.operator_signature import OperatorSignature
 from qy.core.operators import ArgumentEvaluator
 from qy.core.symbol_space import ChainFrame
+from qy.core.syntax import Form
 from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import SourceSpan
 from qy.errors import TraceFrame
-from qy.frontend.reader import Form
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
 from qy.session.runtime_space import RuntimeSpace as Environment

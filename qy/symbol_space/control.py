@@ -13,18 +13,19 @@ from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import car
 from qy.core.syntax import cdr
 from qy.core.syntax import chain_to_list
+from qy.core.syntax import get_span
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
@@ -148,7 +149,7 @@ def _quote(expression: object, env: Environment) -> object:
     return _quote_data(args[0])
 
 
-def _quote_data(value: object) -> object:
+def _quote_data(value: object) -> Form:
     if is_chain(value):
         result_items = []
         current = value
@@ -160,9 +161,8 @@ def _quote_data(value: object) -> object:
             # Improper list
             return list_to_chain(result_items, tail=_quote_data(current))
         return list_to_chain(result_items)
-    if isinstance(value, tuple):
-        return list_to_chain(_quote_data(item) for item in value)
-    return value
+    # datum 只有 symbol / chain / nil；host tuple 不再是一种 datum。
+    return cast(Form, value)
 
 
 async def _eval(expression: object, env: Environment) -> object:

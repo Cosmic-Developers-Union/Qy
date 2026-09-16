@@ -6,9 +6,9 @@ import ast
 from dataclasses import dataclass
 from typing import cast
 
+from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
-from qy.frontend.reader import Symbol
 
 
 @dataclass(frozen=True, slots=True)

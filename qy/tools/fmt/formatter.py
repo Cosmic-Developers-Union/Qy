@@ -11,11 +11,10 @@ from collections.abc import Iterable
 from typing import cast
 
 from qy.core.syntax import Chain
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
-from qy.frontend.reader import DottedTuple
-from qy.frontend.reader import Form
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import write
 
 __all__ = ["format_form", "format_program"]
@@ -41,49 +40,8 @@ def format_form(form: object, indent: int = 0) -> str:
     """
     if isinstance(form, Symbol):
         return write(form)
-    if isinstance(form, DottedTuple):
-        return _format_dotted(form, indent)
     if is_chain(form) or is_nil(form):
         return _format_chain(form, indent)
-    if isinstance(form, tuple) and _is_quote_form(form):
-        return "'" + format_form(form[1], indent)
-
-    # Fallback for tuple (legacy)
-    if isinstance(form, tuple):
-        inline = _format_inline(form)
-        if len(inline) <= MAX_INLINE_LENGTH and not _contains_complex_list(form):
-            return inline
-
-        if not form:
-            return "()"
-
-        current_indent = INDENT * indent
-        child_indent = INDENT * (indent + 1)
-
-        first_line = f"({format_form(form[0], indent)}"
-        body_start = 1
-        for i, item in enumerate(form[1:], 1):
-            if _is_complex(item):
-                break
-            rendered = _format_inline(item)
-            candidate = f"{first_line} {rendered}"
-            if len(candidate) > MAX_INLINE_LENGTH:
-                break
-            first_line = candidate
-            body_start = i + 1
-
-        lines = [first_line]
-        for item in form[body_start:]:
-            formatted = format_form(item, indent + 1)
-            if "\n" in formatted:
-                lines.append(formatted)
-            else:
-                lines.append(f"{child_indent}{formatted}")
-        lines[-1] = f"{lines[-1]})"
-        return "\n".join(
-            f"{current_indent}{line}" if index == 0 else line for index, line in enumerate(lines)
-        )
-
     return "()"
 
 
@@ -206,9 +164,6 @@ def _format_inline(form: object) -> str:
     """内联格式化 form。."""
     if isinstance(form, Symbol):
         return write(form)
-    if isinstance(form, DottedTuple):
-        head = " ".join(_format_inline(item) for item in form)
-        return f"({head} . {_format_inline(cast(Form, form.tail))})"
     if is_chain(form) or is_nil(form):
         if is_nil(form):
             return "()"
@@ -256,17 +211,7 @@ def _format_inline(form: object) -> str:
             if is_chain(form):
                 return f"({_format_inline(chain_form.head)} . {_format_inline(chain_form.tail)})"
             return "()"
-    if isinstance(form, tuple) and _is_quote_form(form):
-        return "'" + _format_inline(form[1])
-    if isinstance(form, tuple):
-        return f"({' '.join(_format_inline(item) for item in form)})"
     return str(form)
-
-
-def _format_dotted(form: DottedTuple, indent: int) -> str:
-    """格式化 DottedTuple。."""
-    del indent
-    return _format_inline(form)
 
 
 def _is_complex(form: object) -> bool:
@@ -275,7 +220,7 @@ def _is_complex(form: object) -> bool:
         return False
     if is_nil(form):
         return False
-    if isinstance(form, (tuple, Chain)) or is_chain(form):
+    if is_chain(form):
         inline = _format_inline(form)
         return len(inline) > 12 or _contains_complex_list(form)
     return False
@@ -296,21 +241,12 @@ def _contains_complex_list(form: object) -> bool:
         if len(items) <= 1:
             return False
         return any(
-            isinstance(item, (tuple, Chain))
-            and not _is_quote_form(item)
+            is_chain(item)
             and not _is_quote_form_chain(item)
             and not _is_quasiquote_form_chain(item)
             for item in items[1:]
         )
-    # Fallback for tuple (legacy)
-    if isinstance(form, tuple):
-        return any(isinstance(item, tuple) and not _is_quote_form(item) for item in form[1:])
     return False
-
-
-def _is_quote_form(form: object) -> bool:
-    """检查是否是 quote form (tuple 形式)。."""
-    return isinstance(form, tuple) and len(form) == 2 and form[0] == Symbol("quote")
 
 
 def _is_quote_form_chain(form: object) -> bool:

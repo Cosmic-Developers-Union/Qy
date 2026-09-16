@@ -18,9 +18,10 @@ from qy.build.pipeline import compile_source_to_kind_async
 from qy.build.pipeline import raw_forms_artifact
 from qy.build.pipeline import surface_forms_artifact
 from qy.core.program import CoreProgram
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.diag import Diagnostic
 from qy.frontend.cst import CstProgram
-from qy.frontend.reader import Symbol
 from qy.ir import ProgramIR
 from qy.ir.lir import LIRProgram
 from qy.ir.mir import MIRProgram
@@ -426,7 +427,7 @@ def test_form_entrypoints_compile_through_bytecode():
     symbol = Symbol
     forms_result = asyncio.run(
         compile_forms_to_bytecode_async(
-            [(symbol("+"), symbol("1"), symbol("2"))],
+            [list_to_chain([symbol("+"), symbol("1"), symbol("2")])],
             PipelineSession(env=qy.env),
         )
     )

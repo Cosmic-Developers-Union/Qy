@@ -2,8 +2,8 @@ import pytest
 
 from qy.core.operators import ControlOperator
 from qy.core.operators import MetaOperator
+from qy.core.syntax import Symbol
 from qy.errors import QyRuntimeError
-from qy.frontend.reader import Symbol
 from qy.runtime import Qy
 from qy.runtime import evaluate
 

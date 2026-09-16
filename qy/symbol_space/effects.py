@@ -9,14 +9,14 @@ from qy.core.operators import ControlOperator
 from qy.core.operators import EffectOperator
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import Symbol
+from qy.core.syntax import get_span
 from qy.errors import QyAggregateError
 from qy.errors import QyArityError
 from qy.errors import QyCancelledError
 from qy.errors import QyError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import get_span
 from qy.sem.runtime import EffectDefinition
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async

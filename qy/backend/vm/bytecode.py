@@ -27,8 +27,8 @@ from typing import Literal
 from qy.diag import Diagnostic
 
 if TYPE_CHECKING:
+    from qy.core.syntax import Symbol
     from qy.errors import SourceSpan
-    from qy.frontend.reader import Symbol
 
 __all__ = [
     "BytecodeFunction",
@@ -329,7 +329,7 @@ def deserialize_bytecode(data: bytes) -> BytecodeProgram:
     """
     import pickle
 
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
     offset = 0
 
@@ -406,8 +406,8 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
 
     from qy.core.syntax import Chain
     from qy.core.syntax import QyNil
+    from qy.core.syntax import Symbol
     from qy.core.syntax import TValue
-    from qy.frontend.reader import Symbol
     from qy.import_.parse import ImportSpec
     from qy.sem.runtime import EffectDefinition
 
@@ -606,7 +606,7 @@ def _format_instruction(instruction: Instruction) -> str:
 
 def _format_operand(value: object) -> str:
     """Format operand for display."""
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
     if isinstance(value, Symbol):
         return value.name

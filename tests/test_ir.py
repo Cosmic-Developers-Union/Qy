@@ -1,5 +1,5 @@
+from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
-from qy.frontend.reader import Symbol
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr

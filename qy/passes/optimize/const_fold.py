@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import cast
 
 from qy.core.operators import PureOperator
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction

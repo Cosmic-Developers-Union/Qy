@@ -21,12 +21,12 @@ from qy.core.operators import EffectOperator
 from qy.core.operators import MetaOperator
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
+from qy.core.syntax import Symbol
 from qy.errors import QyPythonError
 from qy.ext.descriptor import ExtensionBinding
 from qy.ext.descriptor import ExtensionCapability
 from qy.ext.descriptor import ExtensionDescriptor
 from qy.ext.registry import register_extension
-from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 from qy.import_.registry import register_file_module_loader
 

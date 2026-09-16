@@ -99,7 +99,7 @@ def test_wasm_emit_rejects_non_compat_dialect():
 
 def test_wasm_unsupported_symbol_raises():
     """A symbol that is neither local, literal, nor builtin must not resolve silently."""
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram

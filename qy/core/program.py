@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from qy.frontend.reader import Form
+    from qy.core.syntax import Form
     from qy.macro.trace import MacroExpansionTrace
 
 __all__ = ["CoreProgram"]

@@ -13,15 +13,21 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.errors import EvaluationError
 from qy.errors import QyEffectSignal
-from qy.frontend.reader import Symbol
 from qy.runtime import evaluate
 from qy.runtime import evaluate_source
 from qy.sem.core import FloatValue
 from qy.sem.core import IntValue
 
 S = Symbol
+
+
+def L(*items: object) -> object:
+    """构造一个 Qy call form（chain）。."""
+    return list_to_chain(list(items))
 
 
 # ---------------------------------------------------------------------------
@@ -114,11 +120,11 @@ class TestPlusTypeError:
 
     def test_all_non_number_raises(self):
         with pytest.raises(EvaluationError):
-            evaluate((S("+"), "a", "b"))
+            evaluate(L(S("+"), "a", "b"))
 
     def test_error_message_mentions_type(self):
         with pytest.raises(EvaluationError, match="number"):
-            evaluate((S("+"), "x"))
+            evaluate(L(S("+"), "x"))
 
 
 # ---------------------------------------------------------------------------
@@ -145,21 +151,22 @@ class TestPlusArity:
 
 class TestPlusFromPython:
     def test_evaluate_with_symbol_operator(self):
-        assert evaluate((S("+"), 1, 2, 3)) == IntValue(6)
+        assert evaluate(L(S("+"), 1, 2, 3)) == IntValue(6)
 
     def test_rejects_string_operator(self):
+        # 宿主 Python str 不是 Qy symbol，不能出现在 operator 位置
         with pytest.raises(EvaluationError):
-            evaluate(("+", 1, 2))
+            evaluate(L("+", 1, 2))
 
     def test_evaluate_single_int(self):
-        assert evaluate((S("+"), 42)) == IntValue(42)
+        assert evaluate(L(S("+"), 42)) == IntValue(42)
 
     def test_evaluate_no_args_raises(self):
         with pytest.raises(EvaluationError):
-            evaluate((S("+"),))
+            evaluate(L(S("+")))
 
     def test_evaluate_floats(self):
-        assert evaluate((S("+"), 1.5, 2.5)) == FloatValue(4.0)
+        assert evaluate(L(S("+"), 1.5, 2.5)) == FloatValue(4.0)
 
 
 # ---------------------------------------------------------------------------
@@ -187,9 +194,9 @@ class TestPlusBoundary:
         assert exc_info.value.effect == "numeric-overflow"
 
     def test_result_type_int_when_all_int(self):
-        result = evaluate((S("+"), 1, 2))
+        result = evaluate(L(S("+"), 1, 2))
         assert isinstance(result, IntValue)
 
     def test_result_type_float_when_all_float(self):
-        result = evaluate((S("+"), 1.0, 2.0))
+        result = evaluate(L(S("+"), 1.0, 2.0))
         assert isinstance(result, FloatValue)

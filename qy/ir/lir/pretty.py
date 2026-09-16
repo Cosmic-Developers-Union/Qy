@@ -13,8 +13,8 @@
 
 from __future__ import annotations
 
+from qy.core.syntax import Symbol
 from qy.errors import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.ir.lir.frame import LIRContinuationLayout
 from qy.ir.lir.frame import LIRFrameLayout
 from qy.ir.lir.frame import LIRHandlerLayout

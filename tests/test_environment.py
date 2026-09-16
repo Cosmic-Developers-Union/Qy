@@ -1,9 +1,10 @@
 import pytest
 
 from qy.analysis import analyze_source
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.errors import QyResolveError
 from qy.errors import format_qy_error
-from qy.frontend.reader import Symbol
 from qy.passes.hir.lower import lower_source
 from qy.runtime import evaluate
 from qy.runtime import evaluate_source
@@ -15,6 +16,11 @@ from qy.session.runtime_space import create_standard_runtime_space as standard_e
 S = Symbol
 
 
+def L(*items: object) -> object:
+    """构造一个 Qy call form（chain）。."""
+    return list_to_chain(list(items))
+
+
 def test_python_tuple_atoms_are_literals_unless_symbol():
     assert evaluate("1") == "1"
     assert evaluate(1) == 1
@@ -23,7 +29,7 @@ def test_python_tuple_atoms_are_literals_unless_symbol():
 
 def test_environment_binding_overrides_builtin_literal():
     env = Environment({S("1"): 10}, standard_environment())
-    assert evaluate((S("+"), S("1"), S("2")), env) == 12
+    assert evaluate(L(S("+"), S("1"), S("2")), env) == 12
 
 
 def test_unresolved_symbol_errors_include_code_span_and_qy_stack():

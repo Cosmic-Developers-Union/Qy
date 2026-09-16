@@ -1,11 +1,11 @@
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.errors import QyAggregateError
 from qy.errors import QyEffectError
 from qy.errors import QyEffectSignal
 from qy.errors import QyPythonError
 from qy.errors import format_qy_error
-from qy.frontend.reader import Symbol
 from qy.import_.registry import load_module
 from qy.runtime import AsyncQy as Qy
 

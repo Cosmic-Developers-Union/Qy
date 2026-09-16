@@ -8,9 +8,10 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
@@ -18,6 +19,11 @@ from qy.vm.instance.legacy_eval import _evaluate_tail_body as evaluate_tail_body
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
 from qy.vm.instance.values import TailCall
+
+
+def L(*items: object) -> object:
+    """构造一个 Qy call form（chain）。."""
+    return list_to_chain(list(items))
 
 
 @pytest.mark.asyncio
@@ -36,7 +42,7 @@ async def test_evaluate_async_arithmetic():
     env = standard_environment()
 
     # (+ 1 2 3)
-    expr = (Symbol("+"), 1, 2, 3)
+    expr = L(Symbol("+"), 1, 2, 3)
     result = await evaluate_async(expr, env)
     assert result == 6
 
@@ -47,7 +53,7 @@ async def test_evaluate_async_nested_expression():
     env = standard_environment()
 
     # (+ (* 2 3) (- 10 5))
-    expr = (Symbol("+"), (Symbol("*"), 2, 3), (Symbol("-"), 10, 5))
+    expr = L(Symbol("+"), L(Symbol("*"), 2, 3), L(Symbol("-"), 10, 5))
     result = await evaluate_async(expr, env)
     assert result == 11
 
@@ -58,10 +64,10 @@ async def test_evaluate_async_let_binding():
     env = standard_environment()
 
     # (let ((x 10) (y 20)) (+ x y))
-    expr = (
+    expr = L(
         Symbol("let"),
-        ((Symbol("x"), 10), (Symbol("y"), 20)),
-        (Symbol("+"), Symbol("x"), Symbol("y")),
+        L(L(Symbol("x"), 10), L(Symbol("y"), 20)),
+        L(Symbol("+"), Symbol("x"), Symbol("y")),
     )
     result = await evaluate_async(expr, env)
     assert result == 30
@@ -72,7 +78,7 @@ async def test_evaluate_body_async_single_expression():
     """测试 evaluate_body_async 评估单个表达式。."""
     env = standard_environment()
 
-    body = ((Symbol("+"), 1, 2),)
+    body = (L(Symbol("+"), 1, 2),)
     result = await evaluate_body_async(body, env)
     assert result == 3
 
@@ -86,9 +92,9 @@ async def test_evaluate_body_async_multiple_expressions():
     # (define y 20)
     # (+ x y)
     body = (
-        (Symbol("define"), Symbol("x"), 10),
-        (Symbol("define"), Symbol("y"), 20),
-        (Symbol("+"), Symbol("x"), Symbol("y")),
+        L(Symbol("define"), Symbol("x"), 10),
+        L(Symbol("define"), Symbol("y"), 20),
+        L(Symbol("+"), Symbol("x"), Symbol("y")),
     )
     result = await evaluate_body_async(body, env)
     assert result == 30
@@ -114,7 +120,7 @@ async def test_evaluate_tail_body_async_simple():
     func = UserFunction(
         name=Symbol("test"),
         params=(Symbol("x"),),
-        body=((Symbol("+"), Symbol("x"), 1),),
+        body=(L(Symbol("+"), Symbol("x"), 1),),
         closure=env,
     )
     env.define(Symbol("x"), 10)
@@ -131,8 +137,8 @@ async def test_evaluate_tail_body_async_multiple_expressions():
         name=Symbol("test"),
         params=(Symbol("x"),),
         body=(
-            (Symbol("define"), Symbol("y"), 5),
-            (Symbol("+"), Symbol("x"), Symbol("y")),
+            L(Symbol("define"), Symbol("y"), 5),
+            L(Symbol("+"), Symbol("x"), Symbol("y")),
         ),
         closure=env,
     )
@@ -195,9 +201,9 @@ async def test_evaluate_tail_body_async_cond_returns_nil_when_no_match():
         name=Symbol("test"),
         params=(Symbol("x"),),
         body=(
-            (
+            L(
                 Symbol("cond"),
-                ((Symbol("="), Symbol("x"), 100), Symbol("x")),  # 条件不满足
+                L(L(Symbol("="), Symbol("x"), 100), Symbol("x")),  # 条件不满足
             ),
         ),
         closure=env,
@@ -216,10 +222,10 @@ async def test_evaluate_tail_body_async_let_in_tail_position():
         name=Symbol("test"),
         params=(Symbol("x"),),
         body=(
-            (
+            L(
                 Symbol("let"),
-                ((Symbol("y"), 10),),
-                (Symbol("+"), Symbol("x"), Symbol("y")),
+                L(L(Symbol("y"), 10)),
+                L(Symbol("+"), Symbol("x"), Symbol("y")),
             ),
         ),
         closure=env,
@@ -293,8 +299,8 @@ async def test_evaluate_async_lambda_and_call():
     env = standard_environment()
 
     # ((lambda (x y) (+ x y)) 10 20)
-    expr = (
-        (Symbol("lambda"), (Symbol("x"), Symbol("y")), (Symbol("+"), Symbol("x"), Symbol("y"))),
+    expr = L(
+        L(Symbol("lambda"), L(Symbol("x"), Symbol("y")), L(Symbol("+"), Symbol("x"), Symbol("y"))),
         10,
         20,
     )
@@ -309,15 +315,15 @@ async def test_evaluate_async_defun_and_call():
 
     # (defun add (x y) (+ x y))
     # (add 10 20)
-    defun_expr = (
+    defun_expr = L(
         Symbol("defun"),
         Symbol("add"),
-        (Symbol("x"), Symbol("y")),
-        (Symbol("+"), Symbol("x"), Symbol("y")),
+        L(Symbol("x"), Symbol("y")),
+        L(Symbol("+"), Symbol("x"), Symbol("y")),
     )
     await evaluate_async(defun_expr, env)
 
-    call_expr = (Symbol("add"), 10, 20)
+    call_expr = L(Symbol("add"), 10, 20)
     result = await evaluate_async(call_expr, env)
     assert result == 30
 
@@ -328,9 +334,9 @@ async def test_evaluate_body_async_preserves_environment():
     env = standard_environment()
 
     body = (
-        (Symbol("define"), Symbol("a"), 1),
-        (Symbol("define"), Symbol("b"), 2),
-        (Symbol("define"), Symbol("c"), 3),
+        L(Symbol("define"), Symbol("a"), 1),
+        L(Symbol("define"), Symbol("b"), 2),
+        L(Symbol("define"), Symbol("c"), 3),
     )
 
     await evaluate_body_async(body, env)
@@ -348,7 +354,7 @@ async def test_evaluate_async_quote():
     env = standard_environment()
 
     # (quote (+ 1 2))
-    expr = (Symbol("quote"), (Symbol("+"), 1, 2))
+    expr = L(Symbol("quote"), L(Symbol("+"), 1, 2))
     result = await evaluate_async(expr, env)
 
     # quote 应该返回未求值的表达式（作为 QyChain）

@@ -1,7 +1,7 @@
 import pytest
 
 from qy import Qy
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 
 S = Symbol
 
@@ -97,8 +97,8 @@ def test_define_in_child_scope_can_shadow_parent_binding():
 
 
 def test_define_once_raises_on_duplicate():
+    from qy.core.syntax import Symbol
     from qy.errors import QyRuntimeError
-    from qy.frontend.reader import Symbol
     from qy.session.runtime_space import RuntimeSpace as Environment
 
     env = Environment()

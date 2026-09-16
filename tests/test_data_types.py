@@ -1,10 +1,10 @@
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyTypeError
-from qy.frontend.reader import Symbol
 from qy.import_.registry import standard_bindings
 from qy.runtime import evaluate_source
 from qy.sem.core import DictValue

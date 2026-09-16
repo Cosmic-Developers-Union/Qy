@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from qy.core.operators import ArgumentEvaluator
     from qy.core.symbol_space import ChainFrame
     from qy.core.symbol_space import SymbolSpace
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
     from qy.session.profile import LiteralResolver
     from qy.session.profile import ProfileConfig
 
@@ -202,7 +202,7 @@ class RuntimeSpace:
         signature: OperatorSignature | None = None,
     ) -> Callable[[Callable[..., object]], Callable[..., object]] | Callable[..., object]:
         from qy.core.operators import PureOperator
-        from qy.frontend.reader import Symbol
+        from qy.core.syntax import Symbol
 
         def register(func: Callable[..., object]) -> Callable[..., object]:
             self.define(Symbol(name), PureOperator(name, func, doc, argument_evaluator, signature))
@@ -224,7 +224,7 @@ class RuntimeSpace:
         | Callable[..., object]
     ):
         from qy.core.operators import ScopeOperator
-        from qy.frontend.reader import Symbol
+        from qy.core.syntax import Symbol
 
         def register(
             func: Callable[[tuple[object, ...], RuntimeSpace], object],
@@ -248,7 +248,7 @@ class RuntimeSpace:
         | Callable[..., object]
     ):
         from qy.core.operators import ControlOperator
-        from qy.frontend.reader import Symbol
+        from qy.core.syntax import Symbol
 
         def register(
             func: Callable[[tuple[object, ...], RuntimeSpace], object],
@@ -272,7 +272,7 @@ class RuntimeSpace:
         | Callable[..., object]
     ):
         from qy.core.operators import EffectOperator
-        from qy.frontend.reader import Symbol
+        from qy.core.syntax import Symbol
 
         def register(
             func: Callable[[tuple[object, ...], RuntimeSpace], object],
@@ -296,7 +296,7 @@ class RuntimeSpace:
         | Callable[..., object]
     ):
         from qy.core.operators import MetaOperator
-        from qy.frontend.reader import Symbol
+        from qy.core.syntax import Symbol
 
         def register(
             func: Callable[[tuple[object, ...], RuntimeSpace], object],

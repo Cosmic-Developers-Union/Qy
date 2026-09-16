@@ -6,8 +6,8 @@ import pytest
 from qy.core.symbol_space import MISSING
 from qy.core.symbol_space import ChainFrame
 from qy.core.symbol_space import SymbolSpace
+from qy.core.syntax import Symbol
 from qy.errors import QyRuntimeError
-from qy.frontend.reader import Symbol
 
 S = Symbol
 

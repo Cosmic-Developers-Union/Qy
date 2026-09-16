@@ -17,7 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 
 if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment

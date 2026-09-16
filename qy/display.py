@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import T
-from qy.core.syntax import is_chain
 from qy.core.syntax import nil
-from qy.frontend.reader import Symbol
-from qy.frontend.reader import TupleForm
-from qy.frontend.reader import write_tuple
+from qy.frontend.reader import write
 
 __all__ = ["format_value"]
 
@@ -37,9 +33,8 @@ def format_value(value: object) -> str:
         return value.value
     if isinstance(value, Chain):
         return _format_cons(value)
-    # Handle AST Chain
-    if isinstance(value, Chain) or is_chain(value):
-        return _format_chain(value)
+    if isinstance(value, Chain):
+        return _format_cons(value)
     if isinstance(value, str):
         return value
     if isinstance(value, TupleValue):
@@ -54,11 +49,16 @@ def format_value(value: object) -> str:
         return f"#{{{' '.join(items)}}}"
     if isinstance(value, tuple):
         return f"({' '.join(format_value(item) for item in value)})"
-    if isinstance(value, Symbol | int | float | bool) or value is None:
-        try:
-            return write_tuple(cast(TupleForm, value))
-        except TypeError:
-            pass
+    if isinstance(value, Symbol):
+        return write(value)
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return "none"
+    if isinstance(value, int | float):
+        return repr(value)
     if isinstance(value, list):
         return f"[{' '.join(format_value(item) for item in value)}]"
     if isinstance(value, dict):
@@ -77,21 +77,5 @@ def _format_cons(value: Chain) -> str:
         parts.append(format_value(current.head))
         current = current.tail
     if current is nil:
-        return f"({' '.join(parts)})"
-    return f"({' '.join(parts)} . {format_value(current)})"
-
-
-def _format_chain(value: object) -> str:
-    from qy.core.syntax import car
-    from qy.core.syntax import cdr
-    from qy.core.syntax import is_chain
-    from qy.core.syntax import is_nil
-
-    parts: list[str] = []
-    current: object = value
-    while is_chain(current):
-        parts.append(format_value(car(current)))
-        current = cdr(current)
-    if is_nil(current):
         return f"({' '.join(parts)})"
     return f"({' '.join(parts)} . {format_value(current)})"

@@ -5,8 +5,8 @@ from qy import Qy
 from qy.async_utils import run_coro
 from qy.build.pipeline import bytecode_artifact
 from qy.build.pipeline import compile_source_to_bytecode_async
+from qy.core.syntax import Symbol
 from qy.errors import EvaluationError
-from qy.frontend.reader import Symbol
 from qy.passes.pass_base import PipelineSession
 
 

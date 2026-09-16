@@ -203,7 +203,7 @@ def _find_all_call_sites(
 
 
 def _same_symbol(a: object, b: object) -> bool:
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
 
     if isinstance(a, Symbol) and isinstance(b, Symbol):
         return a.name == b.name

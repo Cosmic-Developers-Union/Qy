@@ -3,8 +3,8 @@
 
 import pytest
 
+from qy.core.syntax import Symbol
 from qy.errors import QyResolveError
-from qy.frontend.reader import Symbol
 from qy.sem.core import FloatValue
 from qy.sem.core import IntValue
 from qy.session.profile import ProfileConfig

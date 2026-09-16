@@ -1,7 +1,7 @@
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.runtime import evaluate_file
 from qy.sem.core import StringValue
 

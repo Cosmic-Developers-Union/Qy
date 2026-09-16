@@ -1,5 +1,5 @@
 from qy.analysis import type_check_source
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.import_.module import StandardModule
 from qy.import_.registry import register_module
 from qy.macro import MacroDefinition

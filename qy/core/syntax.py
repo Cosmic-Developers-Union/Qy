@@ -17,6 +17,7 @@ from dataclasses import field
 from typing import TYPE_CHECKING
 from typing import ClassVar
 from typing import TypeGuard
+from typing import cast
 
 if TYPE_CHECKING:
     from qy.source.span import SourceSpan
@@ -24,8 +25,10 @@ if TYPE_CHECKING:
 __all__ = [
     "NONE",
     "Chain",
+    "Form",
     "NoneValue",
     "QyNil",
+    "Symbol",
     "T",
     "TValue",
     "car",
@@ -33,6 +36,7 @@ __all__ = [
     "chain_to_list",
     "chain_to_tuple",
     "cons",
+    "get_span",
     "is_chain",
     "is_nil",
     "iter_chain",
@@ -41,6 +45,17 @@ __all__ = [
     "nil",
     "tuple_to_chain",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class Symbol:
+    """Qy 语法 datum 的原子：一个符号拼写。."""
+
+    name: str
+    span: SourceSpan | None = field(default=None, compare=False, repr=False)
+
+    def __str__(self) -> str:
+        return self.name
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -125,6 +140,18 @@ def cons(head: object, tail: object, span: SourceSpan | None = None) -> Chain:
     return Chain(head, tail, span)
 
 
+type Form = Symbol | Chain | QyNil
+
+
+def get_span(value: object) -> SourceSpan | None:
+    """读取 datum 的 source span；没有 span 时返回 None。."""
+    if isinstance(value, Symbol):
+        return value.span
+    if isinstance(value, Chain):
+        return value.span
+    return cast("SourceSpan | None", getattr(value, "span", None))
+
+
 def car(chain: object) -> object:
     """获取 chain 的 head（第一个元素）。."""
     if not isinstance(chain, Chain):
@@ -170,8 +197,8 @@ def chain_to_list(chain: object) -> list[object]:
 
 
 def list_to_chain(
-    items: Iterable[object], tail: object = None, span: SourceSpan | None = None
-) -> object:
+    items: Iterable[object], tail: Form | None = None, span: SourceSpan | None = None
+) -> Form:
     """从 Python iterable 构造 chain。."""
     if tail is None:
         tail = nil
@@ -186,7 +213,7 @@ def list_to_chain(
     return result
 
 
-def tuple_to_chain(t: tuple[object, ...], span: SourceSpan | None = None) -> object:
+def tuple_to_chain(t: tuple[object, ...], span: SourceSpan | None = None) -> Form:
     """将 Python tuple 转换为 chain。."""
     return list_to_chain(t, span=span)
 

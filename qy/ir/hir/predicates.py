@@ -26,12 +26,10 @@ from dataclasses import replace
 from enum import Enum
 
 from qy.core import OperatorKind  # noqa: F401  -- re-exported for downstream predicate composition
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
 from qy.diag import Diagnostic
-from qy.frontend.form import DottedTuple
-from qy.frontend.form import Form
-from qy.frontend.form import SpannedTuple
-from qy.frontend.reader import Symbol
 from qy.ir.hir.node import AllExpr
 from qy.ir.hir.node import ApplyExpr
 from qy.ir.hir.node import AssertExpr
@@ -826,10 +824,6 @@ def _is_valid_form(form: Form) -> bool:
         return True
     if is_chain(form):
         return True
-    if isinstance(form, (SpannedTuple, DottedTuple)):
-        return True
-    if isinstance(form, tuple):
-        return all(_is_valid_form(child) for child in form)
     # H11 also accepts literal atoms that can legitimately appear inside a
     # quoted form: plain Python scalars (int/str/float/bool/None/bytes) and
     # QyNil — the latter is what the reader macro '() lowers to. The spec

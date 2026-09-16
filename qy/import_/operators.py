@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
+from qy.core.syntax import Symbol
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
-from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 from qy.import_.parse import parse_from_import
 from qy.import_.registry import load_module_async

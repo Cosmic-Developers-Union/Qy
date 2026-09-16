@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from qy.frontend.reader import Form
+    from qy.core.syntax import Form
     from qy.session.runtime_space import RuntimeSpace as Environment
 
 from qy.diag import Diagnostic

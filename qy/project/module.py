@@ -3,9 +3,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from qy.core.syntax import Symbol
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
-from qy.frontend.reader import Symbol
 from qy.import_.loader import cache_source_module
 from qy.import_.loader import resolve_known_module
 from qy.import_.module import StandardModule

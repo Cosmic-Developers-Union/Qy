@@ -16,11 +16,11 @@ from qy.analysis.refs import value_uses_eager_arguments
 from qy.core import OperatorKind
 from qy.core import TypeName
 from qy.core.operator_signature import OperatorSignature
+from qy.core.syntax import Symbol
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.diag import Diagnostic
-from qy.frontend.reader import Symbol
 from qy.import_.loader import resolve_known_module
 from qy.import_.parse import parse_from_import
 from qy.project.module import remember_source_module

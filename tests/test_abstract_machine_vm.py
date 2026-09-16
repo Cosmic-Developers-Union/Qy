@@ -68,7 +68,7 @@ def test_compiler_rejects_unknown_dialect():
 
 
 def test_compat_dialect_still_rejects_abstract_machine_opcodes():
-    from qy.frontend.reader import Symbol
+    from qy.core.syntax import Symbol
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
 

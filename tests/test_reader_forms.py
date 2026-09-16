@@ -3,13 +3,13 @@ import pytest
 from qy.build.artifact import RawFormProgram
 from qy.build.artifact import SurfaceProgram
 from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import car
 from qy.core.syntax import cdr
+from qy.core.syntax import get_span
 from qy.core.syntax import list_to_chain
 from qy.frontend.reader import ReaderSyntaxError
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import expand_surface_dialect
-from qy.frontend.reader import get_span
 from qy.frontend.reader import read
 from qy.frontend.reader import read_one
 from qy.frontend.reader import read_raw

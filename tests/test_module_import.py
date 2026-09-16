@@ -4,8 +4,8 @@ from tempfile import TemporaryDirectory
 import pytest
 
 from qy.core.operators import PureOperator
+from qy.core.syntax import Symbol
 from qy.errors import EvaluationError
-from qy.frontend.reader import Symbol
 from qy.import_.module import StandardModule
 from qy.import_.registry import register_module
 from qy.macro import MacroDefinition

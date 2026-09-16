@@ -272,19 +272,26 @@ source
 
 ## 2.3 当前主要事实漂移
 
-1. `qy/frontend/form.py` 的 `Form` 联合仍包含 `tuple["Form", ...]` / `SpannedTuple` / `DottedTuple`，
-   `TupleAtom` 仍包含 `str | int | float | bool | bytes | None`；
-   Lark reader 本身（`qy/frontend/reader.py`）已只产出 `Symbol | Chain`，
-   泄漏点是 `form_to_tuple` / `TupleForm` / `read_tuple` / `write_tuple` 兼容 API；
-   该兼容层已加 `QY_DELETE_AFTER_SEMANTIC_REPLACEMENT` 标记；
-2. quoted literal 已在 reader 阶段变成 Python `str`（由 `_decode_string_symbol` 经 `ast.literal_eval` 解出），兼容 API 入口；
-3. `qy/sem/core.py` 里的 `ChainValue` 与 `qy/core/syntax.py` 的 syntax `Chain` 并存，
-   raw AST / 兼容 API 仍通过 `form_to_tuple`/`TupleForm` 暴露 Python tuple；
-   `qy/values.py` 已删除，残留仅在历史 worktree；
+1. ~~`qy/frontend/form.py` 的 `Form` 联合包含 tuple / `SpannedTuple` / `DottedTuple`，
+   `TupleAtom` 包含 `str | int | float | bool | bytes | None`；兼容 API 暴露 Python tuple。~~
+   ✅ 已闭合：`qy/frontend/form.py` 已删除；`Symbol` / `Chain` / `QyNil` / `Form` 与
+   `get_span` 的真源是 `qy/core/syntax.py`；`Form = Symbol | Chain | QyNil`；
+   `form_to_tuple` / `TupleForm` / `read_tuple` / `write_tuple` / `SpannedTuple` /
+   `DottedTuple` 全部删除（含公共导出）；`surface.py` 的 tuple 版实现已删；
+   `macro/hygiene.py` 改为 chain 表示并保留 span。
+2. ~~quoted literal 已在 reader 阶段变成 Python `str`（`_decode_string_symbol` 经
+   `ast.literal_eval` 解出），兼容 API 入口。~~ ✅ 兼容入口已删除；
+   仅剩 MIR/HIR 侧 `_quote_data` 的物化尾巴，见第 7 条。
+3. ~~`qy/sem/core.py` 里的 `ChainValue` 与 `qy/core/syntax.py` 的 syntax `Chain` 并存。~~
+   ✅ 已闭合：`qy.sem` 不再定义 datum 或 Qy 自身对象；`NIL` / `NilValue` / `SymbolValue` /
+   `ChainValue` / `DatumValue` 删除；`nil` / `T` / `none` 同处 `qy/core/syntax.py`；
+   迁移期桥接层 `qy/sem/bridge.py` 已删除。
 4. `literal_resolver` 让 `1` 等 spelling 绕过了真正的 chain / fold 模型；
 5. `(define 1 10)` 的行为尚未由最终 root 模型解释；
 6. `qy.core` 仍混入 profile / compat 能力；
-7. 标准数据算子已返回 Qy `TupleValue` / `ListValue` / `DictValue` / `SetValue`，但 reader/string literal 仍有 Python `str` 迁移尾巴；
+7. 标准数据算子已返回 Qy `TupleValue` / `ListValue` / `DictValue` / `SetValue`，但
+   `mir/normalize._quote_data`、`session/pre_ss.try_default_literal` 仍会把 quoted
+   string / number 物化成 Python `str` / `int` / `float`；reader/string literal 仍有 Python `str` 迁移尾巴；
 8. `eq` 已脱离 Python identity / interning，后续还需补完整结构相等算子；
 9. `cond` 已是 nil-only truth；标准 profile 的 `truthy` 负责复杂真值；
 10. `truthy` 已有正式 operator，但还需按 profile 层文档继续收口；
@@ -293,7 +300,9 @@ source
 13. `HostObjectRef` 尚未演化成完整 host reference / runtime identity 容器；
 14. macro compile-time evaluator 已脱离 bytecode / register VM；compile-time namespace 仍需继续显式化为独立 slot/layout；
 15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；
-16. `quasiquote` nested 路径仍依赖过时 `list/append` 假设；
+16. ~~`quasiquote` nested 路径仍依赖过时 `list/append` 假设。~~ ✅ 已闭合：
+    quasiquote 展开统一到 `qy/core/quasiquote.py`（macro expand 与 HIR lowering 共用一份实现），
+    不再有第二份 tuple 版实现；
 17. 默认 LIR 仍以 compat dialect 为主，但主 pipeline 已执行 `mir.validate` / `lir.verify`，bytecode emit 会拒绝非 VM compat opcode；
 18. LIR 已在 abstract-machine dialect 下显式建模 handler frame / continuation frame / symbol-space / binding slot：`lower_effects` + `passes/lir/spaces.py` 产出 `frame_layout` / `handlers` / `continuations` / `symbol_spaces`，并把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`，因此 L5–L12 verifier 在 abstract-machine dialect 下全部有数据（L11/L12 CFG-aware）；仍缺 virtual stack 的运行时语义、HIR 层 `resolve.spaces`（当前 layout 由 LIR 从指令流重建），且 VM 尚不执行抽象机 opcode；
 19. effect frame 仍主要由 VM 中的 Python 对象承担；

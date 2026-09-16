@@ -5,9 +5,9 @@ from __future__ import annotations
 
 import pytest
 
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.frontend.cst import CstAtom
-from qy.frontend.reader import Form
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import parse_cst
 from qy.frontend.reader import read_cst
 from qy.frontend.reader_macros import ReaderMacroRegistry

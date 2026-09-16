@@ -8,8 +8,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from dataclasses import field
 
+from qy.core.syntax import Symbol
 from qy.frontend.reader import SourceSpan
-from qy.frontend.reader import Symbol
 from qy.macro.hygiene import MacroRename
 
 __all__ = ["MacroExpansionTrace", "MacroSourceMapEntry"]

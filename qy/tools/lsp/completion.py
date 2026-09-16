@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from lsprotocol import types
 
-from qy.frontend.reader import Form
+from qy.core.syntax import Form
+from qy.core.syntax import Symbol
 from qy.frontend.reader import ReaderSyntaxError
-from qy.frontend.reader import Symbol
 from qy.frontend.reader import read
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance

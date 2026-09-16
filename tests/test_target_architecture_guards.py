@@ -9,7 +9,7 @@ from qy.backend.vm.spec import FrameLayout
 from qy.backend.vm.spec import HandlerSpec
 from qy.backend.vm.spec import RegisterAllocation
 from qy.backend.vm.spec import VMState
-from qy.frontend.reader import Symbol
+from qy.core.syntax import Symbol
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
