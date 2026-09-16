@@ -62,3 +62,43 @@ def test_signature_help_for_source():
 
     assert signature is not None
     assert "defun" in signature.signatures[0].label
+
+
+def test_completion_includes_local_bindings_from_hir():
+    source = "(defun f (alpha) (let ((beta 1)) (+ alpha beta)))"
+
+    labels = {item.label for item in completion_items(source, 0, 0)}
+
+    assert "alpha" in labels
+    assert "beta" in labels
+
+
+def test_hover_reports_local_binding():
+    source = "(defun f (alpha) (+ alpha 1))"
+
+    hover = hover_for_source(source, 0, 12)
+
+    assert hover is not None
+    contents = hover.contents
+    assert isinstance(contents, types.MarkupContent)
+    assert "local binding" in contents.value
+    assert "alpha" in contents.value
+
+
+def test_document_locals_reads_canonical_hir_facts():
+    from qy.tools.lsp.facts import document_locals
+
+    source = """
+    (defeffect ask)
+    (defun f (a)
+      (let ((b 1)) (define c 2))
+      (handle (perform ask 1) ((ask (v k) (resume k v)))))
+    """
+
+    facts = {(binding.name, binding.source) for binding in document_locals(source)}
+
+    assert ("a", "lambda-param") in facts
+    assert ("b", "let-binding") in facts
+    assert ("c", "define") in facts
+    assert ("ask", "defeffect") in facts
+    assert ("k", "handler-continuation") in facts

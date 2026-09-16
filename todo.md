@@ -290,6 +290,10 @@ source
   - layout 下沉补链：`BytecodeProgram.symbol_spaces` 携带 HIR 下沉的程序级 layout，
     不再在 backend 边界丢失（`BytecodeFunction.symbol_spaces` 类型收紧为
     `LIRSymbolSpaceLayout`）；剩余差距是 MIR operand 携带 binding id/slot；
+  - LSP 事实源同步：新增 `qy/tools/lsp/facts.py`（canonical frontend + HIR）；
+    completion 与 hover 现在读取与 `qy check`/analyzer 相同的 HIR 事实，
+    能识别 `define`/`let`/参数/handler 参数/`defeffect` 等 lexical binding
+    （此前只读 surface forms、看不到局部与宏展开后的定义）；
   - legacy 分阶段退役（第二步）：`qy.std.control` 的 `lambda` / `defun` 算子
     （值位置路径，如 `(apply lambda '((x) ...))`）改为经完整管线编成
     `BytecodeFunctionValue`，不再构造 legacy `UserFunction`；实测语料中

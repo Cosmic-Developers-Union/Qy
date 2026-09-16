@@ -9,6 +9,7 @@ from qy.core.syntax import Symbol
 from qy.frontend.reader import ReaderSyntaxError
 from qy.frontend.reader import read
 from qy.runtime import Qy
+from qy.tools.lsp.facts import document_locals
 from qy.tools.lsp.utils import shared_instance
 from qy.tools.lsp.utils import symbol_name_at
 from qy.tools.lsp.utils import symbol_start_at
@@ -40,6 +41,7 @@ def completion_items(
         )
     if source is not None:
         items.extend(document_completion_items(source))
+        items.extend(local_completion_items(source, qy=qy))
     if prefix:
         return [item for item in items if item.label.startswith(prefix)]
     return items
@@ -79,6 +81,19 @@ def document_completion_items(source: str) -> list[types.CompletionItem]:
             detail="document symbol",
         )
         for name in names
+    ]
+
+
+def local_completion_items(source: str, *, qy: Qy | None = None) -> list[types.CompletionItem]:
+    """文档内 lexical binding 的补全项（与 analyzer 读取同一份 HIR 事实）。."""
+    seen = {binding.name for binding in document_locals(source, qy=qy)}
+    return [
+        types.CompletionItem(
+            label=name,
+            kind=types.CompletionItemKind.Variable,
+            detail="local binding",
+        )
+        for name in sorted(seen)
     ]
 
 
