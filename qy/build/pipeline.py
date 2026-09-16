@@ -37,6 +37,7 @@ from qy.passes.lir.verify import VerifyLIRPass
 from qy.passes.macro.expand import MacroExpandPass
 from qy.passes.mir.lower_pass import LowerMIRPass
 from qy.passes.mir.validate import ValidateMIRPass
+from qy.passes.optimize.apply import OptimizeMIRPass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
 from qy.passes.pass_base import PipelineOptions
@@ -98,6 +99,7 @@ def build_default_pipeline() -> Pipeline:
     pipeline.add_pass(EffectAnalyzePass())
     pipeline.add_pass(LowerMIRPass())
     pipeline.add_pass(ValidateMIRPass())
+    pipeline.add_pass(OptimizeMIRPass())
     pipeline.add_pass(LowerLIRPass())
     pipeline.add_pass(VerifyLIRPass())
     pipeline.add_pass(EmitBytecodePass())

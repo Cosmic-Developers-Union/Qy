@@ -276,6 +276,11 @@ source
     （`macro/hygiene`、`core/desugar`、`core/validate`、`resolve/{symbols,imports}`、
     `control/loop`、`lir/normalize`、`emit/llvm_prepare`、`effect/{lower,flatten}`）
     与空的 `passes/surface/`；`closure.convert` 是唯一保留的未实现 pass；
+  - 优化接线：`PipelineOptions.optimize` + `optimize.mir` 接线点接入默认管线
+    （默认 False），优化顺序真源收敛到 `passes/optimize/apply.py::OPTIMIZE_PASSES`；
+    实测 86 个语料在开启优化后有 46/86 行为不一致（仅简化子集已 28/86），
+    因此**不默认开启**，证据记录在 docs/package-structure.md §3.1；下一步是让
+    optimize pass 正确处理 language-level effect / continuation 控制流。
   - 死代码清理：删除 `vm/instance/{scheduler,host}.py`、`session/options.py`、
     `analysis/{infer,scope,refs,escape,effects}.py`、`sem.host.HostObjectRef` 别名、
     根目录过期 demo（`component_demo.qy`/`test-cov.qy`）；`roadmap.yaml` 迁入 `docs/` 并注册。

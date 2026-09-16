@@ -69,8 +69,11 @@ class PipelineOptions:
     error_threshold: int = 1
     # LIR dialect：默认 `compat`（register VM 可编码）。`abstract-machine`
     # 会把语言级 effect 降成 HANDLER_* / CONT_* / EFFECT_* 抽象机指令，
-    # 供 verifier 与后续 backend 消费；当前 VM 尚不执行该 dialect。
+    # 供 verifier 与后续 backend 消费；VM 可执行该 dialect，但默认路径仍是 compat。
     lir_dialect: str = "compat"
+    # MIR 优化序列开关。默认关闭：优化 pass 对 language-level effect /
+    # continuation 控制流的正确性尚在推进中（见 todo.md §Phase P）。
+    optimize: bool = False
 
 
 @dataclass(slots=True)

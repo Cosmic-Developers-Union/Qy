@@ -381,6 +381,7 @@ def test_default_pipeline_stage_order():
         "effect.analyze",
         "mir.lower",
         "mir.validate",
+        "optimize.mir",
         "lir.lower",
         "lir.verify",
         "emit.bytecode",

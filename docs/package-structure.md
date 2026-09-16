@@ -185,11 +185,25 @@ frontend.cst_parse
 -> emit.bytecode
 ```
 
-当前**不运行** MIR 优化 pass：`qy/passes/optimize/*` 与 `control/cfg_simplify` /
-`control/tailcall` / `control/loop_opt` 已在 `build_optimization_pipeline(optimize=True)`
-子管线中实现并有隔离测试，但把它们接入默认管线会破坏 effect / macro hygiene /
-meta-interp 用例（寄存器分配与 CFG 简化尚未正确处理 language-level effect 控制流）。
-在这些 pass 修复前，默认管线保持无优化以保证正确性。
+默认管线包含 `optimize.mir` 接线点，但 `PipelineOptions.optimize` 默认为 **False**，
+因此默认不运行 MIR 优化 pass。`qy/passes/optimize/*` 与 `control/cfg_simplify` /
+`control/tailcall` / `control/loop_opt` 已实现并有隔离测试，顺序真源是
+`qy/passes/optimize/apply.py::OPTIMIZE_PASSES`。
+
+**实测证据（2026-09 本轮）**：对 86 个语料（`examples/validation|design|host`、
+`tests/qy`、`meta-interp/cases`）对比 `optimize` on/off：
+
+| 优化子集 | 结果不一致 |
+| --- | --- |
+| 仅简化（const_prop/const_fold/copy_prop/dce/dse） | 28/86 |
+| + cse / strength_reduce | 28/86 |
+| + cfg_simplify / tailcall / licm / loop_opt | 39/86 |
+| + inline / aggressive_inline / scalar_replace / intern | 39/86 |
+| + reg_alloc | 46/86 |
+
+不一致包含真实语义回归（`cond` 的 nil-only 真值、effect handler 控制流、LIR
+寄存器越界、callee 变成非可调用值）。因此在这些 pass 理解 language-level effect /
+continuation 控制流之前，默认管线保持无优化；`optimize=True` 只用于实验。
 
 目标 pass 顺序（完整管线）：
 

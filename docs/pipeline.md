@@ -33,6 +33,7 @@ source (文本)
 | HIR Validate | `hir.validate` | `ProgramIR` | `ProgramIR` + H1–H14 diagnostics | 是，H1–H14 结构/effect/module 良构性 | 否 |
 | Effect Analyze | `effect.analyze` | `ProgramIR` | 同一个 `ProgramIR` + effect 事实（declared/performed/handled/escaping/…） | 是，EA1 escaping effect（hint） | 否 |
 | MIR Lower | `mir.lower` | `ProgramIR` | `MIRProgram`（CFG + virtual register + explicit control/effect flow） | 是，覆盖不到的 HIR 节点进入 MIR diagnostics | 否 |
+| MIR Optimize | `optimize.mir` | `MIRProgram` | 同一个 `MIRProgram`（`PipelineOptions.optimize=True` 时才优化） | 否 | 否 |
 | LIR Lower | `lir.lower` | `MIRProgram` | `LIRProgram`（Qy abstract machine IR，显式 frame / ss-chain / slot / continuation / handler） | 是 | 否 |
 | Bytecode Emit | `emit.bytecode` | `LIRProgram` | `BytecodeProgram`（纯结构转换，不重新理解语义） | 是，沿用 LIR diagnostics | 否 |
 | Register VM | *(管线外部)* | `BytecodeProgram` | 运行结果 / top-level 结果列表 | 运行期异常 | 是，执行时需要 runtime environment |

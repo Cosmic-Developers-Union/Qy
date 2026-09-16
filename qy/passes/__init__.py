@@ -79,51 +79,9 @@ def build_optimization_pipeline(*, optimize: bool = False) -> Pipeline:
     p.add_pass(LowerHIRPass())
     p.add_pass(LowerMIRPass())
     if optimize:
-        from qy.passes.control.cfg_simplify import CFGSimplifyPass
-        from qy.passes.control.loop_opt import LoopOptPass
-        from qy.passes.control.tailcall import TailCallPass
-        from qy.passes.optimize.aggressive_inline import AggressiveInlinePass
-        from qy.passes.optimize.const_fold import ConstFoldPass
-        from qy.passes.optimize.const_prop import ConstPropagationPass
-        from qy.passes.optimize.copy_prop import CopyPropagationPass
-        from qy.passes.optimize.cse import CSEPass
-        from qy.passes.optimize.dce import DCEPass
-        from qy.passes.optimize.dse import DeadStoreEliminationPass
-        from qy.passes.optimize.inline import InlinePass
-        from qy.passes.optimize.intern import InternPass
-        from qy.passes.optimize.licm import LICMPass
-        from qy.passes.optimize.reg_alloc import RegisterAllocationPass
-        from qy.passes.optimize.scalar_replace import ScalarReplacePass
-        from qy.passes.optimize.strength_reduce import StrengthReducePass
+        from qy.passes.optimize.apply import OPTIMIZE_PASSES
 
-        # Phase 1: Simplification
-        p.add_pass(ConstPropagationPass())
-        p.add_pass(ConstFoldPass())
-        p.add_pass(CopyPropagationPass())
-        p.add_pass(DCEPass())
-        p.add_pass(DeadStoreEliminationPass())
-
-        # Phase 2: Algebraic simplification
-        p.add_pass(CSEPass())
-        p.add_pass(StrengthReducePass())
-        p.add_pass(CFGSimplifyPass())
-
-        # Phase 3: Control flow optimization
-        p.add_pass(TailCallPass())
-        p.add_pass(LICMPass())
-        p.add_pass(LoopOptPass())
-
-        # Phase 4: Inlining
-        p.add_pass(InlinePass())
-        p.add_pass(AggressiveInlinePass())
-
-        # Phase 5: Cleanup and preparation
-        p.add_pass(ScalarReplacePass())
-        p.add_pass(InternPass())
-        p.add_pass(DCEPass())
-        p.add_pass(CFGSimplifyPass())
-
-        # Phase 6: Register allocation
-        p.add_pass(RegisterAllocationPass())
+        for factory in OPTIMIZE_PASSES:
+            p.add_pass(factory())
     p.add_pass(LowerLIRPass())
     return p

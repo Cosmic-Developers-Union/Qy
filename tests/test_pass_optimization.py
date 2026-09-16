@@ -283,3 +283,53 @@ class TestOptimizationCorrectness:
         assert len(r2_artifact.functions[0].instructions) <= len(
             r1_artifact.functions[0].instructions
         )
+
+
+# ---------------------------------------------------------------------------
+# 默认管线接线（PipelineOptions.optimize）
+# ---------------------------------------------------------------------------
+
+
+def test_optimize_is_off_by_default():
+    assert PipelineOptions().optimize is False
+
+
+def test_default_pipeline_includes_optimize_slot():
+    from qy.build.pipeline import build_default_pipeline
+
+    names = [p.name for p in build_default_pipeline().passes]
+    assert "optimize.mir" in names
+    assert names.index("mir.validate") < names.index("optimize.mir") < names.index("lir.lower")
+
+
+def test_optimize_mir_is_noop_when_disabled():
+    from qy.passes.optimize.apply import OptimizeMIRPass
+
+    program = _compile_to_mir("(+ 1 2)")
+    result = OptimizeMIRPass().run(
+        PassContext(
+            input_artifact=program,
+            artifact_kind="mir",
+            session=PipelineSession.minimal(),
+            options=PipelineOptions(),
+        )
+    )
+
+    assert result.artifact is program
+    assert result.diagnostics == ()
+
+
+def test_optimize_mir_runs_when_enabled():
+    from qy.passes.optimize.apply import OptimizeMIRPass
+
+    program = _compile_to_mir("(+ 1 2)")
+    result = OptimizeMIRPass().run(
+        PassContext(
+            input_artifact=program,
+            artifact_kind="mir",
+            session=PipelineSession.minimal(),
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+    )
+
+    assert result.artifact is not None
