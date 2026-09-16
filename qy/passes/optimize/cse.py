@@ -16,6 +16,7 @@ from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -42,9 +43,7 @@ class CSEPass(Pass):
         new_functions = tuple(_eliminate_cse(f) for f in program.functions)
         return PassResult(
             success=True,
-            artifact=MIRProgram(
-                new_functions, program.constants, program.main, program.diagnostics
-            ),
+            artifact=rebuild_program(program, functions=new_functions, constants=program.constants),
         )
 
 

@@ -1,25 +1,48 @@
 # coding: utf-8
 """optimize.const_prop pass.
 
-Constant propagation: tracks which registers hold compile-time-known constant
-values and substitutes them into downstream instructions.
+把「字面量拼写的 env lookup」降成常量加载：
 
-Works across MOVE chains and simple LOAD_ENV lookups.  Combined with
-const_fold, this enables compile-time evaluation of larger expression trees.
+- ``LOAD_ENV dest, Symbol("42")`` -> ``LOAD_CONST dest, <IntValue(42)>``
+- 同样适用于字符串 / 字符 / ``T`` / ``nil`` / ``none`` 拼写。
+
+MIR 里 bare literal 是以 symbol 拼写形式存在的（``LOAD_ENV`` 走运行时
+literal resolver），因此这一步把每次求值都发生的 symbol-space 查找换成
+常量池读取。
+
+正确性约束：
+
+- 只有当该拼写在**整个程序**内没有被任何 ``DEFINE_ONCE`` / ``STORE_LOCAL``
+  绑定（``define`` 允许 shadow 字面量拼写）且没有被 ``from`` 导入同名绑定
+  （``ImportSpec.alias``）时才改写；
+- 只改写 literal resolver 能解析的拼写（``default_literal_type`` 非 None）；
+- 不改写 CALL / BUILD_TUPLE 的操作数：MIR 用虚拟寄存器传参，把寄存器号换成
+  常量池下标会读错寄存器（历史缺陷，见本条修复）。
+
+禁止：
+- 不得改写带副作用的符号查找（算子、effect）；
+- 不得臆造寄存器：本 pass 不新增指令，也不改变 ``register_count``。
 """
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
+from qy.core.symbol_space import MISSING
+from qy.core.syntax import Symbol
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_program
+from qy.passes.optimize.facts import shadowed_names
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
+from qy.session.pre_ss import default_literal_type
+from qy.session.pre_ss import try_default_literal
 
 __all__ = ["ConstPropagationPass"]
 
@@ -31,170 +54,44 @@ class ConstPropagationPass(Pass):
     def run(self, context: PassContext) -> PassResult:
         program = cast(MIRProgram, context.input_artifact)
         pool = MIRConstantPool()
-        for v in program.constants.values:
-            pool.intern(v)
+        for value in program.constants.values:
+            pool.intern(value)
 
-        new_functions = tuple(_propagate_in_function(f, pool) for f in program.functions)
+        shadowed = shadowed_names(program)
+        new_functions = tuple(
+            _rewrite_function(function, pool, shadowed) for function in program.functions
+        )
         return PassResult(
             success=True,
-            artifact=MIRProgram(new_functions, pool, program.main, program.diagnostics),
+            artifact=rebuild_program(program, functions=new_functions, constants=pool),
         )
 
 
-def _propagate_in_function(
-    function: MIRFunction,
-    pool: MIRConstantPool,
+def _rewrite_function(
+    function: MIRFunction, pool: MIRConstantPool, shadowed: frozenset[str]
 ) -> MIRFunction:
-    """Propagate known constants through the function.
-
-    Maintains a mapping reg -> const_index for registers known to hold
-    a constant value.  When a LOAD_CONST defines a register, we record it.
-    When a MOVE copies a constant, we propagate the constant index.
-    When a LOAD_ENV resolves a known constant binding, we propagate it.
-    """
-    const_map: dict[int, int] = {}  # reg -> pool index
-    changed = True
-    blocks = list(function.blocks)
-
-    while changed:
-        changed = False
-        new_blocks: list[MIRBlock] = []
-
-        for block in blocks:
-            new_instructions: list[MIRInstruction] = []
-            for inst in block.instructions:
-                new_inst, local_changed = _process_instruction(inst, const_map, pool)
-                if local_changed:
-                    changed = True
-                new_instructions.append(new_inst)
-
-                # Track definitions
-                dest = _def(inst)
-                if dest is not None:
-                    if inst.opcode == "LOAD_CONST":
-                        const_idx = inst.operands[1]
-                        if isinstance(const_idx, int):
-                            const_map[dest] = const_idx
-                    elif inst.opcode == "MOVE":
-                        src = inst.operands[1]
-                        if isinstance(src, int) and src in const_map:
-                            const_map[dest] = const_map[src]
-                        elif dest in const_map:
-                            del const_map[dest]
-                    else:
-                        const_map.pop(dest, None)
-
-            new_blocks.append(MIRBlock(block.id, tuple(new_instructions), block.terminator))
-        blocks = new_blocks
-
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        tuple(blocks),
-        function.entry,
+    blocks = tuple(
+        MIRBlock(
+            block.id,
+            tuple(_rewrite_instruction(inst, pool, shadowed) for inst in block.instructions),
+            block.terminator,
+        )
+        for block in function.blocks
     )
+    return replace(function, blocks=blocks)
 
 
-def _process_instruction(
-    inst: MIRInstruction,
-    const_map: dict[int, int],
-    pool: MIRConstantPool,
-) -> tuple[MIRInstruction, bool]:
-    """Try to propagate constants into *inst*. Returns (new_inst, changed)."""
-    match inst.opcode:
-        case "CALL":
-            return _propagate_call(inst, const_map, pool)
-        case "DEFINE_ONCE" | "STORE_LOCAL":
-            return _propagate_store(inst, const_map)
-        case "BUILD_TUPLE":
-            return _propagate_tuple(inst, const_map)
-        case "APPEND_RESULT":
-            return _propagate_append(inst, const_map)
-        case _:
-            return inst, False
-
-
-def _propagate_call(
-    inst: MIRInstruction,
-    const_map: dict[int, int],
-    pool: MIRConstantPool,
-) -> tuple[MIRInstruction, bool]:
-    dest, op_reg, arg_regs = inst.operands
-    changed = False
-
-    if isinstance(op_reg, int) and op_reg in const_map:
-        # Don't propagate operator: it needs to remain a register for CALL
-        pass
-
-    new_args: list[object] = []
-    if isinstance(arg_regs, tuple):
-        for a in arg_regs:
-            if isinstance(a, int) and a in const_map:
-                new_args.append(const_map[a])
-                changed = True
-            else:
-                new_args.append(a)
-
-    if changed:
-        new_arg_tuple = tuple(new_args)
-        if new_arg_tuple != arg_regs:
-            return MIRInstruction("CALL", (dest, op_reg, new_arg_tuple), inst.span), True
-    return inst, False
-
-
-def _propagate_store(
-    inst: MIRInstruction,
-    const_map: dict[int, int],
-) -> tuple[MIRInstruction, bool]:
-    _, val_reg = inst.operands
-    if isinstance(val_reg, int) and val_reg in const_map:
-        # Convert STORE_LOCAL r, src to LOAD_CONST + STORE_LOCAL pattern
-        # Not directly useful; just note that the value is known constant.
-        # The consumer (CONST_FOLD) will handle the actual folding.
-        pass
-    return inst, False
-
-
-def _propagate_tuple(
-    inst: MIRInstruction,
-    const_map: dict[int, int],
-) -> tuple[MIRInstruction, bool]:
-    changed = False
-    new_ops: list[object] = []
-    for op in inst.operands:
-        if isinstance(op, int) and op in const_map:
-            new_ops.append(op)
-            changed = True
-        else:
-            new_ops.append(op)
-    if changed:
-        new_ops_tuple = tuple(new_ops)
-        if new_ops_tuple != inst.operands:
-            return MIRInstruction(inst.opcode, new_ops_tuple, inst.span), True
-    return inst, False
-
-
-def _propagate_append(
-    inst: MIRInstruction,
-    const_map: dict[int, int],
-) -> tuple[MIRInstruction, bool]:
-    val = inst.operands[0]
-    if isinstance(val, int) and val in const_map:
-        return inst, False  # APPEND_RESULT takes a register, not a value
-    return inst, False
-
-
-def _def(inst: MIRInstruction) -> int | None:
-    if not inst.operands:
-        return None
-    dest = inst.operands[0]
-    if not isinstance(dest, int):
-        return None
-    match inst.opcode:
-        case "LOAD_CONST" | "LOAD_HOST" | "LOAD_ENV" | "MOVE":
-            return dest
-        case "MAKE_FUNCTION" | "MAKE_MACRO" | "BUILD_TUPLE" | "CALL" | "APPLY":
-            return dest
-        case _:
-            return None
+def _rewrite_instruction(
+    instruction: MIRInstruction, pool: MIRConstantPool, shadowed: frozenset[str]
+) -> MIRInstruction:
+    if instruction.opcode != "LOAD_ENV" or len(instruction.operands) < 2:
+        return instruction
+    dest, symbol = instruction.operands[0], instruction.operands[1]
+    if not isinstance(dest, int) or not isinstance(symbol, Symbol):
+        return instruction
+    if symbol.name in shadowed or default_literal_type(symbol) is None:
+        return instruction
+    value = try_default_literal(symbol)
+    if value is MISSING:
+        return instruction
+    return MIRInstruction("LOAD_CONST", (dest, pool.intern(value)), instruction.span)

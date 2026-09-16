@@ -296,6 +296,13 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 优化 pass 正确性（第一批）：修复 `const_prop` 的两个缺陷（把 CALL 参数寄存器号
+    替换成常量池下标 → 运行期读错寄存器；未排除被 shadow 的字面量/算子名，且文档承诺的
+    `LOAD_ENV` 字面量降级从未实现）与 `const_fold` 的两个缺陷（shadow 的算子名仍按内置
+    算子折叠；用跨块"最后一次写寄存器"当定义，不支配使用点），并让所有 optimize/control
+    pass 经 `passes/optimize/facts.rebuild_program` 保留 `symbol_spaces`；
+    新增 `scripts/optimize_frontier.py`（子进程隔离 + 结果规范化的可复现测量）；
+    实测 S1/S2 从 11/86 降到 **0/86**，S5 从 42/86 降到 33/86；
   - 仓库工具隐患：`.gitignore` 的 `instance/` 未锚定会匹配 `qy/vm/instance/`，
     导致 ripgrep 递归搜索时静默跳过该子树（git 自身对被跟踪文件不判 ignore，
     所以不易察觉）；已改为 `/instance/` 并新增守卫测试

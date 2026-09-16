@@ -6,6 +6,7 @@ Folds calls to pure operators with all-constant arguments into constants.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from qy.core.operators import PureOperator
@@ -15,6 +16,8 @@ from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_program
+from qy.passes.optimize.facts import shadowed_names
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -34,10 +37,13 @@ class ConstFoldPass(Pass):
         for v in program.constants.values:
             pool.intern(v)
 
-        new_functions = tuple(_fold_function(f, pool, pure_ops) for f in program.functions)
+        shadowed = shadowed_names(program)
+        new_functions = tuple(
+            _fold_function(f, pool, pure_ops, shadowed) for f in program.functions
+        )
         return PassResult(
             success=True,
-            artifact=MIRProgram(new_functions, pool, program.main, program.diagnostics),
+            artifact=rebuild_program(program, functions=new_functions, constants=pool),
         )
 
 
@@ -59,6 +65,7 @@ def _fold_function(
     function: MIRFunction,
     pool: MIRConstantPool,
     pure_ops: dict[str, PureOperator],
+    shadowed: frozenset[str],
 ) -> MIRFunction:
     if not pure_ops:
         return function
@@ -68,17 +75,15 @@ def _fold_function(
 
     while changed:
         changed = False
-        defs: dict[int, MIRInstruction] = {}
-        for block in blocks:
-            for inst in block.instructions:
-                if inst.operands:
-                    defs[cast(int, inst.operands[0])] = inst
+        # 只有在整个函数内**唯一**定义的寄存器才允许当作已知值：跨块"最后一次
+        # 写"并不支配所有使用点，会误折叠。
+        defs = _unique_definitions(blocks)
 
         new_blocks: list[MIRBlock] = []
         for block in blocks:
             new_instructions: list[MIRInstruction] = []
             for inst in block.instructions:
-                folded = _try_fold(inst, defs, pool, pure_ops)
+                folded = _try_fold(inst, defs, pool, pure_ops, shadowed)
                 if folded is not None:
                     new_instructions.append(folded)
                     changed = True
@@ -87,12 +92,47 @@ def _fold_function(
             new_blocks.append(MIRBlock(block.id, tuple(new_instructions), block.terminator))
         blocks = new_blocks
 
-    return MIRFunction(
-        function.name,
-        function.params,
-        function.register_count,
-        tuple(blocks),
-        function.entry,
+    return replace(
+        function,
+        blocks=tuple(blocks),
+        register_count=function.register_count,
+    )
+
+
+def _unique_definitions(blocks: list[MIRBlock]) -> dict[int, MIRInstruction]:
+    """Reg -> 定义指令，仅当该寄存器在函数内只被定义一次。."""
+    counts: dict[int, int] = {}
+    defs: dict[int, MIRInstruction] = {}
+    for block in blocks:
+        for inst in block.instructions:
+            if not inst.operands:
+                continue
+            dest = inst.operands[0]
+            if not isinstance(dest, int) or not _defines(inst):
+                continue
+            counts[dest] = counts.get(dest, 0) + 1
+            defs[dest] = inst
+    return {reg: inst for reg, inst in defs.items() if counts[reg] == 1}
+
+
+def _defines(inst: MIRInstruction) -> bool:
+    return inst.opcode in (
+        "LOAD_CONST",
+        "LOAD_HOST",
+        "LOAD_ENV",
+        "MOVE",
+        "CALL",
+        "APPLY",
+        "BUILD_TUPLE",
+        "MAKE_FUNCTION",
+        "MAKE_MACRO",
+        "RUNTIME_EVAL",
+        "CACHE_EVAL",
+        "PARALLEL_GATHER",
+        "ALL_GATHER",
+        "RACE_FIRST",
+        "LOAD_NIL",
+        "LOAD_T",
     )
 
 
@@ -101,6 +141,7 @@ def _try_fold(
     defs: dict[int, MIRInstruction],
     pool: MIRConstantPool,
     pure_ops: dict[str, PureOperator],
+    shadowed: frozenset[str],
 ) -> MIRInstruction | None:
     if inst.opcode != "CALL":
         return None
@@ -117,6 +158,9 @@ def _try_fold(
 
     sym = op_def.operands[1]
     sym_name = sym.name if isinstance(sym, Symbol) else str(sym)
+    # 被 define/let/from shadow 的名字在运行时不指向内置算子，禁止折叠。
+    if sym_name in shadowed:
+        return None
     operator = pure_ops.get(sym_name)
     if operator is None:
         return None

@@ -17,6 +17,7 @@ from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -51,7 +52,7 @@ class InternPass(Pass):
 
         return PassResult(
             success=True,
-            artifact=MIRProgram(new_functions, new_pool, program.main, program.diagnostics),
+            artifact=rebuild_program(program, functions=new_functions, constants=new_pool),
         )
 
 

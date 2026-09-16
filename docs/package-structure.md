@@ -190,20 +190,34 @@ frontend.cst_parse
 `control/tailcall` / `control/loop_opt` 已实现并有隔离测试，顺序真源是
 `qy/passes/optimize/apply.py::OPTIMIZE_PASSES`。
 
-**实测证据（2026-09 本轮）**：对 86 个语料（`examples/validation|design|host`、
-`tests/qy`、`meta-interp/cases`）对比 `optimize` on/off：
+**实测证据**：用 `uv run python scripts/optimize_frontier.py`（每个 `.qy` 独立子进程，
+结果做规范化后对比；早期进程内测量因 repr 含内存地址与 pass name 重复而失真，数值不可用）
+在 86 个语料（`examples/validation|design`、`tests/qy`、`meta-interp/cases`）上测得：
 
 | 优化子集 | 结果不一致 |
 | --- | --- |
-| 仅简化（const_prop/const_fold/copy_prop/dce/dse） | 28/86 |
-| + cse / strength_reduce | 28/86 |
-| + cfg_simplify / tailcall / licm / loop_opt | 39/86 |
-| + inline / aggressive_inline / scalar_replace / intern | 39/86 |
-| + reg_alloc | 46/86 |
+| S1 仅简化（const_prop/const_fold/copy_prop/dce/dse） | **0/86** |
+| S2 + cse / strength_reduce | **0/86** |
+| S3 + cfg_simplify / tailcall / licm / loop_opt | 11/86 |
+| S4 + inline / aggressive_inline / scalar_replace / intern | 14/86 |
+| S5 + reg_alloc | 33/86 |
 
-不一致包含真实语义回归（`cond` 的 nil-only 真值、effect handler 控制流、LIR
-寄存器越界、callee 变成非可调用值）。因此在这些 pass 理解 language-level effect /
-continuation 控制流之前，默认管线保持无优化；`optimize=True` 只用于实验。
+即：**编译期化简阶段已在全语料上语义干净**；不一致从控制流阶段（S3）开始出现。
+
+已修复的真实缺陷（S1 从 11/86 → 0/86）：
+
+- `const_prop` 曾把 CALL 的**参数寄存器号替换成常量池下标**（两者都是 `int`，verifier
+  无法分辨），运行时会读错寄存器；同时它把程序里被 `define`/`let`/`from` shadow 的
+  名字也当字面量，且文档承诺的 `LOAD_ENV` 字面量降级从未实现。现已改为：仅当拼写
+  在程序内未被 shadow 时才把 `LOAD_ENV` 降成 `LOAD_CONST`；
+- `const_fold` 会在算子名被 shadow 时（如 `(let ((+ (lambda (a b) 0))) (+ 41 1))`）
+  折叠成内置算子，且用"跨块最后一次写寄存器"当定义（不支配使用点）。现已加入
+  shadow 守卫与「寄存器在函数内唯一被定义」要求；
+- 多个 optimize/control pass 重建 `MIRProgram`/`LIRProgram` 时丢弃了
+  `symbol_spaces`，现在统一走 `passes/optimize/facts.rebuild_program`。
+
+剩余不一致集中在控制流/寄存器分配阶段（S3 起）；在这些 pass 正确处理 language-level
+effect / continuation 控制流之前，默认管线保持无优化，`optimize=True` 只用于实验。
 
 目标 pass 顺序（完整管线）：
 

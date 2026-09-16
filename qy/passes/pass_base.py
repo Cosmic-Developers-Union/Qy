@@ -71,8 +71,10 @@ class PipelineOptions:
     # 会把语言级 effect 降成 HANDLER_* / CONT_* / EFFECT_* 抽象机指令，
     # 供 verifier 与后续 backend 消费；VM 可执行该 dialect，但默认路径仍是 compat。
     lir_dialect: str = "compat"
-    # MIR 优化序列开关。默认关闭：优化 pass 对 language-level effect /
-    # continuation 控制流的正确性尚在推进中（见 todo.md §Phase P）。
+    # MIR 优化序列开关。默认关闭：S1/S2（编译期化简）已在 86 个语料上语义干净，
+    # 但 S3 起（cfg_simplify / tailcall / licm / loop_opt / inline / reg_alloc）
+    # 与 language-level effect / continuation 控制流的交互仍不正确
+    # （见 docs/package-structure.md §3.1 的实测表与 scripts/optimize_frontier.py）。
     optimize: bool = False
 
 

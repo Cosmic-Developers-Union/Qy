@@ -18,6 +18,7 @@ from qy.ir.mir import MIRConstantPool
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
+from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -38,7 +39,7 @@ class StrengthReducePass(Pass):
         new_functions = tuple(_reduce_function(f, pool) for f in program.functions)
         return PassResult(
             success=True,
-            artifact=MIRProgram(new_functions, pool, program.main, program.diagnostics),
+            artifact=rebuild_program(program, functions=new_functions, constants=pool),
         )
 
 

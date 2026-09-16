@@ -6,6 +6,7 @@ Inlines small, non-recursive, effect-free functions that are called exactly once
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import cast
 
 from qy.ir.mir import MIRBlock
@@ -13,6 +14,7 @@ from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -69,7 +71,10 @@ def _inline_program(program: MIRProgram) -> MIRProgram:
     new_functions = [_remap_fn_indices(f, index_map) for f in new_functions]
     new_main = index_map.get(program.main, 0)
 
-    return MIRProgram(tuple(new_functions), program.constants, new_main, program.diagnostics)
+    return replace(
+        rebuild_program(program, functions=tuple(new_functions), constants=program.constants),
+        main=new_main,
+    )
 
 
 def _count_calls(functions: list[MIRFunction]) -> dict[int, int]:

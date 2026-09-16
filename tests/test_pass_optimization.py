@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
+from qy.build.pipeline import bytecode_artifact
 from qy.core.syntax import Symbol
 from qy.frontend.reader import read
 from qy.ir.lir import LIRProgram
@@ -27,6 +28,7 @@ from qy.passes.optimize.dce import DCEPass
 from qy.passes.optimize.inline import InlinePass
 from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
+from qy.sem.core import IntValue
 from qy.session.runtime_space import standard_environment
 
 _TOLERANT_OPTIONS = PipelineOptions(error_threshold=10**6)
@@ -85,9 +87,8 @@ class TestPipeline:
         artifact = _mir_artifact(result.artifact)
         assert artifact.functions
 
-    def test_pipeline_optimized_keeps_runtime_lookups(self):
-        # Under strict ssc semantics literals stay as runtime lookups; const
-        # fold can no longer pre-compute (+ 1 2) at compile time.
+    def test_optimized_pipeline_folds_literal_arithmetic(self):
+        """const_prop 把字面量拼写降成常量后，const_fold 可整体折叠 (+ 1 2)。."""
         forms = read("(+ 1 2)")
         env = standard_environment()
         ctx = PassContext(input_artifact=forms, session=PipelineSession(env=env))
@@ -96,8 +97,62 @@ class TestPipeline:
         artifact = _lir_artifact(result.artifact)
         fn = artifact.functions[0]
         opcodes = [i.opcode for i in fn.instructions]
-        assert "CALL" in opcodes
-        assert "LOAD_ENV" in opcodes
+        assert "CALL" not in opcodes
+        assert any("CONST" in opcode or opcode == "LOAD_HOST" for opcode in opcodes)
+
+    def test_optimized_pipeline_respects_shadowed_operator(self):
+        """被 let/define shadow 的算子名不得折叠成内置算子（历史误编译）。."""
+        from qy.async_utils import run_coro
+        from qy.build.pipeline import compile_source_to_bytecode
+        from qy.session.runtime_space import create_standard_runtime_space
+        from qy.vm.instance.machine import RegisterVirtualMachine
+
+        source = "(let ((+ (lambda (left right) 0))) (+ 41 1))"
+        env = create_standard_runtime_space()
+        result = compile_source_to_bytecode(
+            source,
+            PipelineSession(env=env),
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+        assert not [d for d in result.diagnostics if d.severity == "error"]
+        bytecode = bytecode_artifact(result)
+        outcome = run_coro(RegisterVirtualMachine(bytecode, env).evaluate_program())
+
+        assert outcome == [IntValue(0)]
+
+    def test_optimized_pipeline_respects_shadowed_literal(self):
+        from qy.async_utils import run_coro
+        from qy.build.pipeline import compile_source_to_bytecode
+        from qy.session.runtime_space import create_standard_runtime_space
+        from qy.vm.instance.machine import RegisterVirtualMachine
+
+        env = create_standard_runtime_space()
+        result = compile_source_to_bytecode(
+            "(define 2 3) 2",
+            PipelineSession(env=env),
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+        bytecode = bytecode_artifact(result)
+        outcome = run_coro(RegisterVirtualMachine(bytecode, env).evaluate_program())
+
+        assert outcome == [IntValue(3), IntValue(3)]
+
+    def test_optimization_preserves_symbol_space_layout(self):
+        """优化 pass 不得丢弃 HIR 下沉的 layout 事实。."""
+        from qy.build.pipeline import compile_source_to_bytecode
+
+        env = standard_environment()
+        result = compile_source_to_bytecode(
+            "(define x 1) (+ x 1)",
+            PipelineSession(env=env),
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+        bytecode = bytecode_artifact(result)
+
+        assert bytecode.symbol_spaces
+        assert any(
+            slot.symbol.name == "x" for layout in bytecode.symbol_spaces for slot in layout.slots
+        )
 
 
 # --- Const Fold ---

@@ -17,6 +17,7 @@ from qy.ir.mir import MIRBlockId
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -33,9 +34,7 @@ class LoopOptPass(Pass):
         new_functions = tuple(_optimize_loops_in_function(f) for f in program.functions)
         return PassResult(
             success=True,
-            artifact=MIRProgram(
-                new_functions, program.constants, program.main, program.diagnostics
-            ),
+            artifact=rebuild_program(program, functions=new_functions, constants=program.constants),
         )
 
 
