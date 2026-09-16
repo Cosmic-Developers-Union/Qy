@@ -7,9 +7,11 @@ from lsprotocol import types
 from qy.tools.lsp import QyLanguageServer
 from qy.tools.lsp import completion_items
 from qy.tools.lsp import create_server
+from qy.tools.lsp import definition_location
 from qy.tools.lsp import diagnostics_for_source
 from qy.tools.lsp import document_symbols_for_source
 from qy.tools.lsp import hover_for_source
+from qy.tools.lsp import reference_locations
 from qy.tools.lsp import signature_help_for_source
 
 
@@ -102,3 +104,44 @@ def test_document_locals_reads_canonical_hir_facts():
     assert ("c", "define") in facts
     assert ("ask", "defeffect") in facts
     assert ("k", "handler-continuation") in facts
+
+
+def test_definition_location_points_to_local_binding():
+    source = "(defun f (a) (+ a 1))\n(f 2)\n"
+
+    location = definition_location(source, 1, 2, "file:///t.qy")
+
+    assert location is not None
+    assert location.uri == "file:///t.qy"
+    assert location.range.start.line == 0
+    assert location.range.start.character == 7
+
+
+def test_reference_locations_lists_all_occurrences():
+    source = "(defun f (a) (+ a 1))\n(f 2)\n"
+
+    locations = reference_locations(source, 0, 10, "file:///t.qy")
+
+    positions = {(item.range.start.line, item.range.start.character) for item in locations}
+    assert (0, 10) in positions  # definition (parameter)
+    assert (0, 16) in positions  # reference inside the body
+
+
+def test_reference_locations_can_exclude_declaration():
+    source = "(defun f (a) (+ a 1))\n(f 2)\n"
+
+    locations = reference_locations(source, 0, 10, "file:///t.qy", include_declaration=False)
+
+    positions = {(item.range.start.line, item.range.start.character) for item in locations}
+    assert (0, 10) not in positions
+    assert (0, 16) in positions
+
+
+def test_navigation_server_registers_capabilities():
+    from lsprotocol import types
+
+    server = create_server()
+    features = server.protocol.fm.features
+
+    assert types.TEXT_DOCUMENT_DEFINITION in features
+    assert types.TEXT_DOCUMENT_REFERENCES in features

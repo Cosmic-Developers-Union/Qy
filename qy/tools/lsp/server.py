@@ -11,6 +11,8 @@ from qy.tools.lsp.completion import completion_items
 from qy.tools.lsp.diagnostics import diagnostics_for_source
 from qy.tools.lsp.formatting import format_document
 from qy.tools.lsp.hover import hover_for_source
+from qy.tools.lsp.navigation import definition_location
+from qy.tools.lsp.navigation import reference_locations
 from qy.tools.lsp.signature import signature_help_for_source
 from qy.tools.lsp.symbols import document_symbols_for_source
 from qy.tools.lsp.utils import shared_instance
@@ -86,6 +88,35 @@ def create_server() -> QyLanguageServer:
     ) -> list[types.DocumentSymbol]:
         document = ls.workspace.get_text_document(params.text_document.uri)
         return document_symbols_for_source(document.source)
+
+    @server.feature(types.TEXT_DOCUMENT_DEFINITION)
+    def definition(
+        ls: QyLanguageServer,
+        params: types.DefinitionParams,
+    ) -> types.Location | None:
+        document = ls.workspace.get_text_document(params.text_document.uri)
+        return definition_location(
+            document.source,
+            params.position.line,
+            params.position.character,
+            document.uri,
+            qy=ls.qy,
+        )
+
+    @server.feature(types.TEXT_DOCUMENT_REFERENCES)
+    def references(
+        ls: QyLanguageServer,
+        params: types.ReferenceParams,
+    ) -> list[types.Location]:
+        document = ls.workspace.get_text_document(params.text_document.uri)
+        return reference_locations(
+            document.source,
+            params.position.line,
+            params.position.character,
+            document.uri,
+            qy=ls.qy,
+            include_declaration=params.context.include_declaration,
+        )
 
     @server.feature(types.TEXT_DOCUMENT_SIGNATURE_HELP)
     def signature_help(

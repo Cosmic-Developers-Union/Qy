@@ -293,7 +293,9 @@ source
   - LSP 事实源同步：新增 `qy/tools/lsp/facts.py`（canonical frontend + HIR）；
     completion 与 hover 现在读取与 `qy check`/analyzer 相同的 HIR 事实，
     能识别 `define`/`let`/参数/handler 参数/`defeffect` 等 lexical binding
-    （此前只读 surface forms、看不到局部与宏展开后的定义）；
+    （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
+    `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
+    `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
   - compile-time 函数值：新增 `qy.macro.MacroFunction`，编译期求值器自行处理
     `lambda` / `defun`（不再经过运行期算子），修复了 round 1 引入的两处回归
     （macro body 内的 `(lambda ...)` 与 `(defun ...)` + 调用此前会得到 VM 函数值

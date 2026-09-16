@@ -38,7 +38,13 @@ from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 from qy.tools.lsp.utils import shared_instance
 
-__all__ = ["LocalBinding", "document_locals", "macro_expanded_forms"]
+__all__ = [
+    "LocalBinding",
+    "SymbolOccurrence",
+    "document_locals",
+    "macro_expanded_forms",
+    "symbol_occurrences",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +118,63 @@ def document_locals(source: str, *, qy: Qy | None = None) -> tuple[LocalBinding,
         )
         deduped[key] = binding
     return tuple(deduped.values())
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolOccurrence:
+    """一次 symbol 出现（定义点或引用点），带源码位置。."""
+
+    name: str
+    span: SourceSpan
+    is_definition: bool
+    kind: str
+
+
+def _iter_hir(source: str, qy: Qy | None) -> tuple[object, ...]:
+    result = run_coro(compile_source_to_kind_async(source, _session(qy), kind="hir"))
+    if any(diagnostic.severity == "error" for diagnostic in result.diagnostics):
+        return ()
+    return tuple(hir_artifact(result).body)
+
+
+def symbol_occurrences(source: str, *, qy: Qy | None = None) -> tuple[SymbolOccurrence, ...]:
+    """Return every HIR symbol occurrence (definition + reference) with spans."""
+    from qy.ir.hir import SymbolRefExpr
+
+    occurrences: list[SymbolOccurrence] = []
+
+    def _record(symbol: object, *, is_definition: bool, kind: str) -> None:
+        if isinstance(symbol, Symbol) and symbol.span is not None:
+            occurrences.append(SymbolOccurrence(symbol.name, symbol.span, is_definition, kind))
+
+    def _collect(node: object) -> None:
+        if isinstance(node, SymbolRefExpr):
+            _record(node.symbol, is_definition=False, kind="reference")
+        elif isinstance(node, DefineExpr):
+            _record(node.name, is_definition=True, kind="define")
+        elif isinstance(node, DefunExpr):
+            _record(node.name, is_definition=True, kind="defun")
+        elif isinstance(node, LetBinding):
+            _record(node.symbol, is_definition=True, kind="let-binding")
+        elif isinstance(node, LambdaExpr):
+            for param in node.params:
+                _record(param, is_definition=True, kind="lambda-param")
+        elif isinstance(node, DefeffectExpr):
+            _record(node.name, is_definition=True, kind="defeffect")
+        elif isinstance(node, EffectHandler):
+            _record(node.arg_name, is_definition=True, kind="handler-arg")
+            _record(node.continuation_name, is_definition=True, kind="handler-continuation")
+
+        if is_dataclass(node) and not isinstance(node, type):
+            for field_info in fields(node):
+                _collect(getattr(node, field_info.name))
+        elif isinstance(node, tuple | list):
+            for item in node:
+                _collect(item)
+
+    for item in _iter_hir(source, qy):
+        _collect(item)
+    return tuple(occurrences)
 
 
 def macro_expanded_forms(source: str, *, qy: Qy | None = None) -> tuple[object, ...]:
