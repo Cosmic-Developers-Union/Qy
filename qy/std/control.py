@@ -24,9 +24,9 @@ from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
+from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
-from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
@@ -258,6 +258,31 @@ async def _let(args: object, env: Environment) -> object:
     return await evaluate_body_async(tuple(body), local_env)
 
 
+async def _compile_lambda_form(args_list: list[object], env: Environment) -> object:
+    """把 ``(lambda params body...)`` 经完整管线编成 bytecode function value。.
+
+    lambda / defun 的正式运行时表示是 bytecode function（``MAKE_FUNCTION`` →
+    ``BytecodeFunctionValue``）。这两个算子只在 ``lambda`` / ``defun`` 出现在
+    值位置时被调用，因此这里按需编译，而不再构造 legacy ``UserFunction``。
+    """
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_forms_to_bytecode_async
+    from qy.core.syntax import list_to_chain
+    from qy.passes.pass_base import PipelineSession
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    form = list_to_chain([Symbol("lambda"), *args_list])
+    result = await compile_forms_to_bytecode_async([form], PipelineSession(env=env))
+    if not result.success:
+        message = "; ".join(d.message for d in result.diagnostics if d.severity == "error")
+        raise EvaluationError(message or "lambda compilation failed")
+    vm = RegisterVirtualMachine(bytecode_artifact(result), env)
+    values = await vm.evaluate_program()
+    if not values:
+        raise EvaluationError("lambda compilation produced no value")
+    return values[-1]
+
+
 def _lambda(args: object, env: Environment) -> object:
     args_list = _to_list(args)
     if len(args_list) < 2:
@@ -265,8 +290,8 @@ def _lambda(args: object, env: Environment) -> object:
 
     params = args_list[0]
     body = args_list[1:]
-    param_symbols = _ensure_parameter_list(params, "lambda")
-    return UserFunction(Symbol("<lambda>"), param_symbols, tuple(body), env)
+    _ensure_parameter_list(params, "lambda")
+    return _compile_lambda_form([params, *body], env)
 
 
 async def _define(args: object, env: Environment) -> object:
@@ -290,8 +315,8 @@ def _defun(args: object, env: Environment) -> object:
     params = args_list[1]
     body = args_list[2:]
     name = ensure_symbol(name, "defun name")
-    param_symbols = _ensure_parameter_list(params, "defun")
-    function = UserFunction(name, param_symbols, tuple(body), env)
+    _ensure_parameter_list(params, "defun")
+    function = _compile_lambda_form([params, *body], env)
     return env.define(name, function)
 
 

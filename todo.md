@@ -290,6 +290,13 @@ source
   - layout 下沉补链：`BytecodeProgram.symbol_spaces` 携带 HIR 下沉的程序级 layout，
     不再在 backend 边界丢失（`BytecodeFunction.symbol_spaces` 类型收紧为
     `LIRSymbolSpaceLayout`）；剩余差距是 MIR operand 携带 binding id/slot；
+  - legacy 分阶段退役（第二步）：`qy.std.control` 的 `lambda` / `defun` 算子
+    （值位置路径，如 `(apply lambda '((x) ...))`）改为经完整管线编成
+    `BytecodeFunctionValue`，不再构造 legacy `UserFunction`；实测语料中
+    `legacy_eval.call_user_function` / `call_component_operator` 调用次数为 0，
+    剩余 `UserFunction` 生产者只有 macro 编译期环境（由编译期求值器执行，不走 VM）
+    与 `project/module.py` 的元数据占位；`legacy_eval` 与 VM 分支待 macro
+    compile-time namespace 落地后再删除；
   - layout 单一事实源：HIR `LetExpr`/`LambdaExpr`/`DefunExpr`/`ModuleExpr` 记录自身
     symbol-space，`ProgramIR.root_space` 记录根 space；`resolve.spaces` 的 space 枚举
     与 id 映射共用同一实现（`collect_space_ids`）；MIR 的 `ENTER_SCOPE`/`EXIT_SCOPE`

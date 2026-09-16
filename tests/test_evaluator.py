@@ -775,3 +775,22 @@ def test_quote_returns_syntax_datum_not_host_value():
     # 嵌套与顶层保持一致
     nested = evaluate(L(Symbol("car"), L(Symbol("quote"), L(Symbol('"abc"')))), env)
     assert nested == Symbol('"abc"')
+
+
+def test_lambda_operator_produces_bytecode_function():
+    """Lambda/defun 算子（值位置路径）也产出 bytecode function，而非 legacy UserFunction。."""
+    from qy.sem.runtime import UserFunction
+    from qy.vm.bytecode import BytecodeFunctionValue
+
+    env = standard_environment()
+    bound = evaluate_source("(apply lambda '((x) (* x 5)))", env)
+
+    assert isinstance(bound, BytecodeFunctionValue)
+    assert not isinstance(bound, UserFunction)
+
+
+def test_dynamic_lambda_from_operator_is_callable():
+    env = standard_environment()
+    source = "(let ((f (apply lambda '((x) (* x 5))))) (f 4))"
+
+    assert evaluate_source(source, env) == 20
