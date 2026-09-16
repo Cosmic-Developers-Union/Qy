@@ -35,16 +35,17 @@ class InternPass(Pass):
         # Build deduplicated constant pool with remap
         old_to_new: dict[int, int] = {}
         new_pool = MIRConstantPool()
-        seen: dict[int, int] = {}  # value hash -> new index
+        seen: dict[object, int] = {}  # intern key -> new index
 
         for old_idx, value in enumerate(program.constants.values):
             key = _intern_key(value)
-            existing = seen.get(key)
+            existing = None if key is None else seen.get(key)
             if existing is not None:
                 old_to_new[old_idx] = existing
             else:
                 new_idx = new_pool.intern(value)
-                seen[key] = new_idx
+                if key is not None:
+                    seen[key] = new_idx
                 old_to_new[old_idx] = new_idx
 
         # Remap all constant references in functions
@@ -57,7 +58,7 @@ class InternPass(Pass):
 
 
 def _remap_constants(function: MIRFunction, old_to_new: dict[int, int]) -> MIRFunction:
-    """Remap all LOAD_CONST index references in *function*."""
+    """把函数内 ``LOAD_CONST`` 的常量下标按 old_to_new 重写。."""
     changed = False
     new_blocks = []
     for block in function.blocks:
@@ -92,12 +93,35 @@ def _remap_constants(function: MIRFunction, old_to_new: dict[int, int]) -> MIRFu
     )
 
 
-def _intern_key(value: object) -> int:
-    """Compute a deduplication key for a constant value.
+_SAFE_INTERN_BASES: tuple[type, ...] = ()
 
-    Uses both identity and value equality.
+
+def _safe_intern_bases() -> tuple[type, ...]:
+    """可以安全去重的常量类型（惰性初始化，避免与 sem 的 import 顺序耦合）。."""
+    global _SAFE_INTERN_BASES
+    if not _SAFE_INTERN_BASES:
+        from qy.core.syntax import NONE
+        from qy.core.syntax import T
+        from qy.core.syntax import nil
+        from qy.sem.core import NumberValue
+
+        _SAFE_INTERN_BASES = (NumberValue, type(T), type(nil), type(NONE))
+    return _SAFE_INTERN_BASES
+
+
+def _intern_key(value: object) -> object | None:
+    """常量去重键；返回 ``None`` 表示「不得去重，必须保留独立实例」。.
+
+    - 只用 ``hash(value)`` 会把不同值合并：``T`` 与 ``none`` 都是空 frozen
+      dataclass，``hash`` 相同但语义不同；
+    - 只对 identity **不可观察**的类型去重：数值（按值比较）与 Qy 自身对象单例。
+      字符串 / 字符 / symbol / chain 的 identity 目前是可观察的（``=`` 对它们按
+      identity 比较，例如 ``(= "abc" "abc")`` 为 ``nil``），合并实例会改变语义。
     """
+    if not isinstance(value, _safe_intern_bases()):
+        return None
     try:
-        return hash(value)
+        hash(value)
     except TypeError:
-        return id(value)
+        return None
+    return (type(value), value)

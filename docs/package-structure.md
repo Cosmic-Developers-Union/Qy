@@ -198,13 +198,14 @@ frontend.cst_parse
 | --- | --- |
 | S1 仅简化（const_prop/const_fold/copy_prop/dce/dse） | **0/86** |
 | S2 + cse / strength_reduce | **0/86** |
-| S3 + cfg_simplify / tailcall / licm / loop_opt | 11/86 |
-| S4 + inline / aggressive_inline / scalar_replace / intern | 14/86 |
-| S5 + reg_alloc | 33/86 |
+| S3 + cfg_simplify / tailcall / licm / loop_opt | **0/86** |
+| S4 + inline / aggressive_inline / scalar_replace / intern | 1/86 |
+| S5 + reg_alloc | 11/86 |
 
-即：**编译期化简阶段已在全语料上语义干净**；不一致从控制流阶段（S3）开始出现。
+即：**编译期化简与全部控制流阶段已在全语料上语义干净**；不一致只剩 inline（1）与
+reg_alloc（11）。
 
-已修复的真实缺陷（S1 从 11/86 → 0/86）：
+已修复的真实缺陷（S1 11/86 → 0，S3 11/86 → 0，S5 42/86 → 11）：
 
 - `const_prop` 曾把 CALL 的**参数寄存器号替换成常量池下标**（两者都是 `int`，verifier
   无法分辨），运行时会读错寄存器；同时它把程序里被 `define`/`let`/`from` shadow 的
@@ -216,8 +217,27 @@ frontend.cst_parse
 - 多个 optimize/control pass 重建 `MIRProgram`/`LIRProgram` 时丢弃了
   `symbol_spaces`，现在统一走 `passes/optimize/facts.rebuild_program`。
 
-剩余不一致集中在控制流/寄存器分配阶段（S3 起）；在这些 pass 正确处理 language-level
-effect / continuation 控制流之前，默认管线保持无优化，`optimize=True` 只用于实验。
+随后又修复了控制流与寄存器分配阶段的四类缺陷：
+
+- `cfg_simplify` / `licm` / `loop_opt` / `analysis.liveness` 各自维护了一份 CFG
+  后继实现，都只认 `JUMP`/`BRANCH`，把 `EFFECT_PERFORM` 的 **resume 块**当作不可达
+  删除或漏算活跃区间。现在统一走 `qy.ir.mir.terminator_targets` 与
+  `terminator_target_positions`（含 effect resume 边与重映射）；
+- `liveness` 完全没有收集 terminator 的寄存器使用（`live_out` 只并后继块的
+  live_in），导致只在 `TAIL_CALL`/`RETURN`/`BRANCH` 中被读取的寄存器活跃区间提前
+  结束，`reg_alloc` 把它们复用成同一物理寄存器；
+- `reg_alloc` 手写 per-opcode 重映射，漏掉 `EFFECT_HANDLE_END` / `DEFINE_MODULE` /
+  `CACHE_EVAL` 等的寄存器操作数；现在 `qy.ir.mir` 提供
+  `register_operand_positions` / `register_def_position` / `terminator_*` 唯一表，
+  liveness 与 reg_alloc 共用；`0..len(params)-1` 仍按 LIR `compact_registers` 的
+  参数槽约定保留；
+- `intern` 用 `hash(value)` 当去重键（`T` 与 `none` 都是空 frozen dataclass，hash
+  相同），且合并了 identity 可观察的 symbol/字符串常量（当前 `=`
+  对它们按 identity 比较，`(= "abc" "abc")` 为 `nil`）。现在只对数值与自身对象
+  单例去重。
+
+剩余不一致只剩 S4 的 `inline`（1 个语料）与 S5 的 `reg_alloc`（11 个语料）；在这些
+pass 处理完剩余控制流/活跃区间问题之前，默认管线保持无优化，`optimize=True` 只用于实验。
 
 目标 pass 顺序（完整管线）：
 

@@ -35,6 +35,8 @@ __all__ = [
     "MIRTerminator",
     "MIRTerminatorOpcode",
     "dump_mir",
+    "terminator_target_positions",
+    "terminator_targets",
     "verify_mir",
 ]
 
@@ -553,7 +555,7 @@ def _verify_reachability(
         block = block_by_id.get(current)
         if block is None or block.terminator is None:
             continue
-        for target in _terminator_targets(block.terminator):
+        for target in terminator_targets(block.terminator):
             if target not in visited:
                 queue.append(target)
 
@@ -567,7 +569,123 @@ def _verify_reachability(
             )
 
 
-def _terminator_targets(terminator: MIRTerminator) -> list[MIRBlockId]:
+def register_operand_positions(instruction: MIRInstruction) -> tuple[int, ...]:
+    """返回 instruction 中**作为虚拟寄存器**的操作数下标。.
+
+    这是 MIR 寄存器操作数的唯一真源（与 ``_verify_instruction`` 的 schema 一致）：
+    需要重编号寄存器的 pass（如 ``optimize.reg_alloc``）必须从这里取位置，
+    否则会漏掉某些 opcode 的寄存器操作数。
+
+    ``CALL`` / ``TAIL_CALL`` 的参数列表、``BUILD_TUPLE`` 的元素是寄存器元组，
+    用 ``register_tuple_positions`` 一并给出。
+    """
+    operands = instruction.operands
+    match instruction.opcode:
+        case "LOAD_HOST" | "LOAD_CONST" | "LOAD_ENV" | "MAKE_FUNCTION" | "MAKE_MACRO":
+            return (0,) if operands else ()
+        case "MOVE" | "RUNTIME_EVAL" | "EFFECT_RESUME":
+            return tuple(range(min(2, len(operands)))) if len(operands) >= 2 else ()
+        case "STORE_LOCAL" | "DEFINE_ONCE":
+            return (1,) if len(operands) >= 2 else ()
+        case "CALL":
+            return tuple(range(min(2, len(operands)))) if len(operands) >= 2 else ()
+        case "APPLY":
+            return tuple(range(min(3, len(operands))))
+        case "BUILD_TUPLE" | "APPEND_RESULT" | "CACHE_EVAL":
+            return (
+                tuple(range(len(operands)))
+                if instruction.opcode == "BUILD_TUPLE"
+                else ((0,) if operands else ())
+            )
+        case "DEFINE_MODULE" | "ALL_GATHER" | "PARALLEL_GATHER" | "RACE_FIRST":
+            return (0,) if operands else ()
+        case "EFFECT_HANDLE_END":
+            return (1,) if len(operands) >= 2 else ()
+        case _:
+            return ()
+
+
+def register_def_position(instruction: MIRInstruction) -> int | None:
+    """返回 instruction 中**被写入**的寄存器操作数下标；无写入返回 None。.
+
+    与 ``register_operand_positions`` 一起构成 MIR 寄存器 def/use 的唯一真源，
+    供 liveness / reg_alloc / verifier 共用（历史上各自维护导致漏项）。
+    """
+    if not instruction.operands:
+        return None
+    match instruction.opcode:
+        case "LOAD_CONST" | "LOAD_HOST" | "LOAD_ENV" | "MOVE" | "MAKE_FUNCTION" | "MAKE_MACRO":
+            return 0
+        case "BUILD_TUPLE" | "CALL" | "APPLY" | "RUNTIME_EVAL" | "CACHE_EVAL" | "DEFINE_MODULE":
+            return 0
+        case "ALL_GATHER" | "PARALLEL_GATHER" | "RACE_FIRST":
+            return 0
+        case "EFFECT_HANDLE_END":
+            return 1 if len(instruction.operands) >= 2 else None
+        case _:
+            return None
+
+
+def terminator_register_tuple_positions(terminator: MIRTerminator) -> tuple[int, ...]:
+    """返回 terminator 中寄存器**元组**的操作数下标（``TAIL_CALL`` 的参数）。."""
+    if terminator.opcode == "TAIL_CALL" and len(terminator.operands) >= 2:
+        return (1,)
+    return ()
+
+
+def terminator_register_def_position(terminator: MIRTerminator) -> int | None:
+    """返回 terminator 中**被写入**的寄存器操作数下标（目前仅 EFFECT_PERFORM）。."""
+    if terminator.opcode == "EFFECT_PERFORM" and terminator.operands:
+        return 0
+    return None
+
+
+def register_tuple_positions(instruction: MIRInstruction) -> tuple[int, ...]:
+    """返回 instruction 中**寄存器元组**的操作数下标（``CALL`` / ``TAIL_CALL`` 参数）。."""
+    if instruction.opcode in ("CALL", "TAIL_CALL") and len(instruction.operands) >= 3:
+        return (2,)
+    if instruction.opcode == "TAIL_CALL" and len(instruction.operands) >= 2:
+        return (1,)
+    return ()
+
+
+def terminator_register_positions(terminator: MIRTerminator) -> tuple[int, ...]:
+    """返回 terminator 中作为虚拟寄存器的操作数下标。."""
+    operands = terminator.operands
+    match terminator.opcode:
+        case "RETURN":
+            return (0,) if operands else ()
+        case "BRANCH":
+            return (0,) if operands else ()
+        case "RAISE_EFFECT":
+            return (1,) if len(operands) >= 2 else ()
+        case "EFFECT_PERFORM":
+            return (0, 2) if len(operands) >= 3 else ()
+        case "TAIL_CALL":
+            return (0,) if operands else ()
+        case _:
+            return ()
+
+
+def terminator_target_positions(terminator: MIRTerminator) -> tuple[int, ...]:
+    """返回 terminator 中**作为 block 目标**的操作数下标。.
+
+    这是 MIR 的 CFG 语义唯一真源：``JUMP`` 的 0，``BRANCH`` 的 1/2，
+    ``EFFECT_PERFORM`` 的 3（resume 块）。pass 不得各自复制这份知识。
+    """
+    match terminator.opcode:
+        case "JUMP":
+            return (0,)
+        case "BRANCH":
+            return (1, 2)
+        case "EFFECT_PERFORM":
+            return (3,)
+        case _:
+            return ()
+
+
+def terminator_targets(terminator: MIRTerminator) -> list[MIRBlockId]:
+    """返回 terminator 的 CFG 后继 block 列表（含 effect resume 边）。."""
     operands = terminator.operands
     match terminator.opcode:
         case "JUMP":
@@ -639,7 +757,7 @@ def _verify_def_use(
             terminator = block.terminator
             if terminator is None:
                 continue
-            for target_id in _terminator_targets(terminator):
+            for target_id in terminator_targets(terminator):
                 target_entry = incoming.get(target_id)
                 merged = exit_defs if target_entry is None else (target_entry & exit_defs)
                 if merged != target_entry:

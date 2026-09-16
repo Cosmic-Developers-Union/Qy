@@ -17,6 +17,7 @@ from qy.ir.mir import MIRBlockId
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.ir.mir import terminator_targets
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -133,14 +134,8 @@ def _predecessors(block_id: MIRBlockId, function: MIRFunction) -> list[MIRBlockI
 
 
 def _successors(term: MIRTerminator) -> list[MIRBlockId]:
-    match term.opcode:
-        case "JUMP":
-            return [cast(int, term.operands[0])]
-        case "BRANCH":
-            _, true_b, false_b = term.operands
-            return [cast(int, true_b), cast(int, false_b)]
-        case _:
-            return []
+    """CFG 后继（含 effect resume 边）；复用 `qy.ir.mir` 的共享语义。。."""
+    return terminator_targets(term)
 
 
 def _compute_loop_body(

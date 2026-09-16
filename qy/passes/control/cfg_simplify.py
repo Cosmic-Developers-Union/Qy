@@ -17,6 +17,8 @@ from qy.ir.mir import MIRBlockId
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
+from qy.ir.mir import terminator_target_positions
+from qy.ir.mir import terminator_targets
 from qy.passes.optimize.facts import rebuild_program
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
@@ -94,14 +96,12 @@ def _find_reachable(entry: MIRBlockId, blocks: dict[MIRBlockId, MIRBlock]) -> se
 
 
 def _successors(terminator: MIRTerminator) -> list[MIRBlockId]:
-    match terminator.opcode:
-        case "JUMP":
-            return [cast(int, terminator.operands[0])]
-        case "BRANCH":
-            _, true_block, false_block = terminator.operands
-            return [cast(int, true_block), cast(int, false_block)]
-        case _:
-            return []
+    """CFG 后继：直接复用 `qy.ir.mir` 的 terminator 目标语义。。.
+
+    这里必须包含 ``EFFECT_PERFORM`` 的 resume 边，否则含 ``perform`` 的函数
+    会把 resume 块当成不可达并删掉（历史上 effect 用例就是这样被破坏的）。
+    """
+    return terminator_targets(terminator)
 
 
 def _thread_jumps(blocks: dict[MIRBlockId, MIRBlock]) -> dict[MIRBlockId, MIRBlock]:
@@ -176,22 +176,16 @@ def _merge_linear(
 def _remap_terminator(
     terminator: MIRTerminator, id_map: dict[MIRBlockId, MIRBlockId]
 ) -> MIRTerminator:
-    match terminator.opcode:
-        case "JUMP":
-            target = cast(int, terminator.operands[0])
-            return MIRTerminator(
-                "JUMP",
-                (id_map.get(target, target),),
-                terminator.span,
-            )
-        case "BRANCH":
-            cond, true_b, false_b = terminator.operands
-            true_b_int = cast(int, true_b)
-            false_b_int = cast(int, false_b)
-            return MIRTerminator(
-                "BRANCH",
-                (cond, id_map.get(true_b_int, true_b_int), id_map.get(false_b_int, false_b_int)),
-                terminator.span,
-            )
-        case _:
-            return terminator
+    """按 id_map 重写 terminator 的全部 block 目标操作数。.
+
+    哪些操作数是 block 目标由 `qy.ir.mir.terminator_target_positions` 给出，
+    因此 ``EFFECT_PERFORM`` 的 resume 块也会被正确重映射。
+    """
+    positions = terminator_target_positions(terminator)
+    if not positions:
+        return terminator
+    operands = list(terminator.operands)
+    for index in positions:
+        if index < len(operands) and isinstance(operands[index], int):
+            operands[index] = id_map.get(operands[index], operands[index])
+    return MIRTerminator(terminator.opcode, tuple(operands), terminator.span)

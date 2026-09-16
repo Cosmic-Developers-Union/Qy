@@ -388,3 +388,135 @@ def test_optimize_mir_runs_when_enabled():
     )
 
     assert result.artifact is not None
+
+
+# ---------------------------------------------------------------------------
+# 优化正确性回归（本轮修复的缺陷）
+# ---------------------------------------------------------------------------
+
+
+def test_terminator_targets_include_effect_resume_edge():
+    """EFFECT_PERFORM 的 resume 块是 CFG 后继，不能当作不可达。."""
+    from qy.ir.mir import terminator_target_positions
+    from qy.ir.mir import terminator_targets
+
+    term = MIRTerminator("EFFECT_PERFORM", (1, Symbol("ask"), 2, 7, True))
+
+    assert terminator_targets(term) == [7]
+    assert terminator_target_positions(term) == (3,)
+
+
+def test_cfg_simplify_keeps_effect_resume_block():
+    """cfg_simplify 不得删掉 perform 的 resume 块。."""
+    import qy.passes.optimize.apply as apply_mod
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.passes.optimize.apply import OPTIMIZE_PASSES
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    source = """
+    (defeffect ask)
+    (handle (+ 1 (perform ask 41)) ((ask (arg k) (resume k arg))))
+    """
+    original = apply_mod.OPTIMIZE_PASSES
+    apply_mod.OPTIMIZE_PASSES = tuple(f for i, f in enumerate(OPTIMIZE_PASSES) if i < 11)
+    try:
+        env = create_standard_runtime_space()
+        result = compile_source_to_bytecode(
+            source,
+            PipelineSession(env=env),
+            options=PipelineOptions(error_threshold=10**6, optimize=True),
+        )
+        assert not [d for d in result.diagnostics if d.severity == "error"]
+        outcome = run_coro(
+            RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program()
+        )
+    finally:
+        apply_mod.OPTIMIZE_PASSES = original
+
+    assert outcome[-1] == IntValue(42)
+
+
+def test_liveness_counts_terminator_register_uses():
+    """只在 terminator 中被读取的寄存器必须进入 live_out。."""
+    from qy.analysis.liveness import compute_liveness
+    from qy.ir.mir import MIRBlock
+    from qy.ir.mir import MIRFunction
+    from qy.ir.mir import MIRTerminator
+
+    # (tail-call f a b)：a、b 只在 terminator 中被读取
+    function = MIRFunction(
+        Symbol("g"),
+        (),
+        3,
+        (
+            MIRBlock(
+                0,
+                (
+                    MIRInstruction("LOAD_ENV", (0, Symbol("f"))),
+                    MIRInstruction("LOAD_ENV", (1, Symbol("a"))),
+                    MIRInstruction("LOAD_ENV", (2, Symbol("b"))),
+                ),
+                MIRTerminator("TAIL_CALL", (0, (1, 2))),
+            ),
+        ),
+        0,
+    )
+    info = compute_liveness(function)
+
+    # 这三个寄存器只在 terminator 中被读取，必须出现在块末尾的 live_out 中
+    assert {0, 1, 2} <= set(info.live_out[0])
+
+
+def test_register_allocation_keeps_simultaneously_live_registers_apart():
+    """只在 TAIL_CALL 中被读取的寄存器不得被复用成同一物理寄存器。."""
+    from qy.passes.optimize.reg_alloc import RegisterAllocationPass
+
+    mir = _compile_to_mir("(defun f (a b) (+ a b))")
+    result = _run_pass(RegisterAllocationPass(), mir)
+    target = _mir_artifact(result.artifact)
+    function = next(fn for fn in target.functions if fn.name.name == "f")
+    tail = function.blocks[0].terminator
+
+    assert tail.opcode == "TAIL_CALL"
+    arg_regs = tail.operands[1]
+    assert isinstance(arg_regs, tuple)
+    assert len({tail.operands[0], *arg_regs}) == 3
+
+
+def test_register_allocation_preserves_nested_let_semantics():
+    """回归：reg_alloc 曾把 let 内经 TAIL_CALL 使用的值合并到同一寄存器。."""
+    from qy.async_utils import run_coro
+    from qy.build.pipeline import compile_source_to_bytecode
+    from qy.session.runtime_space import create_standard_runtime_space
+    from qy.vm.instance.machine import RegisterVirtualMachine
+
+    env = create_standard_runtime_space()
+    result = compile_source_to_bytecode(
+        "(defun g (x) (let ((y (+ x 1))) (* y 2))) (g 5)",
+        PipelineSession(env=env),
+        options=PipelineOptions(error_threshold=10**6, optimize=True),
+    )
+    outcome = run_coro(RegisterVirtualMachine(bytecode_artifact(result), env).evaluate_program())
+
+    assert outcome[-1] == IntValue(12)
+
+
+def test_intern_does_not_merge_identity_observable_constants():
+    """字符串/符号的 identity 目前可观察（= 按 identity 比较），不得合并。."""
+    from qy.core.syntax import Symbol as QySymbol
+    from qy.passes.optimize.intern import _intern_key
+    from qy.sem.core import StringValue
+
+    assert _intern_key(StringValue("a")) is None
+    assert _intern_key(QySymbol("a")) is None
+
+
+def test_intern_key_distinguishes_t_and_none():
+    """T 与 none 都是空 frozen dataclass，hash 相同但语义不同。."""
+    from qy.core.syntax import NONE
+    from qy.core.syntax import T
+    from qy.passes.optimize.intern import _intern_key
+
+    assert _intern_key(T) != _intern_key(NONE)

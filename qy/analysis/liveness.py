@@ -9,12 +9,12 @@ code motion.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import cast
 
 from qy.ir.mir import MIRBlockId
 from qy.ir.mir import MIRFunction
 from qy.ir.mir import MIRInstruction
 from qy.ir.mir import MIRTerminator
+from qy.ir.mir import terminator_targets
 
 __all__ = [
     "LiveIntervals",
@@ -57,7 +57,10 @@ def compute_liveness(function: MIRFunction) -> LivenessInfo:
     while changed:
         changed = False
         for block in function.blocks:
-            new_out: set[int] = set()
+            # terminator 的寄存器使用是块末尾的使用，必须进入 live_out；
+            # 否则只在 terminator 中被读取的寄存器（TAIL_CALL 参数、RETURN 值、
+            # BRANCH 条件等）活跃区间会提前结束，寄存器分配误复用（历史缺陷）。
+            new_out: set[int] = set(_terminator_uses(block.terminator))
             for succ_id in successors_map.get(block.id, ()):
                 new_out |= live_in.get(succ_id, frozenset())
 
@@ -100,14 +103,12 @@ def _compute_successors(function: MIRFunction) -> dict[MIRBlockId, list[MIRBlock
 
 
 def _terminator_successors(term: MIRTerminator) -> list[MIRBlockId]:
-    match term.opcode:
-        case "JUMP":
-            return [cast(int, term.operands[0])]
-        case "BRANCH":
-            _, true_b, false_b = term.operands
-            return [cast(int, true_b), cast(int, false_b)]
-        case _:
-            return []
+    """CFG 后继；直接复用 `qy.ir.mir` 的 terminator 目标语义。.
+
+    必须包含 ``EFFECT_PERFORM`` 的 resume 边：否则 resume 之后的寄存器使用不会
+    进入活跃区间，寄存器分配会过早复用（历史缺陷）。
+    """
+    return terminator_targets(term)
 
 
 def _compute_gen_kill(
@@ -128,6 +129,9 @@ def _compute_gen_kill(
             if dest is not None:
                 k.add(dest)
 
+        for used in _terminator_uses(block.terminator):
+            if used not in k:
+                g.add(used)
         term_dest = _terminator_def(block.terminator)
         if term_dest is not None:
             k.add(term_dest)
@@ -138,68 +142,63 @@ def _compute_gen_kill(
     return gen, kill
 
 
-def _uses(inst: MIRInstruction) -> set[int]:
-    """Return registers read by *inst* (not counting the dest)."""
+def _terminator_uses(term: MIRTerminator) -> set[int]:
+    """Terminator 读取的寄存器集合（MIR 寄存器表减去 def 位置）。."""
+    from qy.ir.mir import terminator_register_def_position
+    from qy.ir.mir import terminator_register_positions
+
     result: set[int] = set()
-    match inst.opcode:
-        case "LOAD_CONST" | "LOAD_HOST" | "LOAD_ENV":
-            pass
-        case "MOVE":
-            _add_int(inst.operands[1], result)
-        case "MAKE_FUNCTION" | "MAKE_MACRO":
-            pass
-        case "CALL":
-            _, op_reg, arg_regs = inst.operands
-            _add_int(op_reg, result)
-            if isinstance(arg_regs, tuple):
-                for r in arg_regs:
-                    _add_int(r, result)
-        case "APPLY":
-            for op in inst.operands[1:]:
-                _add_int(op, result)
-        case "DEFINE_ONCE" | "STORE_LOCAL":
-            _add_int(inst.operands[1], result)
-        case "BUILD_TUPLE":
-            for op in inst.operands[1:]:
-                _add_int(op, result)
-        case "APPEND_RESULT":
-            _add_int(inst.operands[0], result)
-        case "EFFECT_RESUME":
-            for op in inst.operands[1:]:
-                _add_int(op, result)
-        case "RUNTIME_EVAL":
-            for op in inst.operands[1:]:
-                _add_int(op, result)
-        case _:
-            for op in inst.operands:
-                if isinstance(op, int):
-                    result.add(op)
+    def_position = terminator_register_def_position(term)
+    operands = term.operands
+    for index in terminator_register_positions(term):
+        if index == def_position or index >= len(operands):
+            continue
+        value = operands[index]
+        if isinstance(value, tuple):
+            for item in value:
+                _add_int(item, result)
+        else:
+            _add_int(value, result)
+    # TAIL_CALL 的参数列表在位置 1
+    if term.opcode == "TAIL_CALL" and len(operands) >= 2 and isinstance(operands[1], tuple):
+        for item in operands[1]:
+            _add_int(item, result)
+    return result
+
+
+def _uses(inst: MIRInstruction) -> set[int]:
+    """指令读取的寄存器集合（MIR 寄存器操作数表减去 def 位置）。."""
+    from qy.ir.mir import register_def_position
+    from qy.ir.mir import register_operand_positions
+    from qy.ir.mir import register_tuple_positions
+
+    result: set[int] = set()
+    def_position = register_def_position(inst)
+    operands = inst.operands
+    for index in register_operand_positions(inst):
+        if index == def_position:
+            continue
+        if index < len(operands):
+            _add_int(operands[index], result)
+    for index in register_tuple_positions(inst):
+        if index == def_position or index >= len(operands):
+            continue
+        value = operands[index]
+        if isinstance(value, tuple):
+            for item in value:
+                _add_int(item, result)
     return result
 
 
 def _def(inst: MIRInstruction) -> int | None:
-    """Return the register defined by *inst*, if any."""
-    if not inst.operands:
+    """指令写入的寄存器（MIR 寄存器 def 位置）。."""
+    from qy.ir.mir import register_def_position
+
+    position = register_def_position(inst)
+    if position is None or position >= len(inst.operands):
         return None
-    dest = inst.operands[0]
-    if inst.opcode in (
-        "LOAD_CONST",
-        "LOAD_HOST",
-        "LOAD_ENV",
-        "MOVE",
-        "MAKE_FUNCTION",
-        "MAKE_MACRO",
-        "BUILD_TUPLE",
-        "CALL",
-        "APPLY",
-    ):
-        if isinstance(dest, int):
-            return dest
-    if inst.opcode in ("DEFINE_ONCE", "STORE_LOCAL"):
-        return None
-    if inst.opcode == "APPEND_RESULT":
-        return None
-    return None
+    dest = inst.operands[position]
+    return dest if isinstance(dest, int) else None
 
 
 def _terminator_def(term: MIRTerminator) -> int | None:
