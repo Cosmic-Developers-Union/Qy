@@ -29,6 +29,8 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 - `quote`、`define`、`lambda`、`perform` 等只是后续阶段对某些 chain 的语义解释，不是 AST 的额外种类。
 - `chain` 是不可变对象；`cons` / quasiquote / macro 改写必须构造新 chain，不能原地修改旧 chain。
 - Everything is symbol：源码中的名字、数字拼写、字符串拼写、算子名，进入 syntax datum 时都是 symbol 或 chain。
+- `nil` 就是空 chain，属于 syntax datum 域，不是 Python `None`。
+- 求值一个 bare symbol 时，字面量拼写（数字、字符串、字符）经 symbol-space-chain 的字面量节点解析成 Qy 语义值；解析结果必须是 Qy runtime value（`number` / `string` / `char` 等），不得是宿主 `int` / `float` / `str`。
 - Runtime value 存在于 symbol-space/env 中；抽象上由 `number`、`string`、`object` 构成，`number` 与 `string` 是特殊 object。`number` 是 family，不是单一类型；例如 `int`（任意精度）、`int32`、`int64`、`float`、`float32`、`complex`、`rational` 都是彼此独立的 concrete value type。
 - `tuple`、`list`、`dict`、`set` 是 Qy runtime object，不是 Python `tuple` / `list` / `dict` / `set` 的别名。Python 宿主边界可以把它们转换成宿主容器，但语言层只暴露 Qy value。
 - `array` 是连续内存段 object family；它既可承载通用 `Value` cell，也可承载 `int32` 这类 concrete value type 的专门化连续段。`hash-map` 是哈希映射 object family。它们是更高层 `list` / `tuple` / `dict` / `struct` / `object` 可依赖的底层值形状，不等同于这些上层抽象本身。
@@ -125,7 +127,7 @@ HIR、MIR、LIR 必须各自独立：HIR 保留高层语义事实，MIR 只负�
 
 ## Operator Semantics
 
-- `quote`：返回参数 syntax datum。
+- `quote`：返回参数 syntax datum，不触发 runtime lookup，也不把字符串/数字拼写物化成 runtime value；因此 `(quote "abc")` 得到的是符号 `"abc"`，要得到字符串值需对它求值（`eval`）或直接写裸字面量 `"abc"`。
 - `atom`：判断值是否不是非空 chain；因此 `symbol` 与 `nil` 都是 atom。
 - `eq`：比较 Qy 原子语义而不是 Python `id()` / `is`。`nil`、`T`、`none` 按各自单例相等；`symbol`、`number`、`string` 按 Qy 值相等；chain 与标准容器等复合值不做结构相等。
 - `type`：返回值的 Qy 语义类型名（`nil` / `T` / `none` / `symbol` / `number` / `string` / `char` / `chain` / `tuple` / `list` / `dict` / `set` / `operator` / `function` / `effect` 等）。不得返回宿主实现类名（如 Python `IntValue` / `str`）；宿主互操作对象只能作为显式 host reference 分类。

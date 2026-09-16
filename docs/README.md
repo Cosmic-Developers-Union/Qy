@@ -24,6 +24,7 @@ This directory contains all design documents and technical documentation for QyL
 
 ## Language Design
 
+- [extensions.md](extensions.md) - 宿主扩展机制与边界（descriptor / registry / capability）
 - [op.md](op.md) - Operator design and semantics
 - [language-core-audit.md](language-core-audit.md) - Language core audit
 - [stdlib-operators.md](stdlib-operators.md) - Standard library operator draft

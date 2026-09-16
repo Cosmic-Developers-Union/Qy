@@ -1,7 +1,7 @@
 # Qy Full Roadmap
 
 本文件不是最近一批工作的便签，而是 **Qy 从当前实现走到目标语言的完整路线图**。  
-历史批次与已完成细节看 `report.md`；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
+历史批次与已完成细节看本文档 §2 与 git log；语言规范看 `LANGUAGE.md`；算子分层看 `docs/op.md`；阶段边界与 IR 约束看 `docs/pipeline.md`、`docs/ir-design.md`。
 
 最近一次本地基线（本轮整改后）：
 
@@ -497,7 +497,7 @@ source
 不得在 shim 内新增长期实现；移除 shim 是一次性用户可见破坏变更，需独立审批。
 
 - docs 中可以暂时提到 `stdlib` 作为现状，但目标命名必须写作 `std`；
-- `docs/stdlib-operators.md` 当前可保留文件名，后续重命名为 `docs/std-operators.md`。
+- `docs/stdlib-operators.md` 当前可保留文件名，后续重命名为 `docs/stdlib-operators.md`。
 
 ### A0.4 Pass 命名修复
 
@@ -610,7 +610,7 @@ qy emit main.qy --target=lir
 - `docs/pipeline.md` 只描述阶段边界；
 - `docs/ir-design.md` 只描述 HIR / MIR / LIR 的独立职责；
 - `docs/package-structure.md` 只描述包结构和迁移边界；
-- `docs/stdlib-operators.md` 当前只描述可变 std 草案，后续改名为 `docs/std-operators.md`；
+- `docs/stdlib-operators.md` 当前只描述可变 std 草案，后续改名为 `docs/stdlib-operators.md`；
 - `docs/language-core-audit.md` 只描述实现偏移，不重复发明规范。
 
 ### A2. 说明文件一致性
@@ -631,7 +631,8 @@ qy emit main.qy --target=lir
 
 ### A3. 报告制度
 
-- 每批工作都写 `report.md`：
+- 每批工作记录到本文档 §2（已完成 / 仍在过渡 / 事实漂移三类），细节以 git commit message 为准；
+  不再维护根目录 `report.md`（违反"设计文档只在 docs/ 且必须注册"的规则）：
   - 目标；
   - 修改范围；
   - 新增 / 删除文件；

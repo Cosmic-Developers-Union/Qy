@@ -70,9 +70,9 @@ source (文本)
 当前实现状态：LIR 有两个 dialect（`PipelineOptions.lir_dialect`）。
 
 - `compat`（默认，register VM 可编码）：`lower_compat_effects` 把 effect 占位符降成语言级 `HANDLE` / `PERFORM` / `RESUME` opcode；这是当前执行路径。
-- `abstract-machine`：`lower_effects` 把 effect 降成 `HANDLER_PUSH/POP`、`CONT_CAPTURE/COPY/RESTORE`、`EFFECT_UNWIND/DISPATCH`；`passes/lir/spaces.py` 再把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE` 并产出 `symbol_spaces` layout。这样 L5–L9 与 L10–L12 verifier 都有真实数据（L11/L12 为 CFG-aware 配对检查）。VM 尚不执行该 dialect，它供 verifier 与后续 backend 使用。
+- `abstract-machine`：`lower_effects` 把 effect 降成 `HANDLER_PUSH/POP`、`CONT_CAPTURE/COPY/RESTORE`、`EFFECT_UNWIND/DISPATCH`；`passes/lir/spaces.py` 再把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE` 并产出 `symbol_spaces` layout。这样 L5–L9 与 L10–L12 verifier 都有真实数据（L11/L12 为 CFG-aware 配对检查）。VM 已能执行该 dialect（显式 handler 栈 + continuation 快照；`tests/test_abstract_machine_vm.py` 与 compat 逐样例差分），但默认执行路径仍是 `compat`。
 
-尚未显式化：virtual stack 与 ss-chain transition 的运行时语义（layout 已有，VM 执行未实现）；HIR 层 `resolve.spaces` 仍待实现（当前 layout 由 LIR 从指令流重建）。
+尚未显式化：virtual stack 与 ss-chain transition 的运行时语义（layout 已有，VM 尚未把它作为槽位读取路径）；HIR 层 `resolve.spaces` 已实现（`ProgramIR.symbol_spaces`），layout 已下沉到 MIR/LIR，但仍待让 MIR 指令 operand 直接携带 binding id/slot，从而删除 `passes/lir/spaces.py` 的重建路径。
 
 ### Bytecode
 
@@ -144,7 +144,7 @@ qy run FILE
 qy FILE   # 等价 run 快捷方式
 ```
 
-所有命令都支持 stdin（用 `-` 代替文件路径）：
+所有接受文件路径的调试与执行命令都支持 stdin（用 `-` 代替文件路径）：
 
 ```shell
 cat examples/hello.qy | qy mir -

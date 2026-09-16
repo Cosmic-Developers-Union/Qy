@@ -555,7 +555,7 @@ HandleExpr    := { expression: IRExpr, handlers: EffectHandler+, ... }
 
 ### 5.1 顶层 dispatch
 
-`lower.py:221-267`（Chain 路径）与 `lower.py:307-353`（tuple 路径）根据 operator name 分派到 `_lower_<name>` helper；非特殊 head 落入通用 `CallExpr` 构造（Chain 路径行 290-296；tuple 路径行 373-379）。
+`_lower_form`（`qy/passes/hir/lower.py`）先处理 `CapturedForm`，再按 symbol / chain 分派：非空 `Chain` 的 head 是 `Symbol` 时按 operator name 分派到 `_lower_<name>` helper，否则落入通用 `CallExpr` 构造。raw AST 只有 `Symbol` 与 `Chain`（含 `nil`），不存在 tuple 路径。
 
 ### 5.2 映射表
 
@@ -583,11 +583,11 @@ HandleExpr    := { expression: IRExpr, handlers: EffectHandler+, ... }
 | `(race e...)` | `RaceExpr(exprs=...)` | `_lower_race` `lower.py:1442-1449` |
 | `(apply f args)` | `ApplyExpr(function=lower(f), args=lower(args))` | `_lower_apply` `lower.py:1452-1463` |
 | `(cache e k)` | `CacheExpr(expression=lower(e), cache_key=k)` | `_lower_cache` `lower.py:1466-1481` |
-| `(macro n (p...) body...)` | `MacroExpr(name=n, params=..., body=..., raw_body=...)` | `_lower_macro` `lower.py:601-625` |
-| bare symbol 在作用域中 | `SymbolRefExpr(symbol, binding)` | `_lower_symbol` `lower.py:430-489` |
-| bare symbol 不在作用域且非字面 | `UnresolvedSymbolExpr(symbol)` | `lower.py:488` |
-| literal / 其他 atoms | `LiteralExpr(value, type_name)` | `lower.py:299-302`；host-value 规范化 `lower.py:410-427` |
-| 通用 head `(op a...)` | `CallExpr(operator=lower(op), args=..., tail_position=..., continuous=False)` | `lower.py:290-296`（Chain）/ `lower.py:373-379`（tuple） |
+| `(macro n (p...) body...)` | `MacroExpr(name=n, params=..., body=..., raw_body=...)` | `_lower_macro` |
+| bare symbol 在作用域中 | `SymbolRefExpr(symbol, binding)` | `_lower_symbol` |
+| bare symbol 不在作用域且非字面 | `UnresolvedSymbolExpr(symbol)` | `_lower_symbol` |
+| literal / 其他 atoms | `LiteralExpr(value, type_name)` | `_lower_form` 末尾的 `LiteralExpr`；host-value 规范化 `_canonicalize_host_value` |
+| 通用 head `(op a...)` | `CallExpr(operator=lower(op), args=..., tail_position=..., continuous=False)` | `_lower_form` 通用 `CallExpr` 构造 |
 
 ### 5.3 关键 lowering 规则
 
