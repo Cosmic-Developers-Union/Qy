@@ -4,7 +4,6 @@ from typing import Any
 
 import click
 
-from qy.cli._common import CLI_COMMANDS as CLI_COMMANDS
 from qy.cli._common import REPL_COMMANDS as REPL_COMMANDS
 
 INSTALL_LSP_MESSAGE = (
@@ -22,6 +21,14 @@ def main() -> int:
         return e.exit_code
     except click.exceptions.Abort:
         return 1
+    except click.UsageError as e:
+        # non-standalone 模式下 click 不会自行打印用法错误；这里补上，
+        # 避免参数错误以裸 traceback 形式抛给用户。
+        e.show()
+        return e.exit_code
+    except click.ClickException as e:
+        e.show()
+        return e.exit_code
     # click 在 non-standalone 模式下会把命令显式 raise 的 Exit(rc) 转成返回值；
     # 若直接忽略该返回值，`qy run bad.qy` 这类失败会错误地以 0 退出。
     if isinstance(result, int):

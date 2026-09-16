@@ -19,24 +19,6 @@ from qy.build.pipeline import compile_source_to_kind_async
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 
-CLI_COMMANDS = (
-    "run",
-    "repl",
-    "expand",
-    "hir",
-    "mir",
-    "lir",
-    "bytecode",
-    "export",
-    "llvm",
-    "fmt",
-    "ast",
-    "check",
-    "typecheck",
-    "operators",
-    "lsp",
-    "completion",
-)
 REPL_COMMANDS = (".help", ".env", ".ast", ".fmt", ".check", ".exit", ".quit")
 
 

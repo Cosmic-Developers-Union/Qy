@@ -4,13 +4,12 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
 from qy.build.pipeline import core_ast_artifact
 from qy.cli._common import compile_source_to
 from qy.cli._common import print_debug_diagnostics
+from qy.cli._common import read_debug_source
 from qy.runtime import Qy
 from qy.tools.fmt import dump_program
 
@@ -19,7 +18,7 @@ def register(group: click.Group) -> None:
     """将 ast 命令注册到给定的 click group。."""
 
     @group.command("ast")
-    @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+    @click.argument("path", type=str)
     @click.option(
         "--raw",
         is_flag=True,
@@ -35,24 +34,24 @@ def register(group: click.Group) -> None:
         is_flag=True,
         help="Show concrete syntax tree (preserves trivia).",
     )
-    def ast_command(path: Path, raw: bool, expand: bool, cst: bool) -> None:
-        """Print the parsed syntax tree of a Qy source file."""
-        source = path.read_text(encoding="utf-8")
+    def ast_command(path: str, raw: bool, expand: bool, cst: bool) -> None:
+        """Print the parsed syntax tree of a Qy source file. Use '-' for stdin."""
+        source, source_name = read_debug_source(path)
         if cst:
             from qy.frontend.reader import parse_cst
             from qy.tools.fmt import dump_cst
 
-            program = parse_cst(source, source_name=str(path))
+            program = parse_cst(source, source_name=source_name)
             click.echo(dump_cst(program))
         elif raw:
             from qy.frontend.reader import read_raw
 
-            forms = read_raw(source)
+            forms = read_raw(source, source_name=source_name)
             click.echo(dump_program(forms))
         elif expand:
             qy = Qy()
-            result = compile_source_to(qy, source, kind="core-ast", source_name=str(path))
-            has_errors = print_debug_diagnostics(str(path), result.diagnostics)
+            result = compile_source_to(qy, source, kind="core-ast", source_name=source_name)
+            has_errors = print_debug_diagnostics(source_name, result.diagnostics)
             try:
                 program = core_ast_artifact(result)
             except TypeError:
@@ -66,5 +65,5 @@ def register(group: click.Group) -> None:
         else:
             from qy.frontend.reader import read
 
-            forms = read(source)
+            forms = read(source, source_name=source_name)
             click.echo(dump_program(forms))

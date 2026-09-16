@@ -6,13 +6,17 @@ from __future__ import annotations
 
 import click
 
-from qy.cli._common import CLI_COMMANDS
 from qy.cli._common import secho
 
 
-def _completion_script(shell: str) -> str:
+def _command_names(group: click.Group) -> tuple[str, ...]:
+    """从真实注册的 click group 派生命令清单，避免第二份命令事实。."""
+    return tuple(sorted(group.commands))
+
+
+def _completion_script(shell: str, command_names: tuple[str, ...]) -> str:
     shell = shell.lower()
-    commands = " ".join(CLI_COMMANDS)
+    commands = " ".join(command_names)
     if shell == "bash":
         return f"""# qy bash completion
 _qy_complete() {{
@@ -28,7 +32,7 @@ _qy_complete() {{
 complete -o default -o bashdefault -F _qy_complete qy
 """
     if shell == "zsh":
-        command_specs = " ".join(f"'{command}:qy {command}'" for command in CLI_COMMANDS)
+        command_specs = " ".join(f"'{command}:qy {command}'" for command in command_names)
         return f"""#compdef qy
 _qy() {{
   local -a commands
@@ -63,7 +67,7 @@ def register(group: click.Group) -> None:
     def completion_command(shell: str) -> None:
         """Output shell completion script (bash, zsh, or sh)."""
         try:
-            click.echo(_completion_script(shell), nl=False)
+            click.echo(_completion_script(shell, _command_names(group)), nl=False)
         except ValueError as e:
             secho(str(e), fg="red", err=True)
             raise click.exceptions.Exit(2) from e

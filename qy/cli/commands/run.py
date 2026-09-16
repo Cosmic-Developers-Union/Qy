@@ -4,11 +4,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import click
 
 from qy.cli._common import _is_definition_artifact
+from qy.cli._common import read_debug_source
 from qy.cli._common import secho
 from qy.display import format_value
 from qy.errors import QyError
@@ -20,18 +19,18 @@ def register(group: click.Group) -> None:
     """将 run 命令注册到给定的 click group。."""
 
     @group.command("run")
-    @click.argument("path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+    @click.argument("path", type=str)
     @click.argument("args", nargs=-1)
-    def run_command(path: Path, args: tuple[str, ...]) -> None:
-        """Evaluate a Qy source file."""
+    def run_command(path: str, args: tuple[str, ...]) -> None:
+        """Evaluate a Qy source file. Use '-' for stdin."""
         try:
             qy = Qy()
             if args:
                 from qy.ext.interp import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
-            source = path.read_text(encoding="utf-8")
-            results = qy.evaluate_program(source, source_name=str(path))
+            source, source_name = read_debug_source(path)
+            results = qy.evaluate_program(source, source_name=source_name)
             for value in results:
                 if _is_definition_artifact(value):
                     continue

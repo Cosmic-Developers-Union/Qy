@@ -103,3 +103,49 @@ def test_operators_command(runner, app):
     assert "## 模块 qy.io" in result.output
     assert "`print`" in result.output
     assert "`list`" in result.output
+
+
+@pytest.mark.parametrize(
+    ("command", "expected"),
+    (
+        ("ast", "Symbol('+')"),
+        ("run", "3"),
+        ("fmt", "(+ 1 2)"),
+        ("check", "<stdin>: ok"),
+    ),
+)
+def test_path_commands_support_stdin(runner, app, command, expected):
+    result = runner.invoke(app, [command, "-"], input="(+ 1 2)\n")
+
+    assert result.exit_code == 0, result.output
+    assert expected in result.output
+
+
+def test_fmt_refuses_write_to_stdin(runner, app):
+    result = runner.invoke(app, ["fmt", "-w", "-"], input="(+ 1 2)\n")
+
+    assert result.exit_code == 2
+    assert "cannot --write to stdin" in result.output
+
+
+def test_missing_file_is_reported_without_traceback(runner, app):
+    result = runner.invoke(app, ["ast", "does-not-exist.qy"])
+
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+
+
+def test_unknown_option_is_reported_without_traceback(runner, app):
+    result = runner.invoke(app, ["ast", "--bogus"])
+
+    assert result.exit_code == 2
+    assert "Traceback" not in result.output
+    assert "No such option" in result.output
+
+
+def test_completion_lists_every_registered_command(runner, app):
+    result = runner.invoke(app, ["completion", "sh"])
+
+    assert result.exit_code == 0, result.output
+    for name in app.commands:
+        assert name in result.output

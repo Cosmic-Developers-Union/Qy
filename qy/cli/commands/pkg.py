@@ -141,8 +141,13 @@ def create_pkg_app() -> click.Group:
         from qy.project.manifest import serialize_manifest
 
         if dep_path is None:
-            click.echo("updating all dependencies (no-op without registry)")
-            return
+            secho(
+                "updating all dependencies requires a registry backend, which is not implemented; "
+                "pass a dependency path and --version instead",
+                fg="red",
+                err=True,
+            )
+            raise click.exceptions.Exit(2)
 
         if version is None:
             secho("--version required for targeted update", fg="red", err=True)
@@ -289,7 +294,12 @@ def create_pkg_app() -> click.Group:
 
     @pkg_group.command("publish")
     def pkg_publish() -> None:
-        """Publish the package (currently: validate only)."""
+        """Validate the manifest and report the release path.
+
+        There is no registry backend yet, so this command never claims success:
+        it validates the manifest, prints the manual tagging command, and exits
+        with code 2 (unsupported operation).
+        """
         manifest, _ = _load_current_manifest()
 
         if not manifest.pkg_path:
@@ -300,11 +310,17 @@ def create_pkg_app() -> click.Group:
             raise click.exceptions.Exit(1)
 
         click.echo(f"package: {manifest.pkg_path}@v{manifest.version}")
-        click.echo("publish target: git tag (registry not yet implemented)")
         secho(
-            f"ready to publish — run: git tag v{manifest.version} && git push --tags",
-            fg="green",
+            "publish is not implemented: no registry backend.",
+            fg="red",
+            err=True,
         )
+        secho(
+            f"create a release tag manually: git tag v{manifest.version} && git push --tags",
+            fg="yellow",
+            err=True,
+        )
+        raise click.exceptions.Exit(2)
 
     return pkg_group
 
