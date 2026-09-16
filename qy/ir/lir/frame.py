@@ -19,10 +19,8 @@ from typing import Literal
 
 if TYPE_CHECKING:
     from qy.core.syntax import Symbol
-    from qy.ir.lir.node import LIRBindingSlot
     from qy.ir.lir.node import LIRInstructionIndex
     from qy.ir.lir.node import LIRRegister
-    from qy.ir.lir.node import LIRSymbolMeta
     from qy.ir.lir.node import LIRSymbolSpaceId
 
 __all__ = [
@@ -30,21 +28,9 @@ __all__ = [
     "LIRFrameKind",
     "LIRFrameLayout",
     "LIRHandlerLayout",
-    "LIRSymbolSpaceLayout",
 ]
 
 LIRFrameKind = Literal["function", "continuation", "handler", "task"]
-
-
-@dataclass(frozen=True, slots=True)
-class LIRSymbolSpaceLayout:
-    """Low-level symbol-space layout visible to LIR and later backends."""
-
-    id: LIRSymbolSpaceId
-    name: str
-    parent: LIRSymbolSpaceId | None = None
-    slots: tuple[LIRBindingSlot, ...] = ()
-    metadata: tuple[LIRSymbolMeta, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

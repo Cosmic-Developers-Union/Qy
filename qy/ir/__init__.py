@@ -47,8 +47,6 @@ from qy.ir.hir import SymbolSpace
 from qy.ir.hir import UnresolvedSymbolExpr
 from qy.ir.hir import dump_ir
 from qy.ir.lir import LIRBindingAddr
-from qy.ir.lir import LIRBindingSlot
-from qy.ir.lir import LIRBindingState
 from qy.ir.lir import LIRContinuationLayout
 from qy.ir.lir import LIRFrameKind
 from qy.ir.lir import LIRFrameLayout
@@ -60,9 +58,7 @@ from qy.ir.lir import LIROpcode
 from qy.ir.lir import LIRProgram
 from qy.ir.lir import LIRRegister
 from qy.ir.lir import LIRSlotIndex
-from qy.ir.lir import LIRSymbolMeta
 from qy.ir.lir import LIRSymbolSpaceId
-from qy.ir.lir import LIRSymbolSpaceLayout
 from qy.ir.lir import dump_lir
 from qy.ir.lir import verify_lir
 from qy.ir.mir import MIRBlock
@@ -100,8 +96,6 @@ __all__ = [
     "HandleExpr",
     "IRExpr",
     "LIRBindingAddr",
-    "LIRBindingSlot",
-    "LIRBindingState",
     "LIRContinuationLayout",
     "LIRFrameKind",
     "LIRFrameLayout",
@@ -113,9 +107,7 @@ __all__ = [
     "LIRProgram",
     "LIRRegister",
     "LIRSlotIndex",
-    "LIRSymbolMeta",
     "LIRSymbolSpaceId",
-    "LIRSymbolSpaceLayout",
     "LambdaExpr",
     "LetBinding",
     "LetExpr",

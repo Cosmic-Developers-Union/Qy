@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from qy.core.syntax import Symbol
     from qy.errors import SourceSpan
     from qy.ir.layout import SymbolSpaceLayout
-    from qy.ir.lir import LIRSymbolSpaceLayout
 
 __all__ = [
     "BytecodeFunction",
@@ -120,9 +119,9 @@ class BytecodeFunction:
     params: tuple[Symbol, ...]
     register_count: int
     instructions: tuple[Instruction, ...]
-    # Abstract-machine dialect only: per-function symbol-space layout used by
+    # Abstract-machine dialect only: program-level symbol-space layout used by
     # SLOT_COMPLETE to recover the bound symbol from a (space, slot) address.
-    symbol_spaces: tuple[LIRSymbolSpaceLayout, ...] = ()
+    symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

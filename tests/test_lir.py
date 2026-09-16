@@ -565,16 +565,15 @@ def test_verify_lir_branch_nil_target_checked():
 
 
 def test_lir_models_abstract_machine_layouts_in_dump():
+    from qy.ir.layout import BindingSlot
+    from qy.ir.layout import SymbolSpaceLayout
     from qy.ir.lir import LIRBindingAddr
-    from qy.ir.lir import LIRBindingSlot
     from qy.ir.lir import LIRContinuationLayout
     from qy.ir.lir import LIRFrameLayout
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRHandlerLayout
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram
-    from qy.ir.lir import LIRSymbolMeta
-    from qy.ir.lir import LIRSymbolSpaceLayout
     from qy.ir.lir import verify_lir
 
     symbol = Symbol("x")
@@ -596,14 +595,6 @@ def test_lir_models_abstract_machine_layouts_in_dump():
                     local_slot_count=1,
                     ss_chain=(0,),
                 ),
-                symbol_spaces=(
-                    LIRSymbolSpaceLayout(
-                        0,
-                        "local",
-                        slots=(LIRBindingSlot(address, symbol, "pending", 0),),
-                        metadata=(LIRSymbolMeta(symbol, flags=("local",)),),
-                    ),
-                ),
                 continuations=(
                     LIRContinuationLayout(
                         0,
@@ -616,6 +607,8 @@ def test_lir_models_abstract_machine_layouts_in_dump():
             ),
         ),
         dialect="abstract-machine",
+        # layout 是 program-level 的单一事实（qy.ir.layout.SymbolSpaceLayout）
+        symbol_spaces=(SymbolSpaceLayout(0, "local", None, (BindingSlot(symbol, 0, "let"),)),),
     )
 
     diagnostics = verify_lir(program)
@@ -624,7 +617,7 @@ def test_lir_models_abstract_machine_layouts_in_dump():
     assert not [d for d in diagnostics if d.severity == "error"]
     assert "dialect: abstract-machine" in rendered
     assert "frame: function model regs=1 slots=1 ss=(0)" in rendered
-    assert "space: s0 local slots=[x@slot0:pending]" in rendered
+    assert "space: s0 local slots=[x@slot0]" in rendered
     assert "continuation: k0 target=1 spaces=(0) regs=(0) multi-shot" in rendered
     assert "handler: h0 effects=[ask] target=1 ss=()" in rendered
     assert "SLOT_READ 0, s0.slot0" in rendered
@@ -880,12 +873,21 @@ def test_abstract_machine_lowering_assigns_symbol_spaces_and_slots():
     assert "SS_LEAVE" in opcodes
     assert "SLOT_COMPLETE" in opcodes
 
-    slots = [
-        slot for func in program.functions for space in func.symbol_spaces for slot in space.slots
-    ]
+    # layout 是 program-level 的单一事实，且 slot 由 resolve.spaces 给出
+    slots = [slot for space in program.symbol_spaces for slot in space.slots]
     assert slots, "expected at least one binding slot"
-    for slot in slots:
-        assert slot.state == "completed"
+    assert any(slot.symbol.name == "y" for slot in slots)
+
+    # SLOT_COMPLETE 的地址必须指向 program-level layout 的 space
+    space_ids = {space.id for space in program.symbol_spaces}
+    addresses = [
+        inst.operands[0]
+        for func in program.functions
+        for inst in func.instructions
+        if inst.opcode == "SLOT_COMPLETE"
+    ]
+    assert addresses
+    assert all(getattr(address, "space", None) in space_ids for address in addresses)
 
     # L8/L9 have data now and must still pass.
     from qy.ir.lir import verify_lir
@@ -922,8 +924,10 @@ def test_lir_verifier_rejects_duplicate_slot_complete_in_one_function():
     assert any("executes more than once" in d.message for d in errors)
 
 
-def test_lir_verifier_slot_complete_identity_is_function_local():
-    """Two functions may reuse (space 0, slot 0); that is not a duplicate."""
+def test_lir_verifier_slot_complete_identity_is_program_wide():
+    """Space id 是 program-wide 的，因此同一 slot 不能跨函数完成两次。."""
+    from qy.ir.layout import BindingSlot
+    from qy.ir.layout import SymbolSpaceLayout
     from qy.ir.lir import LIRBindingAddr
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
@@ -943,21 +947,25 @@ def test_lir_verifier_slot_complete_identity_is_function_local():
             ),
         )
 
-    program = LIRProgram((make("a"), make("b")), dialect="abstract-machine")
+    program = LIRProgram(
+        (make("a"), make("b")),
+        dialect="abstract-machine",
+        symbol_spaces=(SymbolSpaceLayout(0, "root", None, (BindingSlot(Symbol("x"), 0),)),),
+    )
     errors = [d for d in verify_lir(program) if d.severity == "error"]
-    assert errors == [], [d.message for d in errors]
+    assert any("executes more than once" in d.message for d in errors)
 
 
 def test_lir_verifier_rejects_slot_address_outside_declared_spaces():
+    from qy.ir.layout import BindingSlot
+    from qy.ir.layout import SymbolSpaceLayout
     from qy.ir.lir import LIRBindingAddr
-    from qy.ir.lir import LIRBindingSlot
     from qy.ir.lir import LIRFunction
     from qy.ir.lir import LIRInstruction
     from qy.ir.lir import LIRProgram
-    from qy.ir.lir import LIRSymbolSpaceLayout
     from qy.ir.lir import verify_lir
 
-    # Slot address points at space 7, but only space 0 is declared.
+    # SLOT_COMPLETE 指向 space 7，但 program-level layout 只声明了 space 0
     program = LIRProgram(
         (
             LIRFunction(
@@ -968,16 +976,10 @@ def test_lir_verifier_rejects_slot_address_outside_declared_spaces():
                     LIRInstruction("SLOT_COMPLETE", (LIRBindingAddr(7, 0), 0)),
                     LIRInstruction("RETURN", (0,)),
                 ),
-                symbol_spaces=(
-                    LIRSymbolSpaceLayout(
-                        0,
-                        "root",
-                        slots=(LIRBindingSlot(LIRBindingAddr(7, 0), Symbol("x"), "completed"),),
-                    ),
-                ),
             ),
         ),
         dialect="abstract-machine",
+        symbol_spaces=(SymbolSpaceLayout(0, "root", None, (BindingSlot(Symbol("x"), 0),)),),
     )
 
     errors = [d for d in verify_lir(program) if d.severity == "error"]

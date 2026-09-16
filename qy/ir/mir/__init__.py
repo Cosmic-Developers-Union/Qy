@@ -339,8 +339,12 @@ def _verify_instruction(
             _check_symbol_operand(function, block_id, instruction.opcode, operands[0], diagnostics)
             _check_register(function, block_id, operands[1], diagnostics)
         case "ENTER_SCOPE" | "EXIT_SCOPE":
-            _check_operand_arity(
-                function, block_id, "instruction", instruction.opcode, operands, 0, diagnostics
+            if not _check_operand_arity(
+                function, block_id, "instruction", instruction.opcode, operands, 1, diagnostics
+            ):
+                return
+            _check_space_id_operand(
+                function, block_id, instruction.opcode, operands[0], diagnostics
             )
         case _:
             diagnostics.append(
@@ -817,6 +821,23 @@ def _check_operand_arity(
         )
     )
     return False
+
+
+def _check_space_id_operand(
+    function: MIRFunction,
+    block_id: MIRBlockId,
+    opcode: str,
+    operand: object,
+    diagnostics: list[Diagnostic],
+) -> None:
+    """Space id 必须是 int（-1 表示无 program-level layout 的匿名 space）。."""
+    if isinstance(operand, bool) or not isinstance(operand, int):
+        diagnostics.append(
+            Diagnostic(
+                f"function {function.name.name!r} block bb{block_id} instruction {opcode!r} "
+                f"expects an integer space id, got {operand!r}"
+            )
+        )
 
 
 def _check_symbol_operand(

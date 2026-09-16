@@ -16,6 +16,7 @@ virtual stack、continuation frame、peephole。
 
 from __future__ import annotations
 
+from qy.ir.layout import SymbolSpaceLayout
 from qy.ir.lir import LIRContinuationLayout
 from qy.ir.lir import LIRFrameLayout
 from qy.ir.lir import LIRFunction
@@ -42,7 +43,12 @@ def lower_lir(program: MIRProgram, *, dialect: str = "compat") -> LIRProgram:
     resolved_dialect = "abstract-machine" if dialect == "abstract-machine" else "compat"
     return LIRProgram(
         tuple(
-            _lower_function(f, program.constants, dialect=resolved_dialect)
+            _lower_function(
+                f,
+                program.constants,
+                dialect=resolved_dialect,
+                program_layout=program.symbol_spaces,
+            )
             for f in program.functions
         ),
         program.main,
@@ -53,11 +59,17 @@ def lower_lir(program: MIRProgram, *, dialect: str = "compat") -> LIRProgram:
 
 
 def _lower_function(
-    function: MIRFunction, constants: MIRConstantPool, *, dialect: str = "compat"
+    function: MIRFunction,
+    constants: MIRConstantPool,
+    *,
+    dialect: str = "compat",
+    program_layout: tuple[SymbolSpaceLayout, ...] = (),
 ) -> LIRFunction:
     instructions = linearize_function(function, constants)
     if dialect == "abstract-machine":
-        return _lower_function_abstract_machine(function, instructions)
+        return _lower_function_abstract_machine(
+            function, instructions, program_layout=program_layout
+        )
     instructions = lower_compat_effects(instructions)
     instructions = peephole(instructions)
     instructions, register_count = compact_registers(
@@ -73,7 +85,9 @@ def _lower_function(
     )
 
 
-def _lower_function_abstract_machine(function: MIRFunction, instructions: list) -> LIRFunction:
+def _lower_function_abstract_machine(
+    function: MIRFunction, instructions: list, *, program_layout: tuple[SymbolSpaceLayout, ...] = ()
+) -> LIRFunction:
     """Lower effect placeholders to abstract-machine ops and attach layouts.
 
     ``peephole`` / ``compact_registers`` are intentionally *not* run here:
@@ -82,7 +96,11 @@ def _lower_function_abstract_machine(function: MIRFunction, instructions: list) 
     targets, ``CONT_CAPTURE`` resume targets and jumps by ``lower_effects``.
     """
     result = lower_effects(_normalize_loads(instructions), function.register_count)
-    space_result = assign_symbol_spaces(result.instructions, function_name=function.name.name)
+    rewritten_instructions = assign_symbol_spaces(
+        result.instructions,
+        program_layout=program_layout,
+        function_space_id=function.space_id,
+    )
     register_count = result.register_count
     frame_layout = LIRFrameLayout(
         kind="function",
@@ -107,9 +125,8 @@ def _lower_function_abstract_machine(function: MIRFunction, instructions: list) 
         function.name,
         function.params,
         register_count,
-        tuple(space_result.instructions),
+        tuple(rewritten_instructions),
         frame_layout=frame_layout,
-        symbol_spaces=space_result.symbol_spaces,
         continuations=continuations,
         handlers=result.handlers,
     )

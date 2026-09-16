@@ -36,7 +36,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/ir/`：HIR / MIR / LIR 三个独立的 IR 子包；只放数据结构。
   - `qy/ir/hir/`：高层语义 IR，含 `ProgramIR`、`CallExpr`、`LiteralExpr`、`Binding` 等。
   - `qy/ir/mir/`：CFG + virtual register IR，含 `MIRProgram` / `MIRFunction` / `MIRBlock` / `MIRInstruction` / `MIRTerminator` 与 `verify_mir`。
-  - `qy/ir/lir/`：Qy abstract-machine IR，含 `LIRProgram` / `LIRFunction` / `LIRInstruction` / `LIRFrameLayout` / `LIRContinuationLayout` / `LIRHandlerLayout` / `LIRBindingSlot` / `LIRSymbolSpaceLayout` 与 `verify_lir`。
+  - `qy/ir/lir/`：Qy abstract-machine IR，含 `LIRProgram` / `LIRFunction` / `LIRInstruction` / `LIRFrameLayout` / `LIRContinuationLayout` / `LIRHandlerLayout` / `LIRBindingAddr` 与 `verify_lir`（symbol-space layout 复用中性类型 `qy.ir.layout.SymbolSpaceLayout`，不再有 LIR 专属 layout 类型）。
 - `qy/passes/`：按"阶段 + 主题"组织 pass。`pipeline.py` 是调度器，`pass_base.py` 定义 `Pass` / `PassContext` / `PassResult`。子目录：`raw/surface/macro/core/resolve/hir/closure/effect/control/mir/lir/optimize/emit`。**只放变换和分析，不放 IR 数据结构。**
 - `qy/backend/`：目标后端输出。
   - `qy/backend/vm/`：register VM target — bytecode emit / verifier；**不是第二 runtime backend**。

@@ -87,7 +87,6 @@ LIRFunction   := "LIRFunction" "{"
                     "register_count" ":" int ","
                     "instructions"   ":" LIRInstruction+ ","
                     "frame_layout"   ":" LIRFrameLayout?  "= None" ","
-                    "symbol_spaces"  ":" LIRSymbolSpaceLayout* "= ()" ","
                     "continuations"  ":" LIRContinuationLayout* "= ()" ","
                     "handlers"       ":" LIRHandlerLayout* "= ()" "}"
 
@@ -108,24 +107,18 @@ LIRSlotIndex        := int
 LIRRegister         := int
 LIRInstructionIndex := int
 
-LIRBindingState     := "declared" | "pending" | "completed" | "poisoned"
-
 LIRBindingAddr      := "LIRBindingAddr" "{" "space" ":" LIRSymbolSpaceId "," "slot" ":" LIRSlotIndex "}"
 
-LIRSymbolMeta       := "LIRSymbolMeta" "{" "symbol" ":" Symbol "," "span" ":" SourceSpan? "," "flags" ":" string* "}"
+# symbol-space layout 的唯一真源是 qy.ir.layout.SymbolSpaceLayout（HIR resolve.spaces
+# 产出，经 MIR 下沉到 LIRProgram.symbol_spaces）；LIR 不再定义自己的 layout 类型。
+# 运行期 slot 状态（declared/pending/completed/poisoned）与冷元数据尚未建模。
+SymbolSpaceLayout   := "SymbolSpaceLayout" "{"
+                          "id"     ":" LIRSymbolSpaceId ","
+                          "name"   ":" string ","
+                          "parent" ":" LIRSymbolSpaceId? "= None" ","
+                          "slots"  ":" BindingSlot* "}"
 
-LIRBindingSlot      := "LIRBindingSlot" "{"
-                          "address"         ":" LIRBindingAddr ","
-                          "symbol"          ":" Symbol ","
-                          "state"           ":" LIRBindingState "= 'declared'" ","
-                          "metadata_index"  ":" int? "}"
-
-LIRSymbolSpaceLayout := "LIRSymbolSpaceLayout" "{"
-                          "id"       ":" LIRSymbolSpaceId ","
-                          "name"     ":" string ","
-                          "parent"   ":" LIRSymbolSpaceId? "= None" ","
-                          "slots"    ":" LIRBindingSlot* ","
-                          "metadata" ":" LIRSymbolMeta* "}"
+BindingSlot         := "BindingSlot" "{" "symbol" ":" Symbol "," "index" ":" LIRSlotIndex "," "source" ":" string "}"
 
 LIRFrameKind        := "function" | "continuation" | "handler" | "task"
 
@@ -557,8 +550,8 @@ EFFECT_DISPATCH  handler_fn_reg: LIRRegister, handler_layout_id: int,
 | L5 | `LIRFrameLayout` 的 register_count / local_slot_count / saved_registers 合法 |
 | L6 | `LIRContinuationLayout` 的 saved_registers / saved_spaces 与所在函数布局一致 |
 | L7 | `LIRHandlerLayout.parent_handler` 指向同一 `LIRProgram` 内存在的 handler |
-| L8 | `LIRBindingSlot.address` 指向存在的 `LIRSymbolSpaceLayout` |
-| L9 | 同一 slot 至多一次 `SLOT_COMPLETE` |
+| L8 | `SLOT_COMPLETE` 的 `LIRBindingAddr` 指向 `LIRProgram.symbol_spaces` 中存在的 space/slot；space id 唯一、parent 存在 |
+| L9 | 同一 slot（space id 是 program-wide 的）至多一次 `SLOT_COMPLETE` |
 | L10 | `ENTER_SCOPE` / `EXIT_SCOPE` 嵌套正确 |
 | L11 | `HANDLER_PUSH` / `HANDLER_POP` 嵌套正确 |
 | L12 | `FRAME_ENTER` / `FRAME_LEAVE` 嵌套正确 |

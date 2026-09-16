@@ -28,6 +28,7 @@ from qy.backend.vm.bytecode import BytecodeProgram
 from qy.backend.vm.bytecode import Instruction
 from qy.backend.vm.bytecode import Opcode
 from qy.diag import Diagnostic
+from qy.ir.layout import SymbolSpaceLayout
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
@@ -90,13 +91,17 @@ def _encode_instruction(instruction: LIRInstruction) -> Instruction:
     return Instruction(opcode, operands, instruction.span)
 
 
-def _compile_function(function: LIRFunction) -> BytecodeFunction:
+def _compile_function(
+    function: LIRFunction, program_layout: tuple[SymbolSpaceLayout, ...]
+) -> BytecodeFunction:
     return BytecodeFunction(
         function.name,
         function.params,
         function.register_count,
         tuple(_encode_instruction(i) for i in function.instructions),
-        function.symbol_spaces,
+        # VM 的 SLOT_COMPLETE 需要按 (space, slot) 找回 symbol；这仍是
+        # program-level 的同一份 layout，不是按函数重建的第二份。
+        program_layout,
     )
 
 
@@ -115,7 +120,7 @@ def compile_lir_bytecode(program: LIRProgram) -> BytecodeProgram:
     if opcode_diagnostics:
         return BytecodeProgram((), 0, (*program.diagnostics, *opcode_diagnostics))
     return BytecodeProgram(
-        tuple(_compile_function(f) for f in program.functions),
+        tuple(_compile_function(f, program.symbol_spaces) for f in program.functions),
         program.main,
         program.diagnostics,
         program.symbol_spaces,

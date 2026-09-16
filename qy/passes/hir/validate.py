@@ -47,6 +47,7 @@ class ValidateHIRPass(Pass):
             body=program.body,
             diagnostics=(*program.diagnostics, *diagnostics),
             symbol_spaces=program.symbol_spaces,
+            root_space=program.root_space,
         )
         return PassResult(
             success=not any(d.severity == "error" for d in diagnostics),

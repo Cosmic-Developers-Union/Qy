@@ -61,8 +61,15 @@ from qy.ir.mir import MIRTerminatorOpcode
 __all__ = ["lower_mir"]
 
 
+#: ENTER_SCOPE/EXIT_SCOPE 的匿名 space id：该 scope 没有 program-level layout
+#: （例如空 let，或只含 builtin 绑定），因此没有 slot 需要在 LIR 解析。
+ANONYMOUS_SPACE_ID = -1
+
+
 def lower_mir(program: ProgramIR) -> MIRProgram:
-    lowerer = _MIRLowerer(tuple(program.diagnostics))
+    from qy.passes.resolve.spaces import collect_space_ids
+
+    lowerer = _MIRLowerer(tuple(program.diagnostics), collect_space_ids(program))
     return lowerer.lower(program)
 
 
@@ -91,6 +98,7 @@ class _FunctionLowerer:
         self.owner = owner
         self.name = name
         self.params = params
+        self.space_id = ANONYMOUS_SPACE_ID
         self.blocks: list[_MutableBlock] = []
         self.current = self.new_block()
         self.next_register = 0
@@ -137,6 +145,7 @@ class _FunctionLowerer:
                 expression.name,
                 expression.params,
                 expression.body,
+                space=expression.space,
             )
             register = self.register()
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
@@ -147,6 +156,7 @@ class _FunctionLowerer:
                 Symbol("<lambda>"),
                 expression.params,
                 expression.body,
+                space=expression.space,
             )
             register = self.register()
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
@@ -202,7 +212,13 @@ class _FunctionLowerer:
         return _LoweredExpression(None)
 
     def lower_let(self, expression: LetExpr, *, tail: bool) -> _LoweredExpression:
-        self.emit("ENTER_SCOPE", span=expression.span)
+        space = expression.space
+        space_id = (
+            self.owner.space_ids.get(id(space), ANONYMOUS_SPACE_ID)
+            if space is not None
+            else ANONYMOUS_SPACE_ID
+        )
+        self.emit("ENTER_SCOPE", space_id, span=expression.span)
         for binding in expression.bindings:
             value = self.lower_expr(binding.value)
             if value.register is not None and not self.current.terminated:
@@ -211,7 +227,7 @@ class _FunctionLowerer:
                 )
         result = self.lower_body(expression.body, tail=tail)
         if not self.current.terminated:
-            self.emit("EXIT_SCOPE", span=expression.span)
+            self.emit("EXIT_SCOPE", space_id, span=expression.span)
         return _LoweredExpression(result)
 
     def lower_cond(self, expression: CondExpr, *, tail: bool) -> _LoweredExpression:
@@ -338,6 +354,7 @@ class _FunctionLowerer:
             Symbol("<module-body>"),
             (),
             expression.body,
+            space=expression.space,
         )
         result = self.register()
         self.emit(
@@ -502,6 +519,7 @@ class _FunctionLowerer:
                 expression.name,
                 expression.value.params,
                 expression.value.body,
+                space=expression.value.space,
             )
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
         else:
@@ -562,12 +580,15 @@ class _FunctionLowerer:
             self.next_register,
             tuple(block.finish() for block in self.blocks),
             0,
+            self.space_id,
         )
 
 
 class _MIRLowerer:
-    def __init__(self, diagnostics: tuple[Diagnostic, ...]) -> None:
+    def __init__(self, diagnostics: tuple[Diagnostic, ...], space_ids: dict[int, int]) -> None:
         self.diagnostics = list(diagnostics)
+        # id(SymbolSpace) -> layout id；由 resolve.spaces 的同一枚举产出。
+        self.space_ids = space_ids
         self.functions: list[MIRFunction | None] = []
         self.constants = MIRConstantPool()
         # Effect resumability table populated when DefeffectExpr is lowered.
@@ -589,6 +610,8 @@ class _MIRLowerer:
     def lower(self, program: ProgramIR) -> MIRProgram:
         main_index = self.reserve_function()
         main = _FunctionLowerer(self, Symbol("<main>"), ())
+        if program.root_space is not None:
+            main.space_id = self.space_ids.get(id(program.root_space), ANONYMOUS_SPACE_ID)
         result = main.lower_body(program.body, collect_results=True)
         if result is None and not main.current.terminated:
             result = main.register()
@@ -609,9 +632,13 @@ class _MIRLowerer:
         name: Symbol,
         params: tuple[Symbol, ...],
         body: tuple[IRExpr, ...],
+        *,
+        space: object | None = None,
     ) -> int:
         function_index = self.reserve_function()
         function = _FunctionLowerer(self, name, params)
+        if space is not None:
+            function.space_id = self.space_ids.get(id(space), ANONYMOUS_SPACE_ID)
         result = function.lower_body(body, tail=True)
         if result is not None and not function.current.terminated:
             function.terminate("RETURN", result)

@@ -290,6 +290,15 @@ source
   - layout 下沉补链：`BytecodeProgram.symbol_spaces` 携带 HIR 下沉的程序级 layout，
     不再在 backend 边界丢失（`BytecodeFunction.symbol_spaces` 类型收紧为
     `LIRSymbolSpaceLayout`）；剩余差距是 MIR operand 携带 binding id/slot；
+  - layout 单一事实源：HIR `LetExpr`/`LambdaExpr`/`DefunExpr`/`ModuleExpr` 记录自身
+    symbol-space，`ProgramIR.root_space` 记录根 space；`resolve.spaces` 的 space 枚举
+    与 id 映射共用同一实现（`collect_space_ids`）；MIR 的 `ENTER_SCOPE`/`EXIT_SCOPE`
+    携带 layout space id；`passes/lir/spaces.py` 只按 program-level layout 查表把
+    `DEFINE_ONCE` 改写为 `SLOT_COMPLETE`，不再 per-function 重建 layout；
+    `LIRFunction` 删除专属 layout 字段，删除未产出的 LIR slot 模型类型
+    （`LIRSymbolSpaceLayout`/`LIRBindingSlot`/`LIRSymbolMeta`/`LIRBindingState`）；
+    L8 改为按 program-level layout 校验 address，L9 收紧为 program-wide slot identity；
+    compat 与 abstract-machine 在 86 个语料上语义结果逐一致（diffs=0）；
   - 死代码清理：删除 `vm/instance/{scheduler,host}.py`、`session/options.py`、
     `analysis/{infer,scope,refs,escape,effects}.py`、`sem.host.HostObjectRef` 别名、
     根目录过期 demo（`component_demo.qy`/`test-cov.qy`）；`roadmap.yaml` 迁入 `docs/` 并注册。

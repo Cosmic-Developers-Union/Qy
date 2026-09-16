@@ -79,10 +79,9 @@ def _schedule_function(function: LIRFunction) -> LIRFunction:
         function.params,
         function.register_count,
         tuple(scheduled),
-        function.frame_layout,
-        function.symbol_spaces,
-        function.continuations,
-        function.handlers,
+        frame_layout=function.frame_layout,
+        continuations=function.continuations,
+        handlers=function.handlers,
     )
 
 

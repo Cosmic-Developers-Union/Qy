@@ -3,119 +3,81 @@
 
 把 LIR 里扁平的作用域与绑定操作显式化为 Qy 抽象机的 symbol-space layout：
 
-- ``ENTER_SCOPE`` -> ``SS_ENTER(space_id)``（进入一个新的 symbol space）
-- ``EXIT_SCOPE``  -> ``SS_LEAVE(space_id)``
-- ``DEFINE_ONCE`` -> ``SLOT_COMPLETE(address, src_reg)``，其中
-  ``address = LIRBindingAddr(space_id, slot_index)``
+- ``ENTER_SCOPE(space_id)`` -> ``SS_ENTER(space_id)``
+- ``EXIT_SCOPE(space_id)``  -> ``SS_LEAVE(space_id)``
+- ``DEFINE_ONCE(symbol, src)`` -> ``SLOT_COMPLETE(address, src)``，其中
+  ``address = LIRBindingAddr(space_id, slot_index)``；``slot_index`` 来自
+  **program-level layout**（HIR ``resolve.spaces`` 产出、经 MIR 下沉的那一份），
+  不是在这里重新分配。
 
-并在 ``LIRFunction.symbol_spaces`` 上产出 ``LIRSymbolSpaceLayout``。这样
-L8（slot address 必须指向存在的 space）与 L9（同一 slot 至多 complete 一次）
-才真正有数据可校验。
+单一事实源：layout 的 id / slot 只在 ``passes/resolve/spaces.py`` 分配一次；
+MIR 的 ``ENTER_SCOPE`` 携带该 id，本模块只做「查表 + 指令改写」。当当前 space
+没有 program-level layout（``space_id == -1``）或该 symbol 在该 space 里没有 slot
+时，``DEFINE_ONCE`` 原样保留（两个 dialect 都允许该指令），不臆造地址。
 
-职责边界：symbol-space-chain transition、lookup、slot operation 的**低层
-layout** 属于 LIR（见 ``docs/ir-design.md`` §4.3）。HIR 层的符号提升 /
-binding slot 分配（``passes/resolve/spaces.py``）仍是独立待办。
-
-当前：本 pass 只在 ``lir_dialect == "abstract-machine"`` 时运行。它按线性
-指令流维护 scope 栈，因此要求 ``ENTER_SCOPE`` / ``EXIT_SCOPE`` 在
-linearize 之后仍是词法嵌套的（L10 负责校验这一点）。
+当前：本 pass 只在 ``lir_dialect == "abstract-machine"`` 时运行。
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 from qy.core.syntax import Symbol
+from qy.ir.layout import BindingSlot
+from qy.ir.layout import SymbolSpaceLayout
 from qy.ir.lir import LIRBindingAddr
-from qy.ir.lir import LIRBindingSlot
 from qy.ir.lir import LIRInstruction
-from qy.ir.lir import LIRSymbolSpaceLayout
 
 __all__ = ["assign_symbol_spaces"]
 
 
-@dataclass(slots=True)
-class _SpaceResult:
-    instructions: list[LIRInstruction]
-    symbol_spaces: tuple[LIRSymbolSpaceLayout, ...]
+def _slot_index(layout: SymbolSpaceLayout | None, symbol: object) -> int | None:
+    if layout is None or not isinstance(symbol, Symbol):
+        return None
+    for slot in layout.slots:
+        if isinstance(slot, BindingSlot) and slot.symbol == symbol:
+            return slot.index
+    return None
 
 
-@dataclass(slots=True)
-class _SpaceBuilder:
-    id: int
-    name: str
-    parent: int | None
-    slots: list[LIRBindingSlot]
-    slot_index: dict[Symbol, int]
+def assign_symbol_spaces(
+    instructions: list[LIRInstruction],
+    *,
+    program_layout: tuple[SymbolSpaceLayout, ...],
+    function_space_id: int = -1,
+) -> list[LIRInstruction]:
+    """Rewrite scope/define ops using the *program-level* symbol-space layout.
 
-
-def assign_symbol_spaces(instructions: list[LIRInstruction], *, function_name: str) -> _SpaceResult:
-    """Rewrite scope/define ops and build the symbol-space layout."""
-    root = _SpaceBuilder(
-        id=0,
-        name=f"{function_name}:root",
-        parent=None,
-        slots=[],
-        slot_index={},
-    )
-    spaces: dict[int, _SpaceBuilder] = {0: root}
-    scope_stack: list[int] = [0]
-    next_space_id = 1
-
+    ``function_space_id`` 是该函数体所属的 lexical space（lambda/defun/module
+    的 body space，或 <main> 的 root space）；它作为 scope 栈的初始值，使函数体
+    顶层的 ``DEFINE_ONCE`` 也能解析到 slot。
+    """
+    layouts = {layout.id: layout for layout in program_layout}
+    scope_stack: list[int] = [] if function_space_id < 0 else [function_space_id]
     rewritten: list[LIRInstruction] = []
+
     for inst in instructions:
         opcode = inst.opcode
         if opcode in ("ENTER_SCOPE", "SS_ENTER"):
-            parent = scope_stack[-1]
-            space_id = next_space_id
-            next_space_id += 1
-            spaces[space_id] = _SpaceBuilder(
-                id=space_id,
-                name=f"{function_name}:scope{space_id}",
-                parent=parent,
-                slots=[],
-                slot_index={},
-            )
-            scope_stack.append(space_id)
-            rewritten.append(LIRInstruction("SS_ENTER", (space_id,), inst.span))
+            space_id = inst.operands[0] if inst.operands else -1
+            scope_stack.append(space_id if isinstance(space_id, int) else -1)
+            rewritten.append(LIRInstruction("SS_ENTER", (scope_stack[-1],), inst.span))
             continue
         if opcode in ("EXIT_SCOPE", "SS_LEAVE"):
-            space_id = scope_stack.pop() if len(scope_stack) > 1 else 0
+            space_id = scope_stack.pop() if scope_stack else -1
             rewritten.append(LIRInstruction("SS_LEAVE", (space_id,), inst.span))
             continue
         if opcode == "DEFINE_ONCE" and len(inst.operands) >= 2:
-            symbol = inst.operands[0]
-            source = inst.operands[1]
-            if isinstance(symbol, Symbol):
-                space = spaces[scope_stack[-1]]
-                slot = space.slot_index.get(symbol)
-                if slot is None:
-                    slot = len(space.slots)
-                    space.slot_index[symbol] = slot
-                    space.slots.append(
-                        LIRBindingSlot(
-                            address=LIRBindingAddr(space.id, slot),
-                            symbol=symbol,
-                            state="completed",
-                        )
-                    )
+            symbol, source = inst.operands[0], inst.operands[1]
+            space_id = scope_stack[-1] if scope_stack else -1
+            slot = _slot_index(layouts.get(space_id), symbol)
+            if slot is not None:
                 rewritten.append(
                     LIRInstruction(
                         "SLOT_COMPLETE",
-                        (LIRBindingAddr(space.id, slot), source),
+                        (LIRBindingAddr(space_id, slot), source),
                         inst.span,
                     )
                 )
                 continue
         rewritten.append(inst)
 
-    layouts = tuple(
-        LIRSymbolSpaceLayout(
-            id=space.id,
-            name=space.name,
-            parent=space.parent,
-            slots=tuple(space.slots),
-        )
-        for space in spaces.values()
-    )
-    return _SpaceResult(rewritten, layouts)
+    return rewritten

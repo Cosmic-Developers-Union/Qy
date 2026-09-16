@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from qy.core.syntax import Symbol
 from qy.errors import SourceSpan
+from qy.ir.layout import SymbolSpaceLayout
 from qy.ir.lir.frame import LIRContinuationLayout
 from qy.ir.lir.frame import LIRFrameLayout
 from qy.ir.lir.frame import LIRHandlerLayout
-from qy.ir.lir.frame import LIRSymbolSpaceLayout
 from qy.ir.lir.node import LIRBindingAddr
 from qy.ir.lir.node import LIRInstruction
 from qy.ir.lir.node import LIRProgram
@@ -38,8 +38,6 @@ def dump_lir(program: LIRProgram) -> str:
         )
         if function.frame_layout is not None:
             lines.append(f"  frame: {_format_frame_layout(function.frame_layout)}")
-        for space in function.symbol_spaces:
-            lines.append(f"  space: {_format_symbol_space(space)}")
         for continuation in function.continuations:
             lines.append(f"  continuation: {_format_continuation(continuation)}")
         for handler in function.handlers:
@@ -51,6 +49,8 @@ def dump_lir(program: LIRProgram) -> str:
             lines.append(
                 f"  {instruction_index:04d}: {_format_instruction(instruction)}{_format_span(instruction.span)}"
             )
+    for space in program.symbol_spaces:
+        lines.append(f"space: {_format_symbol_space(space)}")
     if program.diagnostics:
         lines.append("diagnostics:")
         lines.extend(
@@ -91,11 +91,9 @@ def _format_frame_layout(value: LIRFrameLayout) -> str:
     return " ".join(pieces)
 
 
-def _format_symbol_space(value: LIRSymbolSpaceLayout) -> str:
+def _format_symbol_space(value: SymbolSpaceLayout) -> str:
     parent = "" if value.parent is None else f" parent=s{value.parent}"
-    slots = ", ".join(
-        f"{slot.symbol.name}@slot{slot.address.slot}:{slot.state}" for slot in value.slots
-    )
+    slots = ", ".join(f"{slot.symbol.name}@slot{slot.index}" for slot in value.slots)
     return f"s{value.id} {value.name}{parent} slots=[{slots}]"
 
 

@@ -79,15 +79,12 @@ from qy.ir import SymbolRefExpr
 from qy.ir import UnresolvedSymbolExpr
 from qy.ir import dump_ir
 from qy.ir.lir import LIRBindingAddr
-from qy.ir.lir import LIRBindingSlot
 from qy.ir.lir import LIRContinuationLayout
 from qy.ir.lir import LIRFrameLayout
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRHandlerLayout
 from qy.ir.lir import LIRInstruction
 from qy.ir.lir import LIRProgram
-from qy.ir.lir import LIRSymbolMeta
-from qy.ir.lir import LIRSymbolSpaceLayout
 from qy.ir.lir import dump_lir
 from qy.ir.mir import MIRBlock
 from qy.ir.mir import MIRFunction
@@ -151,15 +148,12 @@ __all__ = [
     "HostReference",
     "Instruction",
     "LIRBindingAddr",
-    "LIRBindingSlot",
     "LIRContinuationLayout",
     "LIRFrameLayout",
     "LIRFunction",
     "LIRHandlerLayout",
     "LIRInstruction",
     "LIRProgram",
-    "LIRSymbolMeta",
-    "LIRSymbolSpaceLayout",
     "ListValue",
     "LiteralExpr",
     "MIRBlock",

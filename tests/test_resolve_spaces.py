@@ -8,6 +8,8 @@ from qy.build.pipeline import bytecode_artifact
 from qy.build.pipeline import compile_source_to_bytecode
 from qy.build.pipeline import compile_source_to_kind
 from qy.build.pipeline import hir_artifact
+from qy.build.pipeline import lir_artifact
+from qy.build.pipeline import mir_artifact
 from qy.ir.hir import HIRSymbolSpaceLayout
 from qy.ir.hir import ProgramIR
 from qy.passes.hir.lower import lower_source
@@ -123,3 +125,90 @@ def test_layout_survives_into_bytecode_program():
 
     assert program.symbol_spaces
     assert any(slot.symbol.name == "x" for layout in program.symbol_spaces for slot in layout.slots)
+
+
+def _am_program(source: str):
+    result = compile_source_to_kind(
+        source,
+        PipelineSession(env=create_standard_runtime_space()),
+        kind="lir",
+        options=PipelineOptions(error_threshold=10**6, lir_dialect="abstract-machine"),
+    )
+    return lir_artifact(result)
+
+
+def test_mir_scope_ops_carry_program_layout_space_id():
+    """MIR 的 ENTER_SCOPE/EXIT_SCOPE 携带 program-level layout 的 space id。."""
+    result = compile_source_to_kind(
+        "(let ((x 1)) x)",
+        PipelineSession(env=create_standard_runtime_space()),
+        kind="mir",
+        options=PipelineOptions(error_threshold=10**6),
+    )
+    program = mir_artifact(result)
+    space_ids = {space.id for space in program.symbol_spaces}
+    scope_ops = [
+        inst
+        for function in program.functions
+        for block in function.blocks
+        for inst in block.instructions
+        if inst.opcode in ("ENTER_SCOPE", "EXIT_SCOPE")
+    ]
+
+    assert scope_ops, "expected the let to open a scope"
+    assert all(len(inst.operands) == 1 for inst in scope_ops)
+    assert all(inst.operands[0] in space_ids for inst in scope_ops)
+
+
+def test_define_slots_resolve_for_main_let_and_function_bodies():
+    """顶层 / let / 函数体内的 define 都解析到同一份 program-level layout 的 slot。."""
+    program = _am_program(
+        """
+        (define top 1)
+        (defun f (a)
+          (define inner 2)
+          (let ((z 3)) (define nested 4))
+          (+ a inner))
+        (f 5)
+        """
+    )
+
+    layout = {space.name: space for space in program.symbol_spaces}
+    assert "Main" in layout
+    assert "defun:f" in layout
+
+    addresses = [
+        inst.operands[0]
+        for function in program.functions
+        for inst in function.instructions
+        if inst.opcode == "SLOT_COMPLETE"
+    ]
+    assert addresses, "expected SLOT_COMPLETE for defines"
+
+    # 顶层 define 落在 Main space
+    main_ids = {slot.index for slot in layout["Main"].slots}
+    assert any(
+        address.space == layout["Main"].id and address.slot in main_ids for address in addresses
+    )
+
+    # 函数体 define 落在该函数的 space
+    defun_ids = {slot.index for slot in layout["defun:f"].slots}
+    assert any(
+        address.space == layout["defun:f"].id and address.slot in defun_ids for address in addresses
+    )
+
+    # 所有地址都必须指向 program-level layout 中存在的 space/slot
+    for address in addresses:
+        assert address.space in {space.id for space in program.symbol_spaces}
+
+
+def test_assign_symbol_spaces_keeps_define_once_without_layout_slot():
+    """没有 program-level slot 时不得臆造地址：DEFINE_ONCE 原样保留。."""
+    from qy.core.syntax import Symbol
+    from qy.ir.lir import LIRInstruction
+    from qy.passes.lir.spaces import assign_symbol_spaces
+
+    instructions = [LIRInstruction("DEFINE_ONCE", (Symbol("ghost"), 0))]
+    rewritten = assign_symbol_spaces(instructions, program_layout=())
+
+    assert [inst.opcode for inst in rewritten] == ["DEFINE_ONCE"]

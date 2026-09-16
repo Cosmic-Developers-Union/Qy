@@ -26,12 +26,9 @@ if TYPE_CHECKING:
     from qy.ir.lir.frame import LIRContinuationLayout
     from qy.ir.lir.frame import LIRFrameLayout
     from qy.ir.lir.frame import LIRHandlerLayout
-    from qy.ir.lir.frame import LIRSymbolSpaceLayout
 
 __all__ = [
     "LIRBindingAddr",
-    "LIRBindingSlot",
-    "LIRBindingState",
     "LIRFunction",
     "LIRInstruction",
     "LIRInstructionIndex",
@@ -39,7 +36,6 @@ __all__ = [
     "LIRProgram",
     "LIRRegister",
     "LIRSlotIndex",
-    "LIRSymbolMeta",
     "LIRSymbolSpaceId",
 ]
 
@@ -47,7 +43,6 @@ LIRRegister = int
 LIRInstructionIndex = int
 LIRSymbolSpaceId = int
 LIRSlotIndex = int
-LIRBindingState = Literal["declared", "pending", "completed", "poisoned"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,25 +51,6 @@ class LIRBindingAddr:
 
     space: LIRSymbolSpaceId
     slot: LIRSlotIndex
-
-
-@dataclass(frozen=True, slots=True)
-class LIRSymbolMeta:
-    """Cold metadata for a symbol-space slot."""
-
-    symbol: Symbol
-    span: SourceSpan | None = None
-    flags: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True, slots=True)
-class LIRBindingSlot:
-    """One once-complete binding slot in a symbol-space layout."""
-
-    address: LIRBindingAddr
-    symbol: Symbol
-    state: LIRBindingState = "declared"
-    metadata_index: int | None = None
 
 
 LIROpcode = Literal[
@@ -177,7 +153,6 @@ class LIRFunction:
     register_count: int
     instructions: tuple[LIRInstruction, ...]
     frame_layout: LIRFrameLayout | None = None
-    symbol_spaces: tuple[LIRSymbolSpaceLayout, ...] = ()
     continuations: tuple[LIRContinuationLayout, ...] = ()
     handlers: tuple[LIRHandlerLayout, ...] = ()
 

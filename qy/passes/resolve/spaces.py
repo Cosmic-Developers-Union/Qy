@@ -42,7 +42,7 @@ from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
 
-__all__ = ["ResolveSpacesPass", "collect_symbol_spaces"]
+__all__ = ["ResolveSpacesPass", "collect_space_ids", "collect_symbol_spaces"]
 
 
 def _iter_nodes(node: object):
@@ -64,8 +64,14 @@ def _iter_nodes(node: object):
             yield from _iter_nodes(item)
 
 
-def collect_symbol_spaces(program: ProgramIR) -> tuple[HIRSymbolSpaceLayout, ...]:
-    """Build the lexical symbol-space layout for *program*."""
+def _enumerate_program_spaces(
+    program: ProgramIR,
+) -> tuple[dict[int, SymbolSpace], dict[tuple[int, str], BindingSource]]:
+    """发现程序内的 lexical symbol-space（以对象 identity 为键）。.
+
+    这是 space 枚举的唯一实现；``collect_symbol_spaces`` 与 ``collect_space_ids``
+    都从它派生，保证 layout 与 id 映射不会出现两份事实。
+    """
     spaces: dict[int, SymbolSpace] = {}
     sources: dict[tuple[int, str], BindingSource] = {}
 
@@ -86,6 +92,18 @@ def collect_symbol_spaces(program: ProgramIR) -> tuple[HIRSymbolSpaceLayout, ...
         elif isinstance(node, (DefineExpr, DefunExpr)):
             remember(node.owner_space, node.name.name, "define")
 
+    return spaces, sources
+
+
+def collect_space_ids(program: ProgramIR) -> dict[int, int]:
+    """Return ``{id(SymbolSpace): layout space id}`` for *program*."""
+    spaces, _ = _enumerate_program_spaces(program)
+    return {key: index for index, key in enumerate(spaces)}
+
+
+def collect_symbol_spaces(program: ProgramIR) -> tuple[HIRSymbolSpaceLayout, ...]:
+    """Build the lexical symbol-space layout for *program*."""
+    spaces, sources = _enumerate_program_spaces(program)
     ids = {key: index for index, key in enumerate(spaces)}
     layouts: list[HIRSymbolSpaceLayout] = []
     for key, space in spaces.items():
@@ -124,6 +142,7 @@ class ResolveSpacesPass(Pass):
             body=program.body,
             diagnostics=program.diagnostics,
             symbol_spaces=layouts,
+            root_space=program.root_space,
         )
         return PassResult(
             success=True,

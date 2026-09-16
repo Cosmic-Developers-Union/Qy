@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING
 
 from qy.diag import Diagnostic
 from qy.diag import Severity
+from qy.ir.layout import SymbolSpaceLayout
 
 if TYPE_CHECKING:
     from qy.ir.lir.frame import LIRFrameLayout
@@ -147,46 +148,67 @@ def l7_handler_parent_exists(program: LIRProgram) -> tuple[Diagnostic, ...]:
 
 
 def l8_slot_address_in_space(program: LIRProgram) -> tuple[Diagnostic, ...]:
-    """slot.address 必须指向 program 中已存在的 symbol space。."""
-    from typing import cast
+    """``SLOT_COMPLETE`` 的 address 必须指向 program-level layout 中存在的 space/slot。.
 
-    from qy.ir.lir.frame import LIRSymbolSpaceLayout
-    from qy.ir.lir.node import LIRBindingSlot
-
+    单一事实源：layout 由 `qy.ir.layout.SymbolSpaceLayout` 表示，id/slot 只在
+    ``passes/resolve/spaces.py`` 分配一次。本谓词同时校验：
+    - layout 内的 space id 唯一，且 parent（若存在）也在 layout 中；
+    - 每条 ``SLOT_COMPLETE`` 的 ``(space, slot)`` 都落在某个 layout 内。
+    """
     out: list[Diagnostic] = []
-    space_ids: set[int] = set()
-    all_slots: list[tuple[str, LIRBindingSlot]] = []
-    for func in program.functions:
-        for space in getattr(func, "symbol_spaces", ()):
-            typed_space = cast(LIRSymbolSpaceLayout, space)
-            space_ids.add(typed_space.id)
-            for slot in typed_space.slots:
-                all_slots.append((func.name.name, slot))
+    layout_by_id: dict[int, SymbolSpaceLayout] = {}
+    for layout in program.symbol_spaces:
+        if layout.id in layout_by_id:
+            out.append(Diagnostic(f"LIR symbol space id {layout.id} is declared more than once"))
+        layout_by_id[layout.id] = layout
 
-    for func_name, slot in all_slots:
-        addr = slot.address
-        addr_space = getattr(addr, "space", addr)
-        if addr_space not in space_ids:
-            slot_name = slot.symbol.name
+    for layout in program.symbol_spaces:
+        if layout.parent is not None and layout.parent not in layout_by_id:
             out.append(
                 Diagnostic(
-                    f"LIR function {func_name} slot {slot_name!r} "
-                    f"address {addr} does not match any symbol space"
+                    f"LIR symbol space s{layout.id} parent s{layout.parent} does not exist in program"
                 )
             )
+
+    for function in program.functions:
+        for instruction in function.instructions:
+            if instruction.opcode != "SLOT_COMPLETE" or not instruction.operands:
+                continue
+            address = instruction.operands[0]
+            space_id = getattr(address, "space", None)
+            slot_index = getattr(address, "slot", None)
+            if not isinstance(space_id, int) or not isinstance(slot_index, int):
+                continue
+            layout = layout_by_id.get(space_id)
+            if layout is None:
+                out.append(
+                    Diagnostic(
+                        f"LIR function {function.name.name} slot address {address} "
+                        f"does not match any symbol space"
+                    )
+                )
+                continue
+            if not any(slot.index == slot_index for slot in layout.slots):
+                out.append(
+                    Diagnostic(
+                        f"LIR function {function.name.name} slot index {slot_index} "
+                        f"does not exist in symbol space s{space_id}"
+                    )
+                )
     return tuple(out)
 
 
 def l9_slot_complete_at_most_once(program: LIRProgram) -> tuple[Diagnostic, ...]:
-    """同一 slot 不得被 ``SLOT_COMPLETE`` 多次执行（静态扫描指令流）。.
+    """同一 slot 不得被 ``SLOT_COMPLETE`` 完成多次（静态扫描指令流）。.
 
     ``SLOT_COMPLETE`` 的 operand schema 是 ``(LIRBindingAddr, src_reg)``；
-    slot identity 取自 ``address`` 的 ``(space, slot)``。
+    slot identity 取自 ``address`` 的 ``(space, slot)``。space id 是
+    **program-wide** 的，因此该 identity 也是 program-wide 的：一个 lexical
+    slot 只应由它所属的那一个函数完成一次（例如 optimizer 不得把完成点复制成两份）。
     """
     out: list[Diagnostic] = []
+    completed: dict[tuple[int, int], str] = {}
     for func in program.functions:
-        # Slot identity is function-local: space ids are per-function.
-        completed: set[tuple[int, int]] = set()
         for inst in func.instructions:
             if inst.opcode != "SLOT_COMPLETE" or not inst.operands:
                 continue
@@ -200,10 +222,12 @@ def l9_slot_complete_at_most_once(program: LIRProgram) -> tuple[Diagnostic, ...]
                 out.append(
                     Diagnostic(
                         f"LIR function {func.name.name} SLOT_COMPLETE "
-                        f"({key[0]}, {key[1]}) executes more than once"
+                        f"({key[0]}, {key[1]}) executes more than once "
+                        f"(already completed in function {completed[key]})"
                     )
                 )
-            completed.add(key)
+            else:
+                completed[key] = func.name.name
     return tuple(out)
 
 

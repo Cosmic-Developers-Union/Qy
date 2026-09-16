@@ -163,6 +163,9 @@ class ProgramIR:
     # These are the shared IR layout facts (see ``qy.ir.layout``); SAME types
     # are carried by MIR/LIR so the fact sinks down the pipeline.
     symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
+    # 程序根 lexical symbol-space（HIR lowering 创建，名字 "Main"）。
+    # MIR 用它给 <main> 函数标注 space id，从而让 LIR 能解析顶层 define 的 slot。
+    root_space: SymbolSpace | None = None
 
     @property
     def ok(self) -> bool:
@@ -241,6 +244,10 @@ class LetExpr:
     body: tuple[IRExpr, ...]
     span: SourceSpan | None = None
     type_name: TypeName = "any"
+    # ``let`` 打开的 lexical symbol-space。resolve.spaces 为它分配稳定 id，
+    # MIR 的 ENTER_SCOPE/EXIT_SCOPE 携带该 id，LIR 据此消费程序级 layout，
+    # 而不是自己重建一份 layout。
+    space: SymbolSpace | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,6 +256,8 @@ class LambdaExpr:
     body: tuple[IRExpr, ...]
     span: SourceSpan | None = None
     type_name: TypeName = "function"
+    # 函数体打开的 lexical symbol-space（参数与 body 内 define 都绑定在这里）。
+    space: SymbolSpace | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -261,6 +270,8 @@ class DefunExpr:
     # Owner symbol-space recorded at lowering time so `resolve.spaces` can
     # build the slot layout without re-deriving scopes.
     owner_space: SymbolSpace | None = None
+    # 函数体打开的 lexical symbol-space（参数与 body 内 define 绑定在这里）。
+    space: SymbolSpace | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -354,6 +365,8 @@ class ModuleExpr:
     export_names: tuple[Symbol, ...] = ()
     span: SourceSpan | None = None
     type_name: TypeName = "any"
+    # 模块体打开的 lexical symbol-space。
+    space: SymbolSpace | None = None
     # macro.expand 会把 module 内宏剥离到 compile-time namespace；这里保留
     # 宏导出名，供 H9 区分"未定义导出"与"宏导出"。
     macro_exports: frozenset[str] = frozenset()

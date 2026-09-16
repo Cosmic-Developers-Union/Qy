@@ -132,6 +132,9 @@ class MIRFunction:
     register_count: int
     blocks: tuple[MIRBlock, ...]
     entry: MIRBlockId = 0
+    # 该函数体所属的 lexical symbol-space id（program-level layout 的 id）。
+    # -1 表示没有 program-level layout。
+    space_id: int = -1
 
 
 @dataclass(frozen=True, slots=True)

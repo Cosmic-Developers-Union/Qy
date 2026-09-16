@@ -170,7 +170,7 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
         expr = _lower_form(form, scope, context, tail=False)
         body.append(expr)
         scope = _scope_after_form(form, expr, scope, context)
-    return ProgramIR(tuple(body), tuple(context.diagnostics))
+    return ProgramIR(tuple(body), tuple(context.diagnostics), root_space=root_space)
 
 
 def _scope_from_environment(env: Environment, symbol_space: SymbolSpace) -> Scope:
@@ -554,7 +554,13 @@ def _lower_let(
         )
 
     lowered_body = _lower_body(tuple(body), local_scope, context, tail=tail)
-    return LetExpr(tuple(bindings), lowered_body, get_span(form), _body_type(lowered_body))
+    return LetExpr(
+        tuple(bindings),
+        lowered_body,
+        get_span(form),
+        _body_type(lowered_body),
+        space=local_scope.symbol_space,
+    )
 
 
 def _lower_lambda(
@@ -573,6 +579,7 @@ def _lower_lambda(
         param_symbols,
         _lower_body(tuple(body), function_scope, context, tail=True),
         get_span(form),
+        space=function_scope.symbol_space,
     )
 
 
@@ -641,6 +648,7 @@ def _lower_defun(
             param_symbols,
             _lower_body(tuple(body), function_scope, context, tail=True),
             get_span(form),
+            space=function_scope.symbol_space,
         ),
         get_span(form),
         owner_space=scope.symbol_space,
@@ -716,6 +724,7 @@ def _lower_module(
         tuple(lowered_body),
         tuple(export_names),
         get_span(form),
+        space=module_scope.symbol_space,
         macro_exports=module_macro_names(context.env, name.name),
     )
 

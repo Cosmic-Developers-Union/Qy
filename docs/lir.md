@@ -693,8 +693,7 @@ LLVM backend 不应看到：
 - `LIRFunction`
 - `LIRInstruction`
 - `LIRFrameLayout`
-- `LIRSymbolSpaceLayout`
-- `LIRBindingSlot`
+- `LIRBindingAddr`（`SLOT_*` 的地址操作数；layout 本身用 `qy.ir.layout.SymbolSpaceLayout`）
 - `LIRContinuationLayout`
 - `LIRHandlerLayout`
 - `LIRRelocation`

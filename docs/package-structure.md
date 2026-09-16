@@ -151,7 +151,7 @@ passes/
   lir/compact.py                 # 已实现
   lir/peephole.py                # 已实现
   lir/effects.py                 # 已实现并接线（abstract-machine dialect，PipelineOptions.lir_dialect）
-  lir/spaces.py                  # 已实现（SS_ENTER/SS_LEAVE/SLOT_COMPLETE + symbol_spaces layout）
+  lir/spaces.py                  # 已实现（消费 program-level layout：SS_ENTER/SS_LEAVE/SLOT_COMPLETE，不重建 layout）
   lir/verify.py                  # 已实现
   optimize/*.py                  # 已实现，仅 build_optimization_pipeline 子管线
   emit/bytecode.py               # 已实现（LLVM 输出在 qy/backend/llvm/）
@@ -490,5 +490,5 @@ debug/
 11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（兼容 shim 已删除）
 12. ~~LIR effect lowering 接线 + VM 执行~~：`passes/lir/effects.py` 由 `lir.lower` 在 `PipelineOptions.lir_dialect == "abstract-machine"` 时调用；`passes/lir/spaces.py` 产出 `symbol_spaces` 并降成 `SS_*` / `SLOT_COMPLETE`。VM 现在执行 abstract-machine opcode（显式 handler 栈 + `QyContinuation` 快照；`CONT_RESTORE` 非终结），`tests/test_abstract_machine_vm.py` 与 compat 差分一致。默认执行路径仍为 `compat`。
 13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes 接入默认管线（当前 reg_alloc / cfg_simplify 会破坏 effect 程序，需先修复）。
-14. 待推进：MIR 指令 operand 直接携带 binding id/slot（当前 `DEFINE_ONCE`/`LOAD_ENV` 仍只带 symbol 名，LIR 的 `SLOT_COMPLETE` 地址由 `passes/lir/spaces.py` 从指令流重建，与 HIR slot 一致）；占位 pass 归属已收口（`raw.validate` / `resolve.spaces` / `effect.analyze` 实现并接入；重复占位已删除；仅 `closure.convert` 仍未实现）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
+14. 已完成：MIR 的 `ENTER_SCOPE`/`EXIT_SCOPE` 携带 program-level layout 的 space id（HIR `LetExpr`/`LambdaExpr`/`DefunExpr`/`ModuleExpr` 记录自身 space，`ProgramIR.root_space` 记录根 space），`passes/lir/spaces.py` 只查表不重建 layout，`LIRFunction` 不再有专属 layout 字段，`BytecodeProgram.symbol_spaces` 携带同一份事实；仍待推进：MIR 的 `DEFINE_ONCE`/`LOAD_ENV` operand 仍带 symbol 名（slot 由 `(space_id, symbol)` 查表得出，不是第二份 layout）；占位 pass 归属已收口（`raw.validate` / `resolve.spaces` / `effect.analyze` 实现并接入；重复占位已删除；仅 `closure.convert` 仍未实现）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
 15. 已完成：`qy check` 改为 canonical frontend + HIR verifier；HIR verifier 补 CallExpr 递归、effect 声明顺序跟踪、宏导出事实；`resolve.spaces` 实现为 HIR 层 symbol-space layout（`ProgramIR.symbol_spaces`，含 id/parent/slot/source），并**下沉到 MIR/LIR**（共享 `qy.ir.layout` 类型，见 `tests/test_resolve_spaces.py::test_layout_sinks_from_hir_to_mir_and_lir`）；清理死代码并补 `QY_DELETE_AFTER_*` 标记；`qy/sem` 不再反向依赖 `qy.vm`；LIR abstract-machine dialect 接线 + VM 执行；LLVM/WASM 验证后端可用。
