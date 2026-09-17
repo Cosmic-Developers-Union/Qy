@@ -97,7 +97,5 @@ def from_qy_value(value: object) -> object:
     if isinstance(value, TupleValue | ListValue | SetValue):
         return [from_qy_value(item) for item in value.items]
     if isinstance(value, DictValue | HashMapValue):
-        return {
-            from_qy_value(key): from_qy_value(item) for key, item in value.entries
-        }
+        return {from_qy_value(key): from_qy_value(item) for key, item in value.entries}
     return value
