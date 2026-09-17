@@ -70,7 +70,6 @@ def _coerce_standard_module(value: object, path: Path) -> StandardModule:
 
 def _coerce_python_export(name: str, value: object) -> object:
     from qy.macro import MacroDefinition
-    from qy.sem.runtime import UserFunction
 
     if isinstance(
         value,
@@ -79,8 +78,7 @@ def _coerce_python_export(name: str, value: object) -> object:
         | ControlOperator
         | EffectOperator
         | MetaOperator
-        | MacroDefinition
-        | UserFunction,
+        | MacroDefinition,
     ):
         return value
     if callable(value):

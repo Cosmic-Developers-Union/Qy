@@ -32,7 +32,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/frontend/`：基于 Lark 的 S-expression 读取器（CST / reader_macro / surface dialect / Form 与 Symbol）。目标 raw AST 只能由 `symbol` 与不可变 `chain` 组成；当前代码把部分 literal 提前物化属于待修偏移，不得当作目标模型。
 - `qy/macro/`：macro expand / hygiene / trace / compile-time namespace；不得依赖 bytecode / register VM 执行宏体。
 - `qy/core/`：symbol、immutable chain、binding slot、operator/effect declaration、operator signature 模型。**不得**混入 profile / compat 便利算子。
-- `qy/sem/`：面向 VM / backend 的 runtime value 模型与抽象机语义（`core.py` 定义 value 类型，`runtime.py` 定义可执行 runtime value：`EffectDefinition` / `UserFunction` / `BytecodeFunctionValue`）。已删除：`ComponentOperator`（`component` 算子返回宏，从不产生该值）。
+- `qy/sem/`：面向 VM / backend 的 runtime value 模型与抽象机语义（`core.py` 定义 value 类型，`runtime.py` 只定义 `EffectDefinition`）。已删除：`UserFunction` 与 `qy/vm/instance/legacy_eval.py`（函数值统一为 `BytecodeFunctionValue`）、`ComponentOperator`（`component` 算子返回宏，从不产生该值）。
 - `qy/ir/`：HIR / MIR / LIR 三个独立的 IR 子包；只放数据结构。
   - `qy/ir/hir/`：高层语义 IR，含 `ProgramIR`、`CallExpr`、`LiteralExpr`、`Binding` 等。
   - `qy/ir/mir/`：CFG + virtual register IR，含 `MIRProgram` / `MIRFunction` / `MIRBlock` / `MIRInstruction` / `MIRTerminator` 与 `verify_mir`。

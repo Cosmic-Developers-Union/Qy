@@ -27,13 +27,11 @@ from qy.errors import QyTypeError
 from qy.errors import SourceSpan
 from qy.sem.core import TupleValue
 from qy.sem.runtime import EffectDefinition
-from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.bytecode import BytecodeFunctionValue
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame
-from qy.vm.instance.legacy_eval import call_user_function
 from qy.vm.instance.state import VirtualStack
 
 __all__ = [
@@ -396,8 +394,6 @@ class RegisterVirtualMachine:
     ) -> object:
         if isinstance(callee, BytecodeFunctionValue):
             return (await self._run_function(callee, args, call_span=span)).value
-        if isinstance(callee, UserFunction):
-            return await call_user_function(callee, args)
         semantics = runtime_operator_semantics(callee)
         if semantics.argument_mode != "eager":
             if env is None:

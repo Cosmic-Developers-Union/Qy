@@ -252,9 +252,8 @@ def test_compile_time_defun_can_be_called_during_expansion():
 
 
 def test_compile_time_function_value_is_macro_function():
-    """编译期 lambda 得到 MacroFunction（而非 sem.UserFunction / VM 值）。."""
+    """编译期 lambda 得到 MacroFunction（而不是运行期 VM 值）。."""
     from qy.macro import MacroFunction
-    from qy.sem.runtime import UserFunction
     from qy.vm.bytecode import BytecodeFunctionValue
 
     env = standard_environment()
@@ -266,7 +265,7 @@ def test_compile_time_function_value_is_macro_function():
     )
 
     assert isinstance(value, MacroFunction)
-    assert not isinstance(value, UserFunction | BytecodeFunctionValue)
+    assert not isinstance(value, BytecodeFunctionValue)
 
 
 def test_compile_time_recursion_through_defun():

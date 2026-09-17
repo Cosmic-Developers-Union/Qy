@@ -736,7 +736,6 @@ def test_backward_compatibility_imports():
     from qy.core.syntax import nil as QY_EMPTY_LIST
     from qy.core.syntax import nil as QY_NIL
     from qy.sem.host import HostReference
-    from qy.sem.runtime import UserFunction
     from qy.session.runtime_space import RuntimeSpace as Environment
 
     assert Environment is not None
@@ -747,7 +746,6 @@ def test_backward_compatibility_imports():
     assert QY_T is not None
     assert QyChain is not None
     assert QyCons is not None
-    assert UserFunction is not None
 
 
 def test_standard_environment_available():
@@ -778,15 +776,13 @@ def test_quote_returns_syntax_datum_not_host_value():
 
 
 def test_lambda_operator_produces_bytecode_function():
-    """Lambda/defun 算子（值位置路径）也产出 bytecode function，而非 legacy UserFunction。."""
-    from qy.sem.runtime import UserFunction
+    """Lambda/defun 算子（值位置路径）产出 bytecode function（唯一函数值表示）。."""
     from qy.vm.bytecode import BytecodeFunctionValue
 
     env = standard_environment()
     bound = evaluate_source("(apply lambda '((x) (* x 5)))", env)
 
     assert isinstance(bound, BytecodeFunctionValue)
-    assert not isinstance(bound, UserFunction)
 
 
 def test_dynamic_lambda_from_operator_is_callable():

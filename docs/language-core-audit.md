@@ -116,7 +116,7 @@
 **当前状态**：
 
 - legacy evaluator 和 eval_runtime 已删除，compile-time 执行路径已不再通过 evaluator 模块。
-- `UserFunction`（`qy/sem/runtime.py`）仍是 `lambda`/`defun` 的运行时表示。
+- `lambda` / `defun` / module-local defun 的运行时表示统一为 `BytecodeFunctionValue`（完整管线编译）。
 - register VM 通过 `_call` 方法处理 `PureOperator` 和 `BytecodeFunctionValue`。
 - operator 类型层级已迁入 `qy/core/operators.py`，签名模型在 `qy/core/operator_signature.py`。
 
@@ -124,7 +124,7 @@
 
 - 新核心语义不得继续通过 legacy operator dispatch 实现。
 - operator metadata + MIR/LIR/register VM host-call ABI 接管后，legacy dispatch 逐步减少。
-- `lambda`/`defun` 的运行时表示仍为 `UserFunction`（Python callable），后续应迁移到 bytecode function。
+- `UserFunction` 与 `qy/vm/instance/legacy_eval.py` 已删除：函数值只有 bytecode 一种表示。
 
 ---
 
@@ -146,5 +146,5 @@
 | B4 | 新 HIR 节点未完全收口到唯一执行链 | P0 | 基本完成（legacy 重复实现已删除） |
 | B5 | `component` / legacy API 残留 | P1 | ✅ 已缓解（仅 legacy 显式引入） |
 | B6 | `RuntimeMetaCallExpr` | P1 | ✅ 已完成（节点与 opcode 已删除） |
-| B7 | 遗留 operator dispatch | P1 | 部分完成（evaluator 已删除，UserFunction 仍为 Python callable） |
+| B7 | 遗留 operator dispatch | P1 | 部分完成（evaluator / `UserFunction` / `legacy_eval` 已删除，函数值统一为 bytecode；`qy.core` 既有算子仍走 legacy dispatch） |
 | B8 | Python codegen 绕过 MIR/LIR | P2 | ✅ 已完成（`qy/python_codegen.py` 已删除） |

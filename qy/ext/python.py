@@ -46,7 +46,6 @@ from qy.ext.registry import register_extension
 from qy.import_.module import StandardModule
 from qy.macro import MacroDefinition
 from qy.sem.host import HostReference
-from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.std.effects import _await_cached_value
 from qy.vm.instance.frame import QyContinuation
@@ -363,7 +362,6 @@ def _is_qy_callable(value: object) -> bool:
         | EffectOperator
         | MetaOperator
         | MacroDefinition
-        | UserFunction
         | BytecodeFunctionValue,
     )
 
@@ -388,7 +386,7 @@ def _qy_callable_name(value: object) -> str | None:
         value, PureOperator | ScopeOperator | ControlOperator | EffectOperator | MetaOperator
     ):
         return value.name
-    if isinstance(value, MacroDefinition | UserFunction):
+    if isinstance(value, MacroDefinition):
         return value.name.name
     if isinstance(value, BytecodeFunctionValue):
         return value.function.name.name
@@ -400,10 +398,6 @@ async def _call_qy_callable(value: object, args: tuple[object, ...], env: Enviro
 
     if isinstance(value, PureOperator):
         return await _await_cached_value(value(*args))
-    if isinstance(value, UserFunction):
-        from qy.vm.instance.legacy_eval import call_user_function
-
-        return await _await_cached_value(call_user_function(value, args))
     if isinstance(value, BytecodeFunctionValue):
         from qy.vm.instance.machine import call_function_value
 

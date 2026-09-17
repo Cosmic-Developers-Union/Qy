@@ -1,6 +1,7 @@
 # coding: utf-8
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from qy.core.syntax import Symbol
@@ -12,15 +13,28 @@ from qy.import_.module import StandardModule
 from qy.import_.parse import parse_from_import
 from qy.macro import MacroDefinition
 from qy.sem.runtime import EffectDefinition
-from qy.sem.runtime import UserFunction
 
 if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment
 
 __all__ = [
+    "ProvisionalFunction",
     "build_provisional_module",
     "remember_source_module",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisionalFunction:
+    """编译期命名空间标记：模块里有一个 defun 成员。.
+
+    它**不承载运行期值**——模块的运行期函数由 `module` 算子执行模块体后得到
+    （`qy/vm/instance/machine.py::_run_module`），provisional 记录只用于提供
+    `macro_exports` 与名字集合。
+    """
+
+    name: Symbol
+    params: tuple[Symbol, ...]
 
 
 def remember_source_module(form: object, env: Environment) -> StandardModule | None:
@@ -80,8 +94,8 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
             _populate_imported_bindings((item,), env, locals_map)
             continue
         if operator == Symbol("defun") and len(item_list) >= 3 and isinstance(item_list[1], Symbol):
-            locals_map[item_list[1]] = UserFunction(
-                item_list[1], _parameter_symbols(item_list[2]), (None,), env
+            locals_map[item_list[1]] = ProvisionalFunction(
+                item_list[1], _parameter_symbols(item_list[2])
             )
             continue
         if operator == Symbol("macro") and len(item_list) >= 4 and isinstance(item_list[1], Symbol):

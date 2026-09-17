@@ -10,15 +10,11 @@ import pytest
 
 from qy.core.syntax import Symbol
 from qy.core.syntax import list_to_chain
-from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyArityError
 from qy.frontend.reader import read
-from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
-from qy.vm.instance.legacy_eval import _evaluate_tail_body as evaluate_tail_body_async
 from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 from qy.vm.instance.machine import evaluate_form_body_async as evaluate_body_async
-from qy.vm.instance.values import TailCall
 
 
 def L(*items: object) -> object:
@@ -109,146 +105,6 @@ async def test_evaluate_body_async_empty_body_raises_error():
 
     with pytest.raises(QyArityError) as exc_info:
         await evaluate_body_async((), env)
-
-    assert "body must contain at least one expression" in str(exc_info.value)
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_simple():
-    """测试 evaluate_tail_body_async 评估简单函数体。."""
-    env = standard_environment()
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(Symbol("x"),),
-        body=(L(Symbol("+"), Symbol("x"), 1),),
-        closure=env,
-    )
-    env.define(Symbol("x"), 10)
-
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert result == 11
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_multiple_expressions():
-    """测试 evaluate_tail_body_async 评估多个表达式。."""
-    env = standard_environment()
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(Symbol("x"),),
-        body=(
-            L(Symbol("define"), Symbol("y"), 5),
-            L(Symbol("+"), Symbol("x"), Symbol("y")),
-        ),
-        closure=env,
-    )
-    env.define(Symbol("x"), 10)
-
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert result == 15
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_self_tail_call():
-    """测试 evaluate_tail_body_async 识别自尾调用。."""
-    env = standard_environment()
-
-    # 创建一个递归函数
-    func = UserFunction(
-        name=Symbol("countdown"),
-        params=(Symbol("n"),),
-        body=((Symbol("countdown"), (Symbol("-"), Symbol("n"), 1)),),
-        closure=env,
-    )
-    env.define(Symbol("countdown"), func)
-    env.define(Symbol("n"), 5)
-
-    # 这应该返回 TailCall 而不是实际执行递归
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert isinstance(result, TailCall)
-    assert result.function is func
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_cond_in_tail_position():
-    """测试 evaluate_tail_body_async 处理尾位置的 cond。."""
-    env = standard_environment()
-
-    # 使用 = 而不是 > 因为 > 可能未定义
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(Symbol("x"),),
-        body=(
-            (
-                Symbol("cond"),
-                ((Symbol("="), Symbol("x"), 15), Symbol("x")),
-                ((Symbol("="), 1, 1), 0),  # 使用 (= 1 1) 作为 true 条件
-            ),
-        ),
-        closure=env,
-    )
-    env.define(Symbol("x"), 15)
-
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert result == 15
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_cond_returns_nil_when_no_match():
-    """测试 evaluate_tail_body_async 的 cond 在无匹配时返回 nil。."""
-    env = standard_environment()
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(Symbol("x"),),
-        body=(
-            L(
-                Symbol("cond"),
-                L(L(Symbol("="), Symbol("x"), 100), Symbol("x")),  # 条件不满足
-            ),
-        ),
-        closure=env,
-    )
-    env.define(Symbol("x"), 5)
-
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert result is QY_NIL
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_let_in_tail_position():
-    """测试 evaluate_tail_body_async 处理尾位置的 let。."""
-    env = standard_environment()
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(Symbol("x"),),
-        body=(
-            L(
-                Symbol("let"),
-                L(L(Symbol("y"), 10)),
-                L(Symbol("+"), Symbol("x"), Symbol("y")),
-            ),
-        ),
-        closure=env,
-    )
-    env.define(Symbol("x"), 5)
-
-    result = await evaluate_tail_body_async(func.body, env, func)
-    assert result == 15
-
-
-@pytest.mark.asyncio
-async def test_evaluate_tail_body_async_empty_body_raises_error():
-    """测试 evaluate_tail_body_async 对空 body 抛出错误。."""
-    env = standard_environment()
-    func = UserFunction(
-        name=Symbol("test"),
-        params=(),
-        body=(),
-        closure=env,
-    )
-
-    with pytest.raises(QyArityError) as exc_info:
-        await evaluate_tail_body_async((), env, func)
 
     assert "body must contain at least one expression" in str(exc_info.value)
 
@@ -363,8 +219,8 @@ async def test_evaluate_async_quote():
 
 
 @pytest.mark.asyncio
-async def test_evaluate_tail_body_async_with_recursive_function():
-    """测试 evaluate_tail_body_async 与递归函数的完整集成。."""
+async def test_evaluate_async_with_recursive_function():
+    """递归函数经 register VM 求值的完整集成。."""
     env = standard_environment()
 
     # 定义一个简单的递归函数，使用 (= 1 1) 作为 else 条件

@@ -13,7 +13,7 @@
 - HIR verifier 在 `examples/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
 - qytest `tests/qy` **54/54**、`examples/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
 - `make libqy` / `make llvm-gen` 可用；LLVM IR 仍不能通过 `llc`（见 §8½）
-- `qy/sem` 已不 import `qy.vm`；legacy `UserFunction` 求值路径移至 `qy/vm/instance/legacy_eval.py`
+- `qy/sem` 已不 import `qy.vm`；`UserFunction` 与 `qy/vm/instance/legacy_eval.py` 已删除，函数值统一为 `BytecodeFunctionValue`
 - `rg QY_DELETE_AFTER qy`：7 处标记（stdlib shim、sem bridge、analysis infer/scope/refs、frontend tuple 兼容层）
 
 历史基线（2026-09-14）：
@@ -300,6 +300,13 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - legacy 求值路径删除（P1-2 收尾）：`qy/vm/instance/legacy_eval.py` 与
+    `qy/sem/runtime.py::UserFunction` 删除，函数值统一为管线编译的
+    `BytecodeFunctionValue`。module-local defun 改两阶段预置（compile-time
+    `MacroFunction` 占位 + 管线编译的运行期值），F1（导出宏引用未导出 helper）
+    仍通过；`project/module.py` 的 provisional 占位改为 `ProvisionalFunction` 标记。
+    代价：宏体编译期调用 module-local defun 现在给出明确诊断。测试净减 11 条
+    （legacy TCO / UserFunction 单测），全量 1126 passed。
   - 优化默认开启（P2-1）：S1-S5 全语料一致 + 全量 pytest/qytest/abstract-machine
     差分全绿后，`PipelineOptions.optimize` 默认改为 True。开启前补齐：`const_fold`
     只折叠语言实现算子（宿主 `register_pure` 函数不再在编译期执行）、
@@ -379,8 +386,8 @@ source
 - compile-time env 仍只是 runtime env facade；
 - LIR 仍较薄，未完全承担低层职责；
 - register VM 仍承担较多 host-call compatibility；
-- legacy operator dispatch (`legacy_user_function.py` 等) 与 `sem/runtime.py` 的 `UserFunction`/`ComponentOperator` 并存，
-  部分尾调用仍走旧 evaluator 路径；
+- legacy operator dispatch（`PureOperator` / `ScopeOperator` / `ControlOperator` / `EffectOperator` / `MetaOperator`）仍是
+  `qy.core` 既有算子的实现方式，尚未逐个迁到 MIR/LIR/bytecode/VM；`sem/runtime.py` 只剩 `EffectDefinition`；
 - `io`、`truthy`、runtime identity 仍未落地；`reify` 已有最小实现（partial、ScopeOperator、无 effect 路径）。
 
 ## 2.3 当前主要事实漂移
@@ -420,7 +427,7 @@ source
 18. LIR 已在 abstract-machine dialect 下显式建模 handler frame / continuation frame / symbol-space / binding slot：`lower_effects` + `passes/lir/spaces.py` 产出 `frame_layout` / `handlers` / `continuations` / `symbol_spaces`，并把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`，因此 L5–L12 verifier 在 abstract-machine dialect 下全部有数据（L11/L12 CFG-aware）；仍缺 virtual stack 的运行时语义、HIR 层 `resolve.spaces`（当前 layout 由 LIR 从指令流重建），且 VM 尚不执行抽象机 opcode；
 19. effect frame 仍主要由 VM 中的 Python 对象承担；
 20. pending-binding / incomplete-value effort 尚未实现；
-21. legacy `UserFunction` 仍是 `lambda`/`defun` 的 Python callable 表示，其求值路径已从 `qy/sem/runtime.py` 移到 `qy/vm/instance/legacy_eval.py`（`sem` 不再反向依赖 `vm`），但尚未收敛到 bytecode function；
+21. ✅ 已完成：`UserFunction` / `qy/vm/instance/legacy_eval.py` / `ComponentOperator` 已删除，`lambda`/`defun`/module-local defun 统一编译为 `BytecodeFunctionValue`；module-local defun 采用两阶段预置（compile-time `MacroFunction` 占位 + 管线编译的运行期值），宏体在**编译期调用** module-local defun 会得到明确诊断；
 22. docs 中仍有少量旧说法需要持续清理（本轮已修 `qy FILE` / typer / 管线顺序 / `effect.analyze` 状态）。
 
 ---
@@ -1406,7 +1413,7 @@ qy emit main.qy --target=lir
 - mutual recursion TCO；
 - effect boundary TCO；
 - Python call stack 完全退出语义依赖；
-- `UserFunction` 迁到 bytecode function；
+- ~~`UserFunction` 迁到 bytecode function~~ ✅（已删除 `UserFunction`/`legacy_eval`）；
 - legacy operator dispatch 退出 core semantics。
 
 ### K4. 完成标准
@@ -2177,7 +2184,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
    - MIR constant / effect region；
    - LIR 独立 opcode 与 low-level pass。
 5. **legacy 清除**
-   - `UserFunction` -> bytecode function；
+   - ~~`UserFunction` -> bytecode function~~ ✅ 已完成；
    - evaluator 退场；
    - compat stdlib 下沉。
 6. **自举解释器推进**

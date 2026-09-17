@@ -258,7 +258,7 @@ async def _let(args: object, env: Environment) -> object:
     return await evaluate_body_async(tuple(body), local_env)
 
 
-async def _compile_lambda_form(args_list: list[object], env: Environment) -> object:
+async def compile_lambda_value(args_list: list[object], env: Environment) -> object:
     """把 ``(lambda params body...)`` 经完整管线编成 bytecode function value。.
 
     lambda / defun 的正式运行时表示是 bytecode function（``MAKE_FUNCTION`` →
@@ -291,7 +291,7 @@ def _lambda(args: object, env: Environment) -> object:
     params = args_list[0]
     body = args_list[1:]
     _ensure_parameter_list(params, "lambda")
-    return _compile_lambda_form([params, *body], env)
+    return compile_lambda_value([params, *body], env)
 
 
 async def _define(args: object, env: Environment) -> object:
@@ -316,7 +316,7 @@ def _defun(args: object, env: Environment) -> object:
     body = args_list[2:]
     name = ensure_symbol(name, "defun name")
     _ensure_parameter_list(params, "defun")
-    function = _compile_lambda_form([params, *body], env)
+    function = compile_lambda_value([params, *body], env)
     return env.define(name, function)
 
 

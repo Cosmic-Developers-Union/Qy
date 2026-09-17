@@ -504,7 +504,7 @@ async def _macroexpand_module_form(
     # in the same module body capture those symbols in their definition-site closure.
     module_env = context.env.child()
     body_items = _slice_form(form, 2)
-    _prepopulate_module_locals(body_items, module_env)
+    await _prepopulate_module_locals(body_items, module_env)
     body_context = context.child_scope_with_env(module_env)
 
     body: list[object] = []
@@ -527,15 +527,25 @@ async def _macroexpand_module_form(
     return _list_to_form([*prefix, *body], form)
 
 
-def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
-    # 注意：这里的 module-local defun 占位必须"运行时可调用"，因为导出的宏会把
-    # 对它的引用 alias 到宏定义点 env，运行期再由 VM 调用。compile-time 专属的
-    # ``MacroFunction`` 无法被 VM 执行，因此此处仍用 legacy ``UserFunction``
-    # （执行路径 qy.vm.instance.legacy_eval）。等 compile-time namespace 建模
-    # 完成、module-local 定义有运行期表示后再切换（见 todo.md §2.3 第 21 条）。
-    from qy.sem.runtime import EffectDefinition
-    from qy.sem.runtime import UserFunction
+async def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
+    """为 module body 里的 defun/defeffect 预置模块内绑定。.
 
+    module-local ``defun`` 必须提供**运行时可调用**的值：导出的宏会把对它的引用
+    alias 到宏定义点 env（`qy.macro.hygiene._definition_site_alias`），运行期再由
+    寄存器 VM 调用。因此这里把 defun 经完整管线编译成
+    ``BytecodeFunctionValue``（运行期表示），而不是任何 compile-time 值。
+
+    两阶段：先给所有名字放一个 compile-time ``MacroFunction`` 占位（这样同模块内
+    互相引用的函数在 HIR lowering 解析符号时都可见），再逐个编译并替换为运行期值。
+    编译失败的 defun 保留占位：运行期调用会得到明确的诊断，而不是静默错误。
+
+    副作用（有意）：宏体在编译期**调用** module-local defun 不再支持——那是运行期
+    函数值，compile-time evaluator 会给出明确诊断（见 todo.md §2.3 第 21 条）。
+    """
+    from qy.macro import MacroFunction
+    from qy.sem.runtime import EffectDefinition
+
+    defuns: list[tuple[Symbol, object, tuple[object, ...]]] = []
     for item in body:
         if not _is_list_form(item):
             continue
@@ -545,18 +555,30 @@ def _prepopulate_module_locals(body: list[object], env: Environment) -> None:
             if len(items) >= 3 and isinstance(items[1], Symbol):
                 name = items[1]
                 params_form = items[2] if len(items) > 2 else ()
-                # 提取参数列表
                 if _is_list_form(params_form) or is_nil(params_form):
                     params_items = _form_to_list(params_form) if _is_list_form(params_form) else []
                     params = tuple(p for p in params_items if isinstance(p, Symbol))
                 else:
                     params = ()
                 body_forms = tuple(items[3:])
-                env.define(name, UserFunction(name, params, body_forms, env))
+                env.define(name, MacroFunction(name, params, body_forms, env))
+                defuns.append((name, params_form, body_forms))
         elif operator == Symbol("defeffect"):
             items = _form_to_list(item)
             if len(items) >= 2 and isinstance(items[1], Symbol):
                 env.define(items[1], EffectDefinition(items[1], resumable=True))
+
+    if not defuns:
+        return
+
+    from qy.std.control import compile_lambda_value
+
+    for name, params_form, body_forms in defuns:
+        try:
+            value = await compile_lambda_value([params_form, *body_forms], env)
+        except Exception:
+            continue
+        env.define(name, value)
 
 
 async def _expand_macro(

@@ -3,26 +3,24 @@
 
 """Runtime values for Qy semantic model.
 
-This module defines runtime values that represent executable entities in the
-semantic model: user-defined functions, effect definitions, and component
-operators. These are semantic values shared across all backends, not
-implementation-specific helpers.
+语言只产生两种可执行 runtime value：
 
-执行这些值的 VM 路径在 ``qy.vm.instance.legacy_eval``；本模块不 import
-``qy.vm``，避免 ``sem`` 反向依赖具体 VM 实现。
+- ``EffectDefinition``（``defeffect`` 声明）；
+- ``BytecodeFunctionValue``（``lambda`` / ``defun`` / module-local defun 的正式
+  运行期表示，定义在 `qy.vm.bytecode`，由寄存器 VM 执行）。
+
+历史 ``UserFunction`` 与 ``qy.vm.instance.legacy_eval``（legacy 求值路径）已删除：
+所有函数值都经完整管线编译成 bytecode。本模块不 import ``qy.vm``，避免 ``sem``
+反向依赖具体 VM 实现。
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
 
 from qy.core.syntax import Symbol
 
-if TYPE_CHECKING:
-    from qy.session.runtime_space import RuntimeSpace as Environment
-
-__all__ = ["EffectDefinition", "UserFunction"]
+__all__ = ["EffectDefinition"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,19 +33,3 @@ class EffectDefinition:
     name: Symbol
     resumable: bool = True
     doc: str = ""
-
-
-@dataclass(frozen=True, slots=True)
-class UserFunction:
-    """User-defined function in the semantic model.
-
-    Represents a lambda or named function with its parameters, body, and
-    closure environment. This is a semantic value; the actual execution
-    mechanism depends on the backend (register VM, etc.).
-    """
-
-    name: Symbol
-    params: tuple[Symbol, ...]
-    body: tuple[object, ...]
-    closure: Environment
-

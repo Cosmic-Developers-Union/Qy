@@ -372,8 +372,6 @@ async def _call_macro_function(
     return result
 
 
-
-
 def _identity_continuation(effect_name: str, *, resumable: bool) -> _CompileTimeContinuation:
     return _CompileTimeContinuation(effect_name, resumable)
 

@@ -317,6 +317,22 @@ effect lowering 不是独立 pass：它是 LIR 职责
 （`lir/lower.py` + `passes/lir/effects.py` / `compat_effects.py`），因为
 `handle`/`perform`/`resume` 到 LIR 边界后不应再作为语言级指令存在。
 
+# 3.2 legacy 求值路径的删除
+
+`qy/vm/instance/legacy_eval.py` 与 `qy/sem/runtime.py::UserFunction` 已删除：函数值只有
+一种表示——经完整管线编译的 `BytecodeFunctionValue`（`lambda` / `defun` / module-local
+defun 都是如此，见 `qy/std/control.py::compile_lambda_value` 与
+`qy/macro/expand.py::_prepopulate_module_locals`）。
+
+- module-local `defun` 采用两阶段预置：先给所有名字放 compile-time `MacroFunction`
+  占位（同模块内互相引用的函数在 HIR lowering 解析符号时可见），再逐个经管线编译成运行期
+  值；这样导出的宏把引用 alias 到宏定义点 env 后，运行期由寄存器 VM 直接调用。
+- 代价（有意）：宏体在**编译期调用** module-local defun 不再支持，compile-time
+  evaluator 会给出明确诊断（`compile-time evaluation cannot call a register-VM
+  function value`）。
+- `qy/project/module.py` 的 provisional 模块改用 `ProvisionalFunction` 标记：它只是
+  编译期命名空间标记，不承载运行期值（模块的运行期导出由执行模块体得到）。
+
 # 4. 同名模块冲突（已全部解决）
 
 同一目录下不得长期同时存在 `name.py` 与 `name/`。Python import 会优先解析其中一个，导致另一个实现被静默遮蔽。
