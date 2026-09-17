@@ -33,6 +33,7 @@ __all__ = [
     "MISSING",
     "ChainFrame",
     "MembershipPredicate",
+    "SymbolAlias",
     "SymbolSpace",
     "SymbolSpaceChain",
     "ValueResolver",
@@ -60,6 +61,18 @@ MISSING: Final[_Missing] = _Missing()
 
 MembershipPredicate = Callable[[Symbol], bool]
 ValueResolver = Callable[[Symbol], object]
+
+
+@dataclass(frozen=True, slots=True)
+class SymbolAlias:
+    """间接绑定：解析该 symbol 时改为解析 ``target``。.
+
+    用途：hygiene 的 definition-site alias 在**字节码交换格式**里只能携带
+    「别名 -> 目标名」（`hygiene_bindings`），目标可能在本程序稍后才被定义
+    （例如模块内的函数），因此必须惰性解析而不是快照取值。
+    """
+
+    target: Symbol
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,14 +173,21 @@ class SymbolSpace:
     def resolve(self, symbol: Symbol) -> object:
         """沿 symbol-space-chain 查找 symbol; 全链 miss 返回 ``MISSING``.
 
-        本层 ``lookup`` 命中则直接返回; 否则递归 parent。
+        本层 ``lookup`` 命中则直接返回; 否则递归 parent。若命中的是
+        :class:`SymbolAlias`，则改为解析其 ``target``（循环别名视为未绑定）。
         """
+        return self._resolve(symbol, set())
+
+    def _resolve(self, symbol: Symbol, seen: set[Symbol]) -> object:
+        if symbol in seen:
+            return MISSING
         value = self.lookup(symbol)
-        if value is not MISSING:
-            return value
-        if self._parent is not None:
-            return self._parent.resolve(symbol)
-        return MISSING
+        if value is MISSING and self._parent is not None:
+            value = self._parent._resolve(symbol, seen)
+        if isinstance(value, SymbolAlias):
+            seen.add(symbol)
+            return self._resolve(value.target, seen)
+        return value
 
     # -- 兼容旧 API：has_local_binding -------------------------------------
 

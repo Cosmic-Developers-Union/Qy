@@ -105,6 +105,10 @@ class BytecodeProgram:
     main: int = 0
     diagnostics: tuple[Diagnostic, ...] = ()
     symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
+    #: hygiene 别名 -> 目标名（仅 JSON 交换格式携带；编译期程序里别名已是真实绑定）。
+    hygiene_bindings: tuple[tuple[str, str], ...] = ()
+    #: 模块名 -> 编译期宏导出名（仅 JSON 交换格式携带；运行期这些名字没有绑定）。
+    module_macro_exports: tuple[tuple[str, tuple[str, ...]], ...] = ()
 
     @property
     def ok(self) -> bool:
@@ -553,6 +557,20 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
     }
 
     if env is not None:
+        from qy.import_.loader import _source_module_cache
+
+        try:
+            modules = _source_module_cache(env)
+        except Exception:
+            modules = {}
+        macro_export_map = {
+            name: [symbol.name for symbol in module.macro_exports]
+            for name, module in modules.items()
+            if module.macro_exports
+        }
+        if macro_export_map:
+            program_json["module_macro_exports"] = macro_export_map
+
         hygiene_bindings = {}
         for func in program.functions:
             for instr in func.instructions:
@@ -762,7 +780,27 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
                 instructions,
             )
         )
-    return BytecodeProgram(tuple(functions), int(data.get("main", 0)))
+    raw_macro_exports = data.get("module_macro_exports")
+    module_macro_exports = (
+        tuple(
+            (str(module), tuple(str(name) for name in names))
+            for module, names in raw_macro_exports.items()
+        )
+        if isinstance(raw_macro_exports, dict)
+        else ()
+    )
+    raw_hygiene = data.get("hygiene_bindings")
+    hygiene_bindings = (
+        tuple((str(alias), str(base)) for alias, base in raw_hygiene.items())
+        if isinstance(raw_hygiene, dict)
+        else ()
+    )
+    return BytecodeProgram(
+        tuple(functions),
+        int(data.get("main", 0)),
+        hygiene_bindings=hygiene_bindings,
+        module_macro_exports=module_macro_exports,
+    )
 
 
 def _format_instruction(instruction: Instruction) -> str:

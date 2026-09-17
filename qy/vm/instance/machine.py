@@ -97,10 +97,25 @@ class _FrameResult:
     results: tuple[object, ...]
 
 
+def _install_hygiene_aliases(program: BytecodeProgram, env: Environment) -> None:
+    """安装字节码交换格式携带的 hygiene 别名（惰性解析目标名）。.
+
+    编译期程序的 hygiene 别名在宏展开时已作为真实隐藏绑定写入 env；从 JSON 装载的
+    程序没有这一步，必须按 `hygiene_bindings` 补上，否则卫生宏产物运行期报
+    ``unresolved symbol '__qy_hygiene_def___N'``。
+    """
+    from qy.core.symbol_space import SymbolAlias
+    from qy.core.syntax import Symbol
+
+    for alias_name, base_name in program.hygiene_bindings:
+        env.define_hidden(Symbol(alias_name), SymbolAlias(Symbol(base_name)))
+
+
 class RegisterVirtualMachine:
     def __init__(self, program: BytecodeProgram, env: Environment | None = None) -> None:
         self.program = program
         self.env = env or standard_environment()
+        _install_hygiene_aliases(program, self.env)
         self.stack = VirtualStack()
 
     async def evaluate_program(self) -> list[object]:
@@ -658,10 +673,22 @@ class RegisterVirtualMachine:
                     continue
                 if spec.name in module.exports:
                     env.define_once(spec.alias, module.resolve(spec.name))
-                elif spec.name not in module.macro_exports:
+                elif spec.name in module.macro_exports:
+                    continue
+                elif self._is_compile_time_macro_export(module_name.name, spec.name):
+                    # 编译期宏导出：展开已完成，运行期没有绑定可折入。
+                    continue
+                else:
                     raise KeyError(f"module {module_name.name!r} has no export {spec.name.name!r}")
         except (KeyError, ValueError) as e:
             raise EvaluationError(str(e)) from e
+
+    def _is_compile_time_macro_export(self, module_name: str, name: Symbol) -> bool:
+        """该导出是否是「编译期宏导出」（字节码交换格式携带的 module_macro_exports）。."""
+        for module, names in self.program.module_macro_exports:
+            if module == module_name and name.name in names:
+                return True
+        return False
 
     async def _defeffect(self, name: Symbol, resumable: bool, env: Environment) -> None:
         env.define(name, EffectDefinition(name, resumable))
