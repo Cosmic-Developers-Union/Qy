@@ -415,6 +415,13 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
             return {"type": "list", "value": [encode_value(v) for v in value]}
         if isinstance(value, tuple):
             return {"type": "tuple", "value": [encode_value(v) for v in value]}
+        from qy.ir.lir import LIRBindingAddr
+
+        if isinstance(value, LIRBindingAddr):
+            return {
+                "type": "binding_addr",
+                "value": {"space": value.space, "slot": value.slot},
+            }
         semantic = _encode_semantic_value(value, encode_value)
         if semantic is not None:
             return semantic
@@ -555,6 +562,20 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
         "main": program.main,
         "functions": functions_json,
     }
+
+    if program.symbol_spaces:
+        program_json["symbol_spaces"] = [
+            {
+                "id": layout.id,
+                "name": layout.name,
+                "parent": layout.parent,
+                "slots": [
+                    {"symbol": slot.symbol.name, "index": slot.index, "source": slot.source}
+                    for slot in layout.slots
+                ],
+            }
+            for layout in program.symbol_spaces
+        ]
 
     if env is not None:
         from qy.import_.loader import _source_module_cache
@@ -710,6 +731,11 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
             from qy.core.syntax import NONE as QY_NONE
 
             return QY_NONE
+        if kind == "binding_addr":
+            from qy.ir.lir import LIRBindingAddr
+
+            data = raw if isinstance(raw, dict) else {}
+            return LIRBindingAddr(as_int(data.get("space"), 0), as_int(data.get("slot"), 0))
         if kind in ("int", "float", "bool", "string"):
             return raw
         if kind == "symbol":
@@ -764,22 +790,32 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
     if version != 1:
         raise ValueError(f"unsupported bytecode JSON version: {version!r}")
     functions: list[BytecodeFunction] = []
-    for raw_function in data.get("functions", []):
-        instructions = tuple(
-            Instruction(
-                cast(Opcode, str(raw_instruction.get("opcode", ""))),
-                tuple(decode_operand(item) for item in raw_instruction.get("operands", [])),
+    from qy.core.syntax import Symbol as QySymbol
+    from qy.ir.layout import BindingSlot
+    from qy.ir.layout import SymbolSpaceLayout
+
+    raw_spaces = data.get("symbol_spaces")
+    symbol_spaces = (
+        tuple(
+            SymbolSpaceLayout(
+                id=int(layout.get("id", 0)),
+                name=str(layout.get("name", "")),
+                parent=layout.get("parent"),
+                slots=tuple(
+                    BindingSlot(
+                        QySymbol(str(slot.get("symbol", ""))),
+                        int(slot.get("index", 0)),
+                        str(slot.get("source", "define")),
+                    )
+                    for slot in layout.get("slots", [])
+                ),
             )
-            for raw_instruction in raw_function.get("instructions", [])
+            for layout in raw_spaces
         )
-        functions.append(
-            BytecodeFunction(
-                Symbol(str(raw_function.get("name", ""))),
-                tuple(Symbol(str(param)) for param in raw_function.get("params", [])),
-                int(raw_function.get("register_count", 0)),
-                instructions,
-            )
-        )
+        if isinstance(raw_spaces, list)
+        else ()
+    )
+
     raw_macro_exports = data.get("module_macro_exports")
     module_macro_exports = (
         tuple(
@@ -795,11 +831,33 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
         if isinstance(raw_hygiene, dict)
         else ()
     )
+
+    for raw_function in data.get("functions", []):
+        instructions = tuple(
+            Instruction(
+                cast(Opcode, str(raw_instruction.get("opcode", ""))),
+                tuple(decode_operand(item) for item in raw_instruction.get("operands", [])),
+            )
+            for raw_instruction in raw_function.get("instructions", [])
+        )
+        functions.append(
+            BytecodeFunction(
+                Symbol(str(raw_function.get("name", ""))),
+                tuple(Symbol(str(param)) for param in raw_function.get("params", [])),
+                int(raw_function.get("register_count", 0)),
+                instructions,
+                # VM 的 SLOT_COMPLETE 通过 frame.function.symbol_spaces 找回 symbol
+                # （与 compile_lir_bytecode 的产物同形状），因此每个函数都要带上 layout。
+                symbol_spaces=symbol_spaces,
+            )
+        )
+
     return BytecodeProgram(
         tuple(functions),
         int(data.get("main", 0)),
         hygiene_bindings=hygiene_bindings,
         module_macro_exports=module_macro_exports,
+        symbol_spaces=symbol_spaces,
     )
 
 

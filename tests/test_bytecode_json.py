@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ from qy.build.pipeline import bytecode_artifact
 from qy.build.pipeline import compile_source_to_kind
 from qy.cli import create_app
 from qy.core.syntax import NONE
+from qy.core.syntax import Symbol
 from qy.core.syntax import T
 from qy.core.syntax import nil
 from qy.passes.pass_base import PipelineOptions
@@ -252,3 +254,87 @@ def test_cli_bytecode_path_matches_source_for_hygiene_and_module_macros(tmp_path
 
         assert from_bytecode.exit_code == 0, (name, from_bytecode.output)
         assert from_bytecode.output == from_source.output, name
+
+
+def test_binding_addr_and_symbol_spaces_are_encoded():
+    """abstract-machine 方言的 SLOT_COMPLETE 需要 layout；交换格式必须携带它。.
+
+    历史缺陷：`LIRBindingAddr` 会被编码成 `{"type":"unknown"}`，连 Python 自己的
+    loader 都拒绝——于是该方言的产物无法离开 Python 进程。
+    """
+    from qy.ir.layout import BindingSlot
+    from qy.ir.layout import SymbolSpaceLayout
+    from qy.ir.lir import LIRBindingAddr
+
+    env = standard_environment()
+    program = _compile("(define x 1) x", env)
+    layouts = (
+        SymbolSpaceLayout(
+            id=0,
+            name="main",
+            parent=None,
+            slots=(BindingSlot(Symbol("x"), 0, "define"),),
+        ),
+    )
+    synthetic = replace(program, symbol_spaces=layouts)
+    text = serialize_bytecode_json(synthetic, env=env)
+    data = json.loads(text)
+
+    assert "symbol_spaces" in data
+    assert data["symbol_spaces"][0]["slots"][0]["symbol"] == "x"
+
+    loaded = load_bytecode_json(
+        json.dumps(
+            {
+                "version": 1,
+                "main": 0,
+                "symbol_spaces": data["symbol_spaces"],
+                "functions": [
+                    {
+                        "name": "<main>",
+                        "params": [],
+                        "register_count": 1,
+                        "instructions": [
+                            {
+                                "opcode": "LOAD_HOST",
+                                "operands": [
+                                    {"type": "reg", "value": 0},
+                                    {"type": "binding_addr", "value": {"space": 0, "slot": 0}},
+                                ],
+                            },
+                            {"opcode": "RETURN", "operands": [{"type": "reg", "value": 0}]},
+                        ],
+                    }
+                ],
+            }
+        )
+    )
+
+    assert loaded.symbol_spaces[0].slots[0].symbol == Symbol("x")
+    address = loaded.functions[0].instructions[0].operands[1]
+    assert isinstance(address, LIRBindingAddr)
+    assert (address.space, address.slot) == (0, 0)
+    # VM 的 SLOT_COMPLETE 从 frame.function.symbol_spaces 取 layout
+    assert loaded.functions[0].symbol_spaces[0].slots[0].symbol == Symbol("x")
+
+
+def test_abstract_machine_dialect_round_trips_through_json():
+    """两种 LIR 方言的导出都必须在全新环境里可执行（compat 与 abstract-machine）。."""
+    from qy.passes.pass_base import PipelineOptions
+
+    options = PipelineOptions(error_threshold=10**6, lir_dialect="abstract-machine")
+    for path in sorted(_QY_TEST_DIR.glob("*.qy")):
+        source = path.read_text(encoding="utf-8")
+        compile_env = standard_environment()
+        program = bytecode_artifact(
+            compile_source_to_kind(
+                source, PipelineSession(env=compile_env), kind="bytecode", options=options
+            )
+        )
+        text = serialize_bytecode_json(program, env=compile_env)
+        assert '"type":"unknown"' not in text, f"{path.name}: unencodable operand in AM export"
+
+        loaded = load_bytecode_json(text)
+        direct = evaluate_bytecode(program, compile_env.child())
+        restored = evaluate_bytecode(loaded, standard_environment())
+        assert direct == restored, f"{path.name}: AM round-trip changed the result"
