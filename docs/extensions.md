@@ -62,10 +62,38 @@ register_extension(DESCRIPTOR, module)
 - VM instance 只重导出该类型（`qy.vm.instance.values.HostObjectRef` 为兼容别名）。
 - 扩展负责创建/解包 host reference，并把宿主异常转换成语言级错误
   （`QyError` 子类），不得把宿主异常类型暴露给语言。
-- 转换助手：`qy.sem.bridge.to_qy_value` / `from_qy_value`（宿主 primitive ↔
-  `IntValue`/`FloatValue`/`StringValue`/容器语义值；未知对象 → `HostReference`）。
-  仅限扩展边界调用；内核不得自动转换。legacy `to_sem`/`from_sem` 仍保留在
-  同一模块用于迁移期。
+- 转换助手：`qy.sem.convert.to_qy_value` / `from_qy_value`（宿主 primitive ↔
+  `IntValue`/`FloatValue`/`StringValue`/容器语义值；未知对象 → `HostReference`；
+  Qy 侧的 `nil` / `T` / `none` 与函数值没有忠实宿主对应物，解包时原样返回）。
+  这是**唯一**的转换实现：扩展（`qy.ext.*`）与嵌入式宿主共用，内核不得自动转换。
+  历史 `qy.sem.bridge` 模块已删除（其 `to_sem`/`from_sem` 也随之移除）。
+
+## 4½. Python 嵌入式 API
+
+把 Qy 当作嵌入式语言使用时，宿主只需要这几个入口（`qy.runtime`）：
+
+| 入口 | 用途 |
+| --- | --- |
+| `Qy` / `AsyncQy` | 会话实例；持有 `env`（符号空间链） |
+| `evaluate_source` / `evaluate_program` / `evaluate_file` | 执行 Qy 源码 |
+| `run_bytecode_json` | 执行 `qy export` 产出的 JSON 字节码（跨宿主交换格式） |
+| `call(function, *args)` | **调用 Qy 函数值**（`lambda` / `defun` 的结果），参数与返回值用 `qy.sem.convert` 转换 |
+| `register_pure(name, fn)` | 把宿主函数注册成 Qy 算子（legacy operator 路径，见 §7 迁移状态） |
+| `env.define` / `env.child` | 注入宿主绑定 / 建立子符号空间 |
+
+例：
+
+```python
+from qy.runtime import Qy
+from qy.sem.convert import to_qy_value, from_qy_value
+
+qy = Qy()
+make_adder = qy.evaluate_source("(lambda (x) (lambda (y) (+ x y)))")
+add2 = qy.call(make_adder, to_qy_value(2))
+assert from_qy_value(qy.call(add2, to_qy_value(40))) == 42
+```
+
+宿主 async 函数注册为算子后，通过 `AsyncQy.call` 调用时会被 await。
 
 ## 5. 文件模块后缀
 

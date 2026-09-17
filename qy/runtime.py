@@ -169,6 +169,23 @@ class Qy(_QyBase):
             run_coro(_evaluate_program_via_pipeline(source, self.env, source_name=source_name)),
         )
 
+    def call(self, function: object, *args: object) -> object:
+        """从宿主调用一个 Qy 函数值（``lambda`` / ``defun`` 的结果）。.
+
+        参数按 Qy 值传入（宿主 primitive 请先用
+        `qy.sem.convert.to_qy_value` 转换）；返回值是 Qy 语义值。
+        """
+        from qy.errors import QyTypeError
+        from qy.vm.bytecode import BytecodeFunctionValue
+        from qy.vm.instance.machine import call_function_value
+
+        if not isinstance(function, BytecodeFunctionValue):
+            raise QyTypeError(
+                "Qy.call expects a Qy function value (a lambda/defun result), "
+                f"got {type(function).__name__}"
+            )
+        return run_coro(call_function_value(function, args, self.env))
+
     def run_bytecode_json(self, text: str) -> list[object]:
         """执行 `qy export` 输出的 JSON 字节码（交换格式的对端入口）。."""
         from qy.backend.vm.bytecode import load_bytecode_json
@@ -196,6 +213,19 @@ class Qy(_QyBase):
 
 
 class AsyncQy(_QyBase):
+    async def call(self, function: object, *args: object) -> object:
+        """异步宿主调用一个 Qy 函数值；宿主 async 算子会被 await。."""
+        from qy.errors import QyTypeError
+        from qy.vm.bytecode import BytecodeFunctionValue
+        from qy.vm.instance.machine import call_function_value
+
+        if not isinstance(function, BytecodeFunctionValue):
+            raise QyTypeError(
+                "Qy.call expects a Qy function value (a lambda/defun result), "
+                f"got {type(function).__name__}"
+            )
+        return await call_function_value(function, args, self.env)
+
     async def run_bytecode_json(self, text: str) -> list[object]:
         """执行 JSON 字节码（异步宿主入口）。."""
         from qy.backend.vm.bytecode import load_bytecode_json

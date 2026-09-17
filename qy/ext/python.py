@@ -318,37 +318,10 @@ def _symbol_to_python(value: Symbol) -> object:
 
 
 def _python_to_qy(value: object) -> object:
-    from qy.core.syntax import NONE as QY_NONE
-    from qy.sem.core import DictValue
-    from qy.sem.core import ListValue
-    from qy.sem.core import SetValue
-    from qy.sem.core import TupleValue
+    """宿主值 → Qy 语义值；单一实现在 qy.sem.convert。."""
+    from qy.sem.convert import to_qy_value
 
-    if value is QY_NIL or value is QY_T:
-        return value
-    if isinstance(value, QyCons):
-        return map_qy_cons(value, _python_to_qy)
-    if isinstance(value, HostReference | Symbol):
-        return value
-    if value is None:
-        return QY_NONE
-    if isinstance(value, bool | int | float):
-        return value
-    if isinstance(value, str):
-        from qy.sem.core import StringValue
-
-        return StringValue(value)
-    if isinstance(value, list):
-        return ListValue(tuple(_python_to_qy(item) for item in value))
-    if isinstance(value, tuple):
-        return TupleValue(tuple(_python_to_qy(item) for item in value))
-    if isinstance(value, dict):
-        return DictValue(
-            tuple((_python_to_qy(key), _python_to_qy(item)) for key, item in value.items())
-        )
-    if isinstance(value, set):
-        return SetValue(tuple(_python_to_qy(item) for item in value))
-    return HostReference(value)
+    return to_qy_value(value)
 
 
 def _is_qy_callable(value: object) -> bool:

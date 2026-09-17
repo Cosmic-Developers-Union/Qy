@@ -22,6 +22,8 @@
 - 不得混入工具链逻辑
 """
 
+from qy.sem.convert import from_qy_value
+from qy.sem.convert import to_qy_value
 from qy.sem.core import ArrayValue
 from qy.sem.core import CharValue
 from qy.sem.core import ComplexValue
@@ -64,4 +66,6 @@ __all__ = [
     "StringValue",
     "TupleValue",
     "Value",
+    "from_qy_value",
+    "to_qy_value",
 ]
