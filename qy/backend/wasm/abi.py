@@ -18,6 +18,10 @@ Qy 函数（``table_index == NUM_BUILTINS + fn_idx``）。
 
 from __future__ import annotations
 
+from qy.core.operator_builtins import BUILTIN_NAMES as CORE_BUILTIN_NAMES
+from qy.core.operator_builtins import NUM_BUILTINS as NUM_CORE_BUILTINS
+from qy.core.operator_builtins import builtin_index as _core_builtin_index
+
 __all__ = [
     "BUILTIN_NAMES",
     "NUM_BUILTINS",
@@ -37,28 +41,10 @@ __all__ = [
     "table_index_for_function",
 ]
 
-# 与 qy/backend/llvm/abi.py 的 BUILTIN_NAMES 顺序保持一致。
-BUILTIN_NAMES: list[str] = [
-    "+",
-    "-",
-    "*",
-    "/",
-    "=",
-    "eq",
-    "<",
-    ">",
-    "display",
-    "echo",
-    "newline",
-    "read",
-    "read-int",
-    "cons",
-    "car",
-    "cdr",
-    "nil?",
-    "not",
-]
-NUM_BUILTINS: int = len(BUILTIN_NAMES)
+# 内建算子表的事实源在 qy/core/operator_builtins.py（顺序即 ABI 下标，与
+# qy/resources/wasm/runtime.js 的 builtins 数组一致）。
+BUILTIN_NAMES: tuple[str, ...] = CORE_BUILTIN_NAMES
+NUM_BUILTINS: int = NUM_CORE_BUILTINS
 
 TAG_INT = 0
 TAG_NIL = 1
@@ -72,11 +58,8 @@ VAL_T = TAG_T
 
 
 def builtin_index(name: str) -> int:
-    """Return the table index of a builtin, or -1 if not a builtin."""
-    try:
-        return BUILTIN_NAMES.index(name)
-    except ValueError:
-        return -1
+    """Return the ABI index of a builtin operator, or -1 when unknown."""
+    return _core_builtin_index(name)
 
 
 def int_value(value: int) -> int:

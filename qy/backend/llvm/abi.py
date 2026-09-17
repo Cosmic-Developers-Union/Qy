@@ -10,6 +10,8 @@ Defines:
 
 from __future__ import annotations
 
+from qy.core.operator_builtins import BUILTIN_OPERATORS
+
 __all__ = [
     "BUILTIN_NAMES",
     "BUILTIN_OPS",
@@ -44,27 +46,9 @@ QY_TAG_STRING = 7
 # Builtin operator index — must match libqy/src/runtime.c _builtin_dispatch
 # ---------------------------------------------------------------------------
 # Mapping: Qy name -> (mqr_runtime_fn, arg_count)
-# Order determines index! Index is used in mqr_builtin_fn(i64 idx) at runtime.
-
+# 事实源在 qy/core/operator_builtins.py；顺序即 mqr_builtin_fn(i64 idx) 的下标。
 BUILTIN_OPS: dict[str, tuple[str, int]] = {
-    "+": ("mqr_add", 2),
-    "-": ("mqr_sub", 2),
-    "*": ("mqr_mul", 2),
-    "/": ("mqr_div", 2),
-    "=": ("mqr_eq", 2),
-    "eq": ("mqr_eq", 2),
-    "<": ("mqr_lt", 2),
-    ">": ("mqr_gt", 2),
-    "display": ("mqr_display", 1),
-    "echo": ("mqr_echo", 1),
-    "newline": ("mqr_newline", 0),
-    "read": ("mqr_read", 0),
-    "read-int": ("mqr_read_int", 0),
-    "cons": ("mqr_cons", 2),
-    "car": ("mqr_car", 1),
-    "cdr": ("mqr_cdr", 1),
-    "nil?": ("mqr_nil_p", 1),
-    "not": ("mqr_not", 1),
+    operator.name: (operator.runtime_symbol, operator.arity) for operator in BUILTIN_OPERATORS
 }
 
 BUILTIN_NAMES: list[str] = list(BUILTIN_OPS.keys())
