@@ -4,11 +4,11 @@
 目标：
 - 保存面向 libqy / VM / backend 的值模型
 - 定义抽象机语义，包括 continuation、effect handler、symbol-space-chain
-- 提供 runtime value 类型（UserFunction、EffectDefinition、ComponentOperator 等）
+- 提供 runtime value 类型（UserFunction、EffectDefinition、BytecodeFunctionValue 等）
 
 当前：
 - core.py 定义 number / string / object family 值模型
-- runtime.py 提供运行时值（UserFunction、EffectDefinition、ComponentOperator）
+- runtime.py 提供运行时值（UserFunction、EffectDefinition）
 - host.py 提供 host reference 包装
 
 边界：
@@ -41,7 +41,6 @@ from qy.sem.core import SetValue
 from qy.sem.core import StringValue
 from qy.sem.core import TupleValue
 from qy.sem.core import Value
-from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 
@@ -49,7 +48,6 @@ __all__ = [
     "ArrayValue",
     "CharValue",
     "ComplexValue",
-    "ComponentOperator",
     "DictValue",
     "EffectDefinition",
     "Float32Value",

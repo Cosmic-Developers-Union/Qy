@@ -22,7 +22,7 @@ from qy.core.syntax import Symbol
 if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment
 
-__all__ = ["ComponentOperator", "EffectDefinition", "UserFunction"]
+__all__ = ["EffectDefinition", "UserFunction"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,19 +51,3 @@ class UserFunction:
     body: tuple[object, ...]
     closure: Environment
 
-
-@dataclass(frozen=True, slots=True)
-class ComponentOperator:
-    """Component operator in the semantic model.
-
-    A meta-operator that composes multiple operators. When called, it passes
-    the first argument to the first operator and remaining arguments to the
-    last operator, then composes results from right to left.
-
-    Example:
-        (component op1 op2 op3) with args (a, b, c) evaluates as:
-        (op1 a (op2 (op3 b c)))
-    """
-
-    operators: tuple[object, ...]
-    closure: Environment

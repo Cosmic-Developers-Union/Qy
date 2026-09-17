@@ -1,7 +1,7 @@
 # coding: utf-8
 """Legacy form-level evaluation path for semantic callables.
 
-``UserFunction`` / ``ComponentOperator`` 定义在 ``qy.sem.runtime``，是语义值；
+``UserFunction`` 定义在 ``qy.sem.runtime``，是语义值；
 但执行它们需要 register VM 的 form 求值路径。因此实现放在 VM 实例层，避免
 ``qy.sem`` 反向 import ``qy.vm``。
 
@@ -15,11 +15,10 @@ from collections.abc import Callable
 
 from qy.core.syntax import Symbol
 from qy.errors import QyArityError
-from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
 
-__all__ = ["call_component_operator", "call_user_function"]
+__all__ = ["call_user_function"]
 
 
 async def call_user_function(function: UserFunction, args: tuple[object, ...]) -> object:
@@ -45,35 +44,6 @@ async def call_user_function(function: UserFunction, args: tuple[object, ...]) -
         current_args = result.args
 
 
-async def call_component_operator(operator: ComponentOperator, args: tuple[object, ...]) -> object:
-    """执行 ``ComponentOperator``（legacy 路径）。."""
-    from qy.core.syntax import list_to_chain
-    from qy.vm.instance.machine import evaluate_form_async
-
-    if len(args) == 0:
-        raise QyArityError(
-            "component operator expects at least 1 argument",
-            metadata={"actual": 0},
-        )
-
-    if len(operator.operators) == 1:
-        form = list_to_chain([operator.operators[0], *args])
-        return await evaluate_form_async(form, operator.closure)
-
-    first_arg = args[0]
-    rest_args = args[1:]
-
-    if len(operator.operators) == 2:
-        op1, op2 = operator.operators
-        form2 = list_to_chain([op2, *rest_args])
-        result2 = await evaluate_form_async(form2, operator.closure)
-        form1 = list_to_chain([op1, first_arg, result2])
-        return await evaluate_form_async(form1, operator.closure)
-
-    rest_component = ComponentOperator(operator.operators[1:], operator.closure)
-    result_rest = await call_component_operator(rest_component, rest_args)
-    form1 = list_to_chain([operator.operators[0], first_arg, result_rest])
-    return await evaluate_form_async(form1, operator.closure)
 
 
 # -- TCO helpers for UserFunction (private to this module) --------------------

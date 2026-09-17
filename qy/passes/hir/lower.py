@@ -591,7 +591,7 @@ def _lower_component(
 ) -> IRExpr:
     """Lower component 算子调用。.
 
-    component 在运行时求值其参数并返回一个 ComponentOperator。
+    component 目前由 MetaOperator 实现（返回宏），这里按普通调用 lower。
     我们将其 lower 为一个普通的函数调用。
     """
     component_symbol = Symbol("component")

@@ -7,11 +7,9 @@ import pytest
 
 from qy.core.syntax import Symbol
 from qy.errors import QyArityError
-from qy.sem.runtime import ComponentOperator
 from qy.sem.runtime import EffectDefinition
 from qy.sem.runtime import UserFunction
 from qy.session.runtime_space import RuntimeSpace as Environment
-from qy.vm.instance.legacy_eval import call_component_operator
 from qy.vm.instance.legacy_eval import call_user_function
 
 
@@ -112,42 +110,6 @@ async def test_user_function_tail_call_loop():
         qy.vm.instance.legacy_eval._evaluate_tail_body = original_eval
 
 
-@pytest.mark.asyncio
-async def test_component_operator_single():
-    """测试单个算子的 ComponentOperator。."""
-    from qy.core.syntax import list_to_chain
-
-    env = Environment()
-
-    # 创建一个简单的算子（使用 lambda）
-    add_one = UserFunction(
-        name=Symbol("add-one"),
-        params=(Symbol("x"),),
-        body=(list_to_chain([Symbol("+"), Symbol("x"), 1]),),
-        closure=env,
-    )
-
-    comp = ComponentOperator(operators=(add_one,), closure=env)
-
-    # 单个算子应该直接调用
-    # 注意：这需要 evaluate_async 能够处理，这里只测试结构
-    assert len(comp.operators) == 1
-    assert comp.operators[0] is add_one
-
-
-@pytest.mark.asyncio
-async def test_component_operator_arity_error():
-    """测试 ComponentOperator 参数数量错误。."""
-    env = Environment()
-    comp = ComponentOperator(operators=(Symbol("op1"),), closure=env)
-
-    with pytest.raises(QyArityError) as exc_info:
-        await call_component_operator(comp, ())
-
-    assert "expects at least 1 argument" in str(exc_info.value)
-    assert exc_info.value.metadata["actual"] == 0
-
-
 def test_user_function_immutable():
     """测试 UserFunction 是不可变的。."""
     env = Environment()
@@ -168,12 +130,3 @@ def test_effect_definition_immutable():
 
     with pytest.raises(AttributeError):
         effect.resumable = False  # ty: ignore[invalid-assignment]
-
-
-def test_component_operator_immutable():
-    """测试 ComponentOperator 是不可变的。."""
-    env = Environment()
-    comp = ComponentOperator(operators=(Symbol("op1"),), closure=env)
-
-    with pytest.raises(AttributeError):
-        comp.operators = (Symbol("op2"),)  # ty: ignore[invalid-assignment]

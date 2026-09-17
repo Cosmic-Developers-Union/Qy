@@ -199,14 +199,10 @@ async def _call_compile_time(
         validate_operator_arity(callee, len(raw_args), span=span)
         return await _await_if_needed(callee.func(raw_args, env))
     from qy.macro import MacroFunction
-    from qy.sem.runtime import ComponentOperator
 
     if isinstance(callee, MacroFunction):
         args = await _eval_args(raw_args, env)
         return await _call_macro_function(callee, args, env)
-    if isinstance(callee, ComponentOperator):
-        args = await _eval_args(raw_args, env)
-        return await _call_component_operator(callee, args, env)
     if getattr(callee, "type_name", None) == "function":
         # BytecodeFunctionValue 等 VM 值不能也不应该在编译期执行（macro
         # compile-time 不得依赖 register VM）。给出明确诊断而不是让
@@ -376,22 +372,6 @@ async def _call_macro_function(
     return result
 
 
-async def _call_component_operator(
-    operator: object, args: tuple[object, ...], env: Environment
-) -> object:
-    """在 compile-time 环境执行 ``ComponentOperator`` 的组合序列。."""
-    from qy.sem.runtime import ComponentOperator
-
-    assert isinstance(operator, ComponentOperator)
-    if not args:
-        raise QyArityError("component operator expects at least 1 argument", metadata={"actual": 0})
-    closure = operator.closure if operator.closure is not None else env
-    first, *rest = args
-    result: object = first
-    for index, callee in enumerate(operator.operators):
-        call_args = (result, *rest) if index == 0 else (result,)
-        result = await _eval_form(list_to_chain([callee, *call_args]), closure)
-    return result
 
 
 def _identity_continuation(effect_name: str, *, resumable: bool) -> _CompileTimeContinuation:
