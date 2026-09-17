@@ -345,8 +345,9 @@ class TestOptimizationCorrectness:
 # ---------------------------------------------------------------------------
 
 
-def test_optimize_is_off_by_default():
-    assert PipelineOptions().optimize is False
+def test_optimize_is_on_by_default():
+    """优化序列默认开启（S1-S5 已在 86 语料上与未优化结果一致）。."""
+    assert PipelineOptions().optimize is True
 
 
 def test_default_pipeline_includes_optimize_slot():
@@ -357,7 +358,7 @@ def test_default_pipeline_includes_optimize_slot():
     assert names.index("mir.validate") < names.index("optimize.mir") < names.index("lir.lower")
 
 
-def test_optimize_mir_is_noop_when_disabled():
+def test_optimize_mir_is_noop_when_explicitly_disabled():
     from qy.passes.optimize.apply import OptimizeMIRPass
 
     program = _compile_to_mir("(+ 1 2)")
@@ -366,7 +367,7 @@ def test_optimize_mir_is_noop_when_disabled():
             input_artifact=program,
             artifact_kind="mir",
             session=PipelineSession.minimal(),
-            options=PipelineOptions(),
+            options=PipelineOptions(optimize=False),
         )
     )
 

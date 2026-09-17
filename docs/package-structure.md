@@ -202,8 +202,8 @@ frontend.cst_parse
 | S4 + inline / aggressive_inline / scalar_replace / intern | **0/86** |
 | S5 + reg_alloc | **0/86** |
 
-即：**86 个语料在全部优化子集下与未优化结果一致**（`optimize=True` 目前仍非默认，
-见下方开关说明）。
+即：**86 个语料在全部优化子集下与未优化结果一致**，`PipelineOptions.optimize`
+**默认开启**（关闭方式：`PipelineOptions(optimize=False)`）。
 
 已修复的真实缺陷（S1 11/86 → 0，S3 11/86 → 0，S5 42/86 → 11）：
 
@@ -253,17 +253,20 @@ frontend.cst_parse
   `qy.ir.mir` 寄存器表）都在内核里，两个 pass 只保留策略（单调用点 vs 多调用点 +
   指令预算 + 深度）。
 
-在把 `optimize=True` 设为默认之前仍缺（实测把默认翻转后 14 个测试失败）：
+默认开启前补齐的两处（否则 14 个测试失败）：
 
-1. **llvm / wasm 验证后端**（9 个失败）不支持优化后的常量形态，例如
-   `WasmUnsupportedError: LOAD_HOST with unsupported value IntValue(42)`：折叠产生的
-   常量没有进入这些后端的常量池路径；
-2. **async core 的 3 个失败**：`CACHE_EVAL` / `PARALLEL_GATHER` / `RUNTIME_EVAL`
-   路径在优化下结果不一致（`APPEND_RESULT` 数量与宿主协程的 await 行为）；
-3. `tests/test_pass_optimization.py` 中两个断言默认关闭的开关测试需要同步。
+1. **编译期求值限定语言实现算子**：`const_fold` 原会执行宿主 `register_pure`
+   注册的函数——宿主函数可能返回 coroutine（`(delayed 1)` 被折成 coroutine 常量）、
+   有宿主可见副作用（`(cache (counted 21))` 在编译期被调用）、AOT 时把宿主状态烘进
+   产物。现在只折叠实现位于 `qy.core` / `qy.session` / `qy.std` 的算子；
+2. **后端常量分类收口**：wasm 直接对 `LOAD_HOST IntValue(42)` 报错，llvm 更把不认识的
+   常量静默落成 nil（`(+ (* 6 7) 0)` 得 nil）。新增 `qy/backend/scalars.py` 作为
+   「这是什么常量」的唯一分类，两个后端按各自 ABI 编码；llvm 对 char/float 显式报错。
+
+保留的已知边界：llvm 验证后端不支持 char / float 常量（显式报错），wasm 不支持 float。
 
 收益实测（86 语料合计）：指令数 1867 → 1568（**-16%**），寄存器数 1276 → 533
-（**-58%**）；递归 fib(18) 408ms → 380ms。
+（**-58%**）；递归 fib(18) 408ms → 380ms；20 个文件编译 48ms → 53ms（**+10%**）。
 
 目标 pass 顺序（完整管线）：
 

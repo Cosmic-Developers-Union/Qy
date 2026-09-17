@@ -71,12 +71,12 @@ class PipelineOptions:
     # 会把语言级 effect 降成 HANDLER_* / CONT_* / EFFECT_* 抽象机指令，
     # 供 verifier 与后续 backend 消费；VM 可执行该 dialect，但默认路径仍是 compat。
     lir_dialect: str = "compat"
-    # MIR 优化序列开关。默认关闭。当前状态：86 个语料在 S1-S5 全部子集下与未优化
-    # 结果一致（scripts/optimize_frontier.py），收益为指令 -16% / 寄存器 -58%；
-    # 但把默认打开会让 14 个测试失败——llvm / wasm 验证后端不支持优化后的常量形态
-    # （如 `LOAD_HOST IntValue(42)`）、async core 的 CACHE_EVAL / PARALLEL_GATHER
-    # 路径仍不一致。详见 docs/package-structure.md §3.1 与 todo.md。
-    optimize: bool = False
+    # MIR 优化序列开关，默认开启。开启依据（见 docs/package-structure.md §3.1）：
+    # - scripts/optimize_frontier.py：86 个语料在 S1-S5 全部子集下与未优化结果一致；
+    # - 全量 pytest / qytest / abstract-machine 差分在默认开启下全绿；
+    # - 收益：指令 -16%、寄存器 -58%，fib(18) 约 -7%，编译开销约 +10%。
+    # 已知边界：llvm 验证后端不支持 char/float 常量（显式报错），wasm 不支持 float。
+    optimize: bool = True
 
 
 @dataclass(slots=True)

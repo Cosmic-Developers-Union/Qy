@@ -296,6 +296,12 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 优化默认开启（P2-1）：S1-S5 全语料一致 + 全量 pytest/qytest/abstract-machine
+    差分全绿后，`PipelineOptions.optimize` 默认改为 True。开启前补齐：`const_fold`
+    只折叠语言实现算子（宿主 `register_pure` 函数不再在编译期执行）、
+    `qy/backend/scalars.py` 统一后端常量分类（wasm 不再报 unsupported、llvm 不再
+    静默 nil）。收益：指令 -16% / 寄存器 -58% / fib(18) -7% / 编译 +10%。
+    已知边界：llvm 不支持 char/float 常量（显式报错），wasm 不支持 float。
   - 优化正确性（第三批）：effect 重编号与内联健全性收口（见
     `docs/package-structure.md` §3.1）。`EFFECT_RESUME(dst, cont, value)` 的 value
     寄存器此前未被 `reg_alloc` 重编号（resume 传回陈旧值）；

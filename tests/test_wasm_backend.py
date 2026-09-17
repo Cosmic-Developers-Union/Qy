@@ -23,6 +23,7 @@ from qy.backend.wasm.emit import emit
 from qy.build.artifact import LIR
 from qy.build.pipeline import compile_source_to_kind
 from qy.build.pipeline import lir_artifact
+from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.session.runtime_space import create_standard_runtime_space
 
@@ -38,9 +39,13 @@ requires_toolchain = pytest.mark.skipif(
 )
 
 
-def _compile_lir(source: str):
+def _compile_lir(source: str, *, optimize: bool | None = None):
+    options = PipelineOptions() if optimize is None else PipelineOptions(optimize=optimize)
     result = compile_source_to_kind(
-        source, PipelineSession(env=create_standard_runtime_space()), kind=LIR
+        source,
+        PipelineSession(env=create_standard_runtime_space()),
+        kind=LIR,
+        options=options,
     )
     return lir_artifact(result)
 
@@ -70,7 +75,8 @@ def _run_wasm(source: str, tmp_path: Path) -> str:
 
 
 def test_wasm_emit_structure_for_arithmetic():
-    lir = _compile_lir("(+ (* 6 7) 0)")
+    # 显式关闭优化：本测试断言的是字面量 6/7 的即时数编码，而非折叠结果。
+    lir = _compile_lir("(+ (* 6 7) 0)", optimize=False)
     wat = emit(lir)
 
     assert wat.startswith("(module")
