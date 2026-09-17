@@ -210,7 +210,11 @@ cython_debug/
 *.pdb
 
 # Kernel Module Compile Results
+# 注意：`*.mod*` 会连带匹配 go.mod，导致 Go module 文件被静默忽略（无法提交、
+# rg 也可能跳过）。这里显式放行 Go 的 module 文件。
 *.mod*
+!/go.mod
+!/go.sum
 *.cmd
 .tmp_versions/
 modules.order

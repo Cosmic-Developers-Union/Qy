@@ -139,3 +139,34 @@ def test_rg_sees_every_tracked_qy_source_file():
 
     missing = sorted(tracked - visible)
     assert missing == [], f"rg cannot see tracked qy sources: {missing}"
+
+
+def test_repo_root_toolchain_files_are_not_git_ignored():
+    """仓库根的工具链文件不得被 .gitignore 规则连带匹配。.
+
+    实例：`*.mod*`（内核模块编译产物）会连带匹配 `go.mod`，导致 Go module 文件被静默
+    忽略、无法提交（且 rg 也可能跳过）。这里用 `rg --files` 的可见性做守卫。
+    """
+    import pathlib
+    import shutil
+    import subprocess
+
+    if shutil.which("rg") is None:
+        import pytest
+
+        pytest.skip("ripgrep is not installed")
+
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    required = ("go.mod", "pyproject.toml", "package.json", "Makefile")
+    visible = set(
+        subprocess.run(
+            ["rg", "--files"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.split()
+    )
+
+    missing = [name for name in required if name not in visible]
+    assert missing == [], f"toolchain files invisible to rg (git-ignored?): {missing}"

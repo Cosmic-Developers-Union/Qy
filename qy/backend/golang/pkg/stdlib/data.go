@@ -1,504 +1,658 @@
 package stdlib
 
 import (
-	"fmt"
+	"strconv"
 
-	"github.com/aspect-build/qy-vm/pkg/vm"
+	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
 )
 
-func Data() map[string]vm.Value {
-	return map[string]vm.Value{
-		"car":    &vm.HostFunction{Name: "car", Fn: car},
-		"cdr":    &vm.HostFunction{Name: "cdr", Fn: cdr},
-		"cons":   &vm.HostFunction{Name: "cons", Fn: cons},
-		"atom":   &vm.HostFunction{Name: "atom", Fn: atom},
-		"eq":     &vm.HostFunction{Name: "eq", Fn: eq},
-		"is":     &vm.HostFunction{Name: "is", Fn: isOp},
-		"get":    &vm.HostFunction{Name: "get", Fn: get},
-		"has?":   &vm.HostFunction{Name: "has?", Fn: has},
-		"len":    &vm.HostFunction{Name: "len", Fn: length},
-		"list":   &vm.HostFunction{Name: "list", Fn: list},
-		"dict":   &vm.HostFunction{Name: "dict", Fn: dict},
-		"tuple":  &vm.HostFunction{Name: "tuple", Fn: tuple},
-		"set":    &vm.HostFunction{Name: "set", Fn: setOp},
-		"type":   &vm.HostFunction{Name: "type", Fn: typeOf},
-		"reify":  &vm.HostFunction{Name: "reify", Fn: reify},
-		"chain":  &vm.HostFunction{Name: "chain", Fn: chainOp},
-		"append": &vm.HostFunction{Name: "append", Fn: appendOp},
-	}
-}
+// `qy.core` 的 chain / 容器 / 谓词算子。
+//
+// 真源：`qy/std/data.py`（对应 `qy/backend/typescript/src/stdlib/data.ts`）。
 
-func car(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return vm.QyNil, nil
-	}
-	c, ok := args[0].(*vm.Chain)
-	if !ok {
-		return vm.QyNil, fmt.Errorf("car expects a chain, got %T", args[0])
-	}
-	return c.Head, nil
-}
-
-func cdr(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return vm.QyNil, nil
-	}
-	c, ok := args[0].(*vm.Chain)
-	if !ok {
-		return vm.QyNil, fmt.Errorf("cdr expects a chain, got %T", args[0])
-	}
-	return c.Tail, nil
-}
-
-func cons(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		return vm.QyNil, nil
-	}
-	return &vm.Chain{Head: args[0], Tail: args[1]}, nil
-}
-
-func atom(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return vm.QyT, nil
-	}
-	v := args[0]
-	if _, ok := v.(*vm.Chain); ok {
-		return vm.QyNil, nil
-	}
-	return vm.QyT, nil
-}
-
-func eq(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		return vm.QyNil, nil
-	}
-	a, b := args[0], args[1]
-	if symbolEq(a, b) {
-		return vm.QyT, nil
-	}
-	return vm.QyNil, nil
-}
-
-func symbolEq(a, b vm.Value) bool {
-	if a == b {
+func isQyChain(value vm.Value) bool {
+	if vm.IsNil(value) {
 		return true
 	}
-	if vm.IsNil(a) && vm.IsNil(b) {
-		return true
-	}
-	sa, aIsSym := a.(*vm.Symbol)
-	sb, bIsSym := b.(*vm.Symbol)
-	if aIsSym && bIsSym {
-		return sa.Name == sb.Name
-	}
-	ai, aIsInt := a.(int)
-	bi, bIsInt := b.(int)
-	if aIsInt && bIsInt {
-		return ai == bi
-	}
-	af, aIsFloat := a.(float64)
-	bf, bIsFloat := b.(float64)
-	if aIsFloat && bIsFloat {
-		return af == bf
-	}
-	as, aIsStr := a.(string)
-	bs, bIsStr := b.(string)
-	if aIsStr && bIsStr {
-		return as == bs
-	}
-	return false
+	_, ok := value.(*vm.Chain)
+	return ok
 }
 
-func isOp(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		return vm.QyNil, nil
+func properChainItems(value vm.Value, context string) ([]vm.Value, error) {
+	items, err := vm.ChainToSlice(value)
+	if err != nil {
+		return nil, vm.NewTypeError(context + " expects a proper Qy chain")
 	}
-	if args[0] == args[1] {
+	return items, nil
+}
+
+// Atom 是 `atom`：不是非空 chain / tuple 时为真。
+func Atom(value vm.Value) vm.Value {
+	if vm.IsNil(value) {
+		return vm.QyT
+	}
+	if _, ok := value.(*vm.Chain); ok {
+		return vm.QyNil
+	}
+	if tuple, ok := value.(*vm.TupleValue); ok {
+		return boolValue(len(tuple.Items) == 0)
+	}
+	if items, ok := value.([]vm.Value); ok {
+		return boolValue(len(items) == 0)
+	}
+	return vm.QyT
+}
+
+// IsIdentical 是 `is`：identity 比较。
+func IsIdentical(left, right vm.Value) vm.Value {
+	return boolValue(identityEquals(left, right))
+}
+
+// Eq 是 `eq`：Lisp 风格 eq（原子按值、引用类型按 identity 类型检查）。
+func Eq(left, right vm.Value) (vm.Value, error) {
+	if vm.IsNil(left) && vm.IsNil(right) {
 		return vm.QyT, nil
 	}
-	return vm.QyNil, nil
-}
-
-func get(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		return vm.QyNil, nil
+	if vm.IsT(left) && vm.IsT(right) {
+		return vm.QyT, nil
 	}
-	collection := args[0]
-	key := args[1]
-
-	switch c := collection.(type) {
-	case []vm.Value:
-		idx := toIntKey(key)
-		if idx >= 0 && idx < len(c) {
-			return c[idx], nil
-		}
-		if len(args) > 2 {
-			return args[2], nil
-		}
-		return vm.QyNil, nil
-	case *vm.Chain:
-		idx := toIntKey(key)
-		current := vm.Value(c)
-		for i := 0; i < idx; i++ {
-			chain, ok := current.(*vm.Chain)
-			if !ok {
-				if len(args) > 2 {
-					return args[2], nil
-				}
-				return vm.QyNil, nil
-			}
-			current = chain.Tail
-		}
-		if chain, ok := current.(*vm.Chain); ok {
-			return chain.Head, nil
-		}
-		if len(args) > 2 {
-			return args[2], nil
-		}
-		return vm.QyNil, nil
-	case map[string]vm.Value:
-		k := valueToKey(key)
-		if v, ok := c[k]; ok {
-			return v, nil
-		}
-		if len(args) > 2 {
-			return args[2], nil
-		}
-		return vm.QyNil, nil
+	if vm.IsNone(left) && vm.IsNone(right) {
+		return vm.QyT, nil
 	}
-	if len(args) > 2 {
-		return args[2], nil
-	}
-	return vm.QyNil, nil
-}
-
-func has(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		return vm.QyNil, nil
-	}
-	collection := args[0]
-	key := args[1]
-
-	switch c := collection.(type) {
-	case []vm.Value:
-		idx := toIntKey(key)
-		if idx >= 0 && idx < len(c) {
+	switch l := left.(type) {
+	case *vm.Number:
+		if r, ok := right.(*vm.Number); ok && l.TypeName == r.TypeName && l.Val == r.Val {
 			return vm.QyT, nil
 		}
-	case map[string]vm.Value:
-		k := valueToKey(key)
-		if _, ok := c[k]; ok {
+		// 数值与数值不同 concrete 类型不算 eq（与 TS 的 constructor 检查一致）
+		if _, ok := right.(*vm.Number); ok {
+			return vm.QyNil, nil
+		}
+		return vm.QyNil, nil
+	case *vm.StringValue:
+		if r, ok := right.(*vm.StringValue); ok && l.Value == r.Value {
 			return vm.QyT, nil
 		}
+		return vm.QyNil, nil
+	case *vm.Symbol:
+		if r, ok := right.(*vm.Symbol); ok && l.Name == r.Name {
+			return vm.QyT, nil
+		}
+		return vm.QyNil, nil
+	case string:
+		if r, ok := right.(string); ok && l == r {
+			return vm.QyT, nil
+		}
+		return vm.QyNil, nil
 	}
 	return vm.QyNil, nil
 }
 
-func length(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return 0, nil
-	}
-	v := args[0]
-	switch c := v.(type) {
-	case []vm.Value:
-		return len(c), nil
-	case *vm.Chain:
-		count := 0
-		current := vm.Value(c)
-		for {
-			chain, ok := current.(*vm.Chain)
-			if !ok {
-				break
-			}
-			count++
-			current = chain.Tail
-		}
-		return count, nil
-	case map[string]vm.Value:
-		return len(c), nil
-	case string:
-		return len(c), nil
-	}
-	if vm.IsNil(v) {
-		return 0, nil
-	}
-	return 0, nil
-}
-
-func list(args []vm.Value) (vm.Value, error) {
-	if len(args) == 1 {
-		if c, ok := args[0].(*vm.Chain); ok {
-			var result []vm.Value
-			current := vm.Value(c)
-			for {
-				chain, ok := current.(*vm.Chain)
-				if !ok {
-					break
-				}
-				result = append(result, chain.Head)
-				current = chain.Tail
-			}
-			return result, nil
+// SameQyKey 是容器 key 比较（跨宿主 str / NumberValue 也成立）。
+func SameQyKey(left, right vm.Value) bool {
+	if l, ok := left.(*vm.StringValue); ok {
+		if r, ok := right.(string); ok {
+			return l.Value == r
 		}
 	}
-	result := make([]vm.Value, len(args))
-	copy(result, args)
-	return result, nil
-}
-
-func dict(args []vm.Value) (vm.Value, error) {
-	result := make(map[string]vm.Value)
-	for i := 0; i+1 < len(args); i += 2 {
-		key := valueToKey(args[i])
-		result[key] = args[i+1]
+	if l, ok := left.(string); ok {
+		if r, ok := right.(*vm.StringValue); ok {
+			return l == r.Value
+		}
+		if r, ok := right.(string); ok {
+			return l == r
+		}
 	}
-	return result, nil
-}
-
-func tuple(args []vm.Value) (vm.Value, error) {
-	result := make([]vm.Value, len(args))
-	copy(result, args)
-	return result, nil
-}
-
-func setOp(args []vm.Value) (vm.Value, error) {
-	result := make(map[string]vm.Value)
-	for _, arg := range args {
-		key := valueToKey(arg)
-		result[key] = vm.QyT
+	if _, isBool := left.(bool); isBool {
+		return identityEquals(left, right)
 	}
-	return result, nil
+	if _, isBool := right.(bool); isBool {
+		return identityEquals(left, right)
+	}
+	result, err := Eq(left, right)
+	if err != nil {
+		return false
+	}
+	return vm.IsT(result)
 }
 
-func typeOf(args []vm.Value) (vm.Value, error) {
-	if len(args) < 1 {
-		return &vm.Symbol{Name: "nil"}, nil
+// CarOp 是 `car`。
+func CarOp(value vm.Value) (vm.Value, error) {
+	if vm.IsNil(value) {
+		return vm.QyNil, nil
 	}
-	v := args[0]
-	switch v.(type) {
-	case int:
-		return &vm.Symbol{Name: "int"}, nil
-	case float64:
-		return &vm.Symbol{Name: "float"}, nil
-	case string:
-		return &vm.Symbol{Name: "string"}, nil
+	if chain, ok := value.(*vm.Chain); ok {
+		return chain.Head, nil
+	}
+	return nil, vm.NewTypeError("car expects a chain")
+}
+
+// CdrOp 是 `cdr`。
+func CdrOp(value vm.Value) (vm.Value, error) {
+	if vm.IsNil(value) {
+		return vm.QyNil, nil
+	}
+	if chain, ok := value.(*vm.Chain); ok {
+		return chain.Tail, nil
+	}
+	return nil, vm.NewTypeError("cdr expects a chain")
+}
+
+// ConsOp 是 `cons`。
+func ConsOp(head, tail vm.Value) (vm.Value, error) {
+	return vm.NewChain(head, tail), nil
+}
+
+// ChainOp 是 `chain`：tuple / list → chain。
+func ChainOp(value vm.Value) (vm.Value, error) {
+	if vm.IsNil(value) {
+		return value, nil
+	}
+	if _, ok := value.(*vm.Chain); ok {
+		return value, nil
+	}
+	if tuple, ok := value.(*vm.TupleValue); ok {
+		return vm.SliceToChain(tuple.Items), nil
+	}
+	if list, ok := value.(*vm.ListValue); ok {
+		return vm.SliceToChain(list.Items), nil
+	}
+	return nil, vm.NewTypeError("chain expects a tuple/list container")
+}
+
+func appendItems(value vm.Value) ([]vm.Value, error) {
+	if tuple, ok := value.(*vm.TupleValue); ok {
+		return tuple.Items, nil
+	}
+	if list, ok := value.(*vm.ListValue); ok {
+		return list.Items, nil
+	}
+	if vm.IsNil(value) {
+		return nil, nil
+	}
+	if _, ok := value.(*vm.Chain); ok {
+		return properChainItems(value, "append")
+	}
+	return nil, vm.NewTypeError("append expects tuple/list/chain inputs")
+}
+
+// AppendOp 是 `append`。
+func AppendOp(left, right vm.Value) (vm.Value, error) {
+	leftItems, err := appendItems(left)
+	if err != nil {
+		return nil, err
+	}
+	rightItems, err := appendItems(right)
+	if err != nil {
+		return nil, err
+	}
+	combined := append(append([]vm.Value{}, leftItems...), rightItems...)
+	if isQyChain(left) || isQyChain(right) {
+		return vm.SliceToChain(combined), nil
+	}
+	if _, ok := left.(*vm.ListValue); ok {
+		return vm.NewList(combined), nil
+	}
+	if _, ok := right.(*vm.ListValue); ok {
+		return vm.NewList(combined), nil
+	}
+	return vm.NewTuple(combined), nil
+}
+
+// LenOp 是 `len`。
+func LenOp(value vm.Value) (vm.Value, error) {
+	switch v := value.(type) {
 	case *vm.Symbol:
-		return &vm.Symbol{Name: "symbol"}, nil
+		return vm.NewInt(float64(len([]rune(v.Name)))), nil
+	case vm.NilValue:
+		return vm.NewInt(0), nil
 	case *vm.Chain:
-		return &vm.Symbol{Name: "chain"}, nil
-	case *vm.FunctionValue:
-		return &vm.Symbol{Name: "function"}, nil
-	case *vm.HostFunction:
-		return &vm.Symbol{Name: "function"}, nil
-	case []vm.Value:
-		return &vm.Symbol{Name: "list"}, nil
-	case map[string]vm.Value:
-		return &vm.Symbol{Name: "dict"}, nil
-	case *vm.EffectDefinition:
-		return &vm.Symbol{Name: "effect"}, nil
+		items, err := vm.ChainToSlice(v)
+		if err != nil {
+			return nil, vm.NewTypeError("len expects a proper Qy chain")
+		}
+		return vm.NewInt(float64(len(items))), nil
+	case *vm.StringValue:
+		return vm.NewInt(float64(len([]rune(v.Value)))), nil
+	case *vm.TupleValue:
+		return vm.NewInt(float64(len(v.Items))), nil
+	case *vm.ListValue:
+		return vm.NewInt(float64(len(v.Items))), nil
+	case *vm.DictValue:
+		return vm.NewInt(float64(len(v.Entries))), nil
+	case *vm.SetValue:
+		return vm.NewInt(float64(len(v.Items))), nil
 	}
-	if vm.IsNil(v) {
-		return &vm.Symbol{Name: "nil"}, nil
-	}
-	return &vm.Symbol{Name: "unknown"}, nil
+	return nil, vm.NewTypeError("len expects a collection")
 }
 
-func reify(args []vm.Value) (vm.Value, error) {
-	if len(args) != 1 {
-		return nil, fmt.Errorf("reify expects exactly 1 argument, got %d", len(args))
+func ensureIndex(value vm.Value) (int, error) {
+	if number, ok := value.(*vm.Number); ok && number.IsInt {
+		return int(number.Val), nil
 	}
-	return reifyValue(args[0])
+	if n, ok := value.(int); ok {
+		return n, nil
+	}
+	return 0, vm.NewTypeError("expected integer index")
 }
 
-func reifyValue(v vm.Value) (vm.Value, error) {
-	if vm.IsNil(v) {
-		return &vm.Symbol{Name: "nil"}, nil
+func atIndex(items []vm.Value, index int) vm.Value {
+	if index < 0 {
+		index += len(items)
 	}
-	if v == vm.QyT {
-		return &vm.Symbol{Name: "T"}, nil
+	if index < 0 || index >= len(items) {
+		return nil
 	}
-	switch val := v.(type) {
-	case *vm.Symbol:
-		return val, nil
-	case int:
-		return &vm.Symbol{Name: fmt.Sprintf("%d", val)}, nil
-	case float64:
-		return &vm.Symbol{Name: fmt.Sprintf("%g", val)}, nil
-	case string:
-		// String literals: wrap in quotes so string-ss can resolve them back
-		return &vm.Symbol{Name: fmt.Sprintf("%q", val)}, nil
-	case *vm.Chain:
-		items, tail, err := reifyChainItems(val)
+	return items[index]
+}
+
+// GetOp 是 `get`：dict / tuple / list / chain 取项。
+func GetOp(collection, key vm.Value, defaults ...vm.Value) (vm.Value, error) {
+	if len(defaults) > 1 {
+		return nil, vm.NewArityError("get expects two or three arguments")
+	}
+	var fallback vm.Value = vm.QyNone
+	if len(defaults) > 0 {
+		fallback = defaults[0]
+	}
+	switch v := collection.(type) {
+	case *vm.DictValue:
+		for _, entry := range v.Entries {
+			if SameQyKey(entry.Key, key) {
+				return entry.Value, nil
+			}
+		}
+		return fallback, nil
+	case *vm.TupleValue:
+		index, err := ensureIndex(key)
 		if err != nil {
 			return nil, err
 		}
-		return chainFromItemsWithTail(items, tail), nil
-	case []vm.Value:
-		if len(val) == 0 {
-			return vm.QyNil, nil
+		if value := atIndex(v.Items, index); value != nil {
+			return value, nil
 		}
-		items := make([]vm.Value, len(val))
-		for i, item := range val {
-			reified, err := reifyValue(item)
+		return fallback, nil
+	case *vm.ListValue:
+		index, err := ensureIndex(key)
+		if err != nil {
+			return nil, err
+		}
+		if value := atIndex(v.Items, index); value != nil {
+			return value, nil
+		}
+		return fallback, nil
+	}
+	if vm.IsNil(collection) {
+		return fallback, nil
+	}
+	if _, ok := collection.(*vm.Chain); ok {
+		index, err := ensureIndex(key)
+		if err != nil {
+			return nil, err
+		}
+		items, err := vm.ChainToSlice(collection)
+		if err != nil {
+			return nil, err
+		}
+		if value := atIndex(items, index); value != nil {
+			return value, nil
+		}
+		return fallback, nil
+	}
+	return nil, vm.NewTypeError("get expects a chain, tuple, list, or dict")
+}
+
+// HasOp 是 `has?`。
+func HasOp(collection, key vm.Value) (vm.Value, error) {
+	switch v := collection.(type) {
+	case *vm.DictValue:
+		for _, entry := range v.Entries {
+			if SameQyKey(entry.Key, key) {
+				return vm.QyT, nil
+			}
+		}
+		return vm.QyNil, nil
+	case *vm.SetValue:
+		for _, item := range v.Items {
+			if SameQyKey(item, key) {
+				return vm.QyT, nil
+			}
+		}
+		return vm.QyNil, nil
+	case *vm.TupleValue:
+		index, err := ensureIndex(key)
+		if err != nil {
+			return nil, err
+		}
+		return boolValue(index >= -len(v.Items) && index < len(v.Items)), nil
+	case *vm.ListValue:
+		index, err := ensureIndex(key)
+		if err != nil {
+			return nil, err
+		}
+		return boolValue(index >= -len(v.Items) && index < len(v.Items)), nil
+	}
+	if vm.IsNil(collection) {
+		return vm.QyNil, nil
+	}
+	if _, ok := collection.(*vm.Chain); ok {
+		index, err := ensureIndex(key)
+		if err != nil {
+			return nil, err
+		}
+		items, err := vm.ChainToSlice(collection)
+		if err != nil {
+			return nil, err
+		}
+		return boolValue(index >= -len(items) && index < len(items)), nil
+	}
+	return nil, vm.NewTypeError("has? expects a chain, tuple, list, dict, or set")
+}
+
+// TupleOp 是 `tuple`。
+func TupleOp(args ...vm.Value) (vm.Value, error) {
+	if len(args) == 1 && isQyChain(args[0]) {
+		items, err := properChainItems(args[0], "tuple")
+		if err != nil {
+			return nil, err
+		}
+		return vm.NewTuple(items), nil
+	}
+	return vm.NewTuple(append([]vm.Value{}, args...)), nil
+}
+
+// ListOp 是 `list`。
+func ListOp(args ...vm.Value) (vm.Value, error) {
+	if len(args) == 1 && isQyChain(args[0]) {
+		items, err := properChainItems(args[0], "list")
+		if err != nil {
+			return nil, err
+		}
+		return vm.NewList(items), nil
+	}
+	return vm.NewList(append([]vm.Value{}, args...)), nil
+}
+
+// DictOp 是 `dict`。
+func DictOp(args ...vm.Value) (vm.Value, error) {
+	if len(args) == 1 && isQyChain(args[0]) {
+		entries := []vm.DictEntry{}
+		items, err := properChainItems(args[0], "dict")
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range items {
+			pair, err := dictEntryPair(item)
 			if err != nil {
 				return nil, err
 			}
-			items[i] = reified
+			entries = append(entries, pair)
 		}
-		return chainFromItems(items), nil
+		return vm.NewDict(entries), nil
 	}
-	return nil, fmt.Errorf("cannot reify value of type %T", v)
+	if len(args)%2 != 0 {
+		return nil, vm.NewArityError("dict expects key/value pairs")
+	}
+	entries := []vm.DictEntry{}
+	for index := 0; index < len(args); index += 2 {
+		key := args[index]
+		value := args[index+1]
+		replaced := false
+		for i := range entries {
+			if SameQyKey(entries[i].Key, key) {
+				entries[i] = vm.DictEntry{Key: key, Value: value}
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			entries = append(entries, vm.DictEntry{Key: key, Value: value})
+		}
+	}
+	return vm.NewDict(entries), nil
 }
 
-// reifyChainItems walks a Chain collecting reified heads, returning (items, improperTail, error).
-func reifyChainItems(c *vm.Chain) ([]vm.Value, vm.Value, error) {
-	var items []vm.Value
-	node := vm.Value(c)
-	for {
-		if vm.IsNil(node) {
-			return items, nil, nil
-		}
-		chain, ok := node.(*vm.Chain)
-		if !ok {
-			reified, err := reifyValue(node)
-			if err != nil {
-				return nil, nil, err
+func dictEntryPair(entry vm.Value) (vm.DictEntry, error) {
+	if chain, ok := entry.(*vm.Chain); ok {
+		if !vm.IsNil(chain.Tail) {
+			if _, isChain := chain.Tail.(*vm.Chain); !isChain {
+				return vm.DictEntry{Key: chain.Head, Value: chain.Tail}, nil
 			}
-			return items, reified, nil
 		}
-		reified, err := reifyValue(chain.Head)
+		items, err := properChainItems(entry, "dict entry")
 		if err != nil {
-			return nil, nil, err
+			return vm.DictEntry{}, err
 		}
-		items = append(items, reified)
-		node = chain.Tail
-	}
-}
-
-func chainFromItemsWithTail(items []vm.Value, tail vm.Value) vm.Value {
-	if tail == nil || vm.IsNil(tail) {
-		return chainFromItems(items)
-	}
-	// Improper chain: build the proper prefix, then cons the tail
-	result := vm.Value(vm.QyNil)
-	for i := len(items) - 1; i >= 0; i-- {
-		result = &vm.Chain{Head: items[i], Tail: result}
-	}
-	if len(items) == 0 {
-		return tail
-	}
-	// Walk to the last cell and set its tail to the improper tail
-	last := result.(*vm.Chain)
-	for c := last; ; {
-		t, ok := c.Tail.(*vm.Chain)
-		if !ok {
-			break
+		if len(items) != 2 {
+			return vm.DictEntry{}, vm.NewTypeError("dict chain entry must contain two values")
 		}
-		last = t
+		return vm.DictEntry{Key: items[0], Value: items[1]}, nil
 	}
-	// last is the final proper cell; set its Tail to the reified improper tail
-	// Since Chain is immutable, rebuild the final cell
-	return setLastTail(result, tail)
+	if items, ok := entry.([]vm.Value); ok {
+		if len(items) != 2 {
+			return vm.DictEntry{}, vm.NewTypeError("dict chain entry must contain two values")
+		}
+		return vm.DictEntry{Key: items[0], Value: items[1]}, nil
+	}
+	return vm.DictEntry{}, vm.NewTypeError("dict chain entry must be a pair")
 }
 
-func chainFromItems(items []vm.Value) *vm.Chain {
-	result := vm.Value(vm.QyNil)
-	for i := len(items) - 1; i >= 0; i-- {
-		result = &vm.Chain{Head: items[i], Tail: result}
+// SetOp 是 `set`。
+func SetOp(args ...vm.Value) (vm.Value, error) {
+	values := args
+	if len(args) == 1 && isQyChain(args[0]) {
+		items, err := properChainItems(args[0], "set")
+		if err != nil {
+			return nil, err
+		}
+		values = items
 	}
-	return result.(*vm.Chain)
-}
-
-// setLastTail rebuilds a proper chain list replacing the final nil tail with a new tail.
-func setLastTail(chain vm.Value, newTail vm.Value) vm.Value {
-	c := chain.(*vm.Chain)
-	if vm.IsNil(c.Tail) {
-		return &vm.Chain{Head: c.Head, Tail: newTail}
-	}
-	return &vm.Chain{Head: c.Head, Tail: setLastTail(c.Tail, newTail)}
-}
-
-func chainOp(args []vm.Value) (vm.Value, error) {
-	if len(args) == 1 {
-		switch v := args[0].(type) {
-		case []vm.Value:
-			result := vm.Value(vm.QyNil)
-			for i := len(v) - 1; i >= 0; i-- {
-				result = &vm.Chain{Head: v[i], Tail: result}
+	items := []vm.Value{}
+	for _, value := range values {
+		duplicate := false
+		for _, existing := range items {
+			if SameQyKey(existing, value) {
+				duplicate = true
+				break
 			}
-			return result, nil
-		case *vm.Chain:
-			return v, nil
+		}
+		if !duplicate {
+			items = append(items, value)
 		}
 	}
-	result := vm.Value(vm.QyNil)
-	for i := len(args) - 1; i >= 0; i-- {
-		result = &vm.Chain{Head: args[i], Tail: result}
-	}
-	return result, nil
+	return vm.NewSet(items), nil
 }
 
-func appendOp(args []vm.Value) (vm.Value, error) {
-	if len(args) < 2 {
-		if len(args) == 1 {
-			return args[0], nil
-		}
-		return vm.QyNil, nil
-	}
-	left := args[0]
-	right := args[1]
+// TuplePredicate 是 `tuple?`。
+func TuplePredicate(value vm.Value) vm.Value {
+	_, ok := value.(*vm.TupleValue)
+	return boolValue(ok)
+}
 
-	switch l := left.(type) {
-	case []vm.Value:
-		switch r := right.(type) {
-		case []vm.Value:
-			result := make([]vm.Value, 0, len(l)+len(r))
-			result = append(result, l...)
-			result = append(result, r...)
-			return result, nil
-		default:
-			result := make([]vm.Value, 0, len(l)+1)
-			result = append(result, l...)
-			result = append(result, r)
-			return result, nil
-		}
+// ListPredicate 是 `list?`。
+func ListPredicate(value vm.Value) vm.Value {
+	_, ok := value.(*vm.ListValue)
+	return boolValue(ok)
+}
+
+// DictPredicate 是 `dict?`。
+func DictPredicate(value vm.Value) vm.Value {
+	_, ok := value.(*vm.DictValue)
+	return boolValue(ok)
+}
+
+// SetPredicate 是 `set?`。
+func SetPredicate(value vm.Value) vm.Value {
+	_, ok := value.(*vm.SetValue)
+	return boolValue(ok)
+}
+
+// TypeOp 是 `type`：Qy 语义类型名（不泄漏宿主类名）。
+func TypeOp(value vm.Value) vm.Value {
+	switch value.(type) {
+	case vm.NilValue:
+		return vm.NewSymbol("nil")
+	case vm.TValue:
+		return vm.NewSymbol("T")
+	case vm.NoneValue:
+		return vm.NewSymbol("none")
 	case *vm.Chain:
-		var items []vm.Value
-		current := vm.Value(l)
+		return vm.NewSymbol("chain")
+	case *vm.Symbol:
+		return vm.NewSymbol("symbol")
+	case *vm.TupleValue:
+		return vm.NewSymbol("tuple")
+	case *vm.ListValue:
+		return vm.NewSymbol("list")
+	case *vm.DictValue:
+		return vm.NewSymbol("dict")
+	case *vm.SetValue:
+		return vm.NewSymbol("set")
+	case *vm.Number:
+		return vm.NewSymbol("number")
+	case *vm.StringValue:
+		return vm.NewSymbol("string")
+	case *vm.CharValue:
+		return vm.NewSymbol("char")
+	}
+	return vm.NewSymbol("object")
+}
+
+// ReifyOp 是 `reify`：runtime 值 → syntax datum。
+//
+// 这是 ScopeOperator（`_reify(args, env)`），所以由 RawOperator 承载。
+func ReifyOp(args []vm.Value, _ vm.Value) (vm.Value, error) {
+	if len(args) != 1 {
+		return nil, vm.NewReifyError("reify expects exactly 1 argument")
+	}
+	return ReifyValue(args[0])
+}
+
+// ReifyValue 是单个值的 reify（含 chain 递归）。
+func ReifyValue(value vm.Value) (vm.Value, error) {
+	switch v := value.(type) {
+	case vm.NilValue:
+		return vm.NewSymbol("nil"), nil
+	case vm.TValue:
+		return vm.NewSymbol("T"), nil
+	case vm.NoneValue:
+		return vm.NewSymbol("none"), nil
+	case *vm.Symbol:
+		return v, nil
+	case *vm.Number:
+		return vm.NewSymbol(strconv.FormatFloat(v.Val, 'f', -1, 64)), nil
+	case int:
+		return vm.NewSymbol(strconv.Itoa(v)), nil
+	case float64:
+		return vm.NewSymbol(strconv.FormatFloat(v, 'f', -1, 64)), nil
+	case *vm.StringValue:
+		return vm.NewSymbol("\"" + v.Value + "\""), nil
+	case string:
+		return vm.NewSymbol("\"" + v + "\""), nil
+	case *vm.CharValue:
+		return vm.NewSymbol("#\\" + v.Value), nil
+	case *vm.Chain:
+		items := []vm.Value{}
+		var node vm.Value = v
 		for {
-			c, ok := current.(*vm.Chain)
+			chain, ok := node.(*vm.Chain)
 			if !ok {
 				break
 			}
-			items = append(items, c.Head)
-			current = c.Tail
+			reified, err := ReifyValue(chain.Head)
+			if err != nil {
+				return nil, err
+			}
+			items = append(items, reified)
+			node = chain.Tail
 		}
-		result := right
-		for i := len(items) - 1; i >= 0; i-- {
-			result = &vm.Chain{Head: items[i], Tail: result}
+		if vm.IsNil(node) {
+			return vm.SliceToChain(items), nil
 		}
-		return result, nil
+		tail, err := ReifyValue(node)
+		if err != nil {
+			return nil, err
+		}
+		if _, ok := tail.(*vm.Chain); ok || vm.IsNil(tail) {
+			tailItems, err := vm.ChainToSlice(tail)
+			if err != nil {
+				return nil, err
+			}
+			return vm.SliceToChain(append(append([]vm.Value{}, items...), tailItems...)), nil
+		}
+		var head vm.Value = vm.QyNil
+		if len(items) > 0 {
+			head = vm.SliceToChain(items)
+		}
+		return vm.NewChain(head, tail), nil
 	}
-	return right, nil
+	return nil, vm.NewReifyError("cannot reify value of type " + typeNameOf(value))
 }
 
-func toIntKey(v vm.Value) int {
-	switch n := v.(type) {
-	case int:
-		return n
-	case float64:
-		return int(n)
+// NormalizeArgument 是 APPLY / `apply` 的实参归一：
+// 字面量拼写（Symbol）在 VM 里还原为字面量值（`data.py`）。
+func NormalizeArgument(value vm.Value) vm.Value {
+	symbol, ok := value.(*vm.Symbol)
+	if !ok {
+		return value
 	}
-	return 0
+	if vm.DefaultLiteralType(symbol.Name) == "" {
+		return value
+	}
+	if literal, ok := vm.TryDefaultLiteral(symbol.Name); ok {
+		return literal
+	}
+	return value
 }
 
-func valueToKey(v vm.Value) string {
-	switch val := v.(type) {
-	case string:
-		return val
-	case *vm.Symbol:
-		return val.Name
-	default:
-		return fmt.Sprintf("%v", v)
+// DataBindings 返回 `data.py` 的 chain / container 算子绑定。
+func DataBindings() map[string]func(args []vm.Value) (vm.Value, error) {
+	return map[string]func(args []vm.Value) (vm.Value, error){
+		"atom":  func(args []vm.Value) (vm.Value, error) { return Atom(argAt(args, 0)), nil },
+		"car":   func(args []vm.Value) (vm.Value, error) { return CarOp(argAt(args, 0)) },
+		"cdr":   func(args []vm.Value) (vm.Value, error) { return CdrOp(argAt(args, 0)) },
+		"chain": func(args []vm.Value) (vm.Value, error) { return ChainOp(argAt(args, 0)) },
+		"append": func(args []vm.Value) (vm.Value, error) {
+			return AppendOp(argAt(args, 0), argAt(args, 1))
+		},
+		"cons": func(args []vm.Value) (vm.Value, error) { return ConsOp(argAt(args, 0), argAt(args, 1)) },
+		"eq":   func(args []vm.Value) (vm.Value, error) { return Eq(argAt(args, 0), argAt(args, 1)) },
+		"get": func(args []vm.Value) (vm.Value, error) {
+			return GetOp(argAt(args, 0), argAt(args, 1), args[minInt(2, len(args)):]...)
+		},
+		"has?":  func(args []vm.Value) (vm.Value, error) { return HasOp(argAt(args, 0), argAt(args, 1)) },
+		"is":    func(args []vm.Value) (vm.Value, error) { return IsIdentical(argAt(args, 0), argAt(args, 1)), nil },
+		"len":   func(args []vm.Value) (vm.Value, error) { return LenOp(argAt(args, 0)) },
+		"type":  func(args []vm.Value) (vm.Value, error) { return TypeOp(argAt(args, 0)), nil },
+		"tuple": func(args []vm.Value) (vm.Value, error) { return TupleOp(args...) },
+		"tuple?": func(args []vm.Value) (vm.Value, error) {
+			return TuplePredicate(argAt(args, 0)), nil
+		},
+		"list": func(args []vm.Value) (vm.Value, error) { return ListOp(args...) },
+		"list?": func(args []vm.Value) (vm.Value, error) {
+			return ListPredicate(argAt(args, 0)), nil
+		},
+		"dict": func(args []vm.Value) (vm.Value, error) { return DictOp(args...) },
+		"dict?": func(args []vm.Value) (vm.Value, error) {
+			return DictPredicate(argAt(args, 0)), nil
+		},
+		"set": func(args []vm.Value) (vm.Value, error) { return SetOp(args...) },
+		"set?": func(args []vm.Value) (vm.Value, error) {
+			return SetPredicate(argAt(args, 0)), nil
+		},
 	}
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func boolValue(value bool) vm.Value {
+	if value {
+		return vm.QyT
+	}
+	return vm.QyNil
 }

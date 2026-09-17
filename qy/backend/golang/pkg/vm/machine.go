@@ -3,808 +3,1259 @@ package vm
 import (
 	"fmt"
 	"os"
-	"strconv"
-	"sync"
 
-	"github.com/aspect-build/qy-vm/pkg/bytecode"
+	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/bytecode"
 )
 
+// 寄存器虚拟机：指令分派与语义。
+//
+// 这是 `qy/vm/instance/machine.py::RegisterVirtualMachine` 的 Go 移植，
+// 与 `qy/backend/typescript/src/vm.ts` 逐指令对齐；每条 case 标注对应 Python 位置。
+//
+// 并发说明：`parallel` / `all` 在 Python 里用 asyncio 并发，这里与 TS 版一样
+// 顺序执行；结果顺序与 `asyncio.gather` 一致（语料无副作用，行为等价）。
+
+// BuiltinFunc 是 CALL_BUILTIN 的内建算子实现体（下标见 stdlib 的 ABI 表）。
+type BuiltinFunc func(args []Value) (Value, error)
+
+// VM 是一次执行的虚拟机实例。
 type VM struct {
+	// Program 是装载的字节码程序（JSON 层）。
 	Program *bytecode.Program
-	Modules map[string]*Module
-	Debug   bool
-	mu      sync.Mutex
+	// Env 是标准运行环境（symbol-space-chain 的头）。
+	Env *Env
+	// Builtins 是 CALL_BUILTIN 的下标 ABI 表；由 stdlib 装配。
+	Builtins []BuiltinFunc
+	// Modules 是模块注册表（当前 VM 实例私有）。
+	Modules map[string]*ModuleValue
+	// Debug 打开逐指令 trace（写 stderr）。
+	Debug bool
+
+	functions []*BytecodeFunction
+	cache     map[string]Value
 }
 
-type Module struct {
-	Name     string
-	Bindings map[string]Value
-	Exports  []string
+// FrameResult 是 `runFunction` 的返回：函数结束时的值 + 收集到的结果列表。
+type FrameResult struct {
+	Value   Value
+	Results []Value
 }
 
-type ExecuteResult struct {
-	Value  Value
-	Effect *EffectSignal
+// Frame 是执行帧。字段与 Python `_Frame` 一一对应。
+type Frame struct {
+	FunctionValue *FunctionValue
+	Fn            *BytecodeFunction
+	PC            int
+	Registers     []Value
+	Env           *Env
+	Parents       []*Env
+	Results       []Value
+	Handlers      []HandlerRecord
+	PendingEffect *PendingEffect
 }
 
-type tailCallRequest struct {
-	funcVal *FunctionValue
-	args    []Value
+// PendingEffect 是 HANDLER_PUSH 路径下待分派的 effect。
+type PendingEffect struct {
+	HandlerFnIndex int
+	Signal         *EffectSignal
 }
 
-func NewVM(program *bytecode.Program) *VM {
-	return &VM{
-		Program: program,
-		Modules: make(map[string]*Module),
+// effectFrameSnapshot 是 effect 触发时的帧快照（对应 `machine.py::_EffectFrame`）。
+type effectFrameSnapshot struct {
+	Registers     []Value
+	Env           *Env
+	PC            int
+	Parents       []*Env
+	Results       []Value
+	FunctionValue *FunctionValue
+	Fn            *BytecodeFunction
+	Handlers      []HandlerRecord
+}
+
+// NewVM 构造虚拟机（对应 `RegisterVirtualMachine.__init__`）。
+func NewVM(program *bytecode.Program, env *Env) (*VM, error) {
+	if env == nil {
+		env = NewEnv(nil)
 	}
-}
-
-func (vm *VM) Execute(env *SymbolSpace) (Value, error) {
-	mainFn := &vm.Program.Functions[vm.Program.Main]
-	fv := &FunctionValue{FuncIndex: vm.Program.Main, Closure: env}
-	result, err := vm.runFunction(fv, mainFn, nil, env)
+	functions, err := decodeFunctions(program)
 	if err != nil {
 		return nil, err
 	}
-	if result.Effect != nil {
-		return nil, fmt.Errorf("unhandled effect: %s (arg: %v)", result.Effect.Effect, result.Effect.Arg)
-	}
-	return result.Value, nil
+	return &VM{
+		Program:   program,
+		Env:       env,
+		Modules:   map[string]*ModuleValue{},
+		functions: functions,
+		cache:     map[string]Value{},
+	}, nil
 }
 
-func (vm *VM) runFunction(fv *FunctionValue, fn *bytecode.Function, args []Value, callerEnv *SymbolSpace) (*ExecuteResult, error) {
-	frame := vm.makeFrame(fv, fn, args)
+// Functions 返回解码后的函数表（宿主调试用）。
+func (vm *VM) Functions() []*BytecodeFunction { return vm.functions }
+
+// EvaluateProgram 求值整个程序，返回 APPEND_RESULT 收集到的结果列表。
+func (vm *VM) EvaluateProgram() ([]Value, error) {
+	if vm.Program.Main < 0 || vm.Program.Main >= len(vm.functions) {
+		return nil, NewRuntimeError(fmt.Sprintf("program has no function #%d", vm.Program.Main))
+	}
+	main := &FunctionValue{Fn: vm.functions[vm.Program.Main], Closure: vm.Env}
+	result, err := vm.runFunction(main, nil)
+	if err != nil {
+		if signal, ok := asEffectSignal(err); ok {
+			return nil, &UnhandledEffectError{Effect: signal.Effect, Arg: signal.Arg}
+		}
+		return nil, err
+	}
+	return result.Results, nil
+}
+
+// Evaluate 求值并返回最后一个结果（对应 Python `evaluate`）。
+func (vm *VM) Evaluate() (Value, error) {
+	results, err := vm.EvaluateProgram()
+	if err != nil {
+		return nil, err
+	}
+	if len(results) == 0 {
+		return nil, nil
+	}
+	return results[len(results)-1], nil
+}
+
+// runFunction 执行一个函数体（对应 `_run_function`）。
+func (vm *VM) runFunction(functionValue *FunctionValue, args []Value) (*FrameResult, error) {
+	frame, err := vm.makeFrame(functionValue, args)
+	if err != nil {
+		return nil, err
+	}
 	for {
-		result, err := vm.executeFrame(frame)
+		if frame.PC >= len(frame.Fn.Instructions) {
+			// 指令耗尽（Python 会 IndexError；正常 emit 不会出现）
+			return &FrameResult{Value: nil, Results: frame.Results}, nil
+		}
+		instruction := &frame.Fn.Instructions[frame.PC]
+		frame.PC++
+		if vm.Debug {
+			fmt.Fprintf(os.Stderr, "  [%s] pc=%d op=%s\n", frame.Fn.Name, frame.PC-1, instruction.Opcode)
+		}
+		next, result, err := vm.executeInstruction(frame, instruction)
 		if err != nil {
 			return nil, err
 		}
 		if result != nil {
 			return result, nil
 		}
+		if next != nil {
+			frame = next
+		}
 	}
 }
 
-func (vm *VM) makeFrame(fv *FunctionValue, fn *bytecode.Function, args []Value) *Frame {
-	env := fv.Closure.Child()
-	for i, param := range fn.Params {
-		if i < len(args) {
-			env.Define(param, args[i])
+// makeFrame 创建执行帧（对应 `_make_frame`）。
+func (vm *VM) makeFrame(functionValue *FunctionValue, args []Value) (*Frame, error) {
+	fn := functionValue.Fn
+	if len(args) != len(fn.Params) {
+		return nil, NewArityError(fmt.Sprintf(
+			"%s expects %d arguments, got %d", fn.Name, len(fn.Params), len(args)))
+	}
+	var env *Env
+	if fn.Name == "<main>" || fn.Name == "<module-body>" {
+		env = functionValue.Closure
+	} else {
+		bindings := make(map[string]Value, len(fn.Params))
+		for index, param := range fn.Params {
+			bindings[param] = args[index]
 		}
+		env = functionValue.Closure.ChildWith(bindings)
 	}
 	return &Frame{
-		FunctionValue: fv,
-		Function:      fn,
+		FunctionValue: functionValue,
+		Fn:            fn,
 		PC:            0,
 		Registers:     make([]Value, fn.RegisterCount),
 		Env:           env,
 		Parents:       nil,
 		Results:       nil,
-	}
+		Handlers:      nil,
+	}, nil
 }
 
-func (vm *VM) executeFrame(frame *Frame) (*ExecuteResult, error) {
-	for frame.PC < len(frame.Function.Instructions) {
-		instr := &frame.Function.Instructions[frame.PC]
-		frame.PC++
-
-		if vm.Debug {
-			fmt.Fprintf(os.Stderr, "  [%s] pc=%d op=%s\n", frame.Function.Name, frame.PC-1, instr.Opcode)
-		}
-
-		result, err := vm.executeInstruction(frame, instr)
-		if err != nil {
-			if effect, ok := err.(*EffectSignal); ok {
-				return &ExecuteResult{Effect: effect}, nil
-			}
-			return nil, err
-		}
-		if result != nil {
-			switch r := result.(type) {
-			case *ExecuteResult:
-				return r, nil
-			case *tailCallRequest:
-				fn := &vm.Program.Functions[r.funcVal.FuncIndex]
-				newFrame := vm.makeFrame(r.funcVal, fn, r.args)
-				*frame = *newFrame
-			}
-		}
+// put 写入寄存器（越界时报错而不是 panic）。
+func (f *Frame) put(index int, value Value) error {
+	if index < 0 || index >= len(f.Registers) {
+		return NewRuntimeError(fmt.Sprintf(
+			"register index %d out of range (register_count=%d) in %s",
+			index, len(f.Registers), f.Fn.Name))
 	}
-	return &ExecuteResult{Value: QyNil}, nil
+	f.Registers[index] = value
+	return nil
 }
 
-func (vm *VM) executeInstruction(frame *Frame, instr *bytecode.Instruction) (interface{}, error) {
-	ops := instr.Operands
-	switch instr.Opcode {
+// read 读取寄存器（越界时报错而不是 panic）。
+func (f *Frame) read(index int) (Value, error) {
+	if index < 0 || index >= len(f.Registers) {
+		return nil, NewRuntimeError(fmt.Sprintf(
+			"register index %d out of range (register_count=%d) in %s",
+			index, len(f.Registers), f.Fn.Name))
+	}
+	return f.Registers[index], nil
+}
+
+// executeInstruction 单条指令分派（对应 `_execute_instruction`）。
+//
+// 返回 (nextFrame, frameResult, error)：
+//   - nextFrame 非 nil 表示尾调用换帧；
+//   - frameResult 非 nil 表示函数返回；
+//   - 两者都为 nil 表示继续执行下一条指令。
+func (vm *VM) executeInstruction(frame *Frame, instruction *Instruction) (*Frame, *FrameResult, error) {
+	ops := instruction.Operands
+	failure := func(err error) (*Frame, *FrameResult, error) { return nil, nil, err }
+
+	switch instruction.Opcode {
 	case bytecode.OpLoadHost:
-		dest := ops[0].AsReg()
-		frame.Registers[dest] = vm.decodeHostValue(&ops[1])
+		if err := frame.put(regOf(ops[0]), ops[1]); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
 
 	case bytecode.OpLoadEnv:
-		dest := ops[0].AsReg()
-		sym := ops[1].AsString()
-		val, ok := frame.Env.Resolve(sym)
-		if !ok {
-			return nil, fmt.Errorf("unresolved symbol: %s", sym)
+		dest := regOf(ops[0])
+		value, err := vm.resolveEnv(frame.Env, symbolOf(ops[1]))
+		if err != nil {
+			return failure(err)
 		}
-		frame.Registers[dest] = val
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
 
 	case bytecode.OpMove:
-		dest := ops[0].AsReg()
-		src := ops[1].AsReg()
-		frame.Registers[dest] = frame.Registers[src]
+		value, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(regOf(ops[0]), value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
 
 	case bytecode.OpStoreLocal:
-		sym := ops[0].AsString()
-		src := ops[1].AsReg()
-		val := frame.Registers[src]
-		if val == CompileTimeMacro {
-			return nil, nil
+		name := symbolOf(ops[0]).Name
+		value, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
 		}
-		frame.Env.Define(sym, val)
+		if !IsCompileTimeMacro(value) {
+			frame.Env.Define(name, value)
+		}
+		return nil, nil, nil
 
 	case bytecode.OpDefineOnce:
-		sym := ops[0].AsString()
-		src := ops[1].AsReg()
-		val := frame.Registers[src]
-		if val == CompileTimeMacro {
-			return nil, nil
+		name := symbolOf(ops[0]).Name
+		value, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
 		}
-		frame.Env.DefineOnce(sym, val)
+		if !IsCompileTimeMacro(value) {
+			if _, err := frame.Env.DefineOnce(name, value); err != nil {
+				return failure(err)
+			}
+		}
+		return nil, nil, nil
 
 	case bytecode.OpMakeFunction:
-		dest := ops[0].AsReg()
-		fnIdx := ops[1].AsInt()
-		frame.Registers[dest] = &FunctionValue{FuncIndex: fnIdx, Closure: frame.Env}
+		index := intOf(ops[1])
+		if index < 0 || index >= len(vm.functions) {
+			return failure(NewRuntimeError(fmt.Sprintf("MAKE_FUNCTION: no function #%d", index)))
+		}
+		if err := frame.put(regOf(ops[0]), &FunctionValue{Fn: vm.functions[index], Closure: frame.Env}); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
 
 	case bytecode.OpMakeMacro:
-		dest := ops[0].AsReg()
-		frame.Registers[dest] = CompileTimeMacro
+		if err := frame.put(regOf(ops[0]), CompileTimeMacro); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
 
-	case bytecode.OpEnterScope:
+	case bytecode.OpEnterScope, bytecode.OpSsEnter:
 		frame.Parents = append(frame.Parents, frame.Env)
 		frame.Env = frame.Env.Child()
+		return nil, nil, nil
 
-	case bytecode.OpExitScope:
+	case bytecode.OpExitScope, bytecode.OpSsLeave:
 		if len(frame.Parents) > 0 {
 			frame.Env = frame.Parents[len(frame.Parents)-1]
 			frame.Parents = frame.Parents[:len(frame.Parents)-1]
 		}
+		return nil, nil, nil
 
 	case bytecode.OpAppendResult:
-		src := ops[0].AsReg()
-		val := frame.Registers[src]
-		if val == CompileTimeMacro {
-			val = nil
+		value, err := frame.read(regOf(ops[0]))
+		if err != nil {
+			return failure(err)
 		}
-		frame.Results = append(frame.Results, val)
+		if IsCompileTimeMacro(value) {
+			value = nil
+		}
+		frame.Results = append(frame.Results, value)
+		return nil, nil, nil
 
 	case bytecode.OpBuildTuple:
-		dest := ops[0].AsReg()
-		values := make([]Value, len(ops)-1)
+		values := make([]Value, 0, len(ops)-1)
 		for i := 1; i < len(ops); i++ {
-			values[i-1] = frame.Registers[ops[i].AsReg()]
-		}
-		frame.Registers[dest] = values
-
-	case bytecode.OpCall:
-		dest := ops[0].AsReg()
-		calleeReg := ops[1].AsReg()
-		argRegs := ops[2].AsRegTuple()
-		callee := frame.Registers[calleeReg]
-		args := make([]Value, len(argRegs))
-		for i, r := range argRegs {
-			args[i] = frame.Registers[r]
-		}
-		result, err := vm.call(callee, args, frame)
-		if err != nil {
-			if effect, ok := err.(*EffectSignal); ok {
-				if effect.Continuation == nil {
-					captured := frame.Capture(dest)
-					cont := &Continuation{
-						Effect:    effect.Effect,
-						Resumable: true,
-						Frame:     captured,
-						DestReg:   dest,
-					}
-					effect.Continuation = cont
-				}
-				return &ExecuteResult{Effect: effect}, nil
-			}
-			return nil, err
-		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpTailCall:
-		calleeReg := ops[0].AsReg()
-		argRegs := ops[1].AsRegTuple()
-		callee := frame.Registers[calleeReg]
-		args := make([]Value, len(argRegs))
-		for i, r := range argRegs {
-			args[i] = frame.Registers[r]
-		}
-		switch c := callee.(type) {
-		case *FunctionValue:
-			return &tailCallRequest{funcVal: c, args: args}, nil
-		default:
-			result, err := vm.call(callee, args, frame)
+			value, err := frame.read(regOf(ops[i]))
 			if err != nil {
-				return nil, err
+				return failure(err)
 			}
-			return &ExecuteResult{Value: result}, nil
+			values = append(values, value)
 		}
-
-	case bytecode.OpReturn:
-		src := ops[0].AsReg()
-		val := frame.Registers[src]
-		if val == CompileTimeMacro {
-			val = nil
+		if err := frame.put(regOf(ops[0]), values); err != nil {
+			return failure(err)
 		}
-		return &ExecuteResult{Value: val}, nil
-
-	case bytecode.OpJump:
-		target := ops[0].AsInt()
-		frame.PC = target
-
-	case bytecode.OpJumpIfFalse:
-		src := ops[0].AsReg()
-		target := ops[1].AsInt()
-		if !IsTruthy(frame.Registers[src]) {
-			frame.PC = target
-		}
+		return nil, nil, nil
 
 	case bytecode.OpApply:
-		dest := ops[0].AsReg()
-		funcReg := ops[1].AsReg()
-		argsReg := ops[2].AsReg()
-		callee := frame.Registers[funcReg]
-		argVal := frame.Registers[argsReg]
-		args := valueToArgs(argVal)
-		result, err := vm.call(callee, args, frame)
+		dest := regOf(ops[0])
+		callee, err := frame.read(regOf(ops[1]))
 		if err != nil {
-			if effect, ok := err.(*EffectSignal); ok {
-				return &ExecuteResult{Effect: effect}, nil
-			}
-			return nil, err
+			return failure(err)
 		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpDefeffect:
-		name := ops[0].AsString()
-		resumable := true
-		if len(ops) > 1 {
-			resumable = ops[1].AsBool()
-		}
-		frame.Env.Define(name, &EffectDefinition{Name: name, Resumable: resumable})
-
-	case bytecode.OpPerform:
-		dest := ops[0].AsReg()
-		effectSym := ops[1].AsString()
-		argReg := ops[2].AsReg()
-		arg := frame.Registers[argReg]
-
-		resumable := true
-		if ed, ok := frame.Env.Resolve(effectSym); ok {
-			if def, ok := ed.(*EffectDefinition); ok {
-				resumable = def.Resumable
-			}
-		}
-
-		if !resumable {
-			return nil, &EffectSignal{
-				Effect:       effectSym,
-				Arg:          arg,
-				Continuation: nil,
-				Resumable:    false,
-			}
-		}
-
-		captured := frame.Capture(dest)
-		cont := &Continuation{
-			Effect:    effectSym,
-			Resumable: true,
-			Frame:     captured,
-			DestReg:   dest,
-		}
-		return nil, &EffectSignal{
-			Effect:       effectSym,
-			Arg:          arg,
-			Continuation: cont,
-			Resumable:    true,
-		}
-
-	case bytecode.OpHandle:
-		dest := ops[0].AsReg()
-		bodyFnIdx := ops[1].AsInt()
-		handlerSpecs := ops[2].AsHandlerSpecs()
-		result, err := vm.handleEffect(bodyFnIdx, handlerSpecs, frame.Env)
+		argsValue, err := frame.read(regOf(ops[2]))
 		if err != nil {
-			if effect, ok := err.(*EffectSignal); ok {
-				return &ExecuteResult{Effect: effect}, nil
-			}
-			return nil, err
+			return failure(err)
 		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpResume:
-		dest := ops[0].AsReg()
-		contReg := ops[1].AsReg()
-		valueReg := ops[2].AsReg()
-		cont, ok := frame.Registers[contReg].(*Continuation)
-		if !ok {
-			return nil, fmt.Errorf("resume expects a continuation, got %T", frame.Registers[contReg])
-		}
-		val := frame.Registers[valueReg]
-		result, err := vm.resumeContinuation(cont, val)
+		value, err := vm.call(callee, sequenceToArgs(argsValue), frame.Env)
 		if err != nil {
-			if effect, ok := err.(*EffectSignal); ok {
-				return &ExecuteResult{Effect: effect}, nil
-			}
-			return nil, err
+			return failure(err)
 		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpRaiseEffect:
-		effectSym := ops[0].AsString()
-		payloadReg := ops[1].AsReg()
-		resumable := false
-		if len(ops) > 2 {
-			resumable = ops[2].AsBool()
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
 		}
-		payload := frame.Registers[payloadReg]
-		return nil, &EffectSignal{
-			Effect:       effectSym,
-			Arg:          payload,
-			Continuation: nil,
-			Resumable:    resumable,
-		}
-
-	case bytecode.OpDefineModule:
-		dest := ops[0].AsReg()
-		moduleName := ops[1].AsString()
-		fnIdx := ops[2].AsInt()
-		exportNames := ops[3].AsSymbolTuple()
-		result, err := vm.defineModule(moduleName, fnIdx, exportNames, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpFromImport:
-		moduleName := ops[0].AsString()
-		specs := ops[1].AsImportSpecs()
-		vm.fromImport(moduleName, specs, frame.Env)
-
-	case bytecode.OpParallelGather:
-		dest := ops[0].AsReg()
-		thunkIndices := make([]int, len(ops)-1)
-		for i := 1; i < len(ops); i++ {
-			thunkIndices[i-1] = ops[i].AsInt()
-		}
-		result, err := vm.parallelGather(thunkIndices, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpAllGather:
-		dest := ops[0].AsReg()
-		thunkIndices := make([]int, len(ops)-1)
-		for i := 1; i < len(ops); i++ {
-			thunkIndices[i-1] = ops[i].AsInt()
-		}
-		result, err := vm.allGather(thunkIndices, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpRaceFirst:
-		dest := ops[0].AsReg()
-		thunkIndices := make([]int, len(ops)-1)
-		for i := 1; i < len(ops); i++ {
-			thunkIndices[i-1] = ops[i].AsInt()
-		}
-		result, err := vm.raceFirst(thunkIndices, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		frame.Registers[dest] = result
-
-	case bytecode.OpCacheEval:
-		dest := ops[0].AsReg()
-		thunkReg := ops[1].AsReg()
-		thunkIdx, ok := frame.Registers[thunkReg].(int)
-		if !ok {
-			if fv, ok := frame.Registers[thunkReg].(*FunctionValue); ok {
-				thunkIdx = fv.FuncIndex
-			} else {
-				thunkIdx = ops[1].AsInt()
-			}
-		}
-		fn := &vm.Program.Functions[thunkIdx]
-		fv := &FunctionValue{FuncIndex: thunkIdx, Closure: frame.Env}
-		r, err := vm.runFunction(fv, fn, nil, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		frame.Registers[dest] = r.Value
+		return nil, nil, nil
 
 	case bytecode.OpRuntimeEval:
-		dest := ops[0].AsReg()
-		exprReg := ops[1].AsReg()
-		expr := frame.Registers[exprReg]
-		result := vm.runtimeEval(expr, frame.Env)
-		frame.Registers[dest] = result
+		dest := regOf(ops[0])
+		form, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		value, err := vm.evalForm(form, frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpParallelGather, bytecode.OpAllGather:
+		dest := regOf(ops[0])
+		indices := make([]int, 0, len(ops)-1)
+		for i := 1; i < len(ops); i++ {
+			indices = append(indices, intOf(ops[i]))
+		}
+		value, err := vm.parallelGather(indices, frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpRaceFirst:
+		dest := regOf(ops[0])
+		indices := make([]int, 0, len(ops)-1)
+		for i := 1; i < len(ops); i++ {
+			indices = append(indices, intOf(ops[i]))
+		}
+		value, err := vm.raceFirst(indices, frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpDefineModule:
+		dest := regOf(ops[0])
+		moduleName := symbolOf(ops[1]).Name
+		exportNames := symbolNamesOf(ops[3])
+		value, err := vm.defineModule(moduleName, intOf(ops[2]), exportNames, frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpFromImport:
+		moduleName := symbolOf(ops[0]).Name
+		if err := vm.fromImport(moduleName, importSpecsOf(ops[1]), frame.Env); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpDefeffect:
+		name := symbolOf(ops[0]).Name
+		resumable := true
+		if len(ops) > 1 {
+			resumable = boolOf(ops[1])
+		}
+		frame.Env.Define(name, &EffectDefinition{Name: name, Resumable: resumable})
+		return nil, nil, nil
+
+	case bytecode.OpPerform:
+		dest := regOf(ops[0])
+		effectSym := symbolOf(ops[1])
+		arg, err := frame.read(regOf(ops[2]))
+		if err != nil {
+			return failure(err)
+		}
+		if err := vm.perform(frame, dest, effectSym, arg); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpHandle:
+		dest := regOf(ops[0])
+		value, err := vm.handle(intOf(ops[1]), handlerSpecsOf(ops[2]), frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpResume:
+		dest := regOf(ops[0])
+		continuation, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		value, err := frame.read(regOf(ops[2]))
+		if err != nil {
+			return failure(err)
+		}
+		resumed, err := vm.resume(continuation, value)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, resumed); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpContRestore:
+		continuation, err := frame.read(regOf(ops[0]))
+		if err != nil {
+			return failure(err)
+		}
+		value, err := frame.read(regOf(ops[2]))
+		if err != nil {
+			return failure(err)
+		}
+		resumed, err := vm.resume(continuation, value)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(regOf(ops[1]), resumed); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpContCopy:
+		value, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(regOf(ops[0]), value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpJump:
+		frame.PC = intOf(ops[0])
+		return nil, nil, nil
+
+	case bytecode.OpJumpIfFalse:
+		value, err := frame.read(regOf(ops[0]))
+		if err != nil {
+			return failure(err)
+		}
+		if !CoreTruthy(value) {
+			frame.PC = intOf(ops[1])
+		}
+		return nil, nil, nil
+
+	case bytecode.OpCallBuiltin:
+		dest := regOf(ops[0])
+		builtinID := intOf(ops[1])
+		argRegisters := regTupleOf(ops[2])
+		args := make([]Value, 0, len(argRegisters))
+		for _, index := range argRegisters {
+			value, err := frame.read(index)
+			if err != nil {
+				return failure(err)
+			}
+			args = append(args, value)
+		}
+		if builtinID < 0 || builtinID >= len(vm.Builtins) || vm.Builtins[builtinID] == nil {
+			return failure(NewRuntimeError(fmt.Sprintf("unknown builtin operator index %d", builtinID)))
+		}
+		value, err := vm.Builtins[builtinID](args)
+		if err != nil {
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpCall:
+		dest := regOf(ops[0])
+		callee, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		argRegisters := regTupleOf(ops[2])
+		args := make([]Value, 0, len(argRegisters))
+		for _, index := range argRegisters {
+			value, err := frame.read(index)
+			if err != nil {
+				return failure(err)
+			}
+			args = append(args, value)
+		}
+		value, err := vm.call(callee, args, frame.Env)
+		if err != nil {
+			if signal, ok := asEffectSignal(err); ok && vm.dispatchToHandler(frame, signal) {
+				return nil, nil, nil
+			}
+			return failure(err)
+		}
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpTailCall:
+		callee, err := frame.read(regOf(ops[0]))
+		if err != nil {
+			return failure(err)
+		}
+		argRegisters := regTupleOf(ops[1])
+		args := make([]Value, 0, len(argRegisters))
+		for _, index := range argRegisters {
+			value, err := frame.read(index)
+			if err != nil {
+				return failure(err)
+			}
+			args = append(args, value)
+		}
+		if fn, ok := callee.(*FunctionValue); ok {
+			next, err := vm.makeFrame(fn, args)
+			if err != nil {
+				return failure(err)
+			}
+			return next, nil, nil
+		}
+		value, err := vm.call(callee, args, frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		return nil, &FrameResult{Value: value, Results: frame.Results}, nil
+
+	case bytecode.OpReturn:
+		value, err := frame.read(regOf(ops[0]))
+		if err != nil {
+			return failure(err)
+		}
+		if IsCompileTimeMacro(value) {
+			value = nil
+		}
+		return nil, &FrameResult{Value: value, Results: frame.Results}, nil
+
+	case bytecode.OpRaiseEffect:
+		effectName := symbolOf(ops[0]).Name
+		payload, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		resumable := false
+		if len(ops) > 2 {
+			resumable = boolOf(ops[2])
+		}
+		return failure(&EffectSignal{
+			Effect:       effectName,
+			Arg:          payload,
+			Continuation: IdentityContinuation(effectName, resumable),
+			Resumable:    resumable,
+		})
+
+	case bytecode.OpHandlerPush:
+		record := HandlerRecord{
+			HandlerID: intOf(ops[0]),
+			Target:    intOf(ops[1]),
+			Specs:     handlerSpecsOf(ops[3]),
+		}
+		if ops[2] != nil {
+			parentID := intOf(ops[2])
+			record.ParentID = &parentID
+		}
+		frame.Handlers = append(frame.Handlers, record)
+		return nil, nil, nil
+
+	case bytecode.OpHandlerPop:
+		if len(frame.Handlers) > 0 {
+			frame.Handlers = frame.Handlers[:len(frame.Handlers)-1]
+		}
+		return nil, nil, nil
+
+	case bytecode.OpEffectUnwind:
+		effectName := symbolOf(ops[0]).Name
+		arg, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		continuation, err := frame.read(regOf(ops[2]))
+		if err != nil {
+			return failure(err)
+		}
+		cont, ok := continuation.(*Continuation)
+		if !ok {
+			return failure(NewTypeError("EFFECT_UNWIND expects a continuation"))
+		}
+		return failure(&EffectSignal{
+			Effect:       effectName,
+			Arg:          arg,
+			Continuation: cont,
+			Resumable:    cont.Resumable,
+		})
+
+	case bytecode.OpEffectDispatch:
+		if frame.PendingEffect == nil {
+			return failure(NewRuntimeError("EFFECT_DISPATCH reached without a pending effect"))
+		}
+		pending := frame.PendingEffect
+		handler := &FunctionValue{Fn: vm.functions[pending.HandlerFnIndex], Closure: frame.Env}
+		if err := frame.put(regOf(ops[0]), handler); err != nil {
+			return failure(err)
+		}
+		if err := frame.put(regOf(ops[2]), pending.Signal.Arg); err != nil {
+			return failure(err)
+		}
+		if err := frame.put(regOf(ops[3]), pending.Signal.Continuation); err != nil {
+			return failure(err)
+		}
+		frame.PendingEffect = nil
+		return nil, nil, nil
+
+	case bytecode.OpContCapture:
+		continuation := vm.captureContinuation(frame, intOf(ops[2]), intOf(ops[4]), boolOf(ops[5]))
+		if err := frame.put(regOf(ops[0]), continuation); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpCacheEval:
+		dest := regOf(ops[0])
+		key := FormatValue(ops[1])
+		if value, ok := vm.cache[key]; ok {
+			if err := frame.put(dest, value); err != nil {
+				return failure(err)
+			}
+			return nil, nil, nil
+		}
+		value, err := vm.runThunk(intOf(ops[2]), frame.Env)
+		if err != nil {
+			return failure(err)
+		}
+		vm.cache[key] = value
+		if err := frame.put(dest, value); err != nil {
+			return failure(err)
+		}
+		return nil, nil, nil
+
+	case bytecode.OpSlotComplete:
+		return nil, nil, nil
 	}
 
+	return failure(NewRuntimeError("unsupported opcode '" + instruction.Opcode + "'"))
+}
+
+// ---------------------------------------------------------------------------
+// 符号解析
+// ---------------------------------------------------------------------------
+
+// resolveEnv 是 LOAD_ENV 的解析。
+//
+// 交换格式携带 `hygiene_bindings`（宏卫生别名 → 原始名），Python 的
+// `_install_hygiene_aliases` 把它装成惰性别名。这里在解析时直接按别名表改解析
+// 目标名，再退回普通解析（与 TS 版一致）。
+func (vm *VM) resolveEnv(env *Env, symbol *Symbol) (Value, error) {
+	if target, ok := vm.Program.HygieneBindings[symbol.Name]; ok {
+		if value, err := env.Resolve(NewSymbol(target)); err == nil {
+			return value, nil
+		}
+	}
+	return env.Resolve(symbol)
+}
+
+// ---------------------------------------------------------------------------
+// 调用
+// ---------------------------------------------------------------------------
+
+// call 调用任意可调用值（对应 `_call`）。
+func (vm *VM) call(callee Value, args []Value, env *Env) (Value, error) {
+	switch c := callee.(type) {
+	case *FunctionValue:
+		result, err := vm.runFunction(c, args)
+		if err != nil {
+			return nil, err
+		}
+		return result.Value, nil
+	case *RawOperator:
+		return c.Fn(args, env)
+	case *PureOperator:
+		return c.Fn(args)
+	case nil:
+		return nil, NewTypeError("bytecode call resolved to non-callable none")
+	}
+	return nil, NewTypeError("bytecode call resolved to non-callable " + Describe(callee))
+}
+
+// ---------------------------------------------------------------------------
+// effect
+// ---------------------------------------------------------------------------
+
+// perform 捕获当前帧并抛 effect signal（对应 `_perform`）。
+func (vm *VM) perform(frame *Frame, destReg int, effectSym *Symbol, arg Value) error {
+	effectName := effectSym.Name
+	resumable := true
+	if def, err := frame.Env.Resolve(effectSym); err == nil {
+		if definition, ok := def.(*EffectDefinition); ok {
+			resumable = definition.Resumable
+		}
+	}
+
+	if !resumable {
+		return &EffectSignal{
+			Effect:       effectName,
+			Arg:          arg,
+			Continuation: IdentityContinuation(effectName, false),
+			Resumable:    false,
+		}
+	}
+
+	snapshot := vm.captureSnapshot(frame, destReg, frame.PC)
+	continuation := &Continuation{
+		Effect:    effectName,
+		Resumable: true,
+		ResumeFn: func(value Value) (Value, error) {
+			return vm.resumeSnapshot(snapshot, destReg, value)
+		},
+	}
+	return &EffectSignal{
+		Effect:       effectName,
+		Arg:          arg,
+		Continuation: continuation,
+		Resumable:    true,
+	}
+}
+
+// captureSnapshot 深拷贝帧快照（effect 捕获用）。
+func (vm *VM) captureSnapshot(frame *Frame, destReg, pc int) *effectFrameSnapshot {
+	registers := make([]Value, len(frame.Registers))
+	copy(registers, frame.Registers)
+	parents := make([]*Env, len(frame.Parents))
+	copy(parents, frame.Parents)
+	results := make([]Value, len(frame.Results))
+	copy(results, frame.Results)
+	handlers := make([]HandlerRecord, len(frame.Handlers))
+	copy(handlers, frame.Handlers)
+	return &effectFrameSnapshot{
+		Registers:     registers,
+		Env:           frame.Env,
+		PC:            pc,
+		Parents:       parents,
+		Results:       results,
+		FunctionValue: frame.FunctionValue,
+		Fn:            frame.Fn,
+		Handlers:      handlers,
+	}
+}
+
+// resumeSnapshot 从快照恢复执行（对应 `_perform` 内嵌的 `resume`）。
+func (vm *VM) resumeSnapshot(snapshot *effectFrameSnapshot, destReg int, value Value) (Value, error) {
+	registers := make([]Value, len(snapshot.Registers))
+	copy(registers, snapshot.Registers)
+	if destReg < 0 || destReg >= len(registers) {
+		return nil, NewRuntimeError(fmt.Sprintf("continuation destination register %d out of range", destReg))
+	}
+	registers[destReg] = value
+	parents := make([]*Env, len(snapshot.Parents))
+	copy(parents, snapshot.Parents)
+	results := make([]Value, len(snapshot.Results))
+	copy(results, snapshot.Results)
+	handlers := make([]HandlerRecord, len(snapshot.Handlers))
+	copy(handlers, snapshot.Handlers)
+
+	frame := &Frame{
+		FunctionValue: snapshot.FunctionValue,
+		Fn:            snapshot.Fn,
+		PC:            snapshot.PC,
+		Registers:     registers,
+		Env:           snapshot.Env,
+		Parents:       parents,
+		Results:       results,
+		Handlers:      handlers,
+	}
+	for frame.PC < len(frame.Fn.Instructions) {
+		instruction := &frame.Fn.Instructions[frame.PC]
+		frame.PC++
+		next, result, err := vm.executeInstruction(frame, instruction)
+		if err != nil {
+			return nil, err
+		}
+		if result != nil {
+			return result.Value, nil
+		}
+		if next != nil {
+			frame = next
+		}
+	}
 	return nil, nil
 }
 
-func (vm *VM) call(callee Value, args []Value, frame *Frame) (Value, error) {
-	switch c := callee.(type) {
-	case *FunctionValue:
-		fn := &vm.Program.Functions[c.FuncIndex]
-		result, err := vm.runFunction(c, fn, args, frame.Env)
-		if err != nil {
-			return nil, err
-		}
-		if result.Effect != nil {
-			return nil, result.Effect
-		}
-		return result.Value, nil
-	case *HostFunction:
-		return c.Fn(args)
-	case *EnvHostFunction:
-		env := frame.Env
-		if frame == nil {
-			env = nil
-		}
-		return c.Fn(args, env)
-	default:
-		return nil, fmt.Errorf("cannot call value of type %T", callee)
+// handle 跑 body，捕获 effect 后分派（对应 `_handle`）。
+func (vm *VM) handle(bodyFnIdx int, specs []HandlerSpec, env *Env) (Value, error) {
+	if bodyFnIdx < 0 || bodyFnIdx >= len(vm.functions) {
+		return nil, NewRuntimeError(fmt.Sprintf("HANDLE: no function #%d", bodyFnIdx))
 	}
-}
-
-func (vm *VM) handleEffect(bodyFnIdx int, specs []bytecode.HandlerSpec, env *SymbolSpace) (Value, error) {
-	fn := &vm.Program.Functions[bodyFnIdx]
-	fv := &FunctionValue{FuncIndex: bodyFnIdx, Closure: env}
-	result, err := vm.runFunction(fv, fn, nil, env)
+	bodyFn := &FunctionValue{Fn: vm.functions[bodyFnIdx], Closure: env}
+	result, err := vm.runFunction(bodyFn, nil)
 	if err != nil {
-		if effect, ok := err.(*EffectSignal); ok {
-			return vm.dispatchEffect(effect, specs, env)
+		if signal, ok := asEffectSignal(err); ok {
+			return vm.dispatchEffect(signal, specs, env)
 		}
 		return nil, err
-	}
-	if result.Effect != nil {
-		return vm.dispatchEffect(result.Effect, specs, env)
 	}
 	return result.Value, nil
 }
 
-func (vm *VM) dispatchEffect(signal *EffectSignal, specs []bytecode.HandlerSpec, env *SymbolSpace) (Value, error) {
-	for {
-		var handlerFnIdx int = -1
+// dispatchEffect 匹配并执行 handler，并在 handler resume 时保持 handler 活跃。
+func (vm *VM) dispatchEffect(signal *EffectSignal, specs []HandlerSpec, env *Env) (Value, error) {
+	findHandler := func(effect string) *FunctionValue {
 		for _, spec := range specs {
-			if spec.Effect == signal.Effect {
-				handlerFnIdx = spec.HandlerFn
-				break
+			if spec.Effect == effect {
+				if spec.HandlerFn < 0 || spec.HandlerFn >= len(vm.functions) {
+					return nil
+				}
+				return &FunctionValue{Fn: vm.functions[spec.HandlerFn], Closure: env}
 			}
 		}
-		if handlerFnIdx < 0 {
-			return nil, signal
-		}
+		return nil
+	}
 
-		fn := &vm.Program.Functions[handlerFnIdx]
-		fv := &FunctionValue{FuncIndex: handlerFnIdx, Closure: env}
-		var handlerArgs []Value
-		if signal.Continuation != nil {
-			handlerArgs = []Value{signal.Arg, signal.Continuation}
-		} else {
-			handlerArgs = []Value{signal.Arg, QyNil}
-		}
-		result, err := vm.runFunction(fv, fn, handlerArgs, env)
+	handlerFn := findHandler(signal.Effect)
+	if handlerFn == nil {
+		return nil, signal
+	}
+
+	arg := signal.Arg
+	var continuation Value = signal.Continuation
+	for {
+		result, err := vm.runFunction(handlerFn, []Value{arg, continuation})
 		if err != nil {
-			if nested, ok := err.(*EffectSignal); ok {
-				found := false
-				for _, spec := range specs {
-					if spec.Effect == nested.Effect {
-						found = true
-						break
-					}
-				}
-				if !found {
-					return nil, nested
-				}
-				signal = nested
-				continue
+			nested, ok := asEffectSignal(err)
+			if !ok {
+				return nil, err
 			}
-			return nil, err
+			nextHandler := findHandler(nested.Effect)
+			if nextHandler == nil {
+				return nil, nested
+			}
+			handlerFn = nextHandler
+			arg = nested.Arg
+			continuation = nested.Continuation
+			continue
 		}
-		if result.Effect != nil {
-			found := false
-			for _, spec := range specs {
-				if spec.Effect == result.Effect.Effect {
-					found = true
-					break
-				}
+		if cont, ok := result.Value.(*Continuation); ok {
+			if !cont.Resumable {
+				return cont, nil
 			}
-			if !found {
-				return nil, result.Effect
-			}
-			signal = result.Effect
+			continuation = cont
+			arg = nil
 			continue
 		}
 		return result.Value, nil
 	}
 }
 
-func (vm *VM) resumeContinuation(cont *Continuation, value Value) (Value, error) {
-	if !cont.Resumable {
-		return nil, fmt.Errorf("cannot resume non-resumable continuation")
-	}
-	resumeFrame := cont.Frame.RestoreFrame(value, cont.DestReg)
-	for {
-		result, err := vm.executeFrame(resumeFrame)
-		if err != nil {
-			return nil, err
-		}
-		if result != nil {
-			if result.Effect != nil {
-				return nil, result.Effect
-			}
-			return result.Value, nil
-		}
-	}
-}
-
-func (vm *VM) defineModule(name string, fnIdx int, exportNames []string, env *SymbolSpace) (Value, error) {
-	fn := &vm.Program.Functions[fnIdx]
-	modEnv := env.Child()
-	fv := &FunctionValue{FuncIndex: fnIdx, Closure: modEnv}
-	frame := vm.makeFrame(fv, fn, nil)
-	for {
-		result, err := vm.executeFrame(frame)
-		if err != nil {
-			return nil, err
-		}
-		if result != nil {
-			break
-		}
-	}
-	mod := &Module{
-		Name:     name,
-		Bindings: frame.Env.Bindings(),
-		Exports:  exportNames,
-	}
-	vm.Modules[name] = mod
-	return QyT, nil
-}
-
-func (vm *VM) fromImport(moduleName string, specs []bytecode.ImportSpec, env *SymbolSpace) {
-	mod, ok := vm.Modules[moduleName]
+// resume 调用 continuation（对应 `_resume`）。
+func (vm *VM) resume(continuation Value, value Value) (Value, error) {
+	cont, ok := continuation.(*Continuation)
 	if !ok {
-		return
+		return nil, NewRuntimeError("resume expects a continuation")
+	}
+	if cont.ResumeFn == nil {
+		return nil, NewRuntimeError("continuation has no resume entry")
+	}
+	return cont.ResumeFn(value)
+}
+
+// captureContinuation 捕获 continuation（`_capture_continuation`，CONT_CAPTURE 路径）。
+func (vm *VM) captureContinuation(frame *Frame, resumeTarget, dstForResume int, resumable bool) *Continuation {
+	snapshot := vm.captureSnapshot(frame, dstForResume, resumeTarget)
+	return &Continuation{
+		Effect:    "<continuation>",
+		Resumable: resumable,
+		ResumeFn: func(value Value) (Value, error) {
+			return vm.resumeSnapshot(snapshot, dstForResume, value)
+		},
+	}
+}
+
+// dispatchToHandler 把 CALL 时的 signal 交给本帧最近的匹配 handler（`_dispatch_to_handler`）。
+func (vm *VM) dispatchToHandler(frame *Frame, signal *EffectSignal) bool {
+	for index := len(frame.Handlers) - 1; index >= 0; index-- {
+		record := frame.Handlers[index]
+		for _, spec := range record.Specs {
+			if spec.Effect == signal.Effect {
+				frame.PendingEffect = &PendingEffect{HandlerFnIndex: spec.HandlerFn, Signal: signal}
+				frame.PC = record.Target
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ---------------------------------------------------------------------------
+// 并发形式
+// ---------------------------------------------------------------------------
+
+// runThunk 执行一个 thunk 函数下标。
+func (vm *VM) runThunk(index int, env *Env) (Value, error) {
+	if index < 0 || index >= len(vm.functions) {
+		return nil, NewRuntimeError(fmt.Sprintf("thunk function index %d out of range", index))
+	}
+	thunk := &FunctionValue{Fn: vm.functions[index], Closure: env}
+	result, err := vm.runFunction(thunk, nil)
+	if err != nil {
+		return nil, err
+	}
+	return result.Value, nil
+}
+
+// parallelGather 收集所有 thunk 的结果为 TupleValue（`parallel` / `all`）。
+func (vm *VM) parallelGather(thunkIndices []int, env *Env) (Value, error) {
+	items := make([]Value, 0, len(thunkIndices))
+	for _, index := range thunkIndices {
+		value, err := vm.runThunk(index, env)
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, value)
+	}
+	return NewTuple(items), nil
+}
+
+// raceFirst 取第一个 thunk 的结果（`race`）。
+//
+// 与 TS 版一致：顺序执行时取第一个 thunk；Python 版用 asyncio 取最先完成者。
+// 语料中所有 thunk 都成功且无副作用，行为等价；真正并发的抢跑语义未实现（见报告）。
+func (vm *VM) raceFirst(thunkIndices []int, env *Env) (Value, error) {
+	if len(thunkIndices) == 0 {
+		return nil, nil
+	}
+	return vm.runThunk(thunkIndices[0], env)
+}
+
+// ---------------------------------------------------------------------------
+// 模块
+// ---------------------------------------------------------------------------
+
+// defineModule 创建模块空间、执行 body、注册模块（`_define_module`）。
+func (vm *VM) defineModule(moduleName string, functionIndex int, exportNames []string, env *Env) (Value, error) {
+	if functionIndex < 0 || functionIndex >= len(vm.functions) {
+		return nil, NewRuntimeError(fmt.Sprintf("DEFINE_MODULE: no function #%d", functionIndex))
+	}
+	moduleEnv := env.Child()
+	baseline := map[string]bool{}
+	for name := range moduleEnv.LocalBindings() {
+		baseline[name] = true
+	}
+	bodyFn := &FunctionValue{Fn: vm.functions[functionIndex], Closure: moduleEnv}
+	if _, err := vm.runFunction(bodyFn, nil); err != nil {
+		return nil, err
+	}
+
+	allBindings := map[string]Value{}
+	for name, value := range moduleEnv.LocalBindings() {
+		if !baseline[name] {
+			allBindings[name] = value
+		}
+	}
+
+	selected := allBindings
+	if len(exportNames) > 0 {
+		selected = map[string]Value{}
+		for _, name := range exportNames {
+			if value, ok := allBindings[name]; ok {
+				selected[name] = value
+			}
+		}
+	}
+
+	// 运行期没有 MacroDefinition 值（宏在编译期已展开），因此 runtime_exports
+	// 就是全部；再合并注册表里已有的 provisional macro_exports。
+	runtimeExports := make(map[string]Value, len(selected))
+	for name, value := range selected {
+		runtimeExports[name] = value
+	}
+	macroExports := map[string]Value{}
+	if provisional, ok := vm.Modules[moduleName]; ok {
+		for name, value := range provisional.MacroExports {
+			macroExports[name] = value
+		}
+	}
+	module := &ModuleValue{Name: moduleName, Exports: runtimeExports, MacroExports: macroExports}
+	vm.Modules[moduleName] = module
+	return env.DefineOnce(moduleName, module)
+}
+
+// fromImport 处理 `from ... import ...`（`_from_import`）。
+//
+// 编译期宏导出（`module_macro_exports`）在运行期没有绑定值：命中时跳过绑定，
+// 而不是报「模块没有该导出」。
+func (vm *VM) fromImport(moduleName string, specs []ImportSpec, env *Env) error {
+	module, ok := vm.Modules[moduleName]
+	if !ok {
+		return NewRuntimeError("cannot load module '" + moduleName + "'")
 	}
 	for _, spec := range specs {
-		if val, exists := mod.Bindings[spec.Name]; exists {
-			env.Define(spec.Alias, val)
+		if value, exists := module.Exports[spec.Name]; exists {
+			if _, err := env.DefineOnce(spec.Alias, value); err != nil {
+				return err
+			}
+			continue
 		}
+		if _, exists := module.MacroExports[spec.Name]; exists {
+			continue
+		}
+		if vm.isCompileTimeMacroExport(moduleName, spec.Name) {
+			continue
+		}
+		return NewRuntimeError("module '" + moduleName + "' has no export '" + spec.Name + "'")
 	}
+	return nil
 }
 
-func (vm *VM) parallelGather(thunkIndices []int, env *SymbolSpace) ([]Value, error) {
-	results := make([]Value, len(thunkIndices))
-	errors := make([]error, len(thunkIndices))
-	var wg sync.WaitGroup
-
-	for i, idx := range thunkIndices {
-		wg.Add(1)
-		go func(i, idx int) {
-			defer wg.Done()
-			fn := &vm.Program.Functions[idx]
-			childEnv := env.Child()
-			fv := &FunctionValue{FuncIndex: idx, Closure: childEnv}
-			result, err := vm.runFunction(fv, fn, nil, childEnv)
-			if err != nil {
-				errors[i] = err
-				return
-			}
-			if result.Effect != nil {
-				errors[i] = result.Effect
-				return
-			}
-			results[i] = result.Value
-		}(i, idx)
+// isCompileTimeMacroExport 判断导出是否是编译期宏导出
+// （字节码交换格式携带的 `module_macro_exports`，对应 `_is_compile_time_macro_export`）。
+func (vm *VM) isCompileTimeMacroExport(moduleName, name string) bool {
+	for _, candidate := range vm.Program.ModuleMacroExports[moduleName] {
+		if candidate == name {
+			return true
+		}
 	}
-	wg.Wait()
+	return false
+}
 
-	for _, err := range errors {
+// ---------------------------------------------------------------------------
+// runtime eval
+// ---------------------------------------------------------------------------
+
+// evalForm 是 `RUNTIME_EVAL`（`_eval_form`）。
+//
+// Python 会把 datum 送进完整编译管线；Go VM 里没有编译器，所以：
+//   - Symbol → 直接解析（与编译后 LOAD_ENV 等价）；
+//   - nil / 其它非 syntax datum → 原样返回（与 Python 的 `return form` 一致）；
+//   - Chain → 用一个最小的 eager 解释器求值（支持 quote / 已解析算子调用）。
+func (vm *VM) evalForm(form Value, env *Env) (Value, error) {
+	switch f := form.(type) {
+	case *Symbol:
+		return env.Resolve(f)
+	case *Chain:
+		return vm.evalChain(f, env)
+	}
+	return form, nil
+}
+
+func (vm *VM) evalChain(form *Chain, env *Env) (Value, error) {
+	head := form.Head
+	rest := form.Tail
+	if symbol, ok := head.(*Symbol); ok && symbol.Name == "quote" {
+		if chain, ok := rest.(*Chain); ok {
+			return chain.Head, nil
+		}
+		return QyNil, nil
+	}
+	var callee Value
+	if symbol, ok := head.(*Symbol); ok {
+		resolved, err := env.Resolve(symbol)
 		if err != nil {
 			return nil, err
 		}
-	}
-	return results, nil
-}
-
-func (vm *VM) allGather(thunkIndices []int, env *SymbolSpace) ([]Value, error) {
-	return vm.parallelGather(thunkIndices, env)
-}
-
-func (vm *VM) raceFirst(thunkIndices []int, env *SymbolSpace) (Value, error) {
-	if len(thunkIndices) == 0 {
-		return QyNil, nil
-	}
-	type raceResult struct {
-		value Value
-		err   error
-	}
-	ch := make(chan raceResult, len(thunkIndices))
-	for _, idx := range thunkIndices {
-		go func(idx int) {
-			fn := &vm.Program.Functions[idx]
-			childEnv := env.Child()
-			fv := &FunctionValue{FuncIndex: idx, Closure: childEnv}
-			result, err := vm.runFunction(fv, fn, nil, childEnv)
-			if err != nil {
-				ch <- raceResult{err: err}
-				return
-			}
-			if result.Effect != nil {
-				ch <- raceResult{err: result.Effect}
-				return
-			}
-			ch <- raceResult{value: result.Value}
-		}(idx)
-	}
-	first := <-ch
-	return first.value, first.err
-}
-
-func (vm *VM) runtimeEval(expr Value, env *SymbolSpace) Value {
-	switch e := expr.(type) {
-	case *Symbol:
-		if val, ok := env.Resolve(e.Name); ok {
-			return val
+		callee = resolved
+	} else {
+		resolved, err := vm.evalForm(head, env)
+		if err != nil {
+			return nil, err
 		}
-		if n, err := strconv.ParseFloat(e.Name, 64); err == nil {
-			if n == float64(int(n)) {
-				return int(n)
-			}
-			return n
-		}
-		return e
-	case *Chain:
-		return vm.evalChain(e, env)
-	case int, float64, string:
-		return e
-	default:
-		return expr
+		callee = resolved
 	}
+	rawArgs := ChainValueToSlice(rest)
+	args := make([]Value, 0, len(rawArgs))
+	for _, item := range rawArgs {
+		value, err := vm.evalForm(item, env)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, value)
+	}
+	return vm.call(callee, args, env)
 }
 
-func (vm *VM) evalChain(chain *Chain, env *SymbolSpace) Value {
-	head := chain.Head
-	var fnName string
-	switch h := head.(type) {
-	case *Symbol:
-		fnName = h.Name
-	default:
-		return QyNil
-	}
+// ---------------------------------------------------------------------------
+// 操作数工具
+// ---------------------------------------------------------------------------
 
-	callee, ok := env.Resolve(fnName)
+func regOf(value Value) int {
+	if n, ok := value.(int); ok {
+		return n
+	}
+	return 0
+}
+
+func intOf(value Value) int {
+	switch v := value.(type) {
+	case int:
+		return v
+	case float64:
+		return int(v)
+	}
+	return 0
+}
+
+func boolOf(value Value) bool {
+	if b, ok := value.(bool); ok {
+		return b
+	}
+	return false
+}
+
+func symbolOf(value Value) *Symbol {
+	if symbol, ok := value.(*Symbol); ok {
+		return symbol
+	}
+	return NewSymbol("")
+}
+
+func symbolNamesOf(value Value) []string {
+	symbols, ok := value.([]*Symbol)
 	if !ok {
-		return QyNil
+		return nil
 	}
-
-	var args []Value
-	current := chain.Tail
-	for {
-		c, ok := current.(*Chain)
-		if !ok {
-			break
-		}
-		args = append(args, vm.runtimeEval(c.Head, env))
-		current = c.Tail
+	names := make([]string, 0, len(symbols))
+	for _, symbol := range symbols {
+		names = append(names, symbol.Name)
 	}
-
-	result, err := vm.call(callee, args, nil)
-	if err != nil {
-		return QyNil
-	}
-	return result
+	return names
 }
 
-func (vm *VM) decodeHostValue(op *bytecode.Operand) Value {
-	switch op.Type {
-	case "nil":
-		return QyNil
-	case "t":
-		return QyT
-	case "bool":
-		if op.AsBool() {
-			return QyT
-		}
-		return QyNil
-	case "int":
-		return op.AsInt()
-	case "float":
-		return op.AsFloat()
-	case "string":
-		return op.AsString()
-	case "symbol":
-		return &Symbol{Name: op.AsString()}
-	case "chain":
-		return vm.decodeChain(op.Value)
-	case "effect_def":
-		m := op.Value.(map[string]interface{})
-		return &EffectDefinition{
-			Name:      m["name"].(string),
-			Resumable: m["resumable"].(bool),
-		}
-	case "tuple":
-		arr := op.Value.([]interface{})
-		result := make([]Value, len(arr))
-		for i, item := range arr {
-			m := item.(map[string]interface{})
-			o := &bytecode.Operand{Type: m["type"].(string), Value: m["value"]}
-			result[i] = vm.decodeHostValue(o)
-		}
-		return result
-	case "list":
-		arr := op.Value.([]interface{})
-		result := make([]Value, len(arr))
-		for i, item := range arr {
-			m := item.(map[string]interface{})
-			o := &bytecode.Operand{Type: m["type"].(string), Value: m["value"]}
-			result[i] = vm.decodeHostValue(o)
-		}
-		return result
-	default:
-		return QyNil
-	}
-}
-
-func (vm *VM) decodeChain(v interface{}) Value {
-	if v == nil {
-		return QyNil
-	}
-	m, ok := v.(map[string]interface{})
+func handlerSpecsOf(value Value) []HandlerSpec {
+	specs, ok := value.([]HandlerSpec)
 	if !ok {
-		return QyNil
+		return nil
 	}
-	if _, hasHead := m["head"]; !hasHead {
-		op := &bytecode.Operand{Type: m["type"].(string), Value: m["value"]}
-		return vm.decodeHostValue(op)
-	}
-	headMap, ok := m["head"].(map[string]interface{})
-	if !ok {
-		return QyNil
-	}
-	headOp := &bytecode.Operand{Type: headMap["type"].(string), Value: headMap["value"]}
-	head := vm.decodeHostValue(headOp)
-	tail := vm.decodeChain(m["tail"])
-	return &Chain{Head: head, Tail: tail}
+	return specs
 }
 
-func valueToArgs(v Value) []Value {
-	switch val := v.(type) {
-	case *Chain:
-		var args []Value
-		current := Value(val)
-		for {
-			c, ok := current.(*Chain)
-			if !ok {
-				break
-			}
-			args = append(args, c.Head)
-			current = c.Tail
-		}
-		return args
+func importSpecsOf(value Value) []ImportSpec {
+	specs, ok := value.([]ImportSpec)
+	if !ok {
+		return nil
+	}
+	return specs
+}
+
+// regTupleOf 还原寄存器下标元组（对应 TS `asNumberArray`）。
+func regTupleOf(value Value) []int {
+	switch tuple := value.(type) {
+	case []int:
+		return tuple
 	case []Value:
-		return val
-	default:
-		return []Value{v}
+		result := make([]int, 0, len(tuple))
+		for _, item := range tuple {
+			result = append(result, intOf(item))
+		}
+		return result
 	}
+	return nil
 }
+
+// sequenceToArgs 归一 APPLY 的实参序列（`_sequence_to_args`）。
+//
+// 注意字面量拼写（Symbol "1"）会被还原为字面量值 —— 语料 01 依赖它。
+func sequenceToArgs(value Value) []Value {
+	switch sequence := value.(type) {
+	case []Value:
+		result := make([]Value, 0, len(sequence))
+		for _, item := range sequence {
+			result = append(result, normalizeArgument(item))
+		}
+		return result
+	case *TupleValue:
+		result := make([]Value, 0, len(sequence.Items))
+		for _, item := range sequence.Items {
+			result = append(result, normalizeArgument(item))
+		}
+		return result
+	case *ListValue:
+		result := make([]Value, 0, len(sequence.Items))
+		for _, item := range sequence.Items {
+			result = append(result, normalizeArgument(item))
+		}
+		return result
+	case *Chain:
+		items, err := ChainToSlice(sequence)
+		if err != nil {
+			return nil
+		}
+		result := make([]Value, 0, len(items))
+		for _, item := range items {
+			result = append(result, normalizeArgument(item))
+		}
+		return result
+	case *StringValue:
+		return []Value{normalizeArgument(sequence)}
+	case NilValue:
+		return nil
+	}
+	return []Value{normalizeArgument(value)}
+}
+
+// normalizeArgument 把字面量拼写的 Symbol 还原成字面量值。
+func normalizeArgument(value Value) Value {
+	symbol, ok := value.(*Symbol)
+	if !ok {
+		return value
+	}
+	if DefaultLiteralType(symbol.Name) == "" {
+		return value
+	}
+	if literal, ok := tryDefaultLiteral(symbol.Name); ok {
+		return literal
+	}
+	return value
+}
+
+// CoreTruthy 是语言核的 nil-only 真值（`machine.py::_truthy`），JUMP_IF_FALSE 使用。
+func CoreTruthy(value Value) bool { return !IsNil(value) }
