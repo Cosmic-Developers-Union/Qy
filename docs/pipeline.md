@@ -154,7 +154,7 @@ qy FILE   # 等价 run 快捷方式
 所有接受文件路径的调试与执行命令都支持 stdin（用 `-` 代替文件路径）：
 
 ```shell
-cat examples/hello.qy | qy mir -
+cat examples/qy/hello.qy | qy mir -
 printf '(+ 1 2)\n' | qy bytecode -
 ```
 

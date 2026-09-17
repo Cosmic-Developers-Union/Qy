@@ -82,7 +82,7 @@ SUPPORTED_QY_TESTS = (
     "52_number_float_add",
 )
 
-# examples/validation 中运行代价可接受的样例。
+# examples/qy/validation 中运行代价可接受的样例。
 # 03/09 是深度尾调用压力样例（分别约 4.5s / 29s），尾调用语义已由 tests/qy
 # 的 20_tail_recursion 覆盖，默认测试不重复跑。
 _EXCLUDED_VALIDATION = {
@@ -91,7 +91,7 @@ _EXCLUDED_VALIDATION = {
 }
 VALIDATION_EXAMPLES = tuple(
     path
-    for path in sorted((ROOT / "examples" / "validation").glob("*.qy"))
+    for path in sorted((ROOT / "examples" / "qy" / "validation").glob("*.qy"))
     if path.name not in _EXCLUDED_VALIDATION
 )
 
@@ -114,7 +114,7 @@ def test_meta_interp_matches_reference(runner: CliRunner, case: Path) -> None:
 
 @pytest.mark.parametrize("example", VALIDATION_EXAMPLES, ids=lambda path: path.stem)
 def test_meta_interp_runs_validation_examples(runner: CliRunner, example: Path) -> None:
-    """examples/validation 验收样例与 host register VM 输出逐字节一致。."""
+    """Examples/qy/validation 验收样例与 host register VM 输出逐字节一致。."""
     cli = create_app()
     reference = runner.invoke(cli, ["run", str(example)])
     assert reference.exit_code == 0, reference.output

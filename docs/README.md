@@ -26,6 +26,7 @@ This directory contains all design documents and technical documentation for QyL
 
 - [extensions.md](extensions.md) - 宿主扩展机制与边界（descriptor / registry / capability）
 - [hosts.md](hosts.md) - 多宿主（Python / TypeScript / Go）：字节码交换格式、嵌入式 API、现状与验收
+- [examples.md](examples.md) - 示例目录布局（按宿主语言）与运行方式
 - [op.md](op.md) - Operator design and semantics
 - [language-core-audit.md](language-core-audit.md) - Language core audit
 - [stdlib-operators.md](stdlib-operators.md) - Standard library operator draft

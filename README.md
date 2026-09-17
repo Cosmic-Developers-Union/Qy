@@ -66,8 +66,8 @@ Evaluate a file (explicit subcommand form is recommended; `qy FILE` is an
 equivalent shortcut provided by `qy/cli/_app.py`):
 
 ```shell
-qy run examples/validation/00_host_arithmetic.qy
-uv run python examples/run_validation.py
+qy run examples/qy/validation/00_host_arithmetic.qy
+uv run python examples/py/run_validation.py
 ```
 
 Start the interactive interpreter:
@@ -94,9 +94,9 @@ qy lsp
 Format, inspect, and type-check qy source:
 
 ```shell
-qy fmt examples/validation/00_host_arithmetic.qy
-qy ast examples/validation/00_host_arithmetic.qy
-qy check examples/validation/00_host_arithmetic.qy
+qy fmt examples/qy/validation/00_host_arithmetic.qy
+qy ast examples/qy/validation/00_host_arithmetic.qy
+qy check examples/qy/validation/00_host_arithmetic.qy
 ```
 
 Use the Python API:

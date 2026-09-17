@@ -103,8 +103,8 @@ print(f"{path}\t{base[0]}\t{','.join(bad) or '-'}")
 
 def main(argv: list[str]) -> int:
     paths = argv or sorted(
-        glob.glob("examples/validation/*.qy")
-        + glob.glob("examples/design/*.qy")
+        glob.glob("examples/qy/validation/*.qy")
+        + glob.glob("examples/qy/design/*.qy")
         + glob.glob("tests/qy/*.qy")
         + glob.glob("meta-interp/cases/*.qy")
     )

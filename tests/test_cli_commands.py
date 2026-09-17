@@ -15,21 +15,21 @@ def app():
 
 
 def test_evaluates_target_file(runner, app):
-    result = runner.invoke(app, ["run", "examples/validation/00_host_arithmetic.qy"])
+    result = runner.invoke(app, ["run", "examples/qy/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "42" in result.output
 
 
 def test_check_command(runner, app):
-    result = runner.invoke(app, ["check", "examples/validation/00_host_arithmetic.qy"])
+    result = runner.invoke(app, ["check", "examples/qy/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "ok" in result.output
 
 
 def test_fmt_command(runner, app):
-    result = runner.invoke(app, ["fmt", "examples/validation/00_host_arithmetic.qy"])
+    result = runner.invoke(app, ["fmt", "examples/qy/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "(+" in result.output
@@ -58,7 +58,7 @@ def test_fmt_command_with_syntax_error(runner, app, tmp_path):
 
 
 def test_ast_command(runner, app):
-    result = runner.invoke(app, ["ast", "examples/validation/00_host_arithmetic.qy"])
+    result = runner.invoke(app, ["ast", "examples/qy/validation/00_host_arithmetic.qy"])
 
     assert result.exit_code == 0, result.output
     assert "Symbol('+')" in result.output

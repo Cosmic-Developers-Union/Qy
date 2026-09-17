@@ -9,10 +9,10 @@
 - `uv run ruff check .`：passed
 - `uv run ruff format --check .`：passed
 - `uv run ty check .`：**0 diagnostics**（本轮清空）
-- `uv run qy check examples/hello.qy`：ok（analyzer 已改为 canonical frontend + HIR verifier）
-- HIR verifier 在 `examples/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
-- qytest `tests/qy` **54/54**、`examples/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
-- `make libqy` / `make llvm-gen` 可用；LLVM 原生链路实测可用（`examples/validation` 4/10 走通并与 register VM 一致，其余为常量/未解析符号等已知限制，见 docs/llvm-backend.md）
+- `uv run qy check examples/qy/hello.qy`：ok（analyzer 已改为 canonical frontend + HIR verifier）
+- HIR verifier 在 `examples/qy/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
+- qytest `tests/qy` **54/54**、`examples/qy/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
+- `make libqy` / `make llvm-gen` 可用；LLVM 原生链路实测可用（`examples/qy/validation` 4/10 走通并与 register VM 一致，其余为常量/未解析符号等已知限制，见 docs/llvm-backend.md）
 - `qy/sem` 已不 import `qy.vm`；`UserFunction` 与 `qy/vm/instance/legacy_eval.py` 已删除，函数值统一为 `BytecodeFunctionValue`
 - `rg QY_DELETE_AFTER qy`：7 处标记（stdlib shim、sem bridge、analysis infer/scope/refs、frontend tuple 兼容层）
 
@@ -24,7 +24,7 @@
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
 - 宿主边界：`qy/ext/` 扩展机制落地；`tests/test_extensions.py` 边界测试 7 项通过
 - `meta-interp/cases/` 19 个自举用例与 `qy run` 参考输出逐字节一致；
-  `tests/qy` 行为用例 **54/54**、`examples/validation` 8 个验收样例全部对拍通过
+  `tests/qy` 行为用例 **54/54**、`examples/qy/validation` 8 个验收样例全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
 - **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
   dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；

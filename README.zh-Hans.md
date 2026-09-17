@@ -47,8 +47,8 @@ compile-time effect，避免在未显式授权的情况下执行不透明的编�
 求值文件（推荐显式子命令形式；`qy FILE` 是等价快捷方式，实现在 `qy/cli/_app.py`）：
 
 ```shell
-qy run examples/validation/00_host_arithmetic.qy
-uv run python examples/run_validation.py
+qy run examples/qy/validation/00_host_arithmetic.qy
+uv run python examples/py/run_validation.py
 ```
 
 启动交互式解释器：
@@ -66,9 +66,9 @@ qy lsp
 格式化、查看 AST、类型检查：
 
 ```shell
-qy fmt examples/validation/00_host_arithmetic.qy
-qy ast examples/validation/00_host_arithmetic.qy
-qy check examples/validation/00_host_arithmetic.qy
+qy fmt examples/qy/validation/00_host_arithmetic.qy
+qy ast examples/qy/validation/00_host_arithmetic.qy
+qy check examples/qy/validation/00_host_arithmetic.qy
 ```
 
 Python API：

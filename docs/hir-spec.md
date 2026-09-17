@@ -600,7 +600,7 @@ HandleExpr    := { expression: IRExpr, handlers: EffectHandler+, ... }
 
 ### 6.1 算术 + cond
 
-**Source**（取自 `examples/validation/00_host_arithmetic.qy`，略改）：
+**Source**（取自 `examples/qy/validation/00_host_arithmetic.qy`，略改）：
 
 ```lisp
 (define (square x) (* x x))

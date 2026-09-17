@@ -9,7 +9,7 @@ S = Symbol
 
 
 def test_validation_example_file():
-    path = Path("examples/validation/00_host_arithmetic.qy")
+    path = Path("examples/qy/validation/00_host_arithmetic.qy")
     result = evaluate_file(path)
 
     assert result == 42

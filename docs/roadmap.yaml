@@ -5,15 +5,15 @@ QyLang_final_product:
 
   truth_source:
     - 语义真源是语言规格文档。
-    - examples/hello.qy 是核心 golden file；当语言规格文档和 examples/hello.qy 冲突时，examples/hello.qy 优先，规格文档必须更新以解释它。
+    - examples/qy/hello.qy 是核心 golden file；当语言规格文档和 examples/qy/hello.qy 冲突时，examples/qy/hello.qy 优先，规格文档必须更新以解释它。
 
   canonical_example:
-    - examples/hello.qy 是唯一核心标准样例，所有其它样例都是衍生样例，不与它平级。
-    - examples/hello.qy 由 human 手动维护，agent 不允许修改。
-    - examples/hello.qy 必须证明最小可运行程序、标准语言形态，以及 AST / expand / HIR / MIR / LIR / bytecode / VM 全管线可观察。
-    - examples/hello.qy 的验收命令包括 qy ast、qy expand、qy hir、qy mir、qy lir、qy bytecode、qy run，并且每个层级都必须成功。
-    - examples/hello.qy 同时是 Python API、CLI、VM、tests 的 smoke case。
-    - 所有实现和所有工具链都必须接受 examples/hello.qy。
+    - examples/qy/hello.qy 是唯一核心标准样例，所有其它样例都是衍生样例，不与它平级。
+    - examples/qy/hello.qy 由 human 手动维护，agent 不允许修改。
+    - examples/qy/hello.qy 必须证明最小可运行程序、标准语言形态，以及 AST / expand / HIR / MIR / LIR / bytecode / VM 全管线可观察。
+    - examples/qy/hello.qy 的验收命令包括 qy ast、qy expand、qy hir、qy mir、qy lir、qy bytecode、qy run，并且每个层级都必须成功。
+    - examples/qy/hello.qy 同时是 Python API、CLI、VM、tests 的 smoke case。
+    - 所有实现和所有工具链都必须接受 examples/qy/hello.qy。
 
   language_core:
     - Qy 的核心语法是 s-expression。

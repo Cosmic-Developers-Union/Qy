@@ -1,4 +1,4 @@
-.PHONY: bench bench-baseline bench-check ci clean build check release lint test test-ts
+.PHONY: bench bench-baseline bench-check ci clean build check examples release lint test test-ts
 
 BENCH_BASELINE ?= benchmarks/baseline.json
 BENCH_MAX_REGRESSION_PERCENT ?= 10
@@ -31,12 +31,21 @@ test-ts:
 	cd qy/backend/typescript && bun test
 	cd $(CURDIR) && bun qy/backend/typescript/scripts/conformance.ts
 
+# 示例（按宿主语言分目录，见 docs/examples.md）：Python 宿主 + TypeScript 宿主
+examples:
+	uv run python examples/py/run_validation.py
+	uv run python examples/py/inject_symbol_space.py
+	uv run python examples/py/bytecode_demo.py
+	@command -v bun >/dev/null || { echo "bun not found: TypeScript examples skipped"; exit 1; }
+	bun examples/ts/run_all.ts
+
 ci:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check .
 	uv run python -m pytest -q
 	$(MAKE) test-ts
+	$(MAKE) examples
 
 lint:
 	uv run ruff check .
@@ -90,15 +99,15 @@ $(LLVM_DIR):
 # -- LLVM IR generation -----------------------------------------------------
 #
 # Generate LLVM IR from Qy source:
-#   make llvm-gen SRC=examples/hello.qy
+#   make llvm-gen SRC=examples/qy/hello.qy
 #
 # Full pipeline (Qy -> .ll -> .o -> a.out):
-#   make llvm SRC=examples/hello.qy OUT=/tmp/hello
+#   make llvm SRC=examples/qy/hello.qy OUT=/tmp/hello
 #
 # Run and compare with register VM:
-#   make llvm-verify SRC=examples/hello.qy
+#   make llvm-verify SRC=examples/qy/hello.qy
 #
-# 状态（实测，2026-09 本轮）：LLVM 后端是并行验证后端，`examples/validation/` 中
+# 状态（实测，2026-09 本轮）：LLVM 后端是并行验证后端，`examples/qy/validation/` 中
 # 00/02/03/09 走通「IR -> llc -> clang(+libqy) -> native」且与 register VM 输出一致；
 # 已知限制见 docs/llvm-backend.md §限制。端到端测试见 tests/test_llvm_backend.py
 # （缺 llc/clang 时自动跳过）。
@@ -134,8 +143,8 @@ llvm-link: $(LIBQY_OBJ)
 	$(CLANG) $(OBJS) $(LIBQY_OBJ) -o $(OUT)
 
 # Full pipeline: Qy -> LLVM IR -> object -> executable -> run
-#   make llvm SRC=examples/hello.qy OUT=/tmp/hello
-#   make llvm SRC=examples/hello.qy OUT=/tmp/hello RUN=1
+#   make llvm SRC=examples/qy/hello.qy OUT=/tmp/hello
+#   make llvm SRC=examples/qy/hello.qy OUT=/tmp/hello RUN=1
 .PHONY: llvm
 llvm: $(LIBQY_OBJ) | $(LLVM_DIR)
 	@if [ -z "$(SRC)" ]; then \
@@ -175,7 +184,7 @@ llvm-verify: llvm
 # Convenience: llvm-examples — compile all examples to LLVM IR
 .PHONY: llvm-examples
 llvm-examples: | $(LLVM_DIR)
-	@for f in examples/*.qy; do \
+	@for f in examples/qy/*.qy; do \
 		name=$$(basename $$f .qy); \
 		out=$(LLVM_DIR)/$$name.ll; \
 		echo "  gen  $$f -> $$out"; \
@@ -204,7 +213,7 @@ dc-build:
 demo:
 	for cmd in ast expand hir mir lir bytecode run; do \
 		echo "=== $${cmd} ==="; \
-		qy $${cmd} examples/hello.qy; \
+		qy $${cmd} examples/qy/hello.qy; \
 	done
 
 download-tlaplus:

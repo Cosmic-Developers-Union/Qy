@@ -851,4 +851,4 @@ HIR 层 `resolve.spaces` 已实现（见 §7.8 与 `qy/passes/resolve/spaces.py`
 - `CONT_CAPTURE` 用不可变快照捕获 frame（multi-shot 天然成立，与 compat `_perform` 同构）；`CONT_COPY` 为别名；`CONT_RESTORE` **非终结**，把 resume 结果写回 `dst` 后继续，因此 `(+ (resume k a) (resume k b))` 组合成立；
 - `SS_ENTER` / `SS_LEAVE` 对应 `ENTER_SCOPE` / `EXIT_SCOPE`，`SLOT_COMPLETE` 通过 `BytecodeFunction.symbol_spaces` 从 `(space, slot)` 反查符号后 `define_once`。
 
-compat dialect 仍然**拒绝** abstract-machine opcode（L14 结构约束）。`tests/test_abstract_machine_vm.py` 对 `examples/hello.qy` 与全部 validation 样例做 compat/abstract-machine 差分，结果一致。默认执行路径仍是 `compat`。
+compat dialect 仍然**拒绝** abstract-machine opcode（L14 结构约束）。`tests/test_abstract_machine_vm.py` 对 `examples/qy/hello.qy` 与全部 validation 样例做 compat/abstract-machine 差分，结果一致。默认执行路径仍是 `compat`。

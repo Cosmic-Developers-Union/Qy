@@ -61,7 +61,7 @@ libqy 的 `qy_main_c` / `qy_call` 依赖：
 
 ## 当前覆盖与限制（实测）
 
-`examples/validation/` 中走通「IR → `llc` → `clang`(+libqy) → native」且输出与 register VM
+`examples/qy/validation/` 中走通「IR → `llc` → `clang`(+libqy) → native」且输出与 register VM
 一致的是 `00_host_arithmetic`、`02_symbol_space_let`、`03_functions_tail_call`、
 `09_register_vm_tail_call`（4/10）；端到端由 `tests/test_llvm_backend.py` 覆盖
 （缺 `llc`/`clang` 时自动跳过）。
@@ -81,15 +81,15 @@ libqy 的 `qy_main_c` / `qy_call` 依赖：
 ## 使用与验证
 
 ```bash
-qy llvm examples/validation/00_host_arithmetic.qy > program.ll
+qy llvm examples/qy/validation/00_host_arithmetic.qy > program.ll
 llc -filetype=obj program.ll -o program.o
 clang program.o qy/resources/libqy/src/runtime.o -o program
 ./program
 
 # 或
 make libqy
-make llvm SRC=examples/validation/03_functions_tail_call.qy RUN=1
-make llvm-verify SRC=examples/validation/00_host_arithmetic.qy
+make llvm SRC=examples/qy/validation/03_functions_tail_call.qy RUN=1
+make llvm-verify SRC=examples/qy/validation/00_host_arithmetic.qy
 ```
 
 `tests/test_llvm_backend.py`：结构测试 + 端到端测试（需要 `llc` + `clang`，

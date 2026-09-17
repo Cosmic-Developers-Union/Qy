@@ -57,7 +57,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/benchmark/`：benchmark harness。
 - `qy/cli/`：click CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`wasm`、`export`、`completion`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
-- `examples/`：Qy 语言示例（`validation/`、`design/`、`host/`）。
+- `examples/`：按宿主语言分目录的示例（`qy/`=Qy 源码、`py/`=Python 宿主、`ts/`=TypeScript 宿主、`go/` 后续）；说明见 `docs/examples.md`。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。
 
 ## 常用命令
@@ -72,19 +72,22 @@ uv run ruff check .
 uv run ruff format .
 uv run ty check .
 
-uv run qy run examples/hello.qy
-uv run qy ast examples/hello.qy
-uv run qy expand examples/hello.qy
-uv run qy hir examples/hello.qy
-uv run qy mir examples/hello.qy
-uv run qy lir examples/hello.qy
-uv run qy bytecode examples/hello.qy
+uv run qy run examples/qy/hello.qy
+uv run qy ast examples/qy/hello.qy
+uv run qy expand examples/qy/hello.qy
+uv run qy hir examples/qy/hello.qy
+uv run qy mir examples/qy/hello.qy
+uv run qy lir examples/qy/hello.qy
+uv run qy bytecode examples/qy/hello.qy
 uv run qy repl
 
 # TypeScript 宿主（需要 bun）
 bun qy/backend/typescript/bin/qyvm.ts prog.json      # 执行 qy export 的字节码
 cd qy/backend/typescript && bun test                 # TS 单元测试
 bun qy/backend/typescript/scripts/conformance.ts     # 与 Python 虚拟机对拍 54 语料
+
+# 示例（按宿主语言分目录，见 docs/examples.md）
+make examples                                        # Python 宿主 + TypeScript 宿主示例
 
 uv build
 ```

@@ -137,7 +137,10 @@ def test_abstract_machine_matches_compat_for_effects(source):
 
 
 def test_abstract_machine_matches_compat_for_examples():
-    files = ["examples/hello.qy", *sorted(glob.glob("examples/validation/*.qy"))]
+    files = [
+        "examples/qy/hello.qy",
+        *sorted(glob.glob("examples/qy/validation/*.qy")),
+    ]
     for relative in files:
         source = (ROOT / relative).read_text(encoding="utf-8")
         assert _evaluate(source, "abstract-machine") == _evaluate(source, "compat"), relative

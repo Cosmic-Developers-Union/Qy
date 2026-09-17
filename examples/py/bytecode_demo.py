@@ -2,6 +2,13 @@
 # coding: utf-8
 """演示 bytecode 的 dump、pretty print 和二进制序列化功能。."""
 
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 from qy.backend.vm import BytecodeFunction
 from qy.backend.vm import BytecodeProgram
 from qy.backend.vm import Instruction
@@ -103,11 +110,11 @@ def demo_compile_and_dump():
     print("=" * 60)
 
     qy = Qy()
+    # 注意：Qy 的条件形式是 cond（没有 if）；这里顺带修正了历史示例的过时写法。
     source = """
     (define fib (lambda (n)
-      (if (<= n 1)
-          n
-          (+ (fib (- n 1)) (fib (- n 2))))))
+      (cond ((<= n 1) n)
+            (true (+ (fib (- n 1)) (fib (- n 2)))))))
     """
 
     from qy.async_utils import run_coro

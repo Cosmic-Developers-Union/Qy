@@ -190,7 +190,7 @@ frontend.cst_parse
 
 **实测证据**：用 `uv run python scripts/optimize_frontier.py`（每个 `.qy` 独立子进程，
 结果做规范化后对比；早期进程内测量因 repr 含内存地址与 pass name 重复而失真，数值不可用）
-在 86 个语料（`examples/validation|design`、`tests/qy`、`meta-interp/cases`）上测得：
+在 86 个语料（`examples/qy/validation|design`、`tests/qy`、`meta-interp/cases`）上测得：
 
 | 优化子集 | 结果不一致 |
 | --- | --- |

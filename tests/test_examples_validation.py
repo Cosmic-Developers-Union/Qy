@@ -1,6 +1,6 @@
-from examples.run_validation import CASES
-from examples.run_validation import ROOT
-from examples.run_validation import run_case
+from examples.py.run_validation import CASES
+from examples.py.run_validation import ROOT
+from examples.py.run_validation import run_case
 from qy.frontend.reader import read
 
 

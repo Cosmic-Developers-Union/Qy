@@ -75,7 +75,7 @@ module/import、macro、`parallel`/`all`/`race`、`apply`/`build-tuple`、
 ## 使用
 
 ```bash
-qy wasm examples/validation/00_host_arithmetic.qy > program.wat
+qy wasm examples/qy/validation/00_host_arithmetic.qy > program.wat
 wat2wasm program.wat -o program.wasm
 node qy/resources/wasm/runtime.js program.wasm
 ```

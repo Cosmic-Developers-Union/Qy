@@ -19,6 +19,9 @@ export { RegisterVirtualMachine } from './vm.ts';
 export { createStandardEnvironment, resetModuleRegistry } from './stdlib/index.ts';
 export * as values from './values.ts';
 export { formatValue, isDefinitionArtifact } from './display.ts';
+// 宿主接管输出：嵌入式场景常需要把 Qy 的 print/display 输出收进字符串或日志。
+export { getOutputWriter, setOutputWriter } from './stdlib/io.ts';
+export type { OutputWriter } from './stdlib/io.ts';
 export { loadBytecodeJson } from './bytecode.ts';
 export type { BytecodeProgram } from './bytecode.ts';
 

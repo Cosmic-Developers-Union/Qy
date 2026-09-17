@@ -110,16 +110,16 @@ uv run ty check .
 uv run ruff check . --fix --unsafe-fixes && uv run ruff format .
 
 # 运行 CLI
-uv run qy run examples/hello.qy
+uv run qy run examples/qy/hello.qy
 uv run qy repl
-uv run qy ast examples/hello.qy
-uv run qy hir examples/hello.qy
-uv run qy mir examples/hello.qy
-uv run qy lir examples/hello.qy
-uv run qy bytecode examples/hello.qy
+uv run qy ast examples/qy/hello.qy
+uv run qy hir examples/qy/hello.qy
+uv run qy mir examples/qy/hello.qy
+uv run qy lir examples/qy/hello.qy
+uv run qy bytecode examples/qy/hello.qy
 
 # WebAssembly 后端（LIR -> WAT；宿主 runtime 在 qy/resources/wasm/runtime.js）
-uv run qy wasm examples/validation/00_host_arithmetic.qy > program.wat
+uv run qy wasm examples/qy/validation/00_host_arithmetic.qy > program.wat
 wat2wasm program.wat -o program.wasm
 node qy/resources/wasm/runtime.js program.wasm
 
@@ -157,4 +157,4 @@ LANGUAGE.md 是细节无关的语言设计文档，仅包含语言设计.
 
 ## 注意
 
-- 不要修改 `examples/hello.qy`, 它是标准参考.
+- 不要修改 `examples/qy/hello.qy`, 它是标准参考.
