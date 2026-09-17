@@ -275,11 +275,15 @@ source
     事实 + EA1 hint），两者接入默认管线；删除 10 个已被现有实现覆盖的重复占位
     （`macro/hygiene`、`core/desugar`、`core/validate`、`resolve/{symbols,imports}`、
     `control/loop`、`lir/normalize`、`emit/llvm_prepare`、`effect/{lower,flatten}`）
-    与空的 `passes/surface/`；`closure.convert` 是唯一保留的未实现 pass；
+    与空的 `passes/surface/`；空占位 `closure/convert.py` 与 `qy/tools/lint/` 后续
+    也已删除——closure 模型由 `hir.lower`/`mir.normalize`/VM 承担，再开 pass 会形成
+    第二份语义，当前**没有未实现 pass**；
   - 优化接线：`PipelineOptions.optimize` + `optimize.mir` 接线点接入默认管线
     （默认 False），优化顺序真源收敛到 `passes/optimize/apply.py::OPTIMIZE_PASSES`；
-    实测 86 个语料在开启优化后有 46/86 行为不一致（仅简化子集已 28/86），
-    因此**不默认开启**，证据记录在 docs/package-structure.md §3.1；下一步是让
+    （**已作废**：round 1 的 46/86 是度量假象——repr 含内存地址、pass name 重复导致
+    子集选错；round 3-5 修正口径并修复缺陷后，86 语料在 S1-S5 全部子集下与未优化结果
+    一致，`optimize` 已默认开启，证据见 docs/package-structure.md §3.1 与
+    `scripts/optimize_frontier.py`。）原计划接下来是让
     optimize pass 正确处理 language-level effect / continuation 控制流。
   - legacy 分阶段退役（第一步）：`qy/macro/evaluator.py` 不再导入
     `qy.vm.instance.frame.QyContinuation` 与 `legacy_eval`（编译期 effect 用本地

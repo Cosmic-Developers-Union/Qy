@@ -34,7 +34,6 @@ qy/
     core/
     resolve/
     hir/
-    closure/
     effect/
     control/
     mir/
@@ -53,7 +52,7 @@ qy/
   tools/
     check/           # analyzer / type checker
     fmt/             # formatter
-    lint/            # source-level lint
+    lint/            # source-level lint（未实现；静态检查入口目前是 qy check -> qy.tools.check）
     lsp/             # language server
   cli/
     commands/        # CLI command modules
@@ -138,7 +137,6 @@ passes/
   hir/lower.py                   # 已实现（symbol 解析 / import 解析都在这里）
   hir/lower_pass.py              # 已实现
   hir/validate.py                # 已实现（H1-H14）
-  closure/convert.py             # 未实现（唯一保留的 closure 迁移目标）
   effect/analyze.py              # 已实现（effect 事实 + EA1 escaping hint）
   control/tailcall.py            # 已实现，仅 build_optimization_pipeline 子管线
   control/cfg_simplify.py        # 已实现，仅 build_optimization_pipeline 子管线
@@ -280,7 +278,6 @@ frontend.cst_parse             # 已实现
 -> hir.lower                   # 已实现
 -> hir.validate                # 已实现
 -> effect.analyze              # 已实现
--> closure.convert             # 未实现
 -> control.tailcall            # 已实现，仅优化子管线
 -> control.cfg_simplify        # 已实现，仅优化子管线
 -> mir.normalize               # 内部工具模块，由 mir.lower 调用
@@ -297,7 +294,6 @@ frontend.cst_parse             # 已实现
 - `resolve.spaces`: 符号提升、space layout、binding slot、pending binding、meta-space。
 - `effect.analyze`: one-shot/multi-shot、continuation escape、parallel effect 边界。
 - `effect.flatten`: continuation / handler / resume -> CFG/state。
-- `closure.convert`: lambda -> closure/env，捕获和 slot copy policy 显式化。
 - `lir.verify`: LIR frame、handler、continuation、slot、lookup、branch 可验证性。
 
 `passes/pipeline.py` 必须支持调试截断与 dump：
@@ -310,8 +306,14 @@ qy emit main.qy --target=lir
 `--after=<pass-id>` 表示运行到该 pass 后 dump artifact；`--target=<artifact>` 表示运行到目标产物后停止。
 
 **当前状态**：`raw.validate`、`resolve.spaces`、`effect.analyze` 已实现并接入默认管线；
-`closure.convert` 是唯一保留的未实现 pass（closure/env 捕获目前由 `hir.lower` 的
-symbol-space 链隐式承担）。effect lowering 不是独立 pass：它是 LIR 职责
+**没有保留的未实现 pass**。曾规划的 `closure.convert` 已删除：它列出的职责都已由明确的
+层承担——lambda/defun 的 closure 模型在 `hir.lower` + `mir.normalize`
+（`MAKE_FUNCTION` + `BytecodeFunctionValue.closure`）中建立，实参按名字绑定到
+`closure.child(...)`（`qy/vm/instance/machine.py::_make_frame`），continuation 的
+捕获范围与 slot copy 由 `lir/lower.py` 的 `LIRContinuationLayout` 固定；再开一个
+pass 会形成第二份 closure 语义。真正剩下的推进点是 continuation 的
+`saved_registers` 仍是保守全集（按活跃区间精化是后续工作）。
+effect lowering 不是独立 pass：它是 LIR 职责
 （`lir/lower.py` + `passes/lir/effects.py` / `compat_effects.py`），因为
 `handle`/`perform`/`resume` 到 LIR 边界后不应再作为语言级指令存在。
 
@@ -340,7 +342,7 @@ symbol-space 链隐式承担）。effect lowering 不是独立 pass：它是 LIR
 # 5. Legacy 文件迁移表
 
 - `qy/lowering.py` -> `qy/passes/lower_hir.py`。
-- `qy/mir_lowering.py` -> `qy/passes/closure` + `effect` + `control` + `mir`。
+- `qy/mir_lowering.py` -> `qy/passes/effect` + `control` + `mir`（`closure` 占位已删除，closure 模型在 `hir.lower`/`mir.normalize`/VM 中）。
 - `qy/lir_lowering.py` -> `qy/passes/lir/lower.py`。
 - `qy/ir.py` -> `qy/ir/__init__.py`。
 - `qy/mir.py` -> `qy/ir/mir/__init__.py`。
@@ -552,6 +554,6 @@ debug/
 10. ~~迁移 CLI 到 `qy/cli/commands/`，再删除 `qy/cli.py`。~~ ✅
 11. ~~迁移 stdlib 到 `qy/std/`，保留短期 `qy/stdlib` 兼容入口，最后删除。~~ ✅（兼容 shim 已删除）
 12. ~~LIR effect lowering 接线 + VM 执行~~：`passes/lir/effects.py` 由 `lir.lower` 在 `PipelineOptions.lir_dialect == "abstract-machine"` 时调用；`passes/lir/spaces.py` 产出 `symbol_spaces` 并降成 `SS_*` / `SLOT_COMPLETE`。VM 现在执行 abstract-machine opcode（显式 handler 栈 + `QyContinuation` 快照；`CONT_RESTORE` 非终结），`tests/test_abstract_machine_vm.py` 与 compat 差分一致。默认执行路径仍为 `compat`。
-13. 待推进：closure conversion、effect analyze / flatten、loop handling、CFG simplify、optimize passes 接入默认管线（当前 reg_alloc / cfg_simplify 会破坏 effect 程序，需先修复）。
-14. 已完成：MIR 的 `ENTER_SCOPE`/`EXIT_SCOPE` 携带 program-level layout 的 space id（HIR `LetExpr`/`LambdaExpr`/`DefunExpr`/`ModuleExpr` 记录自身 space，`ProgramIR.root_space` 记录根 space），`passes/lir/spaces.py` 只查表不重建 layout，`LIRFunction` 不再有专属 layout 字段，`BytecodeProgram.symbol_spaces` 携带同一份事实；仍待推进：MIR 的 `DEFINE_ONCE`/`LOAD_ENV` operand 仍带 symbol 名（slot 由 `(space_id, symbol)` 查表得出，不是第二份 layout）；占位 pass 归属已收口（`raw.validate` / `resolve.spaces` / `effect.analyze` 实现并接入；重复占位已删除；仅 `closure.convert` 仍未实现）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
+13. 已完成：effect analyze 实现并接入；effect lowering 归 LIR（`passes/lir/effects.py`）；CFG simplify / reg_alloc 等 optimize pass 的正确性缺陷已修复，**MIR 优化序列已默认开启**（86 语料在 S1-S5 全部子集下与未优化结果一致）。待推进：loop handling 的一般化、continuation `saved_registers` 按活跃区间精化。
+14. 已完成：MIR 的 `ENTER_SCOPE`/`EXIT_SCOPE` 携带 program-level layout 的 space id（HIR `LetExpr`/`LambdaExpr`/`DefunExpr`/`ModuleExpr` 记录自身 space，`ProgramIR.root_space` 记录根 space），`passes/lir/spaces.py` 只查表不重建 layout，`LIRFunction` 不再有专属 layout 字段，`BytecodeProgram.symbol_spaces` 携带同一份事实；仍待推进：MIR 的 `DEFINE_ONCE`/`LOAD_ENV` operand 仍带 symbol 名（slot 由 `(space_id, symbol)` 查表得出，不是第二份 layout）；占位 pass 归属已收口（`raw.validate` / `resolve.spaces` / `effect.analyze` 实现并接入；重复占位与空占位 `closure.convert` 已删除，当前无未实现 pass）；abstract-machine 执行路径下 `TAIL_CALL` 跨 handle region 的 handler 栈保留。
 15. 已完成：`qy check` 改为 canonical frontend + HIR verifier；HIR verifier 补 CallExpr 递归、effect 声明顺序跟踪、宏导出事实；`resolve.spaces` 实现为 HIR 层 symbol-space layout（`ProgramIR.symbol_spaces`，含 id/parent/slot/source），并**下沉到 MIR/LIR**（共享 `qy.ir.layout` 类型，见 `tests/test_resolve_spaces.py::test_layout_sinks_from_hir_to_mir_and_lir`）；清理死代码并补 `QY_DELETE_AFTER_*` 标记；`qy/sem` 不再反向依赖 `qy.vm`；LIR abstract-machine dialect 接线 + VM 执行；LLVM/WASM 验证后端可用。
