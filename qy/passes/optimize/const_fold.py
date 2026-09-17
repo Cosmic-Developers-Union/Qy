@@ -56,9 +56,28 @@ def _collect_pure_ops(env: object | None) -> dict[str, PureOperator]:
         return {}
     result: dict[str, PureOperator] = {}
     for sym, val in env.bindings().items():
-        if isinstance(val, PureOperator) and val.argument_evaluator is None:
-            result[sym.name if isinstance(sym, Symbol) else str(sym)] = val
+        if not isinstance(val, PureOperator) or val.argument_evaluator is not None:
+            continue
+        if not _is_language_operator(val):
+            continue
+        result[sym.name if isinstance(sym, Symbol) else str(sym)] = val
     return result
+
+
+#: 允许在编译期求值的算子实现模块前缀——只包括语言实现自身（``qy.std`` /
+#: ``qy.session`` / ``qy.core``）。宿主通过 ``register_pure`` 注入的算子
+#: （用户模块、``qy.ext.*`` 宿主桥）不在此列：在编译期执行宿主代码是**可观察副作用**
+#: （宿主可能在不同进程/时刻编译，AOT 时更会把宿主状态烘进产物），且宿主函数可能
+#: 返回 coroutine 等非 Qy 值对象（历史上 `(delayed 1)` 被折成 coroutine 常量）。
+_LANGUAGE_IMPLEMENTATION_MODULES = ("qy.core.", "qy.session.", "qy.std.")
+
+
+def _is_language_operator(operator: PureOperator) -> bool:
+    func = getattr(operator, "func", None)
+    module = getattr(func, "__module__", None)
+    if not isinstance(module, str):
+        return False
+    return module.startswith(_LANGUAGE_IMPLEMENTATION_MODULES)
 
 
 def _fold_function(

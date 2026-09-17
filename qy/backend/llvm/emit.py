@@ -24,11 +24,15 @@ cond/pipeline 控制流、CALL/TAIL_CALL（无 TCO）。effect / module / macro 
 
 from __future__ import annotations
 
+from typing import cast
+
 from qy.backend.llvm.abi import BUILTIN_NAMES
 from qy.backend.llvm.abi import BUILTIN_OPS
+from qy.backend.llvm.abi import QY_TAG_T
 from qy.backend.llvm.abi import fn_symbol
 from qy.backend.llvm.abi import str_global
 from qy.backend.llvm.abi import sym_global
+from qy.backend.scalars import classify_constant
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRProgram
 
@@ -243,22 +247,27 @@ class _FunctionEmitter:
 
     def _emit_load_host(self, dest: object, value: object) -> None:
         slot = f"%reg_{dest}"
-        if value is None:
+        kind, payload = classify_constant(value)
+        if kind in ("nil", "none"):
             self._store_nil(slot)
-        elif isinstance(value, bool):
-            self._store_tag(slot, 1) if value else self._store_nil(slot)
-        elif isinstance(value, int):
-            self._store_int(slot, value)
-        elif isinstance(value, str):
-            name = self._string_constant(value)
-            size = len(value.encode("utf-8")) + 1
+        elif kind == "t":
+            self._store_tag(slot, QY_TAG_T)
+        elif kind == "bool":
+            self._store_tag(slot, QY_TAG_T) if payload else self._store_nil(slot)
+        elif kind == "int":
+            self._store_int(slot, cast(int, payload))
+        elif kind == "string":
+            text = cast(str, payload)
+            name = self._string_constant(text)
+            size = len(text.encode("utf-8")) + 1
             self.out(
                 f"  call void @qy_make_string({_VALUE} {slot},"
                 f" ptr getelementptr inbounds ([{size} x i8], ptr {name}, i32 0, i32 0),"
-                f" i64 {len(value.encode('utf-8'))})"
+                f" i64 {len(text.encode('utf-8'))})"
             )
         else:
-            self._store_nil(slot)
+            # llvm 验证后端尚无 char / float 表示：显式报错好过静默产出 nil。
+            raise ValueError(f"llvm backend does not support constant {value!r}")
 
     def _string_constant(self, value: str) -> str:
         name = str_global(self.fn_idx, self.pc)

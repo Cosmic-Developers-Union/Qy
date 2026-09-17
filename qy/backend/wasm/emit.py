@@ -26,12 +26,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from dataclasses import field
+from typing import cast
 
+from qy.backend.scalars import classify_constant
 from qy.backend.wasm.abi import NUM_BUILTINS
 from qy.backend.wasm.abi import VAL_NIL
 from qy.backend.wasm.abi import VAL_T
 from qy.backend.wasm.abi import builtin_index
 from qy.backend.wasm.abi import callable_value
+from qy.backend.wasm.abi import char_value
 from qy.backend.wasm.abi import int_value
 from qy.backend.wasm.abi import string_value
 from qy.backend.wasm.abi import table_index_for_function
@@ -181,14 +184,19 @@ class _FunctionEmitter:
         self.out("    (global.set $sp (local.get $sp_save))")
 
     def _load_host(self, dest: object, value: object) -> None:
-        if value is None:
+        kind, payload = classify_constant(value)
+        if kind in ("nil", "none"):
             self.out(f"    (local.set $r{dest} (i64.const {VAL_NIL}))")
-        elif isinstance(value, bool):
-            self.out(f"    (local.set $r{dest} (i64.const {VAL_T if value else VAL_NIL}))")
-        elif isinstance(value, int):
-            self.out(f"    (local.set $r{dest} (i64.const {int_value(value)}))")
-        elif isinstance(value, str):
-            address = self.pool.intern(value)
+        elif kind == "t":
+            self.out(f"    (local.set $r{dest} (i64.const {VAL_T}))")
+        elif kind == "bool":
+            self.out(f"    (local.set $r{dest} (i64.const {VAL_T if payload else VAL_NIL}))")
+        elif kind == "int":
+            self.out(f"    (local.set $r{dest} (i64.const {int_value(cast(int, payload))}))")
+        elif kind == "char":
+            self.out(f"    (local.set $r{dest} (i64.const {char_value(ord(cast(str, payload)))}))")
+        elif kind == "string":
+            address = self.pool.intern(cast(str, payload))
             self.out(f"    (local.set $r{dest} (i64.const {string_value(address)}))")
         else:
             raise WasmUnsupportedError(f"LOAD_HOST with unsupported value {value!r}")
