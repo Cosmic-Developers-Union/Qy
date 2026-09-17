@@ -12,7 +12,7 @@
 - `uv run qy check examples/hello.qy`：ok（analyzer 已改为 canonical frontend + HIR verifier）
 - HIR verifier 在 `examples/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
 - qytest `tests/qy` **54/54**、`examples/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
-- `make libqy` / `make llvm-gen` 可用；LLVM IR 仍不能通过 `llc`（见 §8½）
+- `make libqy` / `make llvm-gen` 可用；LLVM 原生链路实测可用（`examples/validation` 4/10 走通并与 register VM 一致，其余为常量/未解析符号等已知限制，见 docs/llvm-backend.md）
 - `qy/sem` 已不 import `qy.vm`；`UserFunction` 与 `qy/vm/instance/legacy_eval.py` 已删除，函数值统一为 `BytecodeFunctionValue`
 - `rg QY_DELETE_AFTER qy`：7 处标记（stdlib shim、sem bridge、analysis infer/scope/refs、frontend tuple 兼容层）
 
@@ -2258,7 +2258,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
    (d) 标准库算子、(e) 嵌入 API 与宿主扩展、(f) `qyvm` CLI + 一致性测试
    （对照 Python VM 的输出）。
 2. **Python 宿主补齐**：把宿主扩展（capability / descriptor）文档化并补测试；
-   LLVM `llc` 链路验证（`todo.md` §8½ 记录尚未通过）。
+   LLVM 后端补齐已知限制（`Chain` 等常量、未解析符号的 IR 生成），提高原生链路覆盖率（见 docs/llvm-backend.md §限制）。
 3. **Go 宿主**：补 `go.mod`、Go 单测、接入 `Makefile`/CI，打通
    `qy export` → `qyvm`；补 `CALL_BUILTIN`（当前 Go 侧 opcode 表没有它）。
 4. **自举推进**：把自举测试纳入常规验证（或提供快速子集）；补宏 hygiene

@@ -91,8 +91,10 @@ $(LLVM_DIR):
 # Run and compare with register VM:
 #   make llvm-verify SRC=examples/hello.qy
 #
-# NOTE: the LLVM backend currently emits IR for inspection/validation only;
-# the emitted IR is not guaranteed to pass `llc` yet. See docs/README.md.
+# 状态（实测，2026-09 本轮）：LLVM 后端是并行验证后端，`examples/validation/` 中
+# 00/02/03/09 走通「IR -> llc -> clang(+libqy) -> native」且与 register VM 输出一致；
+# 已知限制见 docs/llvm-backend.md §限制。端到端测试见 tests/test_llvm_backend.py
+# （缺 llc/clang 时自动跳过）。
 # ---------------------------------------------------------------------------
 
 .PHONY: llvm-gen
