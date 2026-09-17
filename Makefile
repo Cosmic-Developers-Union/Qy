@@ -1,4 +1,4 @@
-.PHONY: bench bench-baseline bench-check ci clean build check release lint test
+.PHONY: bench bench-baseline bench-check ci clean build check release lint test test-ts
 
 BENCH_BASELINE ?= benchmarks/baseline.json
 BENCH_MAX_REGRESSION_PERCENT ?= 10
@@ -25,11 +25,18 @@ build: clean
 check:
 	uv run twine check dist/*
 
+# TypeScript 宿主（qy/backend/typescript）：需要 bun；未安装时给出提示而不是静默跳过
+test-ts:
+	@command -v bun >/dev/null || { echo "bun not found: TypeScript host tests skipped"; exit 1; }
+	cd qy/backend/typescript && bun test
+	cd $(CURDIR) && bun qy/backend/typescript/scripts/conformance.ts
+
 ci:
 	uv run ruff check .
 	uv run ruff format --check .
 	uv run ty check .
 	uv run python -m pytest -q
+	$(MAKE) test-ts
 
 lint:
 	uv run ruff check .

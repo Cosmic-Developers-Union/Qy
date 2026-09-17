@@ -23,6 +23,11 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      # lint + format check + type check + full pytest, 与本地 `make ci` 同一条命令
+      - name: Set up bun（TypeScript 宿主）
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # lint + format check + type check + full pytest + TS 宿主一致性，与本地 `make ci` 同一条命令
       - name: Lint, type check and test
         run: make ci
