@@ -300,6 +300,20 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 内建算子表收口（单一事实源）：原先 wasm ABI、llvm ABI 与 wasm 宿主 runtime
+    三处各写一份内建算子名字/元数/下标顺序，靠注释手工同步；新增
+    `qy/core/operator_builtins.py`（BuiltinOperator: name/arity/runtime_symbol）作为
+    唯一事实源，两个后端 ABI 派生，并新增 `tests/test_operator_builtins.py` 守卫
+    （含解析 `qy/resources/wasm/runtime.js` 的 `/* N name */` 注释核对宿主侧顺序、
+    内建 ABI 元数落在算子声明元数区间内）。
+  - 待决策（算子分发迁移的形态）：`qy.core`/`qy.std` 既有算子仍通过
+    `PureOperator`… meta dispatch 在 VM 里以 Python 对象调用。真正"收口"需要新增
+    字节码内建调用路径，三种形态的取舍需要确认（见 round 7 的提问）：
+    (A) 只迁移**分发**：新增 `CALL_BUILTIN` opcode（LIR selection + bytecode +
+    VM + wasm/llvm 消费 id），语义实现仍单源在 `qy.std` / `qy.session`；
+    (B) 连**实现**一起迁移：VM/JS/C 各自拥有 primitive body，`qy.std` 算子退化为
+    声明 + 宿主委托（三份实现，但每后端自洽；破坏 embedder 直接调用 `func`）；
+    (C) 维持现状：只把"声明"收口（本轮已做）+ 约束新语义必须走 MIR/LIR/VM。
   - legacy 求值路径删除（P1-2 收尾）：`qy/vm/instance/legacy_eval.py` 与
     `qy/sem/runtime.py::UserFunction` 删除，函数值统一为管线编译的
     `BytecodeFunctionValue`。module-local defun 改两阶段预置（compile-time
