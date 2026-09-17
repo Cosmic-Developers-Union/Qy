@@ -40,7 +40,9 @@ test-go:
 	go build ./...; \
 	go vet ./...; \
 	go test ./...; \
-	bash qy/backend/golang/conformance.sh
+	bash qy/backend/golang/conformance.sh; \
+	bash qy/backend/golang/conformance.sh --dialect abstract-machine; \
+	bash qy/backend/golang/bigint_conformance.sh
 
 # 自举：Qy 写的解释器（meta-interp/main.qy）与 Python VM 对拍 + 解释器解释自身
 test-selfhost:

@@ -2219,6 +2219,16 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 # 9⅞. 本轮多宿主收尾（Go 宿主 / 自举验证）
 
+- **Go 宿主对等补齐**：整数改 `math/big.Int` 任意精度（JSON `UseNumber()` 精确解析；
+  二元除法异号复刻 Python 的 `int(a/b)` float 路径；定宽越界 `numeric-overflow`），
+  并支持 abstract-machine 方言（`symbol_spaces` layout + `SLOT_COMPLETE`；顺带修掉
+  AM 的 `HANDLE` specs 是裸 tuple 导致 6 个 effect 语料 unhandled 的真实缺口）。
+  两方言均 **55/55**、`bigint_conformance.sh` **13/13**（两方言）。
+- **大整数正式语料**：新增 `tests/qy/53_number_bigint.qy`（2^53 加减乘、30!、负数、
+  比较、取模），在 **Python / TypeScript / Go 三宿主 × 两种方言**下输出一致，
+  并接入 qytest、TS/Go conformance、`tests/test_bytecode_json.py` 与自举对拍清单。
+
+
 - **TypeScript 宿主补齐**：整数改 `bigint` + 自写精确 JSON 解析器（2^53 之后不再丢精度，
   语义逐条对齐 `number_ops.py`，含二元除法的 float 路径）；`qy export --dialect
   {compat,abstract-machine}`，两种方言均 **54/54**；`parallel`/`all`/`race` 在保守纯度

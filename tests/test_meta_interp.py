@@ -80,6 +80,7 @@ SUPPORTED_QY_TESTS = (
     "50_number_le",
     "51_number_ge",
     "52_number_float_add",
+    "53_number_bigint",
 )
 
 # examples/qy/validation 中运行代价可接受的样例。

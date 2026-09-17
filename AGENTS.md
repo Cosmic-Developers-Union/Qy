@@ -87,7 +87,7 @@ uv run qy repl
 # TypeScript 宿主（需要 bun）
 bun qy/backend/typescript/bin/qyvm.ts prog.json      # 执行 qy export 的字节码
 cd qy/backend/typescript && bun test                 # TS 单元测试
-bun qy/backend/typescript/scripts/conformance.ts     # 与 Python 虚拟机对拍 54 语料（compat 方言）
+bun qy/backend/typescript/scripts/conformance.ts     # 与 Python 虚拟机对拍 55 语料（compat 方言）
 bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine
 bun qy/backend/typescript/scripts/bigint_conformance.ts   # 大整数精度对拍
 
@@ -96,7 +96,9 @@ make examples                                        # Python 宿主 + TypeScrip
 
 # Go 宿主（需要 go）
 go build ./... && go test ./...                      # 构建 + 单元测试（本沙箱 GOCACHE 只读时先 export GOCACHE=$(mktemp -d)）
-bash qy/backend/golang/conformance.sh                # 与 Python 虚拟机对拍 54 语料
+bash qy/backend/golang/conformance.sh                # 与 Python 虚拟机对拍 55 语料（compat）
+bash qy/backend/golang/conformance.sh --dialect abstract-machine
+bash qy/backend/golang/bigint_conformance.sh          # 大整数精度对拍
 
 # 自举（Qy 写的 Qy 解释器）
 make test-selfhost                                   # cases 对拍 + 解释器解释自身

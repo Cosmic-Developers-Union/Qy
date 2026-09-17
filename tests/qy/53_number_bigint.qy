@@ -1,0 +1,23 @@
+; number-ss: integers are arbitrary precision (no double precision loss past 2^53)
+(defun fact (n acc)
+  (cond ((= n 0) acc)
+        (true (fact (- n 1) (* acc n)))))
+
+(cond
+  ((= (+ 9007199254740993 1) 9007199254740994)
+    (cond
+      ((= (* 9007199254740993 9007199254740993) 81129638414606699710187514626049)
+        (cond
+          ((= (fact 30 1) 265252859812191058636308480000000)
+            (cond
+              ((= (- 0 9007199254740993) -9007199254740993)
+                (cond
+                  ((< 9007199254740992 9007199254740993)
+                    (cond
+                      ((= (mod 9007199254740994 9007199254740993) 1) T)
+                      (true nil)))
+                  (true nil)))
+              (true nil)))
+          (true nil)))
+      (true nil)))
+  (true nil))
