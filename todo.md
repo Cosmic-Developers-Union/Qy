@@ -300,6 +300,17 @@ source
     （此前只读 surface forms、看不到局部与宏展开后的定义）；新增
     `qy/tools/lsp/navigation.py` 并注册 `textDocument/definition` 与
     `textDocument/references`（基于同一份 HIR symbol occurrence 事实）；
+  - 目标完成状态（本轮汇总）：objective 的九项均已落地并有验证证据——
+    缺陷修复、legacy/失效代码删除（legacy_eval/UserFunction/ComponentOperator/
+    空占位/死分析/stdlib shim/tuple 兼容层）、未实现 pass 与语义（当前无未实现
+    pass）、runtime value 模型 / binding layout / 算子分发各自收口到单一事实源，
+    文档 / CLI / LSP / 测试逐项同步。剩余为**增量扩展**而非结构债，另列于此：
+    1) 其余非内建算子若需要 VM 快路径，按同一模板扩充 `operator_builtins` 与
+       三后端实现（VM 取用既有 body、wasm/llvm 各自实现）；
+    2) continuation `saved_registers` 由保守全集精化为活跃区间（LIR 侧）；
+    3) `qy lint` 若要成为产品能力，需先定义规则集（当前静态检查入口为 `qy check`）；
+    4) compile-time namespace 的一般化（宏体在编译期调用 module-local defun
+       目前给出明确诊断而非支持）。
   - 内建算子表收口（单一事实源）：原先 wasm ABI、llvm ABI 与 wasm 宿主 runtime
     三处各写一份内建算子名字/元数/下标顺序，靠注释手工同步；新增
     `qy/core/operator_builtins.py`（BuiltinOperator: name/arity/runtime_symbol）作为
