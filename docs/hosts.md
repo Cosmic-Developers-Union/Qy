@@ -46,7 +46,12 @@
 - Qy 语义值编码为 `{type, class, value}`（`class` 为 `qy/sem/core.py` 中的值类名，
   `value` 是该 dataclass 的字段字典），`nil` / `T` / `none` 保持单例；
 - 无法编码的值必须**显式报错**，不得退化成 `{"type":"unknown"}`（历史上曾把
-  `IntValue(2)` 编码成 repr 字符串，装载后变成 `str`，运行期报类型错误）。
+  `IntValue(2)` 编码成 repr 字符串，装载后变成 `str`，运行期报类型错误）；
+- 交换格式还必须自带运行期所需的两类元数据（否则程序在新环境下跑不起来）：
+  - `hygiene_bindings`：卫生宏别名 → 目标名，装载侧必须装成**惰性别名**
+    （`qy.core.symbol_space.SymbolAlias`：目标可能在本程序稍后才定义）；
+  - `module_macro_exports`：模块名 → 编译期宏导出名；运行期这些名字没有绑定值，
+    `from` 命中时应跳过绑定而不是报「模块没有该导出」。
 
 两条硬性要求（由 `tests/test_bytecode_json.py` 守卫）：
 
@@ -71,9 +76,17 @@ Python 嵌入式 API（`qy.runtime`）：`Qy` / `AsyncQy`、`evaluate_source` /
 `docs/llvm-backend.md`；WASM 链路为 `qy wasm` → `wat2wasm` → `node
 qy/resources/wasm/runtime.js`（`tests/test_wasm_backend.py`，缺工具链时跳过）。
 
-**TypeScript / JavaScript**：目录 `qy/backend/typescript/`，用 TypeScript 编写、
-零运行时依赖、以 `bun` 运行；入口 `bun qy/backend/typescript/bin/qyvm.ts prog.json`。
-验收标准是 §3 的第 2 条（`tests/qy` 语料输出与 Python 虚拟机逐字节一致）。
+**TypeScript / JavaScript**：已实现，目录 `qy/backend/typescript/`，TypeScript 编写、
+零运行时依赖、以 `bun` 运行。入口 `bun bin/qyvm.ts prog.json`；嵌入式 API 在
+`src/embed.ts`（`createVm` / `evalBytecode` / `registerHostFunction`）。
+
+实测（bun 1.3.14）：`bun scripts/conformance.ts` → **54/54**（与 Python 虚拟机逐字节一致）；
+`bun test` → **34 pass / 0 fail**。
+
+已知限制：`RUNTIME_EVAL` 携带 chain 时只支持最小 eager 解释器（无完整编译管线）；
+`parallel`/`all`/`race` 顺序执行（无副作用，结果同序）；整数用 JS double 而非任意精度；
+abstract-machine 方言指令（`CONT_*` / `EFFECT_*` / `HANDLER_*` / `SLOT_COMPLETE`）已实现
+但语料未覆盖；`tsconfig.json` 声明 `bun-types` 但未安装（零依赖约束，未启用 tsc 检查）。
 
 **Go**：源码在 `qy/backend/golang/`（`cmd/qyvm` + `pkg/{bytecode,vm,stdlib}`）与
 `go-reader/`。当前**无法构建**：仓库内没有 `go.mod`/`go.sum`，而代码引用
@@ -84,7 +97,10 @@ qy/resources/wasm/runtime.js`（`tests/test_wasm_backend.py`，缺工具链时�
 ## 6. 验收标准
 
 1. **同源一致**：同一个 `.qy` 文件在任一宿主 VM 上的输出与 Python 虚拟机逐字节一致
-   （语料 `tests/qy/*.qy`，共 54 个；扩展语料 `meta-interp/cases/*.qy`）；
+   （语料 `tests/qy/*.qy`，共 54 个；扩展语料 `meta-interp/cases/*.qy`）。Python 侧由
+   `tests/test_bytecode_json.py` 守卫（在**全新环境**执行装载结果，并端到端跑
+   `qy export` + `qy run --bytecode`）；TypeScript 侧由
+   `bun qy/backend/typescript/scripts/conformance.ts` 守卫；
 2. **格式契约**：§3 的两条硬性要求始终成立；
 3. **自举**：`meta-interp/main.qy`（Qy 写的 Qy 解释器）能解释自身
    （`QY_META_SELF=1 pytest tests/test_meta_interp.py`，当前通过）；
