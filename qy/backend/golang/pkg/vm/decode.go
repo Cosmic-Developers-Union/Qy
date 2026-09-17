@@ -1,7 +1,8 @@
 package vm
 
 import (
-	"strconv"
+	"encoding/json"
+	"math/big"
 
 	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/bytecode"
 )
@@ -102,12 +103,17 @@ func decodeOperand(op *bytecode.Operand) (Value, error) {
 	case "none":
 		return QyNone, nil
 	case "int":
+		// 精确解析：整数字面量可能超过 int64（Python int 任意精度）。能装进
+		// int64 的（寄存器下标 / 函数下标）返回 int，超出的返回 *big.Int。
+		if number, ok := op.Value.(json.Number); ok {
+			if parsed, err := number.Int64(); err == nil {
+				return int(parsed), nil
+			}
+			return bytecode.ExactBigInt(op.Value), nil
+		}
 		return bytecode.AsInt(op.Value), nil
 	case "float":
-		if f, ok := op.Value.(float64); ok {
-			return f, nil
-		}
-		return float64(bytecode.AsInt(op.Value)), nil
+		return op.AsFloat(), nil
 	case "bool":
 		return op.AsBool(), nil
 	case "string":
@@ -116,6 +122,10 @@ func decodeOperand(op *bytecode.Operand) (Value, error) {
 		return NewSymbol(op.AsString()), nil
 	case "chain":
 		return decodeChainPayload(op.Value), nil
+	case "binding_addr":
+		// abstract-machine 方言：SLOT_COMPLETE 的 (space, slot) 地址。
+		address, _ := op.AsBindingAddr()
+		return address, nil
 	case "effect_def":
 		entry, _ := op.Value.(map[string]interface{})
 		name, _ := entry["name"].(string)
@@ -203,24 +213,13 @@ func decodeSemanticValue(op *bytecode.Operand) (Value, bool) {
 	}
 	field := func(name string) Value { return decodeValue(entry[name]) }
 	numberValue := func(typeName string) Value {
-		raw := field("value")
-		switch n := raw.(type) {
-		case *Number:
-			return NewNumberOfType(typeName, n.Val)
-		case int:
-			return NewNumberOfType(typeName, float64(n))
-		case float64:
-			return NewNumberOfType(typeName, n)
-		case string:
-			parsed, err := strconv.ParseFloat(n, 64)
-			if err != nil {
-				return NewNumberOfType(typeName, 0)
-			}
-			return NewNumberOfType(typeName, parsed)
-		case nil:
-			return NewNumberOfType(typeName, 0)
+		// 数值语义载荷形状：`{"value": {"type": "int", "value": <精确 token>}}`。
+		// 整型必须走 ExactBigInt：任何经 float64 的路径都会在 2^53 之后丢精度。
+		payload := entry["value"]
+		if isIntegerNumberType(typeName) {
+			return NewIntegerOfType(typeName, exactIntegerPayload(payload))
 		}
-		return NewNumberOfType(typeName, 0)
+		return NewFloatOfType(typeName, exactFloatPayload(payload))
 	}
 
 	if typeName, ok := semanticNumberTypes[op.Class]; ok {
@@ -247,6 +246,23 @@ func decodeSemanticValue(op *bytecode.Operand) (Value, bool) {
 		return NewInt(0), true
 	}
 	return nil, false
+}
+
+// exactIntegerPayload 从数值语义载荷里精确取出整数（绝不经过 float64）。
+func exactIntegerPayload(raw interface{}) *big.Int {
+	if wrapper, ok := raw.(map[string]interface{}); ok {
+		raw = wrapper["value"]
+	}
+	return bytecode.ExactBigInt(raw)
+}
+
+// exactFloatPayload 从数值语义载荷里取出浮点。
+func exactFloatPayload(raw interface{}) float64 {
+	if wrapper, ok := raw.(map[string]interface{}); ok {
+		raw = wrapper["value"]
+	}
+	op := &bytecode.Operand{Value: raw}
+	return op.AsFloat()
 }
 
 func stringFromValue(value Value) string {

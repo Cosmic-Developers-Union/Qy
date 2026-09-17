@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"math/big"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -49,25 +50,23 @@ func isCharLiteral(name string) bool {
 
 // parseIntLiteral 是 Python `int(name)`（十进制）的对应实现。
 //
+// 返回任意精度 `*big.Int`：Python 的 int 没有位宽上限，超过 2^53 的字面量
+// 必须精确保留（`qy/session/pre_ss.py::parse_number_literal`）。
+//
 // 注意 Python 的 `int()` 默认进制不接受 `0x` / `0o` / `0b` 前缀，
 // 所以 Qy 的 number-ss 也不把 `0x10` 当字面量。
-func parseIntLiteral(name string) (int64, bool) {
+func parseIntLiteral(name string) (*big.Int, bool) {
 	text := strings.TrimSpace(name)
 	if text == "" {
-		return 0, false
+		return nil, false
 	}
 	if !isIntSpelling(text) {
-		return 0, false
+		return nil, false
 	}
 	cleaned := strings.ReplaceAll(text, "_", "")
-	value, err := strconv.ParseInt(cleaned, 10, 64)
-	if err != nil {
-		// 超出 int64：Python 是任意精度，Go 侧退化为 float 表示。
-		f, ferr := strconv.ParseFloat(cleaned, 64)
-		if ferr != nil {
-			return 0, false
-		}
-		return int64(f), true
+	value, ok := new(big.Int).SetString(cleaned, 10)
+	if !ok {
+		return nil, false
 	}
 	return value, true
 }
@@ -318,7 +317,7 @@ func tryDefaultLiteral(name string) (Value, bool) {
 		}
 	}
 	if intValue, ok := parseIntLiteral(name); ok {
-		return NewInt(float64(intValue)), true
+		return NewBigInt(intValue), true
 	}
 	if floatValue, ok := parseFloatLiteral(name); ok {
 		return NewFloat(floatValue), true
@@ -450,7 +449,12 @@ func Describe(value Value) string {
 	case *Chain:
 		return "(chain)"
 	case *Number:
-		return strconv.FormatFloat(v.Val, 'g', -1, 64)
+		if v.IsInt {
+			return v.Int.String()
+		}
+		return strconv.FormatFloat(v.Float, 'g', -1, 64)
+	case *big.Int:
+		return v.String()
 	case *StringValue:
 		return "\"" + v.Value + "\""
 	case nil:

@@ -14,6 +14,7 @@
 #   bash qy/backend/golang/conformance.sh --filter=effect # 只跑文件名匹配的语料
 #   bash qy/backend/golang/conformance.sh --keep          # 保留临时目录
 #   bash qy/backend/golang/conformance.sh --list          # 只列出失败文件名
+#   bash qy/backend/golang/conformance.sh --dialect abstract-machine  # LIR 方言
 #
 # 注意：Python 命令必须带 UV_CACHE_DIR=/tmp/uv-cache（默认 uv 缓存只读）。
 
@@ -27,16 +28,34 @@ VERBOSE=0
 KEEP=0
 LIST_ONLY=0
 FILTER=""
+DIALECT="compat"
 
-for arg in "$@"; do
+while [[ $# -gt 0 ]]; do
+  arg="$1"
   case "${arg}" in
     --verbose|-v) VERBOSE=1 ;;
     --keep) KEEP=1 ;;
     --list) LIST_ONLY=1 ;;
     --filter=*) FILTER="${arg#--filter=}" ;;
+    --filter) FILTER="${2:-}"; shift ;;
+    --dialect=*) DIALECT="${arg#--dialect=}" ;;
+    --dialect) DIALECT="${2:-}"; shift ;;
     *) echo "unknown option: ${arg}" >&2; exit 2 ;;
   esac
+  shift
 done
+
+if [[ "${DIALECT}" != "compat" && "${DIALECT}" != "abstract-machine" ]]; then
+  echo "unknown dialect: ${DIALECT}（期望 compat 或 abstract-machine）" >&2
+  exit 2
+fi
+
+# `qy export` 仅在非 compat 方言时才带 --dialect（与 qy/cli/commands/export.py 的
+# 默认值一致）。期望输出始终取 Python `qy run`（compat 语义真源）：两种方言语义等价。
+EXPORT_DIALECT_ARGS=()
+if [[ "${DIALECT}" != "compat" ]]; then
+  EXPORT_DIALECT_ARGS=(--dialect "${DIALECT}")
+fi
 
 export UV_CACHE_DIR="${UV_CACHE_DIR:-/tmp/uv-cache}"
 
@@ -70,6 +89,7 @@ fi
 PASSED=0
 TOTAL=0
 FAILURES=()
+EXCLUDED=()
 
 cd "${ROOT}" || exit 2
 while IFS= read -r FILE; do
@@ -86,8 +106,15 @@ while IFS= read -r FILE; do
   fi
 
   JSON="${JSON_DIR}/${NAME}.json"
-  if ! uv run --no-sync qy export "${FILE}" -o "${JSON}" >/dev/null 2>"${WORK}/${NAME}.experr" || [[ ! -s "${JSON}" ]]; then
+  if ! uv run --no-sync qy export "${EXPORT_DIALECT_ARGS[@]}" "${FILE}" -o "${JSON}" >/dev/null 2>"${WORK}/${NAME}.experr" || [[ ! -s "${JSON}" ]]; then
     FAILURES+=("${NAME}|Python \`qy export\` 未产出 JSON|$(head -3 "${WORK}/${NAME}.experr" | tr '\n' ' ')")
+    continue
+  fi
+
+  # 交换格式缺口：`qy export` 写出 {"type":"unknown"} 时，Python 自己的
+  # `load_bytecode_json` 也会抛 ValueError，这是载体缺陷而不是宿主 VM 的缺陷。
+  if grep -q '"type"[[:space:]]*:[[:space:]]*"unknown"' "${JSON}"; then
+    EXCLUDED+=("${NAME}")
     continue
   fi
 
@@ -106,7 +133,12 @@ while IFS= read -r FILE; do
 done < <(find "${CORPUS}" -maxdepth 1 -name '*.qy' | sort)
 
 echo ""
-echo "passed ${PASSED}/${TOTAL}"
+echo "dialect: ${DIALECT}"
+if [[ "${#EXCLUDED[@]}" -gt 0 ]]; then
+  echo "passed ${PASSED}/${TOTAL}（排除交换格式不可编码 ${#EXCLUDED[@]}: $(printf '%s' "${EXCLUDED[*]}")）"
+else
+  echo "passed ${PASSED}/${TOTAL}"
+fi
 
 if [[ "${#FAILURES[@]}" -gt 0 ]]; then
   if [[ "${LIST_ONLY}" == "1" ]]; then

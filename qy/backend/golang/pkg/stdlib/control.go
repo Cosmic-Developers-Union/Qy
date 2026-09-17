@@ -35,7 +35,11 @@ func Truthy(value vm.Value) vm.Value {
 			return vm.QyNil
 		}
 	case *vm.Number:
-		if v.Val == 0 {
+		if v.IsInt {
+			if v.BigPayload().Sign() == 0 {
+				return vm.QyNil
+			}
+		} else if v.FloatPayload() == 0 {
 			return vm.QyNil
 		}
 	case string:

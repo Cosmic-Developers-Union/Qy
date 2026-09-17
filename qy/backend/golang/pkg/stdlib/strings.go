@@ -34,8 +34,8 @@ func extractStr(value vm.Value, op string) (string, error) {
 func extractInt(value vm.Value, op string) (int, error) {
 	switch v := value.(type) {
 	case *vm.Number:
-		if v.IsInt {
-			return int(v.Val), nil
+		if v.IsInt && v.BigPayload().IsInt64() {
+			return int(v.BigPayload().Int64()), nil
 		}
 	case int:
 		return v, nil
@@ -58,7 +58,7 @@ func StringLength(value vm.Value) (vm.Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vm.NewInt(float64(len([]rune(text)))), nil
+	return vm.NewInt(int64(len([]rune(text)))), nil
 }
 
 // StringConcat 是 `string-concat`。
@@ -157,7 +157,7 @@ func StringFind(value, needle vm.Value) (vm.Value, error) {
 	if index < 0 {
 		return vm.QyNil, nil
 	}
-	return vm.NewInt(float64(len([]rune(text[:index])))), nil
+	return vm.NewInt(int64(len([]rune(text[:index])))), nil
 }
 
 // StringSplit 是 `string-split`。

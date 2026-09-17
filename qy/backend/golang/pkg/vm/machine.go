@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math/big"
 	"os"
 
 	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/bytecode"
@@ -682,10 +683,47 @@ func (vm *VM) executeInstruction(frame *Frame, instruction *Instruction) (*Frame
 		return nil, nil, nil
 
 	case bytecode.OpSlotComplete:
+		// 对应 `machine.py::SLOT_COMPLETE` + `_slot_symbol`：从程序级 layout 把
+		// `BindingAddr(space, slot)` 还原成 Symbol 再 `define_once`。
+		// compat 方言没有 layout，地址无法解析（Python 返回 None）→ no-op。
+		address, ok := ops[0].(bytecode.BindingAddr)
+		if !ok {
+			return nil, nil, nil
+		}
+		value, err := frame.read(regOf(ops[1]))
+		if err != nil {
+			return failure(err)
+		}
+		if IsCompileTimeMacro(value) {
+			return nil, nil, nil
+		}
+		if symbol := vm.slotSymbol(address); symbol != nil {
+			if _, err := frame.Env.DefineOnce(symbol.Name, value); err != nil {
+				return failure(err)
+			}
+		}
 		return nil, nil, nil
 	}
 
 	return failure(NewRuntimeError("unsupported opcode '" + instruction.Opcode + "'"))
+}
+
+// slotSymbol 从程序级 symbol-space layout 还原 `SLOT_COMPLETE` 的绑定符号
+// （对应 `machine.py::_slot_symbol`：按 layout.id == space、slots[slot] 定位）。
+func (vm *VM) slotSymbol(address bytecode.BindingAddr) *Symbol {
+	for _, layout := range vm.Program.SymbolSpaces {
+		if layout.ID != address.Space {
+			continue
+		}
+		if address.Slot < 0 || address.Slot >= len(layout.Slots) {
+			continue
+		}
+		slot := layout.Slots[address.Slot]
+		if slot.Symbol != "" {
+			return NewSymbol(slot.Symbol)
+		}
+	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------
@@ -1131,6 +1169,9 @@ func regOf(value Value) int {
 	if n, ok := value.(int); ok {
 		return n
 	}
+	if integer, ok := value.(*big.Int); ok && integer.IsInt64() {
+		return int(integer.Int64())
+	}
 	return 0
 }
 
@@ -1140,6 +1181,10 @@ func intOf(value Value) int {
 		return v
 	case float64:
 		return int(v)
+	case *big.Int:
+		if v.IsInt64() {
+			return int(v.Int64())
+		}
 	}
 	return 0
 }
@@ -1171,11 +1216,41 @@ func symbolNamesOf(value Value) []string {
 }
 
 func handlerSpecsOf(value Value) []HandlerSpec {
-	specs, ok := value.([]HandlerSpec)
-	if !ok {
-		return nil
+	switch specs := value.(type) {
+	case []HandlerSpec:
+		return specs
+	case []Value:
+		// abstract-machine 方言：HANDLER_PUSH / HANDLE 的 specs 是裸 tuple，
+		// 形状 `((effect-name handler-fn-index) ...)`（对应 Python 的
+		// `tuple[(Symbol, int), ...]`），而不是 `handler_specs` 操作数类型。
+		result := make([]HandlerSpec, 0, len(specs))
+		for _, item := range specs {
+			if spec, ok := handlerSpecFromValue(item); ok {
+				result = append(result, spec)
+			}
+		}
+		return result
 	}
-	return specs
+	return nil
+}
+
+// handlerSpecFromValue 还原单个 `(effect handler-fn)` 规格。
+func handlerSpecFromValue(value Value) (HandlerSpec, bool) {
+	switch item := value.(type) {
+	case []Value:
+		if len(item) >= 2 {
+			if symbol, ok := item[0].(*Symbol); ok {
+				return HandlerSpec{Effect: symbol.Name, HandlerFn: intOf(item[1])}, true
+			}
+		}
+	case *TupleValue:
+		if len(item.Items) >= 2 {
+			if symbol, ok := item.Items[0].(*Symbol); ok {
+				return HandlerSpec{Effect: symbol.Name, HandlerFn: intOf(item.Items[1])}, true
+			}
+		}
+	}
+	return HandlerSpec{}, false
 }
 
 func importSpecsOf(value Value) []ImportSpec {

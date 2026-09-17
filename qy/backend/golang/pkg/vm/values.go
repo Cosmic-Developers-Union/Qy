@@ -1,5 +1,7 @@
 package vm
 
+import "math/big"
+
 // Qy 运行时值模型。
 //
 // 真源：
@@ -97,23 +99,65 @@ const (
 // Number 是数值家族的统一表示。对应 `qy.sem.core.NumberValue` 及其子类。
 //
 // TypeName 承担 TS 里 `constructor` 的身份角色：`=` / `+` 要求两侧 TypeName 相同。
+//
+// 载荷精度：整型家族（IsInt == true）的载荷是 `*big.Int`，与 Python
+// `IntValue.value` 的任意精度 int 一致（`qy/sem/core.py::IntValue`）；浮点家族
+// 才用 float64。**绝不允许**把整型载荷退回 float64 —— 2^53 之后会静默丢精度。
 type Number struct {
 	TypeName string
 	IsInt    bool
-	Val      float64
+	// Int 是整型家族的精确载荷（IsInt 为 true 时非 nil）。
+	Int *big.Int
+	// Float 是浮点家族的载荷（IsInt 为 false 时有效）。
+	Float float64
 }
 
-// NewInt 构造 IntValue（任意精度整型家族；Go 侧以 float64 承载，与 TS 一致）。
-func NewInt(v float64) *Number { return &Number{TypeName: NumberTypeInt, IsInt: true, Val: v} }
+// NewInt 构造 IntValue（任意精度整型）。参数是 int64 以兼容宿主内建常量。
+func NewInt(v int64) *Number { return NewBigInt(big.NewInt(v)) }
+
+// NewBigInt 用任意精度载荷构造 IntValue。
+func NewBigInt(v *big.Int) *Number {
+	return &Number{TypeName: NumberTypeInt, IsInt: true, Int: new(big.Int).Set(v)}
+}
+
+// NewIntegerOfType 按 concrete 类型名构造整型数值（int32 / uint8 / ...）。
+func NewIntegerOfType(typeName string, v *big.Int) *Number {
+	return &Number{TypeName: typeName, IsInt: true, Int: new(big.Int).Set(v)}
+}
 
 // NewFloat 构造 FloatValue。
 func NewFloat(v float64) *Number {
-	return &Number{TypeName: NumberTypeFloat, IsInt: false, Val: v}
+	return &Number{TypeName: NumberTypeFloat, IsInt: false, Float: v}
 }
 
-// NewNumberOfType 按 concrete 类型名构造数值。
-func NewNumberOfType(typeName string, v float64) *Number {
-	return &Number{TypeName: typeName, IsInt: isIntegerNumberType(typeName), Val: v}
+// NewFloatOfType 按 concrete 类型名构造浮点数值（float16 / float32 / float128）。
+func NewFloatOfType(typeName string, v float64) *Number {
+	return &Number{TypeName: typeName, IsInt: false, Float: v}
+}
+
+// BigPayload 返回整型载荷（调用方需保证 IsInt）。
+func (n *Number) BigPayload() *big.Int { return n.Int }
+
+// FloatPayload 返回浮点载荷（调用方需保证 !IsInt）。
+func (n *Number) FloatPayload() float64 { return n.Float }
+
+// String 对应 Python `str(NumberValue)`：整数纯十进制，浮点走 repr 规则。
+func (n *Number) String() string {
+	if n.IsInt {
+		return n.Int.String()
+	}
+	return PyFloatRepr(n.Float)
+}
+
+// NumberEquals 是同 concrete 类型下的数值相等（载荷按精确值比较）。
+func (n *Number) NumberEquals(other *Number) bool {
+	if n.IsInt && other.IsInt {
+		return n.Int.Cmp(other.Int) == 0
+	}
+	if !n.IsInt && !other.IsInt {
+		return n.Float == other.Float
+	}
+	return false
 }
 
 // isIntegerNumberType 判断 concrete 类型是否属于整型家族。

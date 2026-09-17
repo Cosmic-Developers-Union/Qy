@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"math/big"
 	"sort"
 	"strconv"
 	"strings"
@@ -180,10 +181,8 @@ func FormatValue(value Value) string {
 	case NoneValue:
 		return "none"
 	case *Number:
-		if v.IsInt {
-			return formatInteger(v.Val)
-		}
-		return PyFloatRepr(v.Val)
+		// 整型家族走 big.Int.String()：纯十进制，不会出现科学计数法或宿主后缀。
+		return v.String()
 	case *StringValue:
 		return v.Value
 	case *Chain:
@@ -219,6 +218,9 @@ func FormatValue(value Value) string {
 		return strconv.Itoa(v)
 	case int64:
 		return strconv.FormatInt(v, 10)
+	case *big.Int:
+		// 宿主任意精度整型（nested 载荷）也输出纯十进制。
+		return v.String()
 	case float64:
 		if v == math.Trunc(v) && !math.IsInf(v, 0) {
 			return formatInteger(v)
@@ -248,7 +250,8 @@ func describeFallback(value Value) string {
 	return fmt.Sprintf("%v", value)
 }
 
-// formatInteger 把整型家族数值格式化为十进制文本。
+// formatInteger 把宿主 float64（整数值）格式化为十进制文本。
+// Qy 语义整型不走这里（见 `Number.String`，用 big.Int）。
 func formatInteger(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }

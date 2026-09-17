@@ -61,7 +61,7 @@ func Eq(left, right vm.Value) (vm.Value, error) {
 	}
 	switch l := left.(type) {
 	case *vm.Number:
-		if r, ok := right.(*vm.Number); ok && l.TypeName == r.TypeName && l.Val == r.Val {
+		if r, ok := right.(*vm.Number); ok && l.TypeName == r.TypeName && l.NumberEquals(r) {
 			return vm.QyT, nil
 		}
 		// 数值与数值不同 concrete 类型不算 eq（与 TS 的 constructor 检查一致）
@@ -203,7 +203,7 @@ func AppendOp(left, right vm.Value) (vm.Value, error) {
 func LenOp(value vm.Value) (vm.Value, error) {
 	switch v := value.(type) {
 	case *vm.Symbol:
-		return vm.NewInt(float64(len([]rune(v.Name)))), nil
+		return vm.NewInt(int64(len([]rune(v.Name)))), nil
 	case vm.NilValue:
 		return vm.NewInt(0), nil
 	case *vm.Chain:
@@ -211,24 +211,27 @@ func LenOp(value vm.Value) (vm.Value, error) {
 		if err != nil {
 			return nil, vm.NewTypeError("len expects a proper Qy chain")
 		}
-		return vm.NewInt(float64(len(items))), nil
+		return vm.NewInt(int64(len(items))), nil
 	case *vm.StringValue:
-		return vm.NewInt(float64(len([]rune(v.Value)))), nil
+		return vm.NewInt(int64(len([]rune(v.Value)))), nil
 	case *vm.TupleValue:
-		return vm.NewInt(float64(len(v.Items))), nil
+		return vm.NewInt(int64(len(v.Items))), nil
 	case *vm.ListValue:
-		return vm.NewInt(float64(len(v.Items))), nil
+		return vm.NewInt(int64(len(v.Items))), nil
 	case *vm.DictValue:
-		return vm.NewInt(float64(len(v.Entries))), nil
+		return vm.NewInt(int64(len(v.Entries))), nil
 	case *vm.SetValue:
-		return vm.NewInt(float64(len(v.Items))), nil
+		return vm.NewInt(int64(len(v.Items))), nil
 	}
 	return nil, vm.NewTypeError("len expects a collection")
 }
 
 func ensureIndex(value vm.Value) (int, error) {
 	if number, ok := value.(*vm.Number); ok && number.IsInt {
-		return int(number.Val), nil
+		if !number.BigPayload().IsInt64() {
+			return 0, vm.NewTypeError("expected integer index")
+		}
+		return int(number.BigPayload().Int64()), nil
 	}
 	if n, ok := value.(int); ok {
 		return n, nil
@@ -540,7 +543,11 @@ func ReifyValue(value vm.Value) (vm.Value, error) {
 	case *vm.Symbol:
 		return v, nil
 	case *vm.Number:
-		return vm.NewSymbol(strconv.FormatFloat(v.Val, 'f', -1, 64)), nil
+		// reify 的整数符号拼写必须是纯十进制（不能出现宿主 big.Int 后缀 / 科学计数法）。
+		if v.IsInt {
+			return vm.NewSymbol(v.BigPayload().String()), nil
+		}
+		return vm.NewSymbol(strconv.FormatFloat(v.FloatPayload(), 'f', -1, 64)), nil
 	case int:
 		return vm.NewSymbol(strconv.Itoa(v)), nil
 	case float64:

@@ -5,18 +5,21 @@ import "testing"
 func TestTryDefaultLiteralNumbers(t *testing.T) {
 	cases := []struct {
 		name    string
-		want    float64
+		want    string
 		isInt   bool
 		missing bool
 	}{
-		{"42", 42, true, false},
-		{"-3", -3, true, false},
-		{"+7", 7, true, false},
-		{"4.5", 4.5, false, false},
-		{"1_000", 1000, true, false},
-		{"1e3", 1000, false, false},
-		{"abc", 0, false, true},
-		{"0x10", 0, false, true}, // Python int() 不接受 0x 前缀
+		{"42", "42", true, false},
+		{"-3", "-3", true, false},
+		{"+7", "7", true, false},
+		{"4.5", "4.5", false, false},
+		{"1_000", "1000", true, false},
+		{"1e3", "1000.0", false, false},
+		// 超过 2^53 的整数字面量必须精确保留（Python int 任意精度）。
+		{"9007199254740993", "9007199254740993", true, false},
+		{"81129638414606699710187514626049", "81129638414606699710187514626049", true, false},
+		{"abc", "", false, true},
+		{"0x10", "", false, true}, // Python int() 不接受 0x 前缀
 	}
 	for _, tc := range cases {
 		value, ok := tryDefaultLiteral(tc.name)
@@ -35,8 +38,8 @@ func TestTryDefaultLiteralNumbers(t *testing.T) {
 			t.Errorf("tryDefaultLiteral(%q) = %T, want *Number", tc.name, value)
 			continue
 		}
-		if number.Val != tc.want {
-			t.Errorf("tryDefaultLiteral(%q).Val = %v, want %v", tc.name, number.Val, tc.want)
+		if number.String() != tc.want {
+			t.Errorf("tryDefaultLiteral(%q) = %q, want %q", tc.name, number.String(), tc.want)
 		}
 		if number.IsInt != tc.isInt {
 			t.Errorf("tryDefaultLiteral(%q).IsInt = %v, want %v", tc.name, number.IsInt, tc.isInt)
@@ -109,7 +112,7 @@ func TestEnvResolveFallsBackToLiteral(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Resolve(42): %v", err)
 	}
-	if number, ok := value.(*Number); !ok || number.Val != 42 {
+	if number, ok := value.(*Number); !ok || number.BigPayload().Int64() != 42 {
 		t.Fatalf("Resolve(42) = %#v", value)
 	}
 	if _, err := env.Resolve(NewSymbol("nope")); err == nil {
@@ -121,14 +124,14 @@ func TestEnvScopeShadowing(t *testing.T) {
 	root := NewEnv(nil)
 	root.Define("x", NewInt(1))
 	child := root.Child()
-	if value, _ := child.Resolve(NewSymbol("x")); value.(*Number).Val != 1 {
+	if value, _ := child.Resolve(NewSymbol("x")); value.(*Number).BigPayload().Int64() != 1 {
 		t.Fatal("child should see parent binding")
 	}
 	child.Define("x", NewInt(2))
-	if value, _ := child.Resolve(NewSymbol("x")); value.(*Number).Val != 2 {
+	if value, _ := child.Resolve(NewSymbol("x")); value.(*Number).BigPayload().Int64() != 2 {
 		t.Fatal("child binding should shadow parent")
 	}
-	if value, _ := root.Resolve(NewSymbol("x")); value.(*Number).Val != 1 {
+	if value, _ := root.Resolve(NewSymbol("x")); value.(*Number).BigPayload().Int64() != 1 {
 		t.Fatal("parent binding must not change")
 	}
 }

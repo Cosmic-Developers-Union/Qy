@@ -10,6 +10,7 @@ package qyhost
 import (
 	"fmt"
 	"io"
+	"math/big"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -194,10 +195,11 @@ func RunHostFunctions(out io.Writer) error {
 		Name: "host-double",
 		Fn: func(args []vm.Value) (vm.Value, error) {
 			number, ok := args[0].(*vm.Number)
-			if !ok {
+			if !ok || !number.IsInt {
 				return nil, vm.NewTypeError("host-double expects an int")
 			}
-			return vm.NewInt(number.Val * 2), nil
+			// 整型载荷是任意精度 big.Int（与 Python IntValue 一致）。
+			return vm.NewBigInt(new(big.Int).Mul(number.BigPayload(), big.NewInt(2))), nil
 		},
 	})
 	machine.Env.Define("host-answer", vm.NewInt(42))

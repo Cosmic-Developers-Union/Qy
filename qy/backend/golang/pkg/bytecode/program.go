@@ -6,8 +6,11 @@
 package bytecode
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"strconv"
 )
 
 // Program 是一份字节码程序。
@@ -27,6 +30,35 @@ type Program struct {
 	//
 	// 运行期这些名字没有绑定值，`from` 命中它们时应跳过绑定而不是报错。
 	ModuleMacroExports map[string][]string `json:"module_macro_exports,omitempty"`
+
+	// SymbolSpaces 是程序级 symbol-space layout（abstract-machine 方言）。
+	//
+	// `SLOT_COMPLETE` 的 `BindingAddr(space, slot)` 靠它还原成 Symbol
+	// （对应 `qy/ir/layout.py::SymbolSpaceLayout` 与 `machine.py::_slot_symbol`）。
+	// compat 方言为空。
+	SymbolSpaces []SymbolSpaceLayout `json:"symbol_spaces,omitempty"`
+}
+
+// BindingSlot 是一个 once-complete 绑定槽（对应 `qy.ir.layout.BindingSlot`）。
+type BindingSlot struct {
+	Symbol string `json:"symbol"`
+	Index  int    `json:"index"`
+	Source string `json:"source"`
+}
+
+// SymbolSpaceLayout 是一个词法符号空间的稳定 id / parent / slots
+// （对应 `qy.ir.layout.SymbolSpaceLayout`）。
+type SymbolSpaceLayout struct {
+	ID     int           `json:"id"`
+	Name   string        `json:"name"`
+	Parent *int          `json:"parent"`
+	Slots  []BindingSlot `json:"slots"`
+}
+
+// BindingAddr 是 `SLOT_COMPLETE` 的绑定地址（对应 Python 的 `LIRBindingAddr`）。
+type BindingAddr struct {
+	Space int
+	Slot  int
 }
 
 // Function 是一个字节码函数。
@@ -53,8 +85,13 @@ type Operand struct {
 	Value interface{}
 }
 
-// UnmarshalJSON 实现通用操作数解码：value 保留为通用 JSON 值
-// （数字为 float64、对象为 map[string]interface{}、数组为 []interface{}）。
+// UnmarshalJSON 实现通用操作数解码。
+//
+// 关键：必须用 `json.Decoder.UseNumber()`。`qy export` 直接把 Python 任意精度
+// int 写进 `{"type":"int","value":<整数>}`；默认的 `json.Unmarshal` 会在词法阶段
+// 把超过 2^53 的整数四舍五入成 float64，reviver 无法恢复精度，装载即丢精度。
+// 开启 UseNumber 后数字保留为 `json.Number`（原始十进制 token），由调用方按需
+// 精确解析为 int / *big.Int / float64。
 func (o *Operand) UnmarshalJSON(data []byte) error {
 	var raw struct {
 		Type  string          `json:"type"`
@@ -68,8 +105,10 @@ func (o *Operand) UnmarshalJSON(data []byte) error {
 	o.Class = raw.Class
 	o.Value = nil
 	if len(raw.Value) > 0 {
+		decoder := json.NewDecoder(bytes.NewReader(raw.Value))
+		decoder.UseNumber()
 		var value interface{}
-		if err := json.Unmarshal(raw.Value, &value); err != nil {
+		if err := decoder.Decode(&value); err != nil {
 			return fmt.Errorf("decode operand value: %w", err)
 		}
 		o.Value = value
@@ -79,6 +118,48 @@ func (o *Operand) UnmarshalJSON(data []byte) error {
 
 // AsInt 把操作数载荷还原为整数。
 func (o *Operand) AsInt() int { return AsInt(o.Value) }
+
+// AsFloat 把操作数载荷还原为 float64（供 `type: float` 使用）。
+func (o *Operand) AsFloat() float64 {
+	switch v := o.Value.(type) {
+	case float64:
+		return v
+	case json.Number:
+		parsed, err := v.Float64()
+		if err != nil {
+			return 0
+		}
+		return parsed
+	case int:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case *big.Int:
+		f, _ := new(big.Float).SetInt(v).Float64()
+		return f
+	case string:
+		parsed, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			return 0
+		}
+		return parsed
+	}
+	return 0
+}
+
+// AsBigInt 把操作数载荷还原为任意精度整数（对应 Python 的精确 int）。
+func (o *Operand) AsBigInt() *big.Int { return ExactBigInt(o.Value) }
+
+// AsBindingAddr 还原 `binding_addr` 载荷（`SLOT_COMPLETE` 的地址）。
+func (o *Operand) AsBindingAddr() (BindingAddr, bool) {
+	entry, ok := o.Value.(map[string]interface{})
+	if !ok {
+		return BindingAddr{}, false
+	}
+	space := AsInt(entry["space"])
+	slot := AsInt(entry["slot"])
+	return BindingAddr{Space: space, Slot: slot}, true
+}
 
 // AsString 把操作数载荷还原为字符串。
 func (o *Operand) AsString() string {
@@ -94,6 +175,12 @@ func (o *Operand) AsBool() bool {
 	case bool:
 		return v
 	case float64:
+		return v != 0
+	case json.Number:
+		return v.String() != "0"
+	case int:
+		return v != 0
+	case int64:
 		return v != 0
 	}
 	return false
@@ -175,6 +262,9 @@ func (o *Operand) AsImportSpecs() []ImportSpec {
 }
 
 // AsInt 把通用 JSON 值还原为整数（对应 TS `asInt`）。
+//
+// 处理 UseNumber 打开后的 `json.Number`：优先按 int64 精确解析，只有带小数点 /
+// 指数的 token 才退回 float64。`*big.Int` 只可能在已解码的语义值里出现。
 func AsInt(value interface{}) int {
 	switch v := value.(type) {
 	case bool:
@@ -184,10 +274,22 @@ func AsInt(value interface{}) int {
 		return 0
 	case float64:
 		return int(v)
+	case json.Number:
+		if parsed, err := v.Int64(); err == nil {
+			return int(parsed)
+		}
+		if parsed, err := v.Float64(); err == nil {
+			return int(parsed)
+		}
 	case int:
 		return v
 	case int64:
 		return int(v)
+	case *big.Int:
+		if v.IsInt64() {
+			return int(v.Int64())
+		}
+		return 0
 	case string:
 		var parsed int
 		if _, err := fmt.Sscanf(v, "%d", &parsed); err == nil {
@@ -195,4 +297,41 @@ func AsInt(value interface{}) int {
 		}
 	}
 	return 0
+}
+
+// ExactBigInt 把通用 JSON 值精确还原为任意精度整数。
+//
+// 这是交换格式里 Python int 的唯一正确解码路径：绝不经过 float64。
+func ExactBigInt(value interface{}) *big.Int {
+	switch v := value.(type) {
+	case *big.Int:
+		return new(big.Int).Set(v)
+	case json.Number:
+		if parsed, ok := new(big.Int).SetString(v.String(), 10); ok {
+			return parsed
+		}
+		// 带小数 / 指数的 token 不是整数字面量，退回截断值。
+		if f, err := v.Float64(); err == nil {
+			return bigFromFloat(f)
+		}
+	case int:
+		return big.NewInt(int64(v))
+	case int64:
+		return big.NewInt(v)
+	case float64:
+		return bigFromFloat(v)
+	case string:
+		if parsed, ok := new(big.Int).SetString(v, 10); ok {
+			return parsed
+		}
+	}
+	return big.NewInt(0)
+}
+
+// bigFromFloat 把宿主 float64 截断为 big.Int（等价 Go 的类型转换语义）。
+func bigFromFloat(value float64) *big.Int {
+	if result, _ := new(big.Float).SetFloat64(value).Int(nil); result != nil {
+		return result
+	}
+	return big.NewInt(0)
 }

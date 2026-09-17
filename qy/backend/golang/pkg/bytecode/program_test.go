@@ -81,3 +81,46 @@ func TestOperandDecoding(t *testing.T) {
 		t.Fatalf("import_specs = %+v", parsed)
 	}
 }
+
+// JSON 里的整数必须精确保留：默认 json.Unmarshal 会在 2^53 之后丢精度。
+func TestOperandKeepsBigIntegerPrecision(t *testing.T) {
+	operand := Operand{}
+	if err := operand.UnmarshalJSON([]byte(`{"type": "int", "value": 9007199254740993}`)); err != nil {
+		t.Fatalf("UnmarshalJSON: %v", err)
+	}
+	if got := operand.AsBigInt().String(); got != "9007199254740993" {
+		t.Fatalf("AsBigInt = %s, want 9007199254740993", got)
+	}
+	// 同一 token 若经 float64 中转会变成 9007199254740992。
+	if got := operand.AsInt(); got != 9007199254740993 {
+		t.Fatalf("AsInt = %d, want 9007199254740993", got)
+	}
+}
+
+// abstract-machine 方言：顶层 symbol_spaces 与 binding_addr 操作数。
+func TestLoadReadsSymbolSpacesAndBindingAddr(t *testing.T) {
+	text := `{"version":1,"main":0,"symbol_spaces":[` +
+		`{"id":0,"name":"Main","parent":null,"slots":[{"symbol":"x","index":0,"source":"define"}]},` +
+		`{"id":1,"name":"let:x","parent":0,"slots":[{"symbol":"y","index":0,"source":"let"}]}],` +
+		`"functions":[{"name":"<main>","params":[],"register_count":2,"instructions":[` +
+		`{"opcode":"SLOT_COMPLETE","operands":[` +
+		`{"type":"binding_addr","value":{"space":1,"slot":0}},{"type":"int","value":1}]}]}]}`
+	prog, err := Load([]byte(text))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if len(prog.SymbolSpaces) != 2 {
+		t.Fatalf("symbol_spaces = %+v", prog.SymbolSpaces)
+	}
+	if prog.SymbolSpaces[0].Parent != nil {
+		t.Fatalf("root parent = %v, want nil", prog.SymbolSpaces[0].Parent)
+	}
+	if prog.SymbolSpaces[1].Parent == nil || *prog.SymbolSpaces[1].Parent != 0 {
+		t.Fatalf("child parent = %v, want 0", prog.SymbolSpaces[1].Parent)
+	}
+	operand := prog.Functions[0].Instructions[0].Operands[0]
+	address, ok := operand.AsBindingAddr()
+	if !ok || address.Space != 1 || address.Slot != 0 {
+		t.Fatalf("binding_addr = %+v (%v)", address, ok)
+	}
+}
