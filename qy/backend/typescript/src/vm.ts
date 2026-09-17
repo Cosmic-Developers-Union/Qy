@@ -8,10 +8,19 @@
 //   2. `FROM_IMPORT` 对"既不在 exports 也不在 macro_exports"的名字选择跳过，
 //      因为交换格式不携带 macro_exports（Python 会抛 KeyError）。
 //
-// 并发：`parallel` / `all` / `race` 在 Python 里用 asyncio 并发；这里顺序执行，
-// 结果顺序与 `asyncio.gather` 一致（语料无副作用，行为等价）。
+// 并发（`parallel` / `all` / `race`）：见本文件 `-- 并发形式` 一节的详细边界
+// 说明。简言之：只有在**可静态证明 thunk 子树不触发 effect、不做 IO、不改共享
+// 状态**时才用 `Promise.allSettled` / `Promise.race` 真正并发；否则顺序执行。
 
-import { QyEffectSignal, QyError, QyResolveError, QyRuntimeError, QyTypeError, EvaluationError } from './errors.ts';
+import {
+  QyAggregateError,
+  QyEffectSignal,
+  QyError,
+  QyResolveError,
+  QyRuntimeError,
+  QyTypeError,
+  EvaluationError,
+} from './errors.ts';
 import type { BytecodeFunction, BytecodeProgram, HandlerSpec } from './bytecode.ts';
 import { Env } from './environment.ts';
 import { BytecodeFunctionValue, FrameResult, makeFrame, type Frame, type HandlerRecord } from './frame.ts';
@@ -35,6 +44,23 @@ import { normalizeArgument } from './stdlib/data.ts';
 import { coreTruthy } from './stdlib/control.ts';
 import { identityContinuation } from './stdlib/support.ts';
 import { formatValue } from './display.ts';
+
+/**
+ * 并发安全判定用：有 IO / 副作用的 `CALL_BUILTIN` 下标。
+ * 内建 ABI 顺序见 `stdlib/index.ts::BUILTIN_NAMES`：8 display、9 echo、
+ * 10 newline、11 read、12 read-int。
+ */
+const CONCURRENCY_UNSAFE_BUILTINS = new Set([8, 9, 10, 11, 12]);
+
+/** `LOAD_ENV` 读到这些有副作用的宿主算子时，thunk 视为不纯。 */
+const CONCURRENCY_UNSAFE_SYMBOLS = new Set([
+  'print',
+  'echo',
+  'display',
+  'newline',
+  'read',
+  'read-int',
+]);
 
 /** effect 触发时的帧快照（对应 `machine.py::_EffectFrame`）。 */
 interface EffectFrameSnapshot {
@@ -196,12 +222,12 @@ export class RegisterVirtualMachine {
       }
       case 'PARALLEL_GATHER': {
         const [dest, ...thunks] = operands;
-        regs[reg(dest)] = await this.parallelGather(thunks.map((item) => reg(item)), frame.env);
+        regs[reg(dest)] = await this.parallelGather(thunks.map((item) => reg(item)), frame.env, true);
         return null;
       }
       case 'ALL_GATHER': {
         const [dest, ...thunks] = operands;
-        regs[reg(dest)] = await this.parallelGather(thunks.map((item) => reg(item)), frame.env);
+        regs[reg(dest)] = await this.parallelGather(thunks.map((item) => reg(item)), frame.env, false);
         return null;
       }
       case 'RACE_FIRST': {
@@ -395,6 +421,17 @@ export class RegisterVirtualMachine {
         return null;
       }
       case 'SLOT_COMPLETE': {
+        // 对应 `machine.py::SLOT_COMPLETE` + `_slot_symbol`：从程序级 layout 把
+        // `BindingAddr(space, slot)` 还原成 Symbol 再 `define_once`。
+        // 交换格式自本轮起携带 `symbol_spaces`，因此与 Python 行为一致；
+        // 若程序没有 layout（compat 方言），地址无法解析 -> no-op（同 Python 返回 None）。
+        const address = instruction.operands[0] as unknown as { space?: number; slot?: number };
+        const layout = this.program.symbolSpaces.find((item) => item.id === address?.space);
+        const slot = layout?.slots[address?.slot ?? -1];
+        if (layout !== undefined && slot !== undefined && slot.symbol.length > 0) {
+          const value = frame.registers[reg(instruction.operands[1] as number)];
+          frame.env.defineOnce(slot.symbol, value);
+        }
         return null;
       }
       default:
@@ -615,23 +652,160 @@ export class RegisterVirtualMachine {
   }
 
   // -- 并发形式 --------------------------------------------------------------
+  //
+  // 语义边界（重要）：
+  //
+  // Python 用 asyncio 并发执行 thunk；TS 用 Promise.allSettled / Promise.race。
+  // 两者只有在 "thunk 不产生可观察副作用" 时才可证明等价，所以这里先做一次
+  // 保守的静态纯度判定 `thunksAreConcurrencySafe`：
+  //
+  //   - 允许：LOAD_HOST / LOAD_ENV / MOVE / MAKE_FUNCTION / BUILD_TUPLE /
+  //     JUMP / JUMP_IF_FALSE / RETURN，纯内建的 CALL_BUILTIN，以及 CALL /
+  //     TAIL_CALL / APPLY（被调函数由 reachable 集合保守覆盖）；
+  //   - 禁止：一切 effect / continuation / handler opcode（PERFORM、HANDLE、
+  //     RESUME、RAISE_EFFECT、EFFECT_*、CONT_*、HANDLER_*、SLOT_COMPLETE、
+  //     DEFEFFECT）、共享状态写入（STORE_LOCAL、DEFINE_ONCE、DEFINE_MODULE、
+  //     FROM_IMPORT、SS_ENTER / SS_LEAVE）、CACHE_EVAL、RUNTIME_EVAL、
+  //     嵌套 gather，以及 display / echo / newline / read / read-int 这些有
+  //     IO 的内建。
+  //
+  // `CALL` 的目标无法静态解析，所以把整个程序里所有 MAKE_FUNCTION 目标都算作
+  // 可能被调用（保守过近似）。任何一个 reachable 函数不纯，整批 thunk 就退回
+  // 顺序执行——此时结果仍然正确，只是没有并发。宿主函数
+  // （`registerHostFunction`）经 CALL 调用，被视为宿主声明的纯算子：宿主若在
+  // 其中持有共享可变状态，需要自己保证并发安全（见 embed.ts）。
 
   private async runThunk(index: number, env: Env): Promise<QyValue> {
     const thunk = new BytecodeFunctionValue(this.program.functions[index], env, this.program);
     return (await this.runFunction(thunk, [])).value;
   }
 
-  /** `parallel` / `all`：收集所有 thunk 的结果为 TupleValue。 */
-  private async parallelGather(thunkIndices: number[], env: Env): Promise<QyValue> {
-    const raw: QyValue[] = [];
-    for (const index of thunkIndices) raw.push(await this.runThunk(index, env));
-    return new TupleValue(raw);
+  /** 从 `index` 出发收集 MAKE_FUNCTION 可达的函数下标（局部调用图）。 */
+  private collectReachableFunctions(index: number, into: Set<number>): void {
+    const stack: number[] = [index];
+    while (stack.length > 0) {
+      const current = stack.pop() as number;
+      if (into.has(current)) continue;
+      into.add(current);
+      const fn = this.program.functions[current];
+      if (fn === undefined) continue;
+      for (const instruction of fn.instructions) {
+        if (instruction.opcode !== 'MAKE_FUNCTION') continue;
+        const target = instruction.operands[1];
+        if (typeof target === 'number') stack.push(target);
+      }
+    }
   }
 
-  /** `race`：顺序执行时取第一个完成者（语料无并发副作用）。 */
+  /** 单个函数是否只包含并发安全的指令（见上文边界）。 */
+  private functionIsConcurrencySafe(fn: BytecodeFunction): boolean {
+    for (const instruction of fn.instructions) {
+      switch (instruction.opcode) {
+        case 'LOAD_HOST':
+        case 'LOAD_ENV':
+        case 'MOVE':
+        case 'MAKE_FUNCTION':
+        case 'BUILD_TUPLE':
+        case 'JUMP':
+        case 'JUMP_IF_FALSE':
+        case 'RETURN':
+        case 'CALL':
+        case 'TAIL_CALL':
+        case 'APPLY':
+          break;
+        case 'CALL_BUILTIN': {
+          const builtinId = instruction.operands[1];
+          if (typeof builtinId !== 'number' || CONCURRENCY_UNSAFE_BUILTINS.has(builtinId)) {
+            return false;
+          }
+          break;
+        }
+        default:
+          return false;
+      }
+    }
+    for (const instruction of fn.instructions) {
+      if (instruction.opcode !== 'LOAD_ENV') continue;
+      const symbol = instruction.operands[1];
+      if (symbol instanceof Symbol && CONCURRENCY_UNSAFE_SYMBOLS.has(symbol.name)) return false;
+    }
+    return true;
+  }
+
+  /** 整批 thunk 是否可以真正并发（保守判定，见上文边界）。 */
+  private thunksAreConcurrencySafe(thunkIndices: number[]): boolean {
+    const reachable = new Set<number>();
+    for (const index of thunkIndices) this.collectReachableFunctions(index, reachable);
+    // 动态 CALL 的保守过近似：任何 MAKE_FUNCTION 目标都可能被调用。
+    for (const fn of this.program.functions) {
+      for (const instruction of fn.instructions) {
+        if (instruction.opcode !== 'MAKE_FUNCTION') continue;
+        const target = instruction.operands[1];
+        if (typeof target === 'number') reachable.add(target);
+      }
+    }
+    for (const index of reachable) {
+      const fn = this.program.functions[index];
+      if (fn !== undefined && !this.functionIsConcurrencySafe(fn)) return false;
+    }
+    return true;
+  }
+
+  /**
+   * `parallel`（aggregateErrors=true）/ `all`（false）：收集所有 thunk 的结果。
+   *
+   * 结果顺序与 thunk 声明顺序一致（`Promise.allSettled` 保序，对应
+   * `asyncio.gather` 的返回顺序）。错误语义对齐 Python `_parallel_gather`：
+   * aggregate 时抛 `QyAggregateError`，否则抛第一个（按声明顺序）错误。
+   */
+  private async parallelGather(
+    thunkIndices: number[],
+    env: Env,
+    aggregateErrors: boolean,
+  ): Promise<QyValue> {
+    if (!this.thunksAreConcurrencySafe(thunkIndices)) {
+      // 顺序回退：涉及 effect / IO / 共享状态的 thunk 无法安全并发。
+      const sequential: QyValue[] = [];
+      for (const index of thunkIndices) sequential.push(await this.runThunk(index, env));
+      return new TupleValue(sequential);
+    }
+    const settled = await Promise.allSettled(thunkIndices.map((index) => this.runThunk(index, env)));
+    const results: QyValue[] = [];
+    const errors: QyError[] = [];
+    for (const outcome of settled) {
+      if (outcome.status === 'fulfilled') {
+        results.push(outcome.value);
+      } else {
+        results.push(null);
+        const reason = outcome.reason;
+        errors.push(reason instanceof QyError ? reason : new QyRuntimeError(String(reason)));
+      }
+    }
+    if (errors.length > 0) {
+      if (aggregateErrors) {
+        throw new QyAggregateError(`parallel failed with ${errors.length} error(s)`, errors);
+      }
+      throw errors[0];
+    }
+    return new TupleValue(results);
+  }
+
+  /**
+   * `race`：第一个完成的 thunk 胜出（对应 Python `_race_first`）。
+   *
+   * Python 会 cancel 其余 task；JS 无法取消，但输掉的 Promise 已经挂在
+   * `Promise.race` 上，不会成为 unhandled rejection。边界：Python 的 asyncio
+   * 对"纯同步 thunk"会按调度顺序跑到完成，胜者是下标最小的那个；TS 的 await
+   * 逐指令让出，指令更少的 thunk 可能先完成。有真实 async 宿主调用时两者都是
+   * "真正最快者胜出"。
+   */
   private async raceFirst(thunkIndices: number[], env: Env): Promise<QyValue> {
-    for (const index of thunkIndices) return await this.runThunk(index, env);
-    return null;
+    if (thunkIndices.length === 0) return null;
+    if (!this.thunksAreConcurrencySafe(thunkIndices)) {
+      for (const index of thunkIndices) return await this.runThunk(index, env);
+      return null;
+    }
+    return await Promise.race(thunkIndices.map((index) => this.runThunk(index, env)));
   }
 
   // -- 模块 ------------------------------------------------------------------
@@ -703,17 +877,32 @@ export class RegisterVirtualMachine {
   }
 
   // -- runtime eval ----------------------------------------------------------
+  //
+  // RUNTIME_EVAL 携带 chain 的支持子集与限制（对应 `machine.py::_eval_form`）：
+  //
+  // Python 把 datum 原样送进完整编译管线（core-forms → HIR → MIR → LIR →
+  // bytecode），所以 `(eval form)` 对任意 core form 都成立（含 special form、
+  // 宏展开、perform/handle、define）。TS 宿主没有编译器，只能提供一个最小的
+  // eager 解释器，支持的子集是：
+  //
+  //   1. `Symbol`：等价于编译后的 `LOAD_ENV`，走 env.resolve（含数字/字符串/
+  //      `nil`/`T` 的字面量回退）。语料 41 的 `(eval (reify 42))` 走这条路径。
+  //   2. 非 Symbol / 非 Chain 的 datum：原样返回（与 Python `return form` 一致）。
+  //   3. `Chain`：
+  //      a. `(quote X)` → X（对应编译期的 quote 展开）；
+  //      b. 其余按"已解析算子 + eager 求值实参"调用。
+  //
+  // 明确**不支持**（会 QyResolveError 或得到与 Python 不同的结果）：
+  //
+  //   - special form / 宏（`define`、`defun`、`lambda`、`cond`、`let`、
+  //     `perform`、`handle` 等）；
+  //   - 需要编译期环境（宏命名空间、symbol-space layout）的形式；
+  //   - `Chain` 里的字面量拼写（Python 管线会解析，eager 解释器只在
+  //     Symbol 分支走字面量回退）。
+  //
+  // 这是宿主能力缺口，不做"第二套语义实现"来补：那会与 compiler 的语义真源
+  // 分叉。嵌入方若需要完整 `eval`，应把 form 通过 `qy export` 编译后再进入 VM。
 
-  /**
-   * `RUNTIME_EVAL`（`_eval_form`）。
-   *
-   * Python 会把 datum 送进完整编译管线（source → HIR → MIR → LIR → bytecode）。
-   * TS VM 里没有编译器，所以：
-   *   - Symbol → 直接解析（与编译后 LOAD_ENV 等价）；
-   *   - nil/其它非 syntax datum → 原样返回（与 Python 的 `return form` 一致）；
-   *   - Chain → 用一个最小的 eager 解释器求值（支持 quote / 已解析算子调用）。
-   * 这是宿主能力缺口，已在报告中列为"交换格式/宿主能力"限制。
-   */
   private async evalForm(form: QyValue, env: Env): Promise<QyValue> {
     if (form instanceof Symbol) return env.resolve(form);
     if (form instanceof Chain) return await this.evalChain(form, env);

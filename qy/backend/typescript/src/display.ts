@@ -122,7 +122,9 @@ export function formatValue(value: QyValue): string {
   if (value === QY_T) return 'T';
   if (value === QY_NONE) return 'none';
   if (value instanceof NumberValue) {
-    return value.isInteger ? String(value.value) : pyFloatRepr(value.value);
+    // 整数是 BigInt：`toString()` 输出十进制，不能泄漏宿主 `123n`。
+    // Python 侧 `NumberValue.__str__` 就是 `str(self.value)`（qy/sem/core.py）。
+    return value.isInteger ? String(value.value) : pyFloatRepr(value.value as number);
   }
   if (value instanceof StringValue) return value.value;
   if (value instanceof Chain) return formatCons(value);

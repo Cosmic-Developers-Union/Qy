@@ -5,7 +5,7 @@
 // 模块与 import、宿主函数、RUNTIME_EVAL、以及 APPLY 的字面量归一。
 
 import { describe, expect, test } from 'bun:test';
-import { createVm, evalBytecode } from '../src/embed.ts';
+import { createVm, evalBytecode, getOutputWriter, setOutputWriter } from '../src/embed.ts';
 import { formatValue } from '../src/display.ts';
 import {
   Chain,
@@ -382,7 +382,7 @@ describe('嵌入式 API', () => {
       },
     ]);
     const vm = createVm(source);
-    vm.registerHostFunction('triple', (value: QyValue) => new IntValue((value as IntValue).value * 3));
+    vm.registerHostFunction('triple', (value: QyValue) => new IntValue((value as IntValue).value * 3n));
     const results = await vm.run();
     expect(formatValue(results[0])).toBe('12');
     expect(await vm.runLines()).toEqual(['12']);
@@ -444,5 +444,141 @@ describe('嵌入式 API', () => {
     const chain = listToChain(tuple.items);
     expect(chain).toBeInstanceOf(Chain);
     expect(formatValue(chain)).toBe('(1)');
+  });
+
+  test('parallel/all 真并发：async 宿主函数在同一批次内重叠执行', async () => {
+    // 两个 thunk 都调用 async 宿主函数 delay(ms, value)。
+    const source = program([
+      {
+        name: '<main>',
+        register_count: 4,
+        instructions: [
+          // PARALLEL_GATHER 的操作数是 thunk 的**函数下标**（1、2）
+          { opcode: 'PARALLEL_GATHER', operands: [R(3), R(1), R(2)] },
+          { opcode: 'APPEND_RESULT', operands: [R(3)] },
+          { opcode: 'RETURN', operands: [R(3)] },
+        ],
+      },
+      {
+        name: '<parallel-thunk-slow>',
+        register_count: 3,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('delay')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), IV(20)] },
+          { opcode: 'LOAD_HOST', operands: [R(2), IV(1)] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1, 2] }] },
+        ],
+      },
+      {
+        name: '<parallel-thunk-fast>',
+        register_count: 3,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('delay')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), IV(5)] },
+          { opcode: 'LOAD_HOST', operands: [R(2), IV(2)] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1, 2] }] },
+        ],
+      },
+    ]);
+    const events: string[] = [];
+    const vm = createVm(source);
+    vm.registerHostFunction('delay', async (ms, value) => {
+      events.push(`start:${formatValue(value)}`);
+      await new Promise((resolve) => setTimeout(resolve, Number((ms as IntValue).value)));
+      events.push(`end:${formatValue(value)}`);
+      return value;
+    });
+    const results = await vm.run();
+    // 结果顺序与 thunk 声明顺序一致（Promise.allSettled 保序，等价 asyncio.gather）
+    expect(formatValue(results[0])).toBe('(1 2)');
+    // 真并发的证据：第 2 个 thunk 在第一个结束之前已经开始
+    expect(events).toContain('start:1');
+    expect(events).toContain('start:2');
+    expect(events.indexOf('start:2')).toBeLessThan(events.indexOf('end:1'));
+  });
+
+  test('race 真并发：最快的 async thunk 胜出', async () => {
+    const source = program([
+      {
+        name: '<main>',
+        register_count: 1,
+        instructions: [
+          { opcode: 'RACE_FIRST', operands: [R(0), R(1), R(2)] },
+          { opcode: 'APPEND_RESULT', operands: [R(0)] },
+          { opcode: 'RETURN', operands: [R(0)] },
+        ],
+      },
+      {
+        name: '<race-thunk-slow>',
+        register_count: 3,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('delay')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), IV(20)] },
+          { opcode: 'LOAD_HOST', operands: [R(2), IV(1)] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1, 2] }] },
+        ],
+      },
+      {
+        name: '<race-thunk-fast>',
+        register_count: 3,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('delay')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), IV(5)] },
+          { opcode: 'LOAD_HOST', operands: [R(2), IV(2)] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1, 2] }] },
+        ],
+      },
+    ]);
+    const vm = createVm(source);
+    vm.registerHostFunction('delay', async (ms, value) => {
+      await new Promise((resolve) => setTimeout(resolve, Number((ms as IntValue).value)));
+      return value;
+    });
+    const results = await vm.run();
+    expect(formatValue(results[0])).toBe('2');
+  });
+
+  test('有 IO 的分支保持顺序执行（并发边界）', async () => {
+    // thunk 里 LOAD_ENV 'print' 命中副作用名单 → 整批退回顺序执行，
+    // 输出顺序必须是 thunk 声明顺序，而不是并发交错的顺序。
+    const source = program([
+      {
+        name: '<main>',
+        register_count: 1,
+        instructions: [
+          { opcode: 'ALL_GATHER', operands: [R(0), R(1), R(2)] },
+          { opcode: 'APPEND_RESULT', operands: [R(0)] },
+          { opcode: 'RETURN', operands: [R(0)] },
+        ],
+      },
+      {
+        name: '<io-thunk-a>',
+        register_count: 2,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('print')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), { type: 'string', class: 'StringValue', value: { value: { type: 'string', value: 'a' } } }] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1] }] },
+        ],
+      },
+      {
+        name: '<io-thunk-b>',
+        register_count: 2,
+        instructions: [
+          { opcode: 'LOAD_ENV', operands: [R(0), S('print')] },
+          { opcode: 'LOAD_HOST', operands: [R(1), { type: 'string', class: 'StringValue', value: { value: { type: 'string', value: 'b' } } }] },
+          { opcode: 'TAIL_CALL', operands: [R(0), { type: 'reg_tuple', value: [1] }] },
+        ],
+      },
+    ]);
+    const captured: string[] = [];
+    const original = getOutputWriter();
+    setOutputWriter((text) => captured.push(text));
+    try {
+      const vm = createVm(source);
+      await vm.run();
+    } finally {
+      setOutputWriter(original);
+    }
+    expect(captured.join('')).toBe('a\nb\n');
   });
 });

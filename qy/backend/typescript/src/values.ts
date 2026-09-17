@@ -61,22 +61,58 @@ export type QyValue = unknown;
 // 数值值
 // ---------------------------------------------------------------------------
 
-/** 数值家族基类。对应 `qy.sem.core.NumberValue`。 */
+/** 数值家族基类。对应 `qy.sem.core.NumberValue`。
+ *
+ * 重要：整型家族的 `value` 是 `bigint`，浮点家族是 `number`。
+ * Python 侧 `IntValue.value` 是任意精度 int（`qy/sem/core.py:IntValue`），
+ * 所以 TS 侧必须用 BigInt 才能与 Python 逐字节一致；用 double 会在
+ * 2^53 之后静默算错。`number` 允许出现在构造参数里只是为了兼容宿主互操作
+ * （宿主注入 `new IntValue(42)`），内部一律归一到 BigInt。
+ */
 export abstract class NumberValue {
   abstract readonly typeName: string;
   /** 是否是整型家族（决定 `str()` 与取模语义）。 */
   abstract readonly isInteger: boolean;
-  constructor(readonly value: number) {}
+  constructor(readonly value: number | bigint) {}
 }
 
 /** 整型家族基类。 */
 export abstract class IntegerValue extends NumberValue {
   readonly isInteger = true;
+  declare readonly value: bigint;
+  constructor(value: number | bigint | string) {
+    super(typeof value === 'bigint' ? value : BigInt(value));
+  }
 }
 
 /** 浮点家族基类。 */
 export abstract class FloatLikeValue extends NumberValue {
   readonly isInteger = false;
+  declare readonly value: number;
+  constructor(value: number) {
+    super(value);
+  }
+}
+
+/** 取整型载荷（断言 `IntegerValue.value` 已经是 BigInt）。 */
+export function integerPayload(value: NumberValue): bigint {
+  return value.value as bigint;
+}
+
+/** 取浮点载荷。 */
+export function floatPayload(value: NumberValue): number {
+  return value.value as number;
+}
+
+/**
+ * 数字载荷的跨表示相等比较（bigint/bigint、number/number、以及宿主 number）。
+ * bigint 与 number 混比时按精确值比较，避免 `1n === 1` 恒为 false 的宿主陷阱。
+ */
+export function numberPayloadEquals(left: number | bigint, right: number | bigint): boolean {
+  if (typeof left === 'bigint' && typeof right === 'bigint') return left === right;
+  if (typeof left === 'number' && typeof right === 'number') return left === right;
+  if (typeof left === 'bigint') return typeof right === 'number' && Number.isInteger(right) && BigInt(right) === left;
+  return typeof left === 'number' && Number.isInteger(left) && BigInt(left) === right;
 }
 
 export class IntValue extends IntegerValue {
@@ -220,11 +256,17 @@ export class HashMapValue {
 // 可调用值 / effect / module
 // ---------------------------------------------------------------------------
 
-/** eager 参数算子值（对应 PureOperator）。`fn` 直接接收求值后的参数。 */
+/**
+ * eager 参数算子值（对应 PureOperator）。`fn` 直接接收求值后的参数。
+ *
+ * 允许返回 Promise：宿主可以用 `registerHostFunction` 注册 async 函数
+ * （VM 的 `call` 会 `await` 返回值），这是 `parallel` / `all` / `race`
+ * 真正并发的前提。
+ */
 export class PureOperatorValue {
   constructor(
     readonly name: string,
-    readonly fn: (...args: QyValue[]) => QyValue,
+    readonly fn: (...args: QyValue[]) => QyValue | Promise<QyValue>,
   ) {}
 }
 

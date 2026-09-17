@@ -35,8 +35,8 @@ export class QyVm {
     this.vm = new RegisterVirtualMachine(program, this.env);
   }
 
-  /** 注册宿主函数（纯算子）。 */
-  registerHostFunction(name: string, fn: (...args: QyValue[]) => QyValue): void {
+  /** 注册宿主函数（纯算子）。可以是 async 函数：VM 会 await 返回值。 */
+  registerHostFunction(name: string, fn: (...args: QyValue[]) => QyValue | Promise<QyValue>): void {
     this.env.define(name, new PureOperatorValue(name, fn));
   }
 
@@ -75,7 +75,7 @@ export async function evalBytecode(
 export function registerHostFunction(
   vm: QyVm,
   name: string,
-  fn: (...args: QyValue[]) => QyValue,
+  fn: (...args: QyValue[]) => QyValue | Promise<QyValue>,
 ): void {
   vm.registerHostFunction(name, fn);
 }

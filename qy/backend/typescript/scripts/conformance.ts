@@ -9,75 +9,36 @@
 //   4. diff 1 与 3
 //
 // 用法：
-//   bun scripts/conformance.ts                 # 全量，输出通过数与失败清单
-//   bun scripts/conformance.ts --verbose       # 附带期望/实际片段
-//   bun scripts/conformance.ts --filter=effect # 只跑文件名匹配的语料
-//   bun scripts/conformance.ts --keep          # 保留临时目录
+//   bun scripts/conformance.ts                          # 全量（compat）
+//   bun scripts/conformance.ts --verbose                # 附带期望/实际片段
+//   bun scripts/conformance.ts --filter=effect          # 只跑文件名匹配的语料
+//   bun scripts/conformance.ts --dialect abstract-machine
+//   bun scripts/conformance.ts --keep                   # 保留临时目录
+//
+// `--dialect abstract-machine` 时，参考输出仍取 Python `qy run`（compat），
+// 因为两种 dialect 的语义必须等价（tests/test_abstract_machine_vm.py 的既有
+// 差分结论）；导出改用 `qy export --dialect abstract-machine`。
 //
 // 注意：Python 命令必须带 UV_CACHE_DIR=/tmp/uv-cache（默认 uv 缓存只读）。
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 
-const HERE = import.meta.dir;
-const ROOT = resolve(HERE, '..', '..', '..', '..');
-const CORPUS = join(ROOT, 'tests', 'qy');
-const VM = join(ROOT, 'qy', 'backend', 'typescript', 'bin', 'qyvm.ts');
+import { CORPUS, parseArgs, runCase, type CaseStatus } from './harness.ts';
 
-interface Args {
-  verbose: boolean;
-  keep: boolean;
-  filter: string | null;
-  listOnly: boolean;
-}
+const STATUS_REASON: Record<Exclude<CaseStatus, 'pass' | 'exchange-unencodable'>, string> = {
+  'python-failed': 'Python `qy run` 失败',
+  'export-failed': 'Python `qy export` 未产出 JSON',
+  'vm-failed': 'TS VM 非零退出',
+  mismatch: '输出不一致',
+};
 
-function parseArgs(argv: string[]): Args {
-  const args: Args = { verbose: false, keep: false, filter: null, listOnly: false };
-  for (const item of argv) {
-    if (item === '--verbose' || item === '-v') args.verbose = true;
-    else if (item === '--keep') args.keep = true;
-    else if (item === '--list') args.listOnly = true;
-    else if (item.startsWith('--filter=')) args.filter = item.slice('--filter='.length);
-  }
-  return args;
-}
-
-interface RunResult {
-  code: number;
-  stdout: string;
-  stderr: string;
-}
-
-function run(command: string[], env: Record<string, string> = {}): RunResult {
-  const proc = Bun.spawnSync(command, {
-    cwd: ROOT,
-    env: { ...process.env, UV_CACHE_DIR: '/tmp/uv-cache', ...env },
-    stdout: 'pipe',
-    stderr: 'pipe',
-  });
-  return {
-    code: proc.exitCode ?? -1,
-    stdout: proc.stdout.toString(),
-    stderr: proc.stderr.toString(),
-  };
-}
-
-function firstDifference(expected: string, actual: string, limit = 3): string {
-  const expectedLines = expected.split('\n');
-  const actualLines = actual.split('\n');
-  const lines: string[] = [];
-  const max = Math.max(expectedLines.length, actualLines.length);
-  for (let index = 0; index < max && lines.length < limit; index += 1) {
-    if (expectedLines[index] !== actualLines[index]) {
-      lines.push(
-        `      line ${index + 1}: expected ${JSON.stringify(expectedLines[index] ?? '<eof>')}` +
-          ` / actual ${JSON.stringify(actualLines[index] ?? '<eof>')}`,
-      );
-    }
-  }
-  return lines.join('\n');
-}
+/**
+ * `exchange-unencodable`：Python 导出的 JSON 含 `{"type":"unknown"}`，Python 自己的
+ * `load_bytecode_json` 也无法读入 —— 属于交换格式缺口，如实排除，不计入失败。
+ */
+const EXCLUDED_REASON = '交换格式无法编码（Python 侧 load_bytecode_json 同样失败）';
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
@@ -91,6 +52,7 @@ async function main(): Promise<number> {
   mkdirSync(jsonDir, { recursive: true });
 
   const failures: { name: string; reason: string; detail: string }[] = [];
+  const excluded: { name: string; detail: string }[] = [];
   let passed = 0;
   let total = 0;
 
@@ -98,53 +60,39 @@ async function main(): Promise<number> {
     total += 1;
     const name = file.replace(/\.qy$/, '');
     const source = join(CORPUS, file);
-
-    const expectedRun = run(['uv', 'run', '--no-sync', 'qy', 'run', source]);
-    if (expectedRun.code !== 0) {
-      failures.push({
-        name,
-        reason: 'Python `qy run` 失败',
-        detail: expectedRun.stderr.trim().split('\n').slice(0, 3).join('\n'),
-      });
-      continue;
-    }
-
-    const jsonPath = join(jsonDir, `${name}.json`);
-    const exportRun = run(['uv', 'run', '--no-sync', 'qy', 'export', source, '-o', jsonPath]);
-    if (!existsSync(jsonPath)) {
-      failures.push({
-        name,
-        reason: 'Python `qy export` 未产出 JSON',
-        detail: exportRun.stderr.trim().split('\n').slice(0, 3).join('\n'),
-      });
-      continue;
-    }
-
-    const actualRun = run(['bun', VM, jsonPath]);
-    if (actualRun.code !== 0) {
-      failures.push({
-        name,
-        reason: 'TS VM 非零退出',
-        detail: actualRun.stderr.trim().split('\n').slice(0, 6).join('\n'),
-      });
-      continue;
-    }
-
-    if (actualRun.stdout === expectedRun.stdout) {
+    const outcome = runCase(source, {
+      jsonPath: join(jsonDir, `${name}.json`),
+      dialect: args.dialect,
+    });
+    if (outcome.status === 'pass') {
       passed += 1;
-    } else {
-      failures.push({
-        name,
-        reason: '输出不一致',
-        detail: firstDifference(expectedRun.stdout, actualRun.stdout),
-      });
+      continue;
     }
+    if (outcome.status === 'exchange-unencodable') {
+      excluded.push({ name, detail: outcome.detail });
+      continue;
+    }
+    failures.push({
+      name,
+      reason: STATUS_REASON[outcome.status],
+      detail: outcome.detail,
+    });
   }
 
   if (!args.keep) rmSync(workdir, { recursive: true, force: true });
   else process.stdout.write(`临时目录保留：${workdir}\n`);
 
-  process.stdout.write(`\npassed ${passed}/${total}\n`);
+  process.stdout.write(`\ndialect: ${args.dialect}\n`);
+  process.stdout.write(`passed ${passed}/${total}`);
+  if (excluded.length > 0) process.stdout.write(`（排除 ${excluded.length}）`);
+  process.stdout.write('\n');
+  if (excluded.length > 0) {
+    process.stdout.write(`\n排除清单（${excluded.length}，${EXCLUDED_REASON}）：\n`);
+    for (const item of excluded) {
+      process.stdout.write(`  - ${item.name}\n`);
+      if (args.verbose && item.detail) process.stdout.write(`      ${item.detail}\n`);
+    }
+  }
   if (failures.length > 0 && !args.listOnly) {
     process.stdout.write(`\n失败清单（${failures.length}）：\n`);
     for (const failure of failures) {

@@ -72,7 +72,8 @@ describe('字面量解析（pre_ss）', () => {
     expect(isNumberLiteral('0x10')).toBe(false);
     const value = tryDefaultLiteral(new Symbol('42'));
     expect(value).toBeInstanceOf(IntValue);
-    expect((value as IntValue).value).toBe(42);
+    // 整型载荷是 BigInt（Python IntValue 是任意精度）
+    expect((value as IntValue).value).toBe(42n);
     expect(tryDefaultLiteral(new Symbol('2.5'))).toBeInstanceOf(FloatValue);
   });
 

@@ -28,7 +28,9 @@ function extractStr(value: QyValue, op: string): string {
 }
 
 function extractInt(value: QyValue, op: string): number {
-  if (value instanceof IntValue) return value.value;
+  // 整型载荷是 BigInt，切片/索引位置还原为宿主 number（与 Python `_extract_int`
+  // 返回 `int` 后再交给 `str` 切片等价）。
+  if (value instanceof IntValue) return Number(value.value);
   if (typeof value === 'number' && Number.isInteger(value)) return value;
   throw new QyTypeError(`${op}: expected integer`);
 }

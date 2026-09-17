@@ -11,6 +11,7 @@ import {
   Chain,
   CharValue,
   DictValue,
+  IntegerValue,
   IntValue,
   ListValue,
   NoneValue,
@@ -26,6 +27,7 @@ import {
   isChain,
   isNil,
   listToChain,
+  numberPayloadEquals,
   type QyValue,
 } from '../values.ts';
 
@@ -62,7 +64,7 @@ export function eq(left: QyValue, right: QyValue): QyValue {
   if (left instanceof NoneValue && right instanceof NoneValue) return QY_T;
   if ((left as object | null)?.constructor !== (right as object | null)?.constructor) return QY_NIL;
   if (left instanceof NumberValue && right instanceof NumberValue) {
-    return left.value === right.value ? QY_T : QY_NIL;
+    return numberPayloadEquals(left.value, right.value) ? QY_T : QY_NIL;
   }
   if (left instanceof StringValue && right instanceof StringValue) {
     return left.value === right.value ? QY_T : QY_NIL;
@@ -82,10 +84,10 @@ export function sameQyKey(left: QyValue, right: QyValue): boolean {
   if (typeof left === 'string' && right instanceof StringValue) return left === right.value;
   if (typeof left === 'string' && typeof right === 'string') return left === right;
   if (left instanceof NumberValue && typeof right === 'number' && typeof right !== 'boolean') {
-    return left.value === right;
+    return numberPayloadEquals(left.value, right);
   }
   if (right instanceof NumberValue && typeof left === 'number' && typeof left !== 'boolean') {
-    return left === right.value;
+    return numberPayloadEquals(right.value, left);
   }
   if (typeof left === 'boolean' || typeof right === 'boolean') return left === right;
   return eq(left, right) === QY_T;
@@ -183,7 +185,9 @@ export function getOp(collection: QyValue, key: QyValue, ...defaults: QyValue[])
 }
 
 function ensureIndex(value: QyValue): number {
-  if (value instanceof IntValue) return value.value;
+  // Python `_ensure_index` 走 `operator.index`，接受任意整型 NumberValue。
+  // 载荷现在是 BigInt，索引位置必须还原为宿主 number。
+  if (value instanceof IntegerValue) return Number(value.value);
   if (typeof value === 'number' && Number.isInteger(value)) return value;
   throw new QyTypeError('expected integer index');
 }

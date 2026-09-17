@@ -11,6 +11,7 @@
 //     reg_tuple/symbol_tuple → 数组；chain → Chain。
 
 import { QyError } from './errors.ts';
+import { parseJsonExact } from './json.ts';
 import {
   ArrayValue,
   Chain,
@@ -59,6 +60,26 @@ export interface BytecodeFunction {
   instructions: Instruction[];
 }
 
+/** `SLOT_COMPLETE` 的绑定地址（对应 Python 的 `LIRBindingAddr`）。 */
+export interface BindingAddr {
+  space: number;
+  slot: number;
+}
+
+/** 一个绑定槽（对应 `qy.ir.layout.BindingSlot`）。 */
+export interface BindingSlot {
+  symbol: string;
+  index: number;
+}
+
+/** 一个词法符号空间的 layout（对应 `qy.ir.layout.SymbolSpaceLayout`）。 */
+export interface SymbolSpaceLayout {
+  id: number;
+  name: string;
+  parent: number | null;
+  slots: BindingSlot[];
+}
+
 /** 一个字节码程序。 */
 export interface BytecodeProgram {
   version: number;
@@ -66,6 +87,11 @@ export interface BytecodeProgram {
   functions: BytecodeFunction[];
   /** 卫生宏别名 → 原始符号名。见 report：这是交换格式里唯一能恢复宏卫生的字段。 */
   hygieneBindings: Map<string, string>;
+  /**
+   * 程序级符号空间 layout（abstract-machine 方言的 `SLOT_COMPLETE` 靠它把
+   * `BindingAddr(space, slot)` 还原成 Symbol）。compat 方言为空。
+   */
+  symbolSpaces: SymbolSpaceLayout[];
 }
 
 /** handler 规格：effect 名 + handler 函数下标。 */
@@ -95,12 +121,36 @@ const SEMANTIC_CLASSES: Record<string, new (...args: never[]) => unknown> = {
 
 function asInt(value: unknown, fallback = 0): number {
   if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'bigint') return Number(value);
   if (typeof value === 'number') return Math.trunc(value);
   if (typeof value === 'string') {
     const parsed = Number.parseInt(value, 10);
     return Number.isNaN(parsed) ? fallback : parsed;
   }
   return fallback;
+}
+
+/** 语义整型载荷 → BigInt（JSON 里可能是 bigint 精确值，也可能是安全范围内的 number）。 */
+function asBigInt(value: QyValue): bigint {
+  if (typeof value === 'bigint') return value;
+  if (typeof value === 'number') return BigInt(Math.trunc(value));
+  if (typeof value === 'boolean') return value ? 1n : 0n;
+  if (typeof value === 'string') {
+    try {
+      return BigInt(value);
+    } catch {
+      return 0n;
+    }
+  }
+  return 0n;
+}
+
+/** 语义浮点载荷 → number。 */
+function asFloat(value: QyValue): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'bigint') return Number(value);
+  if (typeof value === 'string') return Number(value);
+  return Number.NaN;
 }
 
 /** 把 `{type, class, value}` 还原为 Qy 语义值；不是语义值返回 undefined。 */
@@ -120,13 +170,18 @@ function decodeSemanticValue(payload: Record<string, unknown>): QyValue | undefi
     case 'UInt8Value':
     case 'UInt16Value':
     case 'UInt32Value':
-    case 'UInt64Value':
+    case 'UInt64Value': {
+      // Python int 是任意精度：JSON 里的整数 token 由 parseJsonExact 保成 bigint，
+      // 这里直接构造 BigInt 语义值，绝不过 Number。
+      const ctor = SEMANTIC_CLASSES[className];
+      return new (ctor as unknown as new (v: bigint | number | string) => NumberValue)(asBigInt(field('value')));
+    }
     case 'FloatValue':
     case 'Float16Value':
     case 'Float32Value':
     case 'Float128Value': {
       const ctor = SEMANTIC_CLASSES[className];
-      return new (ctor as unknown as new (v: number) => NumberValue)(Number(field('value')));
+      return new (ctor as unknown as new (v: number) => NumberValue)(asFloat(field('value')));
     }
     case 'StringValue':
       return new StringValue(String(field('value')));
@@ -180,6 +235,10 @@ export function decodeValue(payload: unknown): QyValue {
   const kind = record['type'];
   const raw = record['value'];
   switch (kind) {
+    case 'binding_addr': {
+      const data = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};
+      return { space: asInt(data['space'], 0), slot: asInt(data['slot'], 0) } as unknown as QyValue;
+    }
     case 'nil':
       return QY_NIL;
     case 't':
@@ -248,7 +307,8 @@ export function decodeOperand(payload: unknown): QyValue {
  * 没有对应字段），导致带卫生宏的产物无法被执行。这里保留它，见最终报告。
  */
 export function loadBytecodeJson(text: string): BytecodeProgram {
-  const data = JSON.parse(text) as Record<string, unknown>;
+  // 用精确解析器：交换格式里的 Python int 可能是任意精度（见 src/json.ts）。
+  const data = parseJsonExact(text) as Record<string, unknown>;
   const version = data['version'];
   if (version !== 1) {
     throw new QyError(`unsupported bytecode JSON version: ${String(version)}`);
@@ -280,10 +340,28 @@ export function loadBytecodeJson(text: string): BytecodeProgram {
       hygieneBindings.set(key, String(value));
     }
   }
+  const symbolSpaces: SymbolSpaceLayout[] = [];
+  const rawSpaces = data['symbol_spaces'];
+  if (Array.isArray(rawSpaces)) {
+    for (const entry of rawSpaces) {
+      const layout = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : {};
+      const rawSlots = Array.isArray(layout['slots']) ? layout['slots'] : [];
+      symbolSpaces.push({
+        id: asInt(layout['id'], 0),
+        name: String(layout['name'] ?? ''),
+        parent: layout['parent'] === null || layout['parent'] === undefined ? null : asInt(layout['parent'], 0),
+        slots: rawSlots.map((slot) => {
+          const item = slot && typeof slot === 'object' ? (slot as Record<string, unknown>) : {};
+          return { symbol: String(item['symbol'] ?? ''), index: asInt(item['index'], 0) };
+        }),
+      });
+    }
+  }
   return {
     version: 1,
     main: asInt(data['main'], 0),
     functions,
     hygieneBindings,
+    symbolSpaces,
   };
 }

@@ -38,6 +38,19 @@ export class QyReifyError extends EvaluationError {}
 export class QyRuntimeError extends EvaluationError {}
 
 /**
+ * `parallel` 的聚合错误（对应 Python `qy.errors.QyAggregateError`）。
+ * Python `_parallel_gather(aggregate_errors=True)` 收集全部 thunk 错误后抛出它。
+ */
+export class QyAggregateError extends EvaluationError {
+  constructor(
+    message: string,
+    readonly errors: unknown[],
+  ) {
+    super(message);
+  }
+}
+
+/**
  * 代数效应信号（对应 Python `QyEffectSignal`）。
  *
  * 它是 `EvaluationError` 的子类，Python VM 用异常来传播 effect 的

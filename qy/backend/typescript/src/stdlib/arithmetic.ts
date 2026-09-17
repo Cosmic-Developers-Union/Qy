@@ -9,17 +9,22 @@
 //   4. 整数除法向零截断（不是 Python `//` 的向下取整）；
 //   5. `=` 是同 concrete 类型的数值相等；两侧非数值时退化为 identity 比较；
 //   6. `==` 是宿主 `==` 语义（`_py_eq`）。
+//
+// 整数精度：Python `IntValue` 是任意精度 int，所以这里全部用 BigInt 运算，
+// 定宽整型的范围也用 BigInt 表示。绝不能把整型载荷退回 `number`。
 
 import { QyTypeError } from '../errors.ts';
 import {
   Float16Value,
   Float32Value,
   Float128Value,
+  FloatLikeValue,
   FloatValue,
   Int8Value,
   Int16Value,
   Int32Value,
   Int64Value,
+  IntegerValue,
   IntValue,
   NumberValue,
   QY_NIL,
@@ -30,25 +35,32 @@ import {
   UInt16Value,
   UInt32Value,
   UInt64Value,
+  floatPayload,
+  integerPayload,
+  numberPayloadEquals,
   type QyValue,
 } from '../values.ts';
 import { performEffect } from './support.ts';
 
-type NumberCtor = new (value: number) => NumberValue;
+/** 定宽/任意精度整型的构造签名。 */
+type IntegerCtor = new (value: bigint) => IntegerValue;
+/** 浮点家族的构造签名。 */
+type FloatCtor = new (value: number) => FloatLikeValue;
+type NumberCtor = IntegerCtor | FloatCtor;
 
-/** 定宽整型的取值范围；IntValue（任意精度）不在表中，不做范围检查。 */
-const INTEGER_BOUNDS: Map<NumberCtor, [number, number]> = new Map([
-  [Int8Value, [-(2 ** 7), 2 ** 7 - 1]],
-  [Int16Value, [-(2 ** 15), 2 ** 15 - 1]],
-  [Int32Value, [-(2 ** 31), 2 ** 31 - 1]],
-  [Int64Value, [-(2 ** 63), 2 ** 63 - 1]],
-  [UInt8Value, [0, 2 ** 8 - 1]],
-  [UInt16Value, [0, 2 ** 16 - 1]],
-  [UInt32Value, [0, 2 ** 32 - 1]],
-  [UInt64Value, [0, 2 ** 64 - 1]],
+/** 定宽整型的取值范围（BigInt）；IntValue（任意精度）不在表中，不做范围检查。 */
+const INTEGER_BOUNDS: Map<IntegerCtor, [bigint, bigint]> = new Map([
+  [Int8Value, [-(2n ** 7n), 2n ** 7n - 1n]],
+  [Int16Value, [-(2n ** 15n), 2n ** 15n - 1n]],
+  [Int32Value, [-(2n ** 31n), 2n ** 31n - 1n]],
+  [Int64Value, [-(2n ** 63n), 2n ** 63n - 1n]],
+  [UInt8Value, [0n, 2n ** 8n - 1n]],
+  [UInt16Value, [0n, 2n ** 16n - 1n]],
+  [UInt32Value, [0n, 2n ** 32n - 1n]],
+  [UInt64Value, [0n, 2n ** 64n - 1n]],
 ]);
 
-const INTEGER_CTORS: NumberCtor[] = [
+const INTEGER_CTORS: IntegerCtor[] = [
   IntValue,
   Int8Value,
   Int16Value,
@@ -59,14 +71,16 @@ const INTEGER_CTORS: NumberCtor[] = [
   UInt32Value,
   UInt64Value,
 ];
-const FLOAT_CTORS: NumberCtor[] = [FloatValue, Float16Value, Float32Value, Float128Value];
+const FLOAT_CTORS: FloatCtor[] = [FloatValue, Float16Value, Float32Value, Float128Value];
 
-/** 把宿主 int/float 升格为 Qy 语义数值（`_coerce_host_number`）。 */
+/** 把宿主 int/bigint/float 升格为 Qy 语义数值（`_coerce_host_number`）。 */
 export function coerceHostNumber(value: QyValue): QyValue {
   if (value instanceof NumberValue) return value;
   if (typeof value === 'boolean') return value;
+  if (typeof value === 'bigint') return new IntValue(value);
   if (typeof value === 'number') {
-    return Number.isInteger(value) ? new IntValue(value) : new FloatValue(value);
+    if (Number.isInteger(value)) return new IntValue(value);
+    return new FloatValue(value);
   }
   return value;
 }
@@ -75,6 +89,7 @@ function typeName(value: QyValue): string {
   if (value instanceof NumberValue) return value.typeName;
   if (value === null || value === undefined) return 'NoneType';
   if (typeof value === 'boolean') return 'bool';
+  if (typeof value === 'bigint') return 'int';
   if (typeof value === 'number') return 'int';
   if (typeof value === 'string') return 'str';
   if (value instanceof Symbol) return 'Symbol';
@@ -104,7 +119,8 @@ function ensureSameNumberType(args: QyValue[], op: string): NumberCtor {
   return headType;
 }
 
-function checkIntegerRange(value: number, type: NumberCtor, op: string): number {
+/** 定宽整型越界检查（`_check_integer_range`）；IntValue 不检查。 */
+function checkIntegerRange(value: bigint, type: IntegerCtor, op: string): bigint {
   const bounds = INTEGER_BOUNDS.get(type);
   if (bounds === undefined) return value;
   const [minimum, maximum] = bounds;
@@ -127,122 +143,157 @@ function checkFloatFinite(value: number, name: string, op: string): number {
   return value;
 }
 
-function makeNumber(type: NumberCtor, value: number): NumberValue {
+function makeInteger(type: IntegerCtor, value: bigint): IntegerValue {
   return new type(value);
 }
 
-type Kernel = (type: NumberCtor, args: NumberValue[]) => NumberValue;
+function makeFloat(type: FloatCtor, value: number): FloatLikeValue {
+  return new type(value);
+}
 
-function dispatchOp(op: string, args: QyValue[], integerKernel: Kernel, floatKernel: Kernel): NumberValue {
+type IntegerKernel = (type: IntegerCtor, args: NumberValue[]) => NumberValue;
+type FloatKernel = (type: FloatCtor, args: NumberValue[]) => NumberValue;
+
+function dispatchOp(
+  op: string,
+  args: QyValue[],
+  integerKernel: IntegerKernel,
+  floatKernel: FloatKernel,
+): NumberValue {
   const coerced = args.map(coerceHostNumber);
   const valueType = ensureSameNumberType(coerced, op);
   const typed = coerced.filter((item): item is NumberValue => item instanceof NumberValue);
-  if (INTEGER_CTORS.includes(valueType)) return integerKernel(valueType, typed);
-  if (FLOAT_CTORS.includes(valueType)) return floatKernel(valueType, typed);
+  if (INTEGER_CTORS.some((ctor) => ctor === valueType)) {
+    return integerKernel(valueType as IntegerCtor, typed);
+  }
+  if (FLOAT_CTORS.some((ctor) => ctor === valueType)) {
+    return floatKernel(valueType as FloatCtor, typed);
+  }
   throw new QyTypeError(`${op} has no kernel for number type ${typeName(typed[0])}`);
 }
 
-// -- 整数内核 ---------------------------------------------------------------
+// -- 整数内核（全部 BigInt） -------------------------------------------------
 
-function integerAdd(type: NumberCtor, args: NumberValue[]): NumberValue {
-  let total = 0;
-  for (const arg of args) total += arg.value;
-  return makeNumber(type, checkIntegerRange(total, type, '+'));
+function integerAdd(type: IntegerCtor, args: NumberValue[]): NumberValue {
+  let total = 0n;
+  for (const arg of args) total += integerPayload(arg);
+  return makeInteger(type, checkIntegerRange(total, type, '+'));
 }
 
-function integerSub(type: NumberCtor, args: NumberValue[]): NumberValue {
-  if (args.length === 1) return makeNumber(type, checkIntegerRange(-args[0].value, type, '-'));
-  let result = args[0].value;
-  for (const arg of args.slice(1)) result -= arg.value;
-  return makeNumber(type, checkIntegerRange(result, type, '-'));
+function integerSub(type: IntegerCtor, args: NumberValue[]): NumberValue {
+  if (args.length === 1) return makeInteger(type, checkIntegerRange(-integerPayload(args[0]), type, '-'));
+  let result = integerPayload(args[0]);
+  for (const arg of args.slice(1)) result -= integerPayload(arg);
+  return makeInteger(type, checkIntegerRange(result, type, '-'));
 }
 
-function integerMul(type: NumberCtor, args: NumberValue[]): NumberValue {
-  let result = 1;
-  for (const arg of args) result *= arg.value;
-  return makeNumber(type, checkIntegerRange(result, type, '*'));
+function integerMul(type: IntegerCtor, args: NumberValue[]): NumberValue {
+  let result = 1n;
+  for (const arg of args) result *= integerPayload(arg);
+  return makeInteger(type, checkIntegerRange(result, type, '*'));
 }
 
-/** 向零截断的整数除法（number_ops._integer_div：`int(a / b)`）。 */
-function truncDiv(a: number, b: number): number {
-  return Math.trunc(a / b);
+/** Python `//`（向负无穷取整）。BigInt `/` 是向零截断，所以这里显式修正。 */
+function floorDiv(a: bigint, b: bigint): bigint {
+  const quotient = a / b;
+  const remainder = a % b;
+  return remainder !== 0n && remainder < 0n !== b < 0n ? quotient - 1n : quotient;
 }
 
-function integerDiv(type: NumberCtor, args: NumberValue[]): NumberValue {
+/**
+ * Python 二元整数除法里 `int(result / divisor)` 的对应实现。
+ *
+ * `qy/session/number_ops.py::_integer_div` 在"异号且余数非零"时走的是
+ * **float 真除法**再截断，所以超大整数会因此丢精度（Python 侧宿主缺陷）。
+ * 为了与 Python 逐字节一致，这里同样走 double：JS `Number(bigint)` 与
+ * CPython 的 int→double 都是正确舍入，`Math.trunc` 与 `int()` 都是向零截断。
+ * 结果超出 double 范围时 Python 抛 OverflowError，这里让 `BigInt()` 抛
+ * RangeError，同样会被 `call` 包装成运行时错误。
+ */
+function truncDivViaFloat(a: bigint, b: bigint): bigint {
+  return BigInt(Math.trunc(Number(a) / Number(b)));
+}
+
+function integerDiv(type: IntegerCtor, args: NumberValue[]): NumberValue {
   if (args.length === 1) {
-    const first = args[0].value;
-    if (first === 0) performEffect('divide-by-zero', { operator: '/' }, true);
-    return makeNumber(type, checkIntegerRange(truncDiv(1, first), type, '/'));
+    const first = integerPayload(args[0]);
+    if (first === 0n) performEffect('divide-by-zero', { operator: '/' }, true);
+    // 注意：Python `_integer_div` 的单参数分支是 `1 // first`（floor），
+    // 与二元分支的向零截断不同。见 qy/session/number_ops.py:244-249。
+    return makeInteger(type, checkIntegerRange(floorDiv(1n, first), type, '/'));
   }
-  let result = args[0].value;
+  let result = integerPayload(args[0]);
   for (const arg of args.slice(1)) {
-    const divisor = arg.value;
-    if (divisor === 0) performEffect('divide-by-zero', { operator: '/' }, true);
-    result = truncDiv(result, divisor);
+    const divisor = integerPayload(arg);
+    if (divisor === 0n) performEffect('divide-by-zero', { operator: '/' }, true);
+    // 逐字复刻 Python：异号且余数非零 → `int(result / divisor)`（float），
+    // 否则 `result // divisor`（floor；此处与 BigInt 向零截断等价）。
+    const signsDiffer = result < 0n !== divisor < 0n;
+    result = signsDiffer && result % divisor !== 0n ? truncDivViaFloat(result, divisor) : result / divisor;
   }
-  return makeNumber(type, checkIntegerRange(result, type, '/'));
+  return makeInteger(type, checkIntegerRange(result, type, '/'));
 }
 
-/** Python 的 `%`（结果符号跟随除数）。 */
-function pyMod(a: number, b: number): number {
+/** Python 的 `%`（结果符号跟随除数）。BigInt `%` 符号跟随被除数，需要修正。 */
+function pyMod(a: bigint, b: bigint): bigint {
   const result = a % b;
-  return result !== 0 && result < 0 !== b < 0 ? result + b : result;
+  return result !== 0n && result < 0n !== b < 0n ? result + b : result;
 }
 
-function integerMod(type: NumberCtor, args: NumberValue[]): NumberValue {
+function integerMod(type: IntegerCtor, args: NumberValue[]): NumberValue {
   if (args.length !== 2) throw new QyTypeError('mod expects exactly 2 arguments');
-  const a = args[0].value;
-  const b = args[1].value;
-  if (b === 0) performEffect('divide-by-zero', { operator: 'mod' }, false);
-  return makeNumber(type, checkIntegerRange(pyMod(a, b), type, 'mod'));
+  const a = integerPayload(args[0]);
+  const b = integerPayload(args[1]);
+  if (b === 0n) performEffect('divide-by-zero', { operator: 'mod' }, false);
+  return makeInteger(type, checkIntegerRange(pyMod(a, b), type, 'mod'));
 }
 
 // -- 浮点内核 ---------------------------------------------------------------
 
-function floatNameOf(type: NumberCtor): string {
+function floatNameOf(type: FloatCtor): string {
   return (type as unknown as { typeName?: string }).typeName ?? type.name;
 }
 
-function floatAdd(type: NumberCtor, args: NumberValue[]): NumberValue {
+function floatAdd(type: FloatCtor, args: NumberValue[]): NumberValue {
   let total = 0;
-  for (const arg of args) total += arg.value;
-  return makeNumber(type, checkFloatFinite(total, floatNameOf(type), '+'));
+  for (const arg of args) total += floatPayload(arg);
+  return makeFloat(type, checkFloatFinite(total, floatNameOf(type), '+'));
 }
 
-function floatSub(type: NumberCtor, args: NumberValue[]): NumberValue {
-  if (args.length === 1) return makeNumber(type, -args[0].value);
-  let result = args[0].value;
-  for (const arg of args.slice(1)) result -= arg.value;
-  return makeNumber(type, checkFloatFinite(result, floatNameOf(type), '-'));
+function floatSub(type: FloatCtor, args: NumberValue[]): NumberValue {
+  if (args.length === 1) return makeFloat(type, -floatPayload(args[0]));
+  let result = floatPayload(args[0]);
+  for (const arg of args.slice(1)) result -= floatPayload(arg);
+  return makeFloat(type, checkFloatFinite(result, floatNameOf(type), '-'));
 }
 
-function floatMul(type: NumberCtor, args: NumberValue[]): NumberValue {
+function floatMul(type: FloatCtor, args: NumberValue[]): NumberValue {
   let result = 1;
-  for (const arg of args) result *= arg.value;
-  return makeNumber(type, checkFloatFinite(result, floatNameOf(type), '*'));
+  for (const arg of args) result *= floatPayload(arg);
+  return makeFloat(type, checkFloatFinite(result, floatNameOf(type), '*'));
 }
 
-function floatDiv(type: NumberCtor, args: NumberValue[]): NumberValue {
+function floatDiv(type: FloatCtor, args: NumberValue[]): NumberValue {
   if (args.length === 1) {
-    const first = args[0].value;
+    const first = floatPayload(args[0]);
     if (first === 0) performEffect('divide-by-zero', { operator: '/' }, true);
-    return makeNumber(type, checkFloatFinite(1 / first, floatNameOf(type), '/'));
+    return makeFloat(type, checkFloatFinite(1 / first, floatNameOf(type), '/'));
   }
-  let result = args[0].value;
+  let result = floatPayload(args[0]);
   for (const arg of args.slice(1)) {
-    const divisor = arg.value;
+    const divisor = floatPayload(arg);
     if (divisor === 0) performEffect('divide-by-zero', { operator: '/' }, true);
     result /= divisor;
   }
-  return makeNumber(type, checkFloatFinite(result, floatNameOf(type), '/'));
+  return makeFloat(type, checkFloatFinite(result, floatNameOf(type), '/'));
 }
 
-function floatMod(type: NumberCtor, args: NumberValue[]): NumberValue {
+function floatMod(type: FloatCtor, args: NumberValue[]): NumberValue {
   if (args.length !== 2) throw new QyTypeError('mod expects exactly 2 arguments');
-  const a = args[0].value;
-  const b = args[1].value;
+  const a = floatPayload(args[0]);
+  const b = floatPayload(args[1]);
   if (b === 0) performEffect('divide-by-zero', { operator: 'mod' }, false);
-  return makeNumber(type, checkFloatFinite(a - b * Math.trunc(a / b), floatNameOf(type), 'mod'));
+  return makeFloat(type, checkFloatFinite(a - b * Math.trunc(a / b), floatNameOf(type), 'mod'));
 }
 
 // -- 公开算子 ---------------------------------------------------------------
@@ -263,7 +314,19 @@ export function mod(...args: QyValue[]): NumberValue {
   return dispatchOp('mod', args, integerMod, floatMod);
 }
 
-function ordering(op: string, args: QyValue[], compare: (a: number, b: number) => boolean): QyValue {
+/** 同 concrete 类型数值的三路比较（-1 / 0 / 1）。 */
+function compareNumberValues(left: NumberValue, right: NumberValue): number {
+  if (left.isInteger && right.isInteger) {
+    const a = integerPayload(left);
+    const b = integerPayload(right);
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
+  const a = floatPayload(left);
+  const b = floatPayload(right);
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function ordering(op: string, args: QyValue[], accept: (comparison: number) => boolean): QyValue {
   if (args.length !== 2) throw new QyTypeError(`${op} expects exactly 2 arguments`);
   const coerced = args.map(coerceHostNumber);
   ensureSameNumberType(coerced, op);
@@ -271,20 +334,20 @@ function ordering(op: string, args: QyValue[], compare: (a: number, b: number) =
   if (!(left instanceof NumberValue) || !(right instanceof NumberValue)) {
     throw new QyTypeError(`${op} expects numbers`);
   }
-  return compare(left.value, right.value) ? QY_T : QY_NIL;
+  return accept(compareNumberValues(left, right)) ? QY_T : QY_NIL;
 }
 
 export function lt(...args: QyValue[]): QyValue {
-  return ordering('<', args, (a, b) => a < b);
+  return ordering('<', args, (comparison) => comparison < 0);
 }
 export function gt(...args: QyValue[]): QyValue {
-  return ordering('>', args, (a, b) => a > b);
+  return ordering('>', args, (comparison) => comparison > 0);
 }
 export function le(...args: QyValue[]): QyValue {
-  return ordering('<=', args, (a, b) => a <= b);
+  return ordering('<=', args, (comparison) => comparison <= 0);
 }
 export function ge(...args: QyValue[]): QyValue {
-  return ordering('>=', args, (a, b) => a >= b);
+  return ordering('>=', args, (comparison) => comparison >= 0);
 }
 
 /** `=`：同 concrete 数值类型相等；非数值退化为 identity（number_ops._num_eq）。 */
@@ -302,7 +365,7 @@ export function numEq(left: QyValue, right: QyValue): QyValue {
         right_type: b.typeName,
       });
     }
-    return a.value === b.value ? QY_T : QY_NIL;
+    return numberPayloadEquals(a.value, b.value) ? QY_T : QY_NIL;
   }
   return left === right ? QY_T : QY_NIL;
 }
@@ -320,7 +383,9 @@ export function pyEq(left: QyValue, right: QyValue): QyValue {
  */
 export function pyEquals(left: QyValue, right: QyValue): boolean {
   if (left === right) return true;
-  if (left instanceof NumberValue && right instanceof NumberValue) return left.value === right.value;
+  if (left instanceof NumberValue && right instanceof NumberValue) {
+    return numberPayloadEquals(left.value, right.value);
+  }
   if (left instanceof StringValue && right instanceof StringValue) return left.value === right.value;
   if (left instanceof Symbol && right instanceof Symbol) return left.name === right.name;
   if (Array.isArray(left) && Array.isArray(right)) {

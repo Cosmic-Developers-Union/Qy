@@ -50,7 +50,8 @@ describe('loadBytecodeJson', () => {
     const first = parsed.functions[0].instructions[0].operands[1];
     const second = parsed.functions[0].instructions[1].operands[1];
     expect(first).toBeInstanceOf(IntValue);
-    expect((first as IntValue).value).toBe(6);
+    // 语义整型载荷按 BigInt 解码
+    expect((first as IntValue).value).toBe(6n);
     expect(second).toBeInstanceOf(FloatValue);
     expect((second as FloatValue).value).toBe(1.5);
   });

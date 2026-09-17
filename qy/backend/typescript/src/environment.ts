@@ -60,17 +60,22 @@ export function isNumberLiteral(name: string): boolean {
 }
 
 /**
- * Python `int(name)`（base 10）的对应实现。
+ * Python `int(name)`（base 10）的对应实现，返回任意精度 `bigint`。
  *
  * 注意 Python 的 `int()` 默认进制不接受 `0x`/`0o`/`0b` 前缀，所以 Qy 的
  * number-ss 也不把 `0x10` 当字面量（`parse_number_literal` 会返回 MISSING）。
+ * Python 侧 `IntValue` 是任意精度（`qy/sem/core.py`），所以这里必须用 BigInt，
+ * `Number.parseInt` 会在 2^53 之后静默截断。
  */
-export function parseIntLiteral(name: string): number | undefined {
+export function parseIntLiteral(name: string): bigint | undefined {
   const text = name.trim();
   if (text === '') return undefined;
   if (!/^[+-]?\d(?:_?\d)*$/.test(text)) return undefined;
-  const parsed = Number.parseInt(text.replace(/_/g, ''), 10);
-  return Number.isNaN(parsed) ? undefined : parsed;
+  try {
+    return BigInt(text.replace(/_/g, ''));
+  } catch {
+    return undefined;
+  }
 }
 
 /**
