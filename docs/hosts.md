@@ -42,7 +42,8 @@
   instructions[{opcode, operands}]}]`、可选 `hygiene_bindings`；
 - 操作数类型：`reg` / `int` / `float` / `bool` / `string` / `symbol` / `nil` / `t` /
   `none` / `chain` / `effect_def` / `reg_tuple` / `handler_specs` / `import_specs` /
-  `symbol_tuple` / `list` / `tuple`；
+  `symbol_tuple` / `list` / `tuple` / `binding_addr`（`{"space","slot"}`，abstract-machine
+  方言的 `SLOT_COMPLETE` 用）；
 - Qy 语义值编码为 `{type, class, value}`（`class` 为 `qy/sem/core.py` 中的值类名，
   `value` 是该 dataclass 的字段字典），`nil` / `T` / `none` 保持单例；
 - 无法编码的值必须**显式报错**，不得退化成 `{"type":"unknown"}`（历史上曾把
@@ -51,7 +52,13 @@
   - `hygiene_bindings`：卫生宏别名 → 目标名，装载侧必须装成**惰性别名**
     （`qy.core.symbol_space.SymbolAlias`：目标可能在本程序稍后才定义）；
   - `module_macro_exports`：模块名 → 编译期宏导出名；运行期这些名字没有绑定值，
-    `from` 命中时应跳过绑定而不是报「模块没有该导出」。
+    `from` 命中时应跳过绑定而不是报「模块没有该导出」；
+  - `symbol_spaces`：程序级符号空间 layout（`id` / `name` / `parent` /
+    `slots[{symbol,index,source}]`），装载时同时挂到每个函数上——VM 的
+    `SLOT_COMPLETE` 读 `frame.function.symbol_spaces` 才能把
+    `binding_addr` 还原成 symbol；
+- **整数必须精确**：JSON 用十进制字符串/精确解析器读写，任何一侧用 double 中转都会在
+  2^53 之后静默丢精度（TypeScript 用自写精确 JSON 解析器，Go 用 `UseNumber`）。
 
 两条硬性要求（由 `tests/test_bytecode_json.py` 守卫）：
 
@@ -83,16 +90,45 @@ qy/resources/wasm/runtime.js`（`tests/test_wasm_backend.py`，缺工具链时�
 实测（bun 1.3.14）：`bun scripts/conformance.ts` → **54/54**（与 Python 虚拟机逐字节一致）；
 `bun test` → **34 pass / 0 fail**。
 
-已知限制：`RUNTIME_EVAL` 携带 chain 时只支持最小 eager 解释器（无完整编译管线）；
-`parallel`/`all`/`race` 顺序执行（无副作用，结果同序）；整数用 JS double 而非任意精度；
-abstract-machine 方言指令（`CONT_*` / `EFFECT_*` / `HANDLER_*` / `SLOT_COMPLETE`）已实现
-但语料未覆盖；`tsconfig.json` 声明 `bun-types` 但未安装（零依赖约束，未启用 tsc 检查）。
+实测（bun 1.3.14）：
 
-**Go**：源码在 `qy/backend/golang/`（`cmd/qyvm` + `pkg/{bytecode,vm,stdlib}`）与
-`go-reader/`。当前**无法构建**：仓库内没有 `go.mod`/`go.sum`，而代码引用
-`github.com/aspect-build/qy-vm/...`；`go build ./...` 与 `go test ./...` 均报
-`directory prefix . does not contain main module`。此外 Go 侧操作码表缺
-`CALL_BUILTIN`（`qy export` 会产出它），CI 与 `Makefile` 也没有 Go 步骤。
+```bash
+cd qy/backend/typescript && bun test                                    # 48 pass
+bun qy/backend/typescript/scripts/conformance.ts                        # compat 54/54
+bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine  # 54/54
+bun qy/backend/typescript/scripts/bigint_conformance.ts                 # 13/13
+```
+
+- **整数为任意精度**（`bigint` + 自写精确 JSON 解析器），语义逐条对齐
+  `qy/session/number_ops.py`（含二元除法异号时 Python 的 `int(a/b)` float 路径）；
+- **并发**：`PARALLEL_GATHER`/`ALL_GATHER` 用 `Promise.allSettled`（保序），`RACE_FIRST`
+  用 `Promise.race`；前置保守纯度判定，遇 effect/continuation/handler/共享状态写入/IO
+  内建/嵌套 gather 时整批回退顺序执行；宿主函数支持 async；
+- 已知限制：`RUNTIME_EVAL` 只支持 Symbol 解析 / `quote` / 已解析算子的 eager 调用
+  （special form、宏、`define`、`perform` 等需要编译期的形式不支持，不引入第二套语义）；
+  纯同步 thunk 的 `race` 胜者在 JS 与 Python asyncio 下可能不同（有真实 async 调用时
+  两者都是最快者胜）；`tsconfig.json` 声明 `bun-types` 但未安装（零依赖约束，未启用
+  tsc 检查）。
+
+**Go**：已实现。`go.mod` 在仓库根（module `github.com/Cosmic-Developers-Union/Qy`，
+零第三方依赖），`qy/backend/golang/` 与 `go-reader/` 同属一个 module；入口
+`go run ./qy/backend/golang/cmd/qyvm prog.json`。嵌入式 API 在 `examples/go/qyhost`
+（宿主算子注册/同名覆盖/接管输出）。
+
+实测（go1.27）：
+
+```bash
+export GOCACHE=$(mktemp -d)          # 仅在默认 GOCACHE 只读的环境需要
+go build ./... && go vet ./... && go test ./...
+bash qy/backend/golang/conformance.sh     # → passed 54/54
+go run ./examples/go/hello                # 编译并执行示例 Qy 程序 → 42
+```
+
+已知限制：`parallel`/`all` 顺序执行、`race` 取第一个 thunk（Python 是 asyncio 抢先
+语义；语料无副作用故行为等价）；`RUNTIME_EVAL` 是极简 eager 解释器（Go 宿主不含
+编译器）；数值用 float64 承载，超大整数字面量会丢精度（语料不涉及）；`read`/`read-int`
+内建返回 nil（未接 stdin）；abstract-machine 方言指令与 `CACHE_EVAL`/`SS_*`/`SLOT_*`
+已实现但语料未触达，未经对拍验证。
 
 ## 6. 验收标准
 
@@ -102,6 +138,11 @@ abstract-machine 方言指令（`CONT_*` / `EFFECT_*` / `HANDLER_*` / `SLOT_COMP
    `qy export` + `qy run --bytecode`）；TypeScript 侧由
    `bun qy/backend/typescript/scripts/conformance.ts` 守卫；
 2. **格式契约**：§3 的两条硬性要求始终成立；
-3. **自举**：`meta-interp/main.qy`（Qy 写的 Qy 解释器）能解释自身
-   （`QY_META_SELF=1 pytest tests/test_meta_interp.py`，当前通过）；
+3. **自举**：`meta-interp/main.qy`（Qy 写的 Qy 解释器）对上 `meta-interp/cases/*.qy`
+   全部用例（`bash meta-interp/compare.sh` → 19/19），并能解释自身
+   （`QY_META_SELF=1 pytest tests/test_meta_interp.py`，当前通过）。两者由
+   `make test-selfhost` 统一验证，并已纳入 `make ci`。已实现的宏 hygiene：
+   binder 重命名 + 定义点自由符号 + `capture`/`gensym`；
 4. **effect 一致**：代数效应的可观察行为跨宿主一致（`docs/roadmap.yaml` 要求）。
+   已实现宿主的上限由各自的 conformance 命令守卫：`make test-ts`（TypeScript）、
+   `make test-go`（Go）、`tests/test_bytecode_json.py` + `qy run --bytecode`（Python）。

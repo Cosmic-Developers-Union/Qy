@@ -44,6 +44,7 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
   - `qy/backend/llvm/`：LLVM 验证后端；不取代 register VM。
   - `qy/backend/wasm/`：WebAssembly 验证后端（LIR → WAT，宿主 runtime 在 `qy/resources/wasm/runtime.js`）；不取代 register VM。
 - `qy/backend/typescript/`：TypeScript 实现的寄存器虚拟机（零依赖，用 `bun` 运行），执行 `qy export` 的字节码 JSON；`bun test` + `bun scripts/conformance.ts` 与 Python 虚拟机对拍。设计见 `docs/hosts.md`。
+- `qy/backend/golang/`：Go 实现的寄存器虚拟机（标准库、零第三方依赖），同样执行 `qy export` 的字节码 JSON；`go test ./...` + `conformance.sh` 与 Python 虚拟机对拍。`go.mod` 在仓库根，Go 代码与 `go-reader/` 同属一个 module。
 - `qy/vm/`：Register VM 的 Python 实现位置；实现 `qy/backend/vm/spec`，**不定义** VM target 规格。
 - `qy/vm/instance/`：一次执行的可变运行实例（machine / frame / state）；**只能实现** `qy/backend/vm/spec`，不得定义 opcode / ABI 规格。
 - `qy/runtime.py`：`Qy` / `AsyncQy` 主类 API，串联完整管线。
@@ -58,6 +59,8 @@ source -> raw AST -> surface dialect -> macro expand -> HIR -> MIR -> LIR -> byt
 - `qy/cli/`：click CLI，包含 `run`、`repl`、`ast`、`expand`、`hir`、`mir`、`lir`、`bytecode`、`fmt`、`check`、`typecheck`、`operators`、`lsp`、`pkg`、`llvm`、`wasm`、`export`、`completion`。
 - `tests/`：pytest 测试，基线 `uv run python -m pytest -q`。
 - `examples/`：按宿主语言分目录的示例（`qy/`=Qy 源码、`py/`=Python 宿主、`ts/`=TypeScript 宿主、`go/` 后续）；说明见 `docs/examples.md`。
+- `meta-interp/`：用 Qy 自己写的 Qy 解释器（自举）；真源 `main.qy`，用例 `cases/*.qy`，
+  `bash meta-interp/compare.sh` 与 Python VM 逐字节对拍，`QY_META_SELF=1` 跑"解释器解释自身"。
 - `extensions/qylang-support-vscode/`：VS Code 语言支持扩展。
 
 ## 常用命令
@@ -84,10 +87,19 @@ uv run qy repl
 # TypeScript 宿主（需要 bun）
 bun qy/backend/typescript/bin/qyvm.ts prog.json      # 执行 qy export 的字节码
 cd qy/backend/typescript && bun test                 # TS 单元测试
-bun qy/backend/typescript/scripts/conformance.ts     # 与 Python 虚拟机对拍 54 语料
+bun qy/backend/typescript/scripts/conformance.ts     # 与 Python 虚拟机对拍 54 语料（compat 方言）
+bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine
+bun qy/backend/typescript/scripts/bigint_conformance.ts   # 大整数精度对拍
 
 # 示例（按宿主语言分目录，见 docs/examples.md）
 make examples                                        # Python 宿主 + TypeScript 宿主示例
+
+# Go 宿主（需要 go）
+go build ./... && go test ./...                      # 构建 + 单元测试（本沙箱 GOCACHE 只读时先 export GOCACHE=$(mktemp -d)）
+bash qy/backend/golang/conformance.sh                # 与 Python 虚拟机对拍 54 语料
+
+# 自举（Qy 写的 Qy 解释器）
+make test-selfhost                                   # cases 对拍 + 解释器解释自身
 
 uv build
 ```
@@ -142,7 +154,7 @@ make bench-check
 - 涉及 MIR/LIR/bytecode/VM 时运行：`uv run python -m pytest tests/test_mir.py tests/test_lir.py tests/test_register_vm.py tests/test_register_vm_semantics.py tests/test_runtime.py -q`。
 - 涉及 macro 时运行：`uv run python -m pytest tests/test_eval_macro.py tests/test_macroexpand.py tests/test_module_import.py -q`。
 - 涉及 CLI 时运行 `tests/test_cli_commands.py` 与 `tests/test_qytest_runner.py`。
-- 任何较大改动都要运行全量 `uv run python -m pytest -q` 和 `uv run ty check .`；改动字节码交换格式或宿主 VM 时，还要运行 `make test-ts`（TS 宿主对拍）。
+- 任何较大改动都要运行全量 `uv run python -m pytest -q` 和 `uv run ty check .`；改动字节码交换格式或宿主 VM 时，还要运行 `make test-ts`（TS 宿主对拍）与 `make test-go`（Go 宿主对拍）。
 - 改动 `qy/backend/vm/bytecode.py` 的 JSON 编解码时，同步 `qy/backend/typescript/src/bytecode.ts` 与 Go 侧 loader，并跑 `tests/test_bytecode_json.py`。
 
 ## 工作注意事项

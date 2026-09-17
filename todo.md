@@ -2217,6 +2217,34 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 ---
 
+# 9⅞. 本轮多宿主收尾（Go 宿主 / 自举验证）
+
+- **TypeScript 宿主补齐**：整数改 `bigint` + 自写精确 JSON 解析器（2^53 之后不再丢精度，
+  语义逐条对齐 `number_ops.py`，含二元除法的 float 路径）；`qy export --dialect
+  {compat,abstract-machine}`，两种方言均 **54/54**；`parallel`/`all`/`race` 在保守纯度
+  判定下真并发（effect/IO/共享状态回退顺序）；`RUNTIME_EVAL` 支持子集写入注释。
+- **交换格式完备性**：`serialize_bytecode_json` 曾把 abstract-machine 的
+  `LIRBindingAddr` 写成 `{"type":"unknown"}`（连 Python 自己的 loader 都拒绝，该方言
+  产物无法离开 Python）。现新增 `binding_addr` 操作数与顶层 `symbol_spaces`（layout），
+  并把 layout 挂到每个 `BytecodeFunction`（VM 的 `_slot_symbol` 读函数级 layout）；
+  Python/TS 两种方言往返均 **54/54**。
+
+
+- **Go 宿主完成**：新增根 `go.mod`（module `github.com/Cosmic-Developers-Union/Qy`，
+  零第三方依赖，`qy/backend/golang` 与 `go-reader` 同属一个 module）；按已验证 54/54 的
+  TS 宿主同构重写 Go VM（`pkg/vm`、`pkg/bytecode`、`pkg/stdlib`），补 `CALL_BUILTIN`、
+  `hygiene_bindings`（惰性别名）、`module_macro_exports`（编译期宏导出跳过绑定）、
+  字面量回退解析与逐字节对齐的 `display`；`go build/vet/test ./...` 全通过，
+  `bash qy/backend/golang/conformance.sh` → **54/54**；`examples/go/` 三个示例可跑。
+  限制见 `docs/hosts.md` §5。
+- **自举验证接入**：`make test-selfhost`（`compare.sh` 19/19 + `QY_META_SELF=1`
+  解释器解释自身）并纳入 `make ci`；修正 `todo.md` 中"宏 hygiene 未实现"的过时说法
+  （`meta-interp/main.qy` 已实现 binder 重命名 / definition-site free symbol /
+  `capture` / `gensym`）。
+- **`.gitignore` 陷阱修复**：`*.mod*`（内核模块产物）会连带匹配 `go.mod`，导致 Go module
+  文件被静默忽略、无法提交；改为显式 `!/go.mod`、`!/go.sum`，并新增守卫测试
+  `tests/test_target_architecture_guards.py::test_repo_root_toolchain_files_are_not_git_ignored`。
+
 # 9¾. 多宿主计划（新一轮目标）
 
 目标：让 Qy 能作为**嵌入式语言**在 Python 与 TypeScript/JavaScript 中工作；Go 后续跟进。
@@ -2278,8 +2306,10 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   用来解析"定义晚于闭包创建"的前向引用/互递归（对应语言里 pre-declared binding slot 的语义）。
 - **求值器**：CPS + 显式 continuation/handler 上下文；`quote` `if` `cond` `define`
   `defun` `lambda` `let` `and` `or` `from` `apply` `pipeline` `module` `exports`
-  （含 `import name as alias`）、`macro`/`quasiquote`/`unquote`/`unquote-splicing`
-  （非 hygiene；`gensym`/`capture` 未实现）、`eval`/`reify`（最小实现）；
+  （含 `import name as alias`）、`macro`/`quasiquote`/`unquote`/`unquote-splicing`、
+  **宏 hygiene**（`hygienize`：binder 重命名 + definition-site free symbol 绑定 +
+  `capture` 解包 + `gensym` 新名，见 `meta-interp/main.qy` 的 §macro hygiene）、
+  `eval`/`reify`（最小实现）；
   primitive 表覆盖
   `+ - * / mod = == < > <= >= car cdr cons list null? not eq? eq atom len truthy is print`；
   其余宿主算子通过 `lookup-export` 透传（`(eq (type f) 'operator) (apply f vals)`）。
@@ -2295,7 +2325,12 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 ## 验证
 
-- `meta-interp/compare.sh cases/*.qy`：19/19 与参考输出逐字节一致。
+- `bash meta-interp/compare.sh`（省略参数即跑全部用例）：**19/19** 与 Python VM 输出逐字节一致；
+- `QY_META_SELF=1 pytest tests/test_meta_interp.py::test_meta_interp_interprets_its_own_source`：
+  解释器解释自身源码后仍能正确解释内层程序（约 30s，默认跳过）；
+- 两者统一由 `make test-selfhost` 验证，并已纳入 `make ci`；
+- `tests/test_meta_interp.py` 另外在 pytest 里对 `meta-interp/cases/*.qy` 与
+  `examples/qy/validation/*.qy` 做逐字节对拍。
 - `tests/test_meta_interp.py`：
   - 19 个 `cases/` 用例默认运行，逐字节对比参考；
   - `tests/qy` 全部 54 个行为用例在一次解释器进程内批量对拍；

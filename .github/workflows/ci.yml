@@ -28,6 +28,12 @@ jobs:
         with:
           bun-version: latest
 
+      - name: Set up Go（Go 宿主）
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
       # lint + format check + type check + full pytest + TS 宿主一致性，与本地 `make ci` 同一条命令
       - name: Lint, type check and test
         run: make ci

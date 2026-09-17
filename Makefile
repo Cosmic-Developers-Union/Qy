@@ -1,4 +1,4 @@
-.PHONY: bench bench-baseline bench-check ci clean build check examples release lint test test-ts
+.PHONY: bench bench-baseline bench-check ci clean build check examples release test-go test-selfhost lint test test-ts
 
 BENCH_BASELINE ?= benchmarks/baseline.json
 BENCH_MAX_REGRESSION_PERCENT ?= 10
@@ -30,6 +30,22 @@ test-ts:
 	@command -v bun >/dev/null || { echo "bun not found: TypeScript host tests skipped"; exit 1; }
 	cd qy/backend/typescript && bun test
 	cd $(CURDIR) && bun qy/backend/typescript/scripts/conformance.ts
+	cd $(CURDIR) && bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine
+	cd $(CURDIR) && bun qy/backend/typescript/scripts/bigint_conformance.ts
+
+# Go 宿主（qy/backend/golang）：本沙箱默认 GOCACHE 可能只读，未设置时用临时目录
+test-go:
+	@command -v go >/dev/null || { echo "go not found: Go host tests skipped"; exit 1; }
+	@GOCACHE="$${GOCACHE:-$$(mktemp -d)}"; export GOCACHE; \
+	go build ./...; \
+	go vet ./...; \
+	go test ./...; \
+	bash qy/backend/golang/conformance.sh
+
+# 自举：Qy 写的解释器（meta-interp/main.qy）与 Python VM 对拍 + 解释器解释自身
+test-selfhost:
+	cd $(CURDIR) && bash meta-interp/compare.sh
+	QY_META_SELF=1 uv run python -m pytest tests/test_meta_interp.py::test_meta_interp_interprets_its_own_source -q
 
 # 示例（按宿主语言分目录，见 docs/examples.md）：Python 宿主 + TypeScript 宿主
 examples:
@@ -38,6 +54,8 @@ examples:
 	uv run python examples/py/bytecode_demo.py
 	@command -v bun >/dev/null || { echo "bun not found: TypeScript examples skipped"; exit 1; }
 	bun examples/ts/run_all.ts
+	@command -v go >/dev/null || { echo "go not found: Go examples skipped"; exit 1; }
+	@GOCACHE="$${GOCACHE:-$$(mktemp -d)}"; export GOCACHE; go run ./examples/go/run_all
 
 ci:
 	uv run ruff check .
@@ -45,7 +63,9 @@ ci:
 	uv run ty check .
 	uv run python -m pytest -q
 	$(MAKE) test-ts
+	$(MAKE) test-go
 	$(MAKE) examples
+	$(MAKE) test-selfhost
 
 lint:
 	uv run ruff check .
