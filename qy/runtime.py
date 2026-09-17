@@ -169,6 +169,16 @@ class Qy(_QyBase):
             run_coro(_evaluate_program_via_pipeline(source, self.env, source_name=source_name)),
         )
 
+    def run_bytecode_json(self, text: str) -> list[object]:
+        """执行 `qy export` 输出的 JSON 字节码（交换格式的对端入口）。."""
+        from qy.backend.vm.bytecode import load_bytecode_json
+        from qy.vm.instance.machine import RegisterVirtualMachine
+
+        program = load_bytecode_json(text)
+        return cast(
+            list[object], run_coro(RegisterVirtualMachine(program, self.env).evaluate_program())
+        )
+
     def evaluate_file(self, path: str | Path) -> object:
         path = Path(path)
         results = self.evaluate_program(
@@ -186,6 +196,14 @@ class Qy(_QyBase):
 
 
 class AsyncQy(_QyBase):
+    async def run_bytecode_json(self, text: str) -> list[object]:
+        """执行 JSON 字节码（异步宿主入口）。."""
+        from qy.backend.vm.bytecode import load_bytecode_json
+        from qy.vm.instance.machine import RegisterVirtualMachine
+
+        program = load_bytecode_json(text)
+        return await RegisterVirtualMachine(program, self.env).evaluate_program()
+
     async def evaluate(self, expression: object) -> object:
         return await _evaluate_form_via_pipeline(expression, self.env)
 

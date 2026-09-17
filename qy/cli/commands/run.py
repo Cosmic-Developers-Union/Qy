@@ -21,7 +21,14 @@ def register(group: click.Group) -> None:
     @group.command("run")
     @click.argument("path", type=str)
     @click.argument("args", nargs=-1)
-    def run_command(path: str, args: tuple[str, ...]) -> None:
+    @click.option(
+        "--bytecode",
+        "as_bytecode",
+        is_flag=True,
+        default=False,
+        help="Treat PATH as JSON bytecode from `qy export` instead of Qy source.",
+    )
+    def run_command(path: str, args: tuple[str, ...], as_bytecode: bool) -> None:
         """Evaluate a Qy source file. Use '-' for stdin."""
         try:
             qy = Qy()
@@ -29,8 +36,18 @@ def register(group: click.Group) -> None:
                 from qy.ext.interp import set_cli_args
 
                 set_cli_args(qy.env, tuple(args))
-            source, source_name = read_debug_source(path)
-            results = qy.evaluate_program(source, source_name=source_name)
+            if as_bytecode:
+                from pathlib import Path as _Path
+
+                text = (
+                    click.get_text_stream("stdin").read()
+                    if path == "-"
+                    else _Path(path).read_text(encoding="utf-8")
+                )
+                results = qy.run_bytecode_json(text)
+            else:
+                source, source_name = read_debug_source(path)
+                results = qy.evaluate_program(source, source_name=source_name)
             for value in results:
                 if _is_definition_artifact(value):
                     continue

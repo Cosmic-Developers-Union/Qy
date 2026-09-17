@@ -2217,6 +2217,54 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 ---
 
+# 9¾. 多宿主计划（新一轮目标）
+
+目标：让 Qy 能作为**嵌入式语言**在 Python 与 TypeScript/JavaScript 中工作；Go 后续跟进。
+三种宿主的基础都是「能执行 Qy 字节码的虚拟机」，外加宿主语言扩展（用宿主语言写算子、
+传宿主对象、按 capability 授权），并要求 Qy 自举（解释器能解释自身）。
+
+宿主 / 后端矩阵（现状）：
+
+| 宿主 | 解释执行（VM 跑字节码） | 编译后端 | 宿主语言扩展 |
+| --- | --- | --- | --- |
+| Python | ✅ `RegisterVirtualMachine` + `Qy.run_bytecode_json` / `qy run --bytecode` | ✅ Python VM 字节码 / LLVM / WASM | ✅ `qy/ext`（descriptor + registry + capability） |
+| TypeScript / JS | ⛔ 待实现（`qy/backend/typescript/`） | 复用 Python 侧产出的字节码 JSON；WASM 由 Python 侧产出 | ⛔ 待实现 |
+| Go | ⚠️ `qy/backend/golang/` 有 Go 版 VM，但仓库缺 `go.mod`，无法构建/测试，未接入 Makefile/CI | 复用字节码 JSON | ⛔ 待实现 |
+
+**交换格式（三种宿主共享的契约）**：`qy export FILE -o prog.json` 输出的 JSON 字节码。
+它必须 (1) 可表示（每个常量都能编码，不得退化成 `{"type":"unknown"}`）、(2) 可还原
+（装载后执行结果与直接执行一致）。
+
+## 已完成
+
+- **交换格式补对端**：Python 侧原先只能导出、不能装载。新增
+  `qy/backend/vm/bytecode.py::load_bytecode_json`（`serialize_bytecode_json` 的对端），
+  值与 `qy.sem.core` 的值类型按 `{type, class, value}` 通用编解码；`nil` / `T` /
+  `none` 保持单例；遇到无法编码的值**显式报错**而不是退化成 repr 字符串（此前
+  `IntValue` 等会被编码成 `{"type":"unknown","value":"IntValue(value=2)"}`，装载后
+  变成字符串，运行期报 `+ expects a number, got str`）。
+- **宿主入口**：`Qy.run_bytecode_json` / `AsyncQy.run_bytecode_json`（嵌入 API）与
+  `qy run --bytecode FILE`（含 `-` 读 stdin）。
+- **一致性测试**：`tests/test_bytecode_json.py` —— `tests/qy` 全部 54 个程序
+  「编译 → 导出 → 装载 → 执行」结果一致，导出中无 `unknown` 常量；另覆盖单例往返、
+  非法版本/无法编码值的报错、CLI 与嵌入 API。
+- **自举基线**：`QY_META_SELF=1 pytest tests/test_meta_interp.py` 通过（解释器源码
+  被自身解释后仍能得到正确结果）；默认 skip 仅因耗时。
+
+## 待办
+
+1. **TypeScript 宿主**：新建 `qy/backend/typescript/`（bun + TS），实现
+   (a) 字节码 JSON 装载、(b) 值模型 / 符号空间 / 帧、(c) 指令执行（含 `CALL_BUILTIN`）、
+   (d) 标准库算子、(e) 嵌入 API 与宿主扩展、(f) `qyvm` CLI + 一致性测试
+   （对照 Python VM 的输出）。
+2. **Python 宿主补齐**：把宿主扩展（capability / descriptor）文档化并补测试；
+   LLVM `llc` 链路验证（`todo.md` §8½ 记录尚未通过）。
+3. **Go 宿主**：补 `go.mod`、Go 单测、接入 `Makefile`/CI，打通
+   `qy export` → `qyvm`；补 `CALL_BUILTIN`（当前 Go 侧 opcode 表没有它）。
+4. **自举推进**：把自举测试纳入常规验证（或提供快速子集）；补宏 hygiene
+   （`gensym` / `capture`）。
+5. **跨宿主一致性**：建立「同一 .qy → 三个宿主 VM → 输出逐字节一致」的差分测试。
+
 # 9½. 自举解释器进展（meta-interp）
 
 目标：用 Qy 写一个能解释 Qy 的解释器，最终达到自举。当前真源在 `meta-interp/main.qy`。

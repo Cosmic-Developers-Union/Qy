@@ -20,8 +20,10 @@
 from __future__ import annotations
 
 import struct
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
+from typing import cast
 
 from qy.backend.vm.spec.opcode import Opcode as SpecOpcode
 from qy.diag import Diagnostic
@@ -39,6 +41,7 @@ __all__ = [
     "Register",
     "deserialize_bytecode",
     "dump_bytecode",
+    "load_bytecode_json",
     "pretty_print_bytecode",
     "serialize_bytecode",
     "serialize_bytecode_json",
@@ -382,6 +385,11 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
             return {"type": "nil"}
         if isinstance(value, TValue):
             return {"type": "t"}
+        from qy.core.syntax import NONE as QY_NONE
+        from qy.core.syntax import NoneValue as QyNoneValue
+
+        if isinstance(value, QyNoneValue) or value is QY_NONE:
+            return {"type": "none"}
         if isinstance(value, bool):
             return {"type": "bool", "value": value}
         if isinstance(value, int):
@@ -403,6 +411,9 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
             return {"type": "list", "value": [encode_value(v) for v in value]}
         if isinstance(value, tuple):
             return {"type": "tuple", "value": [encode_value(v) for v in value]}
+        semantic = _encode_semantic_value(value, encode_value)
+        if semantic is not None:
+            return semantic
         return {"type": "unknown", "value": repr(value)}
 
     def encode_chain(chain: object) -> object:
@@ -559,6 +570,199 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
             program_json["hygiene_bindings"] = hygiene_bindings
 
     return json.dumps(program_json, ensure_ascii=False, separators=(",", ":"))
+
+
+_SEMANTIC_VALUE_REGISTRY: dict[str, type] | None = None
+_SEMANTIC_VALUE_BY_CLASS: dict[str, type] | None = None
+
+
+def _semantic_value_tables() -> tuple[dict[str, type], dict[str, type]]:
+    """按 type_name / 类名索引 qy.sem.core 的值类型（惰性构建）。."""
+    global _SEMANTIC_VALUE_REGISTRY, _SEMANTIC_VALUE_BY_CLASS
+    if _SEMANTIC_VALUE_REGISTRY is None or _SEMANTIC_VALUE_BY_CLASS is None:
+        import dataclasses as _dataclasses
+
+        import qy.sem.core as sem_core
+
+        by_type: dict[str, type] = {}
+        by_class: dict[str, type] = {}
+        for name in dir(sem_core):
+            obj = getattr(sem_core, name)
+            if not isinstance(obj, type) or obj is sem_core.Value:
+                continue
+            if not issubclass(obj, sem_core.Value) or not _dataclasses.is_dataclass(obj):
+                continue
+            by_class[obj.__name__] = obj
+            type_name = getattr(obj, "type_name", None)
+            if isinstance(type_name, str):
+                by_type.setdefault(type_name, obj)
+        _SEMANTIC_VALUE_REGISTRY = by_type
+        _SEMANTIC_VALUE_BY_CLASS = by_class
+    return _SEMANTIC_VALUE_REGISTRY, _SEMANTIC_VALUE_BY_CLASS
+
+
+def _encode_semantic_value(value: object, encode: Callable[[object], object]) -> dict | None:
+    """把 Qy 语义值编码成 ``{type, class, value}``；不是语义值时返回 None。."""
+    import dataclasses as _dataclasses
+
+    from qy.sem.core import Value as QyValue
+
+    if not isinstance(value, QyValue) or not _dataclasses.is_dataclass(value):
+        return None
+    type_name = getattr(value, "type_name", None)
+    if not isinstance(type_name, str):
+        return None
+    fields = _dataclasses.fields(value)
+    if not fields:
+        return {"type": type_name, "class": type(value).__name__, "value": {}}
+    return {
+        "type": type_name,
+        "class": type(value).__name__,
+        "value": {field.name: encode(getattr(value, field.name)) for field in fields},
+    }
+
+
+def _decode_semantic_value(payload: dict, decode: Callable[[object], object]) -> object | None:
+    """把 ``{type, class, value}`` 还原为 qy.sem.core 的值对象；不匹配返回 None。."""
+    import dataclasses as _dataclasses
+
+    by_type, by_class = _semantic_value_tables()
+    class_name = payload.get("class")
+    # 只有显式带 class 的载荷才是"语义值"；旧式裸 {"type":"string"} 保持原生标量语义
+    # （例如 ArrayValue.element_type 是普通 str）。
+    if not isinstance(class_name, str):
+        return None
+    target = by_class.get(class_name) or by_type.get(str(payload.get("type")))
+    if target is None:
+        return None
+    raw = payload.get("value")
+    data = raw if isinstance(raw, dict) else {}
+    kwargs = {field.name: decode(data.get(field.name)) for field in _dataclasses.fields(target)}
+    return target(**kwargs)
+
+
+def load_bytecode_json(text: str) -> BytecodeProgram:
+    """Load a program from the JSON interchange format produced by serialize_bytecode_json.
+
+    这是 `qy export` 的**对端**：交换格式必须能被所有宿主 VM 读入，否则它不是契约。
+    值按 Qy 语义重建（nil / T / int / float / string / symbol / chain / effect_def），
+    寄存器位置还原为 int，寄存器元组还原为 tuple[int]，handler / import 规格还原为
+    对应结构。
+    """
+    import json
+
+    from qy.core.syntax import Chain
+    from qy.core.syntax import Symbol
+    from qy.core.syntax import T as QY_T
+    from qy.core.syntax import nil as QY_NIL
+    from qy.import_.parse import ImportSpec
+    from qy.sem.runtime import EffectDefinition
+
+    def as_int(value: object, default: int = 0) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, (int, float, str)):
+            try:
+                return int(value)
+            except ValueError:
+                return default
+        return default
+
+    def decode_chain(value: object) -> object:
+        if value is None:
+            return QY_NIL
+        if not isinstance(value, dict):
+            return decode_value(value)
+        tail = decode_chain(value.get("tail"))
+        return Chain(decode_value(value.get("head")), tail)
+
+    def decode_value(payload: object) -> object:
+        if not isinstance(payload, dict):
+            return payload
+        kind = payload.get("type")
+        raw = payload.get("value")
+        semantic = _decode_semantic_value(payload, decode_value)
+        if semantic is not None:
+            return semantic
+        if kind == "nil":
+            return QY_NIL
+        if kind == "t":
+            return QY_T
+        if kind == "none":
+            from qy.core.syntax import NONE as QY_NONE
+
+            return QY_NONE
+        if kind in ("int", "float", "bool", "string"):
+            return raw
+        if kind == "symbol":
+            return Symbol(str(raw))
+        if kind == "chain":
+            return decode_chain(raw)
+        if kind == "effect_def":
+            data = raw if isinstance(raw, dict) else {}
+            return EffectDefinition(
+                Symbol(str(data.get("name", ""))),
+                resumable=bool(data.get("resumable", True)),
+            )
+        if kind == "list":
+            return [decode_value(item) for item in raw] if isinstance(raw, list) else []
+        if kind == "tuple":
+            return tuple(decode_value(item) for item in raw) if isinstance(raw, list) else ()
+        if kind == "reg_tuple":
+            return tuple(as_int(item) for item in raw) if isinstance(raw, list) else ()
+        if kind == "symbol_tuple":
+            return tuple(Symbol(str(item)) for item in raw) if isinstance(raw, list) else ()
+        if kind == "handler_specs":
+            specs = raw if isinstance(raw, list) else []
+            return tuple(
+                (Symbol(str(spec.get("effect", ""))), as_int(spec.get("handler_fn"), -1))
+                for spec in specs
+                if isinstance(spec, dict)
+            )
+        if kind == "import_specs":
+            specs = raw if isinstance(raw, list) else []
+            return tuple(
+                ImportSpec(Symbol(str(spec.get("name", ""))), Symbol(str(spec.get("alias", ""))))
+                for spec in specs
+                if isinstance(spec, dict)
+            )
+        if kind == "unknown":
+            raise ValueError(
+                f"bytecode JSON contains an unencodable value: {raw!r}; "
+                "the interchange format must encode every constant"
+            )
+        return raw
+
+    def decode_operand(payload: object) -> object:
+        if not isinstance(payload, dict):
+            return payload
+        if payload.get("type") == "reg":
+            raw = payload.get("value")
+            return int(raw) if isinstance(raw, (int, float)) else raw
+        return decode_value(payload)
+
+    data = json.loads(text)
+    version = data.get("version")
+    if version != 1:
+        raise ValueError(f"unsupported bytecode JSON version: {version!r}")
+    functions: list[BytecodeFunction] = []
+    for raw_function in data.get("functions", []):
+        instructions = tuple(
+            Instruction(
+                cast(Opcode, str(raw_instruction.get("opcode", ""))),
+                tuple(decode_operand(item) for item in raw_instruction.get("operands", [])),
+            )
+            for raw_instruction in raw_function.get("instructions", [])
+        )
+        functions.append(
+            BytecodeFunction(
+                Symbol(str(raw_function.get("name", ""))),
+                tuple(Symbol(str(param)) for param in raw_function.get("params", [])),
+                int(raw_function.get("register_count", 0)),
+                instructions,
+            )
+        )
+    return BytecodeProgram(tuple(functions), int(data.get("main", 0)))
 
 
 def _format_instruction(instruction: Instruction) -> str:
