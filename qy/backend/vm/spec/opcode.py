@@ -32,6 +32,7 @@ Opcode = Literal[
     "BUILD_TUPLE",
     "CACHE_EVAL",
     "CALL",
+    "CALL_BUILTIN",
     "CONT_CAPTURE",
     "CONT_COPY",
     "CONT_RESTORE",
@@ -119,6 +120,13 @@ OPCODE_TABLE: dict[str, OpcodeInfo] = {
     "CACHE_EVAL": OpcodeInfo(
         name="CACHE_EVAL",
         operand_count=2,  # dest, expr
+        has_dest=True,
+        is_terminator=False,
+        is_branch=False,
+    ),
+    "CALL_BUILTIN": OpcodeInfo(
+        name="CALL_BUILTIN",
+        operand_count=-1,  # dest, builtin index + variadic arg registers
         has_dest=True,
         is_terminator=False,
         is_branch=False,

@@ -383,6 +383,7 @@ def test_default_pipeline_stage_order():
         "mir.validate",
         "optimize.mir",
         "lir.lower",
+        "lir.select_builtins",
         "lir.verify",
         "emit.bytecode",
     ]

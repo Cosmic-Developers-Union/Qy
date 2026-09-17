@@ -33,6 +33,7 @@ from qy.ir.lir.node import LIRRegister
 from qy.ir.lir.node import LIRSlotIndex
 from qy.ir.lir.node import LIRSymbolSpaceId
 from qy.ir.lir.pretty import dump_lir
+from qy.ir.lir.verify import register_operands_of
 from qy.ir.lir.verify import verify_lir
 
 __all__ = [
@@ -50,5 +51,6 @@ __all__ = [
     "LIRSlotIndex",
     "LIRSymbolSpaceId",
     "dump_lir",
+    "register_operands_of",
     "verify_lir",
 ]

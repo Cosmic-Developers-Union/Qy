@@ -82,6 +82,13 @@ def _map_register_operands(
                 map_register(operands[1]),
                 tuple(map_register(item) for item in arg_registers),
             )
+        case "CALL_BUILTIN":
+            arg_registers = _operand_tuple(operands[2])
+            return (
+                map_register(operands[0]),
+                operands[1],  # builtin index：不是寄存器
+                tuple(map_register(item) for item in arg_registers),
+            )
         case "TAIL_CALL":
             arg_registers = _operand_tuple(operands[1])
             return (

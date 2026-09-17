@@ -14,9 +14,11 @@
 from __future__ import annotations
 
 from qy.diag import Diagnostic
+from qy.ir.lir.node import LIRFunction
+from qy.ir.lir.node import LIRInstruction
 from qy.ir.lir.node import LIRProgram
 
-__all__ = ["verify_lir"]
+__all__ = ["register_operands_of", "verify_lir"]
 
 _TERMINATORS = frozenset({"RETURN", "TAIL_CALL", "RAISE_EFFECT", "EFFECT_UNWIND"})
 _JUMP_OPCODES = frozenset({"JUMP", "JUMP_IF_FALSE", "BRANCH_NIL"})
@@ -124,6 +126,8 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                         severity="error",
                     )
                 )
+            if inst.opcode == "CALL_BUILTIN":
+                diagnostics.extend(_verify_builtin_call(func, idx, inst))
             if inst.opcode == "LOAD_HOST" and len(inst.operands) >= 2 and inst.operands[1] is None:
                 diagnostics.append(
                     Diagnostic(
@@ -131,7 +135,7 @@ def verify_lir(program: LIRProgram) -> tuple[Diagnostic, ...]:
                         severity="warning",
                     )
                 )
-            for operand in _register_operands_of(inst.opcode, inst.operands):
+            for operand in register_operands_of(inst.opcode, inst.operands):
                 if not isinstance(operand, int):
                     continue
                 if operand < 0 or operand >= func.register_count:
@@ -248,7 +252,44 @@ def _verify_continuous_run(func: object, diagnostics: list[Diagnostic]) -> None:
                 )
 
 
-def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[object]:
+def _verify_builtin_call(func: LIRFunction, index: int, inst: LIRInstruction) -> list[Diagnostic]:
+    """校验 CALL_BUILTIN 的下标与参数个数（内建 ABI 是稳定契约）。."""
+    from qy.core.operator_builtins import BUILTIN_OPERATORS
+    from qy.core.operator_builtins import NUM_BUILTINS
+
+    operands = inst.operands
+    if len(operands) < 3:
+        return [
+            Diagnostic(
+                f"LIR function {func.name.name} CALL_BUILTIN at {index} expects "
+                "(dest, builtin_index, arg_regs)",
+                severity="error",
+            )
+        ]
+    builtin_id = operands[1]
+    if not isinstance(builtin_id, int) or not 0 <= builtin_id < NUM_BUILTINS:
+        return [
+            Diagnostic(
+                f"LIR function {func.name.name} CALL_BUILTIN at {index} has invalid "
+                f"builtin index {builtin_id!r}",
+                severity="error",
+            )
+        ]
+    args = operands[2]
+    arity = BUILTIN_OPERATORS[builtin_id].arity
+    if not isinstance(args, tuple) or len(args) != arity:
+        count = len(args) if isinstance(args, tuple) else None
+        return [
+            Diagnostic(
+                f"LIR function {func.name.name} CALL_BUILTIN at {index} for "
+                f"{BUILTIN_OPERATORS[builtin_id].name!r} expects {arity} args, got {count}",
+                severity="error",
+            )
+        ]
+    return []
+
+
+def register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[object]:
     match opcode:
         case "LOAD_HOST" | "LOAD_NIL" | "LOAD_T" | "LOAD_ENV" | "RETURN" | "APPEND_RESULT":
             return [operands[0]] if operands else []
@@ -264,6 +305,12 @@ def _register_operands_of(opcode: str, operands: tuple[object, ...]) -> list[obj
             return [operands[0]] if operands else []
         case "CALL":
             regs = [operands[0], operands[1]] if len(operands) >= 2 else []
+            if len(operands) >= 3 and isinstance(operands[2], tuple):
+                regs.extend(operands[2])
+            return regs
+        case "CALL_BUILTIN":
+            # operands: (dest_reg, builtin_index, arg_regs)；下标不是寄存器
+            regs = [operands[0]] if operands else []
             if len(operands) >= 3 and isinstance(operands[2], tuple):
                 regs.extend(operands[2])
             return regs

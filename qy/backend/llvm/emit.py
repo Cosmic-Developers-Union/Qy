@@ -166,7 +166,13 @@ class _FunctionEmitter:
         self.out(f"  call void @qy_resolve_sym({_VALUE} {slot}, ptr {global_name})")
 
     def _emit_call(
-        self, callee_reg: object, args: tuple, dest: object | None, *, tail: bool
+        self,
+        callee_reg: object,
+        args: tuple,
+        dest: object | None,
+        *,
+        tail: bool,
+        callee_pointer: str | None = None,
     ) -> None:
         for position, arg in enumerate(args):
             value = self.load(f"%reg_{arg}")
@@ -176,12 +182,18 @@ class _FunctionEmitter:
             )
             self.out(f"  store %qy_value {value}, ptr {pointer}")
         target = "%sret" if tail else f"%reg_{dest}"
+        callee = callee_pointer if callee_pointer is not None else f"%reg_{callee_reg}"
         self.out(
             f"  call void @qy_call({_VALUE} {target},"
-            f" {_BYVAL} %reg_{callee_reg}, ptr %call.argv, i64 {len(args)})"
+            f" {_BYVAL} {callee}, ptr %call.argv, i64 {len(args)})"
         )
         if tail:
             self.out("  ret void")
+
+    def _emit_builtin_call(self, builtin_id: int, args: tuple, dest: object | None) -> None:
+        """CALL_BUILTIN：物化内建 callable 到 prologue 临时槽后复用通用调用序列。."""
+        self.out(f"  call void @qy_builtin_fn({_VALUE} %builtin.tmp, i64 {builtin_id})")
+        self._emit_call(None, args, dest, tail=False, callee_pointer="%builtin.tmp")
 
     # -- instruction translation --------------------------------------------
 
@@ -234,6 +246,14 @@ class _FunctionEmitter:
                 self.out(
                     f"  call void @qy_make_function({_VALUE} %reg_{ops[0]},"
                     f" i64 {arity}, ptr null, i64 {ops[1]})"
+                )
+            case "CALL_BUILTIN":
+                self._emit_builtin_call(
+                    cast(int, ops[1]), tuple(ops[2]) if len(ops) > 2 else (), ops[0]
+                )
+            case "CALL_BUILTIN":
+                self._emit_builtin_call(
+                    cast(int, ops[1]), tuple(ops[2]) if len(ops) > 2 else (), ops[0]
                 )
             case "CALL":
                 self._emit_call(ops[1], tuple(ops[2]) if len(ops) > 2 else (), ops[0], tail=False)
@@ -289,6 +309,7 @@ class _FunctionEmitter:
         for index in range(self.env_slots):
             self.out(f"  %env_{index} = alloca %qy_value")
         self.out("  %call.argv = alloca %qy_value, i64 64")
+        self.out("  %builtin.tmp = alloca %qy_value")
         for index in range(len(self.function.params)):
             pointer = self.fresh()
             self.out(f"  {pointer} = getelementptr inbounds %qy_value, ptr %argv, i64 {index}")

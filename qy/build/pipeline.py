@@ -33,6 +33,7 @@ from qy.passes.frontend.surface_normalize import SurfaceNormalizePass
 from qy.passes.hir.lower_pass import LowerHIRPass
 from qy.passes.hir.validate import ValidateHIRPass
 from qy.passes.lir.lower_pass import LowerLIRPass
+from qy.passes.lir.select_builtins import SelectBuiltinCallsPass
 from qy.passes.lir.verify import VerifyLIRPass
 from qy.passes.macro.expand import MacroExpandPass
 from qy.passes.mir.lower_pass import LowerMIRPass
@@ -101,6 +102,7 @@ def build_default_pipeline() -> Pipeline:
     pipeline.add_pass(ValidateMIRPass())
     pipeline.add_pass(OptimizeMIRPass())
     pipeline.add_pass(LowerLIRPass())
+    pipeline.add_pass(SelectBuiltinCallsPass())
     pipeline.add_pass(VerifyLIRPass())
     pipeline.add_pass(EmitBytecodePass())
     return pipeline

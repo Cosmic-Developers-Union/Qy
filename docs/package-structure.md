@@ -333,6 +333,29 @@ defun 都是如此，见 `qy/std/control.py::compile_lambda_value` 与
 - `qy/project/module.py` 的 provisional 模块改用 `ProvisionalFunction` 标记：它只是
   编译期命名空间标记，不承载运行期值（模块的运行期导出由执行模块体得到）。
 
+# 3.3 CALL_BUILTIN：算子分发的单一事实源
+
+内建算子（`qy/core/operator_builtins.py`）现在有一条跨后端的调用 ABI，而不只是声明：
+
+- **LIR selection**（`qy/passes/lir/select_builtins.py`，默认管线位于
+  `lir.lower` 与 `lir.verify` 之间）把满足全部条件的 `CALL` 降成
+  `CALL_BUILTIN dest, builtin_index, args`：
+  1. 被调用寄存器在**该指令之前最近一次写**是指令流里的 `LOAD_ENV`，且中间没有
+     跳转目标（没有别的路径从中间进入带着另一个值）；
+  2. 该 symbol 是内建算子、实参个数等于其 ABI 元数；
+  3. 该 symbol 在本程序内未被 `DEFINE_ONCE` / `STORE_LOCAL` / `from` 绑定（shadow）；
+  4. 会话 env 解析它得到的是**语言实现自身的 `PureOperator`**（宿主覆盖、Qy 函数、
+     效果/作用域算子一律不选，后者调用约定需要 env）。
+- **bytecode** 只携带下标；`Opcode` 的唯一事实源是
+  `qy/backend/vm/spec/opcode.py`（`qy/backend/vm/bytecode.py` 只重导出，历史上这里
+  曾有一份会漂移的第二列表）。
+- **register VM**（`qy/vm/instance/builtins.py`）按下标取用 `qy.std` / `qy.session`
+  的**同一批实现体**，不重新实现语义，跳过 symbol-space 查找与算子对象分发。
+- **wasm / llvm** 直接消费同一下标（wasm 调 `$builtin_{id}` trampoline，llvm
+  `qy_builtin_fn` 物化后走通用调用序列），不再各自按名字猜内建。
+- 契约由 `tests/test_call_builtin.py` 与 `tests/test_operator_builtins.py` 守卫
+  （含 bad index / wrong arity / shadow / 宿主覆盖 / 效果算子 / 元数不匹配等负例）。
+
 # 4. 同名模块冲突（已全部解决）
 
 同一目录下不得长期同时存在 `name.py` 与 `name/`。Python import 会优先解析其中一个，导致另一个实现被静默遮蔽。

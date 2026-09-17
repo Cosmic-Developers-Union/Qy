@@ -30,6 +30,7 @@ from qy.sem.runtime import EffectDefinition
 from qy.session.runtime_space import RuntimeSpace as Environment
 from qy.session.runtime_space import create_standard_runtime_space as standard_environment
 from qy.vm.bytecode import BytecodeFunctionValue
+from qy.vm.instance.builtins import call_builtin
 from qy.vm.instance.frame import QyContinuation
 from qy.vm.instance.frame import VirtualStackFrame
 from qy.vm.instance.state import VirtualStack
@@ -256,6 +257,12 @@ class RegisterVirtualMachine:
                 source, target = operands
                 if not _truthy(frame.registers[_register(source)]):
                     frame.pc = _int(target)
+            case "CALL_BUILTIN":
+                # LIR selection 的产物：内建下标直接执行语言实现自身的算子体，
+                # 不再经过 symbol-space 查找与算子对象分发。
+                dest, builtin_id, arg_registers = operands
+                args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))
+                frame.registers[_register(dest)] = call_builtin(_int(builtin_id), args)
             case "CALL":
                 dest, callee_register, arg_registers = operands
                 args = tuple(frame.registers[_register(item)] for item in _registers(arg_registers))

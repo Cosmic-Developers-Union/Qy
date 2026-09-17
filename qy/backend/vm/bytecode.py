@@ -22,8 +22,8 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
-from typing import Literal
 
+from qy.backend.vm.spec.opcode import Opcode as SpecOpcode
 from qy.diag import Diagnostic
 
 if TYPE_CHECKING:
@@ -46,47 +46,9 @@ __all__ = [
 
 Register = int
 
-Opcode = Literal[
-    "APPEND_RESULT",
-    "ALL_GATHER",
-    "APPLY",
-    "BUILD_TUPLE",
-    "CACHE_EVAL",
-    "CALL",
-    "CONT_CAPTURE",
-    "CONT_COPY",
-    "CONT_RESTORE",
-    "DEFEFFECT",
-    "DEFINE_MODULE",
-    "DEFINE_ONCE",
-    "EFFECT_DISPATCH",
-    "EFFECT_UNWIND",
-    "ENTER_SCOPE",
-    "EXIT_SCOPE",
-    "FROM_IMPORT",
-    "HANDLE",
-    "HANDLER_POP",
-    "HANDLER_PUSH",
-    "JUMP",
-    "JUMP_IF_FALSE",
-    "LOAD_HOST",
-    "LOAD_ENV",
-    "MAKE_MACRO",
-    "MAKE_FUNCTION",
-    "MOVE",
-    "PARALLEL_GATHER",
-    "PERFORM",
-    "RAISE_EFFECT",
-    "RACE_FIRST",
-    "RESUME",
-    "RETURN",
-    "RUNTIME_EVAL",
-    "SLOT_COMPLETE",
-    "SS_ENTER",
-    "SS_LEAVE",
-    "STORE_LOCAL",
-    "TAIL_CALL",
-]
+# Bytecode opcode 的唯一事实源是 qy/backend/vm/spec/opcode.py（VM 稳定契约）；
+# 这里只重导出，避免出现第二份 opcode 列表（历史上两份曾漂移）。
+Opcode = SpecOpcode
 
 
 @dataclass(frozen=True, slots=True)

@@ -159,20 +159,31 @@ class _FunctionEmitter:
         return f"(i64.const {int_value(integer)})"
 
     def _call_sequence(
-        self, callee_reg: object, args: tuple, dest: object | None, *, tail: bool
+        self,
+        callee_reg: object,
+        args: tuple,
+        dest: object | None,
+        *,
+        tail: bool,
+        builtin_id: int | None = None,
     ) -> None:
         argc = len(args)
         self.out("    (local.set $sp_save (global.get $sp))")
         for position, arg in enumerate(args):
             self.out(f"    (i64.store offset={position * 8} (global.get $sp) (local.get $r{arg}))")
         self.out(f"    (global.set $sp (i32.add (global.get $sp) (i32.const {argc * 8})))")
-        # call_indirect 从栈顶取 table index，因此 index 必须放在参数之后。
-        self.out(
-            "    (call_indirect (type $qyfn)"
-            f" (i32.const {argc})"
-            " (local.get $sp_save)"
-            f" (i32.wrap_i64 (i64.shr_u (local.get $r{callee_reg}) (i64.const 3))))"
-        )
+        if builtin_id is not None:
+            # CALL_BUILTIN：内建下标由 LIR selection 决定，直接调用对应 trampoline，
+            # 不再经过"物化 callable + call_indirect"。
+            self.out(f"    (call $builtin_{builtin_id} (i32.const {argc}) (local.get $sp_save))")
+        else:
+            # call_indirect 从栈顶取 table index，因此 index 必须放在参数之后。
+            self.out(
+                "    (call_indirect (type $qyfn)"
+                f" (i32.const {argc})"
+                " (local.get $sp_save)"
+                f" (i32.wrap_i64 (i64.shr_u (local.get $r{callee_reg}) (i64.const 3))))"
+            )
         if tail:
             # 直接返回被调用者的结果；caller 会恢复它自己保存的 sp。
             self.out("    (return)")
@@ -253,6 +264,14 @@ class _FunctionEmitter:
                 self.out(f"    (local.set $r{ops[0]} (i64.const {value}))")
             case "APPEND_RESULT":
                 self.out(f"    (call $append_result (local.get $r{ops[0]}))")
+            case "CALL_BUILTIN":
+                self._call_sequence(
+                    None,
+                    tuple(ops[2]) if len(ops) > 2 else (),
+                    ops[0],
+                    tail=False,
+                    builtin_id=cast(int, ops[1]),
+                )
             case "CALL":
                 self._call_sequence(
                     ops[1], tuple(ops[2]) if len(ops) > 2 else (), ops[0], tail=False

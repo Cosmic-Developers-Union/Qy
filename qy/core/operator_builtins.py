@@ -26,9 +26,12 @@ __all__ = [
     "BUILTIN_INDEX",
     "BUILTIN_NAMES",
     "BUILTIN_OPERATORS",
+    "LANGUAGE_IMPLEMENTATION_MODULES",
     "NUM_BUILTINS",
     "BuiltinOperator",
     "builtin_index",
+    "builtin_operator",
+    "is_language_implementation_operator",
 ]
 
 
@@ -86,3 +89,18 @@ def builtin_operator(name: str) -> BuiltinOperator | None:
     """返回内建算子声明；不是内建算子时返回 None。."""
     index = BUILTIN_INDEX.get(name)
     return None if index is None else BUILTIN_OPERATORS[index]
+
+
+#: 语言实现自身的模块前缀。凡是"这个算子能不能在编译期求值 / 能不能降成内建调用"
+#: 的判断都以它为准：宿主通过 ``register_pure`` 注入的算子（用户模块、``qy.ext.*``
+#: 宿主桥）不在此列，因为它们的执行时机/副作用属于宿主。
+LANGUAGE_IMPLEMENTATION_MODULES: tuple[str, ...] = ("qy.core.", "qy.session.", "qy.std.")
+
+
+def is_language_implementation_operator(value: object) -> bool:
+    """``value`` 是否是语言实现自身实现的算子（而非宿主注入/覆盖）。."""
+    func = getattr(value, "func", None)
+    module = getattr(func, "__module__", None)
+    if not isinstance(module, str):
+        return False
+    return module.startswith(LANGUAGE_IMPLEMENTATION_MODULES)

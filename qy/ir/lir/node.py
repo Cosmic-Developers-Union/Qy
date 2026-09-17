@@ -75,6 +75,7 @@ LIROpcode = Literal[
     "BUILD_TUPLE",
     # -- Calls --
     "CALL",
+    "CALL_BUILTIN",
     "TAIL_CALL",
     "APPLY",
     # -- Control flow --
