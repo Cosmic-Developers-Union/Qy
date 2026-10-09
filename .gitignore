@@ -374,3 +374,8 @@ reports
 coverage*
 
 tools/tla2tools.jar
+
+# ignore skills
+.agents
+.claude/skills
+skills-lock.json
