@@ -14,6 +14,7 @@
 
 import {
   QyAggregateError,
+  QyArityError,
   QyEffectSignal,
   QyError,
   QyResolveError,
@@ -103,8 +104,8 @@ export class RegisterVirtualMachine {
 
   /** 执行一个函数体（对应 `_run_function`）。 */
   async runFunction(functionValue: BytecodeFunctionValue, args: QyValue[]): Promise<FrameResult> {
-    let frame = makeFrame(functionValue, args, (name, expected, actual) => {
-      throw new QyRuntimeError(`${name} expects ${expected} arguments, got ${actual}`);
+    let frame = makeFrame(functionValue, args, (message) => {
+      throw new QyArityError(message);
     });
     for (;;) {
       const instruction = frame.fn.instructions[frame.pc];
@@ -336,8 +337,8 @@ export class RegisterVirtualMachine {
         const args = asNumberArray(argRegisters).map((item) => regs[item]);
         const callee = regs[reg(calleeRegister)];
         if (callee instanceof BytecodeFunctionValue) {
-          return makeFrame(callee, args, (name, expected, actual) => {
-            throw new QyRuntimeError(`${name} expects ${expected} arguments, got ${actual}`);
+          return makeFrame(callee, args, (message) => {
+            throw new QyArityError(message);
           });
         }
         return new FrameResult(await this.call(callee, args, frame.env), []);
@@ -452,7 +453,9 @@ export class RegisterVirtualMachine {
     const target = this.program.hygieneBindings.get(symbol.name);
     if (target !== undefined) {
       try {
-        return env.resolve(new Symbol(target));
+        // 卫生别名装在程序根 env（对应 Python `_install_hygiene_aliases`），
+        // 因此目标名必须从根 env 解析，不能受调用点 shadow 影响。
+        return this.env.resolve(new Symbol(target));
       } catch (error) {
         if (!(error instanceof QyResolveError)) throw error;
       }
@@ -481,7 +484,7 @@ export class RegisterVirtualMachine {
     if (typeof callee === 'function') {
       return await (callee as (...values: QyValue[]) => QyValue)(...args);
     }
-    throw new QyTypeError(`bytecode call resolved to non-callable ${String(callee)}`);
+    throw new QyTypeError(`bytecode call resolved to non-callable ${formatValue(callee)}`);
   }
 
   // -- effect ---------------------------------------------------------------
@@ -586,14 +589,9 @@ export class RegisterVirtualMachine {
     for (;;) {
       try {
         const handlerResult = await this.runFunction(handlerFn, [arg, continuation]);
-        const resultValue = handlerResult.value;
-        if (resultValue instanceof Continuation) {
-          if (!resultValue.resumable) return resultValue;
-          continuation = resultValue;
-          arg = null;
-        } else {
-          return resultValue;
-        }
+        // handler 的返回值就是 handle 表达式的值；continuation 也只是普通值，
+        // 不得据此重新 dispatch（否则裸返回 k 会无限循环）。
+        return handlerResult.value;
       } catch (nested) {
         if (!(nested instanceof QyEffectSignal)) throw nested;
         const nextHandler = findHandler(nested.effect);
@@ -765,8 +763,22 @@ export class RegisterVirtualMachine {
   ): Promise<QyValue> {
     if (!this.thunksAreConcurrencySafe(thunkIndices)) {
       // 顺序回退：涉及 effect / IO / 共享状态的 thunk 无法安全并发。
+      // effect 信号必须原样上抛给 handler；其余错误按 aggregateErrors 聚合。
       const sequential: QyValue[] = [];
-      for (const index of thunkIndices) sequential.push(await this.runThunk(index, env));
+      const errors: QyError[] = [];
+      for (const index of thunkIndices) {
+        try {
+          sequential.push(await this.runThunk(index, env));
+        } catch (error) {
+          if (error instanceof QyEffectSignal) throw error;
+          const qyError = error instanceof QyError ? error : new QyRuntimeError(String(error));
+          if (!aggregateErrors) throw qyError;
+          errors.push(qyError);
+        }
+      }
+      if (errors.length > 0) {
+        throw new QyAggregateError(`parallel failed with ${errors.length} error(s)`, errors);
+      }
       return new TupleValue(sequential);
     }
     const settled = await Promise.allSettled(thunkIndices.map((index) => this.runThunk(index, env)));

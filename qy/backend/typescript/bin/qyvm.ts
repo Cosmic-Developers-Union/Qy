@@ -11,6 +11,20 @@ import { readFileSync } from 'node:fs';
 import { formatValue, isDefinitionArtifact } from '../src/display.ts';
 import { createVm } from '../src/embed.ts';
 
+// 把宿主错误映射为与 Python `qy/errors` 一致的 `QY_*` 代码。
+const ERROR_CODES: Record<string, string> = {
+  QyTypeError: 'QY_TYPE_ERROR',
+  QyArityError: 'QY_ARITY_ERROR',
+  QyResolveError: 'QY_UNBOUND_SYMBOL',
+  QyReifyError: 'QY_REIFY_ERROR',
+  QyRuntimeError: 'QY_RUNTIME_ERROR',
+  QyAggregateError: 'QY_AGGREGATE_ERROR',
+  QyEffectSignal: 'QY_UNHANDLED_EFFECT',
+  QyEffectError: 'QY_EFFECT_ERROR',
+  EvaluationError: 'QY_EVALUATION_ERROR',
+  QyError: 'QY_ERROR',
+};
+
 function readStdin(): string {
   return readFileSync(0, 'utf8');
 }
@@ -38,7 +52,10 @@ async function main(): Promise<number> {
     }
     return 0;
   } catch (error) {
-    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    const message =
+      error instanceof Error
+        ? `${ERROR_CODES[error.name] ?? error.name}: ${error.message}`
+        : String(error);
     process.stderr.write(`${message}\n`);
     return 1;
   }

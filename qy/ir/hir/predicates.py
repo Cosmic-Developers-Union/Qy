@@ -432,7 +432,7 @@ def h11_quote_form_is_form(quote: QuoteExpr) -> tuple[Diagnostic, ...]:
         return (
             _diag(
                 "H11",
-                "QuoteExpr.form is not a legal Form (Symbol | Chain | tuple)",
+                "QuoteExpr.form is not a legal Form (Symbol | Chain | nil)",
                 span=quote.span,
             ),
         )
@@ -820,18 +820,8 @@ def _collect_defined_in_module(mod: ModuleExpr) -> frozenset[str]:
 
 
 def _is_valid_form(form: Form) -> bool:
-    if isinstance(form, Symbol):
-        return True
-    if is_chain(form):
-        return True
-    # H11 also accepts literal atoms that can legitimately appear inside a
-    # quoted form: plain Python scalars (int/str/float/bool/None/bytes) and
-    # QyNil — the latter is what the reader macro '() lowers to. The spec
-    # says "Symbol | Chain" but the runtime machinery preserves any literal
-    # atom — see test_evaluator::test_evaluate_quote and
-    # test_basic_operators::test_car_cdr_cons.
+    # raw AST / quote datum 只有 symbol / chain / nil；宿主标量（int/str/...）
+    # 不得出现在 QuoteExpr.form 里。QyNil 是 reader 对 '() 的规约结果。
     from qy.core.syntax import QyNil
 
-    if isinstance(form, (int, float, bool, str, bytes, type(None), QyNil)):
-        return True
-    return False
+    return isinstance(form, (Symbol, QyNil)) or is_chain(form)

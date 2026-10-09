@@ -154,17 +154,25 @@ func (vm *VM) runFunction(functionValue *FunctionValue, args []Value) (*FrameRes
 // makeFrame 创建执行帧（对应 `_make_frame`）。
 func (vm *VM) makeFrame(functionValue *FunctionValue, args []Value) (*Frame, error) {
 	fn := functionValue.Fn
-	if len(args) != len(fn.Params) {
+	fixedCount := len(fn.Params)
+	if fn.Rest == "" && len(args) != fixedCount {
 		return nil, NewArityError(fmt.Sprintf(
-			"%s expects %d arguments, got %d", fn.Name, len(fn.Params), len(args)))
+			"%s expects %d arguments, got %d", fn.Name, fixedCount, len(args)))
+	}
+	if fn.Rest != "" && len(args) < fixedCount {
+		return nil, NewArityError(fmt.Sprintf(
+			"%s expects at least %d arguments, got %d", fn.Name, fixedCount, len(args)))
 	}
 	var env *Env
 	if fn.Name == "<main>" || fn.Name == "<module-body>" {
 		env = functionValue.Closure
 	} else {
-		bindings := make(map[string]Value, len(fn.Params))
+		bindings := make(map[string]Value, fixedCount+1)
 		for index, param := range fn.Params {
 			bindings[param] = args[index]
+		}
+		if fn.Rest != "" {
+			bindings[fn.Rest] = SliceToChain(args[fixedCount:])
 		}
 		env = functionValue.Closure.ChildWith(bindings)
 	}
@@ -356,7 +364,7 @@ func (vm *VM) executeInstruction(frame *Frame, instruction *Instruction) (*Frame
 		for i := 1; i < len(ops); i++ {
 			indices = append(indices, intOf(ops[i]))
 		}
-		value, err := vm.parallelGather(indices, frame.Env)
+		value, err := vm.parallelGather(indices, frame.Env, instruction.Opcode == bytecode.OpParallelGather)
 		if err != nil {
 			return failure(err)
 		}
@@ -737,7 +745,9 @@ func (vm *VM) slotSymbol(address bytecode.BindingAddr) *Symbol {
 // 目标名，再退回普通解析（与 TS 版一致）。
 func (vm *VM) resolveEnv(env *Env, symbol *Symbol) (Value, error) {
 	if target, ok := vm.Program.HygieneBindings[symbol.Name]; ok {
-		if value, err := env.Resolve(NewSymbol(target)); err == nil {
+		// 卫生别名装在程序根 env（对应 Python `_install_hygiene_aliases`），
+		// 因此目标名必须从根 env 解析，不能受调用点 shadow 影响。
+		if value, err := vm.Env.Resolve(NewSymbol(target)); err == nil {
 			return value, nil
 		}
 	}
@@ -923,14 +933,8 @@ func (vm *VM) dispatchEffect(signal *EffectSignal, specs []HandlerSpec, env *Env
 			continuation = nested.Continuation
 			continue
 		}
-		if cont, ok := result.Value.(*Continuation); ok {
-			if !cont.Resumable {
-				return cont, nil
-			}
-			continuation = cont
-			arg = nil
-			continue
-		}
+		// handler 的返回值就是 handle 表达式的值；continuation 也只是普通值，
+		// 不得据此重新 dispatch（否则裸返回 k 会无限循环）。
 		return result.Value, nil
 	}
 }
@@ -943,6 +947,9 @@ func (vm *VM) resume(continuation Value, value Value) (Value, error) {
 	}
 	if cont.ResumeFn == nil {
 		return nil, NewRuntimeError("continuation has no resume entry")
+	}
+	if !cont.Resumable {
+		return nil, NewEffectError(fmt.Sprintf("effect '%s' is not resumable", cont.Effect))
 	}
 	return cont.ResumeFn(value)
 }
@@ -992,14 +999,27 @@ func (vm *VM) runThunk(index int, env *Env) (Value, error) {
 }
 
 // parallelGather 收集所有 thunk 的结果为 TupleValue（`parallel` / `all`）。
-func (vm *VM) parallelGather(thunkIndices []int, env *Env) (Value, error) {
+// parallelGather 顺序执行 thunk（Go 无真并发）。aggregateErrors 为 true 时
+// 收集非 effect 错误并抛 AggregateError；effect 必须原样上抛给 handler。
+func (vm *VM) parallelGather(thunkIndices []int, env *Env, aggregateErrors bool) (Value, error) {
 	items := make([]Value, 0, len(thunkIndices))
+	errors := make([]error, 0)
 	for _, index := range thunkIndices {
 		value, err := vm.runThunk(index, env)
 		if err != nil {
-			return nil, err
+			if _, ok := err.(*EffectSignal); ok {
+				return nil, err
+			}
+			if !aggregateErrors {
+				return nil, err
+			}
+			errors = append(errors, err)
+			continue
 		}
 		items = append(items, value)
+	}
+	if len(errors) > 0 {
+		return nil, NewAggregateError(fmt.Sprintf("parallel failed with %d error(s)", len(errors)), errors)
 	}
 	return NewTuple(items), nil
 }

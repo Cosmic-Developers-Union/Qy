@@ -1,0 +1,14 @@
+; Qy library 派生算子（编译期宏）与 lexical 遮蔽。
+(defun abs (x) (* x 3))
+(pipeline
+  (= (inc 41) 42)
+  (= (dec 43) 42)
+  (zero? 0)
+  (positive? 1)
+  (negative? -1)
+  (even? 4)
+  (odd? 3)
+  (= (min 3 7) 3)
+  (= (max 3 7) 7)
+  (= (let ((inc (lambda (x) (+ x 100)))) (inc 1)) 101)
+  (= (abs -5) -15))

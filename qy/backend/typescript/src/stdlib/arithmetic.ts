@@ -26,6 +26,7 @@ import {
   Int64Value,
   IntegerValue,
   IntValue,
+  Chain,
   NumberValue,
   QY_NIL,
   QY_T,
@@ -86,15 +87,17 @@ export function coerceHostNumber(value: QyValue): QyValue {
 }
 
 function typeName(value: QyValue): string {
+  // 与 Python `qy.sem.classify.value_type` 一致：返回 Qy 类型标签，而不是宿主类名。
   if (value instanceof NumberValue) return value.typeName;
-  if (value === null || value === undefined) return 'NoneType';
+  if (value instanceof Symbol) return 'symbol';
+  if (value instanceof Chain) return 'chain';
+  const named = (value as { typeName?: string }).typeName;
+  if (named !== undefined) return named;
+  if (value === null || value === undefined) return 'none';
   if (typeof value === 'boolean') return 'bool';
-  if (typeof value === 'bigint') return 'int';
-  if (typeof value === 'number') return 'int';
-  if (typeof value === 'string') return 'str';
-  if (value instanceof Symbol) return 'Symbol';
-  if (value instanceof StringValue) return 'StringValue';
-  return (value as { typeName?: string }).typeName ?? 'object';
+  if (typeof value === 'bigint' || typeof value === 'number') return 'number';
+  if (typeof value === 'string') return 'string';
+  return 'any';
 }
 
 /** 要求所有参数是同一个 concrete NumberValue 类型（`_ensure_same_number_type`）。 */
@@ -120,7 +123,7 @@ function ensureSameNumberType(args: QyValue[], op: string): NumberCtor {
 }
 
 /** 定宽整型越界检查（`_check_integer_range`）；IntValue 不检查。 */
-function checkIntegerRange(value: bigint, type: IntegerCtor, op: string): bigint {
+export function checkIntegerRange(value: bigint, type: IntegerCtor, op: string): bigint {
   const bounds = INTEGER_BOUNDS.get(type);
   if (bounds === undefined) return value;
   const [minimum, maximum] = bounds;
@@ -136,7 +139,7 @@ function checkIntegerRange(value: bigint, type: IntegerCtor, op: string): bigint
   return value;
 }
 
-function checkFloatFinite(value: number, name: string, op: string): number {
+export function checkFloatFinite(value: number, name: string, op: string): number {
   if (Number.isNaN(value) || !Number.isFinite(value)) {
     performEffect('numeric-overflow', { type: name, operation: op, result: value });
   }
@@ -194,7 +197,7 @@ function integerMul(type: IntegerCtor, args: NumberValue[]): NumberValue {
 }
 
 /** Python `//`（向负无穷取整）。BigInt `/` 是向零截断，所以这里显式修正。 */
-function floorDiv(a: bigint, b: bigint): bigint {
+export function floorDiv(a: bigint, b: bigint): bigint {
   const quotient = a / b;
   const remainder = a % b;
   return remainder !== 0n && remainder < 0n !== b < 0n ? quotient - 1n : quotient;
@@ -235,7 +238,7 @@ function integerDiv(type: IntegerCtor, args: NumberValue[]): NumberValue {
 }
 
 /** Python 的 `%`（结果符号跟随除数）。BigInt `%` 符号跟随被除数，需要修正。 */
-function pyMod(a: bigint, b: bigint): bigint {
+export function pyMod(a: bigint, b: bigint): bigint {
   const result = a % b;
   return result !== 0n && result < 0n !== b < 0n ? result + b : result;
 }
@@ -293,7 +296,10 @@ function floatMod(type: FloatCtor, args: NumberValue[]): NumberValue {
   const a = floatPayload(args[0]);
   const b = floatPayload(args[1]);
   if (b === 0) performEffect('divide-by-zero', { operator: 'mod' }, false);
-  return makeFloat(type, checkFloatFinite(a - b * Math.trunc(a / b), floatNameOf(type), 'mod'));
+  // 与 integerMod / Python `%` 一致：结果符号跟随除数（floored）；JS `%` 是截断余数。
+  const remainder = a % b;
+  const result = remainder !== 0 && remainder < 0 !== b < 0 ? remainder + b : remainder;
+  return makeFloat(type, checkFloatFinite(result, floatNameOf(type), 'mod'));
 }
 
 // -- 公开算子 ---------------------------------------------------------------
@@ -312,6 +318,55 @@ export function div(...args: QyValue[]): NumberValue {
 }
 export function mod(...args: QyValue[]): NumberValue {
   return dispatchOp('mod', args, integerMod, floatMod);
+}
+
+function integerRemainder(type: IntegerCtor, args: NumberValue[]): NumberValue {
+  if (args.length !== 2) throw new QyTypeError('remainder expects exactly 2 arguments');
+  const a = integerPayload(args[0]);
+  const b = integerPayload(args[1]);
+  if (b === 0n) performEffect('divide-by-zero', { operator: 'remainder' }, false);
+  // BigInt `%` 是截断余数：结果符号跟随被除数（与 mod 的 floored 相对）。
+  return makeInteger(type, checkIntegerRange(a % b, type, 'remainder'));
+}
+
+function floatRemainder(type: FloatCtor, args: NumberValue[]): NumberValue {
+  if (args.length !== 2) throw new QyTypeError('remainder expects exactly 2 arguments');
+  const a = floatPayload(args[0]);
+  const b = floatPayload(args[1]);
+  if (b === 0) performEffect('divide-by-zero', { operator: 'remainder' }, false);
+  return makeFloat(type, checkFloatFinite(a % b, floatNameOf(type), 'remainder'));
+}
+
+export function remainder(...args: QyValue[]): NumberValue {
+  return dispatchOp('remainder', args, integerRemainder, floatRemainder);
+}
+
+/** 对应 `number_ops._number_p`：值是否为 number（Qy 语义或宿主数字）。 */
+export function numberP(value: QyValue): QyValue {
+  if (value instanceof NumberValue) return QY_T;
+  if (typeof value === 'boolean') return QY_NIL;
+  return typeof value === 'number' ? QY_T : QY_NIL;
+}
+
+const INT_TEXT = /^[+-]?\d(?:_?\d)*$/;
+const FLOAT_TEXT = /^[+-]?(?:\d(?:_?\d)*\.(?:\d(?:_?\d)*)?|\.\d(?:_?\d)*|\d(?:_?\d)*)(?:[eE][+-]?\d+)?$/;
+
+/** 对应 `number_ops._string_to_number`：字符串/符号拼写 → number，失败返回 nil。 */
+export function stringToNumber(value: QyValue): QyValue {
+  let text: string;
+  if (value instanceof StringValue) text = value.value;
+  else if (value instanceof Symbol) text = value.name;
+  else if (typeof value === 'string') text = value;
+  else return QY_NIL;
+  const trimmed = text.trim();
+  if (INT_TEXT.test(trimmed)) {
+    return new IntValue(BigInt(trimmed.replace(/_/g, '')));
+  }
+  if (FLOAT_TEXT.test(trimmed)) {
+    const parsed = Number(trimmed.replace(/_/g, ''));
+    if (Number.isFinite(parsed)) return new FloatValue(parsed);
+  }
+  return QY_NIL;
 }
 
 /** 同 concrete 类型数值的三路比较（-1 / 0 / 1）。 */

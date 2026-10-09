@@ -83,6 +83,10 @@ class RuntimeSpace:
                 self._space = _SymbolSpace(name=name, writable=writable, lazy=lazy)
             self._profile = profile
 
+    def __qy_format__(self) -> str:
+        """`format_value` 的稳定表示：symbol-space 是 Qy artifact，不泄漏 repr。."""
+        return "<symbol-space>"
+
     @property
     def space(self) -> SymbolSpace:
         return self._space
@@ -131,6 +135,18 @@ class RuntimeSpace:
 
     def define_hidden(self, symbol: Symbol, value: object) -> object:
         return self._space.define_hidden(symbol, value)
+
+    def define_hidden_root(self, symbol: Symbol, value: object) -> object:
+        """把隐藏（卫生）绑定装到 chain 根部，使任意子 env 都能解析。.
+
+        module body 用一个临时子 env 做宏展开；在那里创建的卫生别名若只装进子
+        env，HIR lowering（用顶层 env 做 fallback resolve）就看不到，导致
+        ``unresolved symbol '__qy_hygiene_def_*'``。装到根部可被任何 env 解析。
+        """
+        space = self._space
+        while space.parent is not None:
+            space = space.parent
+        return space.define_hidden(symbol, value)
 
     def child(
         self,
@@ -343,7 +359,12 @@ def create_standard_runtime_space(
 
     profile = ProfileConfig(literal_resolver)
     space = profile.create_standard_space()
-    return RuntimeSpace(space, profile)
+    runtime = RuntimeSpace(space, profile)
+    # Qy library：派生算子以编译期宏注册（见 `qy/std/library.py`）。
+    from qy.std.library import register_library_macros
+
+    register_library_macros(runtime)
+    return runtime
 
 
 Environment = RuntimeSpace

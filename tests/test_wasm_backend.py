@@ -90,9 +90,91 @@ def test_wasm_emit_structure_for_arithmetic():
     assert "(i64.const 56)" in wat
 
 
+def test_wasm_emit_encodes_float_constants():
+    wat = emit(_compile_lir("(defun f (x) (+ x 0.5)) (f 1.5)"))
+
+    # float 常量以 f64 数据段 + (offset<<3)|TAG_FLOAT(6) 表示。
+    assert '(data (i32.const 1024) "\\00\\00\\00\\00\\00\\00\\f8\\3f")' in wat
+    assert "(i64.const 8198)" in wat  # (1024 << 3) | 6
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("(+ 1.5 2.5)", "4.0\n"),
+        ("(- 5.0 1.5)", "3.5\n"),
+        ("(* 2.0 3.0)", "6.0\n"),
+        ("(/ 1.0 4.0)", "0.25\n"),
+        ("(< 1.5 2.5)", "T\n"),
+        ("(= 1.0 1.0)", "T\n"),
+        ("(defun f (x) (+ x 0.5)) (f 1.5)", "2.0\n"),
+        ("(let ((x 1.25)) (* x 4.0))", "5.0\n"),
+    ],
+)
+@requires_toolchain
+def test_wasm_end_to_end_float_arithmetic(tmp_path, source, expected):
+    assert _run_wasm(source, tmp_path) == expected
+
+
+def test_wasm_emit_encodes_chain_constants():
+    wat = emit(_compile_lir("(quote (alpha beta))"))
+
+    # symbol / cons heap 对象写进数据段（首 i32 是子 tag 1 / 2）。
+    assert "\\01\\00\\00\\00" in wat
+    assert "\\02\\00\\00\\00" in wat
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        ("(car (quote (1 2 3)))", "1\n"),
+        ("(cdr (quote (1 2 3)))", "(2 3)\n"),
+        ("(quote (alpha beta gamma))", "(alpha beta gamma)\n"),
+        (
+            "(cons (car (quote (alpha beta))) (cdr (quote (alpha beta gamma))))",
+            "(alpha beta gamma)\n",
+        ),
+        ("(quote (1 . 2))", "(1 . 2)\n"),
+        ("(cons 1 (cons 2 (cons 3 (quote ()))))", "(1 2 3)\n"),
+        ("(display (quote sym))", "symsym\n"),
+    ],
+)
+@requires_toolchain
+def test_wasm_end_to_end_chains(tmp_path, source, expected):
+    assert _run_wasm(source, tmp_path) == expected
+
+
+@pytest.mark.parametrize(
+    ("source", "expected"),
+    [
+        # raw-argument 算子的字面量实参在编译期折成 value（wasm 无 symbol tag）。
+        ("(display 1)", "11\n"),
+        ("(echo 42)", "42\n42\n"),
+        ("(display 3.14)", "3.143.14\n"),
+        ('(display "hi")', "hihi\n"),
+        ("(display #\\a)", "aa\n"),
+    ],
+)
+@requires_toolchain
+def test_wasm_end_to_end_raw_literal_arguments(tmp_path, source, expected):
+    assert _run_wasm(source, tmp_path) == expected
+
+
+@requires_toolchain
+def test_wasm_display_returns_printed_value(tmp_path):
+    # display 返回被打印的值（与 register VM 一致），该值也会作为顶层结果打印。
+    assert _run_wasm("(display (+ 1.5 2.5))", tmp_path) == "4.04.0\n"
+
+
 def test_wasm_emit_rejects_effects():
     lir = _compile_lir("(defeffect ask)")
     with pytest.raises(WasmUnsupportedError):
+        emit(lir)
+
+
+def test_wasm_emit_rejects_variadic_function():
+    lir = _compile_lir("(defun f (&rest r) (len r)) (f 1 2 3)")
+    with pytest.raises(WasmUnsupportedError, match="variadic"):
         emit(lir)
 
 
@@ -101,6 +183,12 @@ def test_wasm_emit_rejects_non_compat_dialect():
 
     with pytest.raises(WasmUnsupportedError):
         emit(LIRProgram((), dialect="abstract-machine"))
+
+
+def test_wasm_rejects_int_beyond_tagged_range():
+    lir = _compile_lir("(define big 2122022878497528469090467)")
+    with pytest.raises(WasmUnsupportedError):
+        emit(lir)
 
 
 def test_wasm_unsupported_symbol_raises():
@@ -148,6 +236,11 @@ def test_wasm_unsupported_symbol_raises():
 )
 def test_wasm_matches_register_vm(tmp_path, source, expected):
     assert _run_wasm(source, tmp_path) == expected
+
+
+@requires_toolchain
+def test_wasm_filters_definition_artifacts(tmp_path):
+    assert _run_wasm("(defun f (x) x) (= (f 5) 5)", tmp_path) == "T\n"
 
 
 @requires_toolchain

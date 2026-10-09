@@ -305,6 +305,13 @@ func IsCompileTimeMacro(v Value) bool {
 	return ok
 }
 
+// SlotTokenType 是 `(slot)` 返回的占位符类型（对应 Python `_SLOT_TOKEN`）：
+// 仅 grammar shape，不携带状态；文本表示为 `<slot>`。
+type SlotTokenType struct{}
+
+// SlotToken 是 `(slot)` 的单例哨兵。
+var SlotToken Value = SlotTokenType{}
+
 // HandlerRecord 是一条 HANDLER_PUSH 记录。
 type HandlerRecord struct {
 	HandlerID int

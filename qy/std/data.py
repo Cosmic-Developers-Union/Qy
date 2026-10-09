@@ -21,6 +21,7 @@ from qy.core.syntax import is_chain
 from qy.core.syntax import is_nil
 from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
+from qy.display import format_value
 from qy.errors import QyArityError
 from qy.errors import QyTypeError
 from qy.sem.core import DictValue
@@ -144,8 +145,10 @@ def _is(left: object, right: object) -> object:
 
 
 def _eq(left: object, right: object) -> object:
+    from qy.sem.core import CharValue
     from qy.sem.core import NumberValue
     from qy.sem.core import StringValue
+    from qy.sem.host import HostReference
 
     if left is QY_NIL and right is QY_NIL:
         return QY_T
@@ -159,13 +162,18 @@ def _eq(left: object, right: object) -> object:
         return QY_T if left.value == right.value else QY_NIL
     if isinstance(left, StringValue) and isinstance(right, StringValue):
         return QY_T if left.value == right.value else QY_NIL
-    # String literals still materialize as host ``str`` during the transition
-    # (see pre_ss.parse_string_literal); LANGUAGE.md specifies string values
-    # compare by value, so host str must follow the same rule.
+    if isinstance(left, CharValue) and isinstance(right, CharValue):
+        return QY_T if left.value == right.value else QY_NIL
+    # Host ``str`` 只经由显式 host interop 进入（字面量已解析为 ``StringValue``，
+    # 见 ``pre_ss.parse_string_literal``）。LANGUAGE.md 规定字符串按值比较，
+    # 因此边界上的 host str 服从同一规则。
     if isinstance(left, str) and isinstance(right, str):
         return QY_T if left == right else QY_NIL
     if isinstance(left, Symbol):
         return QY_T if left == right else QY_NIL
+    if isinstance(left, HostReference) and isinstance(right, HostReference):
+        # host reference 是不透明引用类型：eq 按 identity 比较（同一包装对象）。
+        return QY_T if left is right else QY_NIL
     return QY_NIL
 
 
@@ -254,11 +262,14 @@ def _reify(args: tuple[object, ...], env: object) -> object:
             # reified tail is itself a chain/nil → splice as proper chain
             return list_to_chain([*items, *chain_to_list(tail)])
         return chain_cons(list_to_chain(items) if items else QY_NIL, tail)
-    # Unknown type: partial-failure
+    # Unknown type: partial-failure（类型标签与 `type` 算子一致，不泄漏宿主类名）
+    from qy.sem.classify import value_type
+
+    label = value_type(value)
     raise QyReifyError(
-        f"cannot reify value of type {type(value).__name__}",
+        f"cannot reify value of type {label}",
         span=get_span(value),
-        metadata={"value": value, "type": type(value).__name__},
+        metadata={"value": value, "type": label},
     )
 
 
@@ -293,7 +304,7 @@ def _car(value: object) -> object:
     if is_chain(value):
         return chain_car(value)
     raise QyTypeError(
-        f"car expects a chain, got {value!r}",
+        f"car expects a chain, got {format_value(value)}",
         span=get_span(value),
         metadata={"value": value},
     )
@@ -305,7 +316,7 @@ def _cdr(value: object) -> object:
     if is_chain(value):
         return chain_cdr(value)
     raise QyTypeError(
-        f"cdr expects a chain, got {value!r}",
+        f"cdr expects a chain, got {format_value(value)}",
         span=get_span(value),
         metadata={"value": value},
     )
@@ -432,19 +443,20 @@ def _len(value: object) -> object:
     if isinstance(value, TupleValue | ListValue | DictValue | SetValue):
         return IntValue(value.length)
     raise QyTypeError(
-        f"len expects a collection, got {value!r}",
+        f"len expects a collection, got {format_value(value)}",
         span=get_span(value),
         metadata={"value": value},
     )
 
 
-def _get(collection: object, key: object, *default_values: object) -> object:
-    if len(default_values) > 1:
+def _get(*args: object) -> object:
+    if len(args) < 2 or len(args) > 3:
         raise QyArityError(
-            f"get expects two or three arguments, got {len(default_values) + 2}",
-            metadata={"expected": "2..3", "actual": len(default_values) + 2},
+            f"get expects two or three arguments, got {len(args)}",
+            metadata={"expected": "2..3", "actual": len(args)},
         )
-    default = default_values[0] if default_values else QY_NONE
+    collection, key = args[0], args[1]
+    default = args[2] if len(args) == 3 else QY_NONE
     if isinstance(collection, DictValue):
         for existing_key, item in collection.entries:
             if _same_qy_key(existing_key, key):
@@ -465,7 +477,7 @@ def _get(collection: object, key: object, *default_values: object) -> object:
         except (IndexError, TypeError, ValueError):
             return default
     raise QyTypeError(
-        f"get expects a chain, tuple, list, or dict, got {collection!r}",
+        f"get expects a chain, tuple, list, or dict, got {format_value(collection)}",
         span=get_span(collection),
         metadata={"collection": collection},
     )

@@ -56,14 +56,17 @@ export class QyAggregateError extends EvaluationError {
  * 它是 `EvaluationError` 的子类，Python VM 用异常来传播 effect 的
  * "unwind"；HANDLE / CALL 的 handler 分派就是在 catch 中完成的。
  */
-export class QyEffectSignal extends EvaluationError {
+/** 代数效应错误基类（对应 Python `QyEffectError`）。 */
+export class QyEffectError extends EvaluationError {}
+
+export class QyEffectSignal extends QyEffectError {
   constructor(
     readonly effect: string,
     readonly arg: unknown,
     public continuation: ContinuationLike,
     readonly resumable: boolean,
   ) {
-    super(`effect: ${effect}`);
+    super(`unhandled effect '${effect}'`);
   }
 }
 

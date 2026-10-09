@@ -47,15 +47,26 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, eq=False)
 class Symbol:
-    """Qy 语法 datum 的原子：一个符号拼写。."""
+    """Qy 语法 datum 的原子：一个符号拼写。.
+
+    ``span`` 不参与相等/哈希：同一拼写的两个 ``Symbol`` 必须等价，否则
+    symbol-space 查找会因 span 不同而 miss。手写 ``__hash__`` 直接哈希
+    ``name``（str 哈希已缓存），避免 dataclass 生成版每次构造 tuple。
+    """
 
     name: str
     span: SourceSpan | None = field(default=None, compare=False, repr=False)
 
     def __str__(self) -> str:
         return self.name
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, Symbol) and self.name == other.name
+
+    def __hash__(self) -> int:
+        return hash(self.name)
 
 
 @dataclass(frozen=True, slots=True, eq=False)

@@ -1,0 +1,14 @@
+; 变参函数：`&rest` / `&body` 把剩余实参绑定为 chain（与宏 rest 参数同义）。
+(defun collect (&rest items) items)
+(defun head-rest (first &rest rest) (tuple first rest))
+(defun sum-all (&rest nums) (apply + (cons 0 nums)))
+(defun tagged (a &body body) (tuple a (len body)))
+(pipeline
+  (eq (collect 1 2 3) '(1 2 3))
+  (eq (collect) '())
+  (= (len (head-rest 1 2 3)) 2)
+  (eq (get (head-rest 1 2 3) 1) '(2 3))
+  (= (sum-all 1 2 3 4) 10)
+  (= (sum-all) 0)
+  (= (get (tagged 9 1 2 3) 1) 3)
+  (= (len ((lambda (x &rest r) r) 1 2 3)) 2))

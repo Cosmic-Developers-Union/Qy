@@ -757,7 +757,7 @@ theorem ir_adequate {ssc : SSC} {f : Form} (hWF : Static.WF ssc f) :
 
 ## 第十八章 IR Adequacy: 机器检查状态
 
-`lake build QyLangCore` 当前成功, 包含 1 处 `sorry` (位于 `ir_adequate` 主体).
+`lake build QyLangCore` 当前成功, 包含 8 处 tactic `sorry` (Progress / Preservation / Refinement 预存 3 处, `ir_adequate` + 4 个 lift 引理 5 处; 见本章末状态表).
 
 ### 已 machine-check 的 IR 层构造
 

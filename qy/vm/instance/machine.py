@@ -18,10 +18,12 @@ from qy.core.operator_runtime import runtime_operator_semantics
 from qy.core.operator_runtime import validate_operator_arity
 from qy.core.operators import PureOperator
 from qy.core.syntax import Symbol
+from qy.core.syntax import list_to_chain
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.errors import QyEffectSignal
+from qy.errors import QyResolveError
 from qy.errors import QyRuntimeError
 from qy.errors import QyTypeError
 from qy.errors import SourceSpan
@@ -121,7 +123,14 @@ class RegisterVirtualMachine:
     async def evaluate_program(self) -> list[object]:
         _raise_for_diagnostics(self.program)
         main = BytecodeFunctionValue(self.program.functions[self.program.main], self.env)
-        result = await self._run_function(main, (), collect_results=True)
+        try:
+            result = await self._run_function(main, (), collect_results=True)
+        except RecursionError as error:
+            # 非尾递归消耗宿主 Python 调用栈；不得把 Python ``RecursionError``
+            # （含 traceback）泄漏给用户，转为语言级运行时错误。
+            raise QyRuntimeError(
+                "maximum recursion depth exceeded (non-tail recursion too deep)"
+            ) from error
         return list(result.results)
 
     async def evaluate(self) -> object:
@@ -140,7 +149,6 @@ class RegisterVirtualMachine:
         with self.stack.frame(_function_stack_frame(frame.function, call_span)):
             try:
                 while True:
-                    self.stack.replace_top(_function_stack_frame(frame.function, call_span))
                     instruction = frame.function.instructions[frame.pc]
                     frame.pc += 1
                     result = await self._execute_instruction(frame, instruction)
@@ -148,6 +156,9 @@ class RegisterVirtualMachine:
                         return result
                     if isinstance(result, _Frame):
                         frame = result
+                        # 只有 TAIL_CALL 会切换 frame.function；此时才需要同步虚拟栈顶。
+                        # 逐指令 replace_top 是纯开销（此前 1100 万次/次解释）。
+                        self.stack.replace_top(_function_stack_frame(frame.function, call_span))
             except EvaluationError as e:
                 self._attach_virtual_stack(e)
                 raise
@@ -469,11 +480,23 @@ class RegisterVirtualMachine:
         collect_results: bool,
     ) -> _Frame:
         function = function_value.function
-        if len(args) != len(function.params):
-            raise QyRuntimeError(
-                f"{function.name.name} expects {len(function.params)} arguments, got {len(args)}",
+        rest_param = function.rest_param
+        fixed_count = len(function.params)
+        if rest_param is None and len(args) != fixed_count:
+            # 参数数量不匹配是 arity 错误（与 Go `NewArityError`、TS `QyArityError` 一致）。
+            raise QyArityError(
+                f"{function.name.name} expects {fixed_count} arguments, got {len(args)}",
                 metadata={
-                    "expected": len(function.params),
+                    "expected": fixed_count,
+                    "actual": len(args),
+                    "function": function.name.name,
+                },
+            )
+        if rest_param is not None and len(args) < fixed_count:
+            raise QyArityError(
+                f"{function.name.name} expects at least {fixed_count} arguments, got {len(args)}",
+                metadata={
+                    "expected": f"at least {fixed_count}",
                     "actual": len(args),
                     "function": function.name.name,
                 },
@@ -481,7 +504,11 @@ class RegisterVirtualMachine:
         if function.name.name == "<main>" or function.name.name == "<module-body>":
             env = function_value.closure
         else:
-            env = function_value.closure.child(dict(zip(function.params, args, strict=True)))
+            bindings = dict(zip(function.params, args, strict=False))
+            if rest_param is not None:
+                # `&rest` / `&body` 绑定剩余实参为 chain。
+                bindings[rest_param] = list_to_chain(list(args[fixed_count:]))
+            env = function_value.closure.child(bindings)
         return _Frame(
             function_value,
             function,
@@ -500,7 +527,6 @@ class RegisterVirtualMachine:
 
     async def _eval_form(self, form: object, env: Environment) -> object:
 
-        from qy.build.pipeline import bytecode_artifact
         from qy.build.pipeline import compile_core_forms_to_bytecode_async
         from qy.core.syntax import Symbol as _Symbol
         from qy.core.syntax import is_chain
@@ -515,10 +541,97 @@ class RegisterVirtualMachine:
             [form],
             session,
         )
-        bytecode = bytecode_artifact(result)
+        bytecode = result.artifact
+        if not isinstance(bytecode, BytecodeProgram):
+            # 编译失败时 artifact 停在较早的 IR；不得泄漏宿主 `TypeError`。
+            message = (
+                result.diagnostics[0].message
+                if result.diagnostics
+                else "failed to compile runtime-evaluated form"
+            )
+            if message.startswith("unresolved symbol "):
+                # 与 TS/Go RUNTIME_EVAL 一致：未绑定符号报 QY_UNBOUND_SYMBOL。
+                raise QyResolveError(message)
+            raise QyRuntimeError(f"eval: {message}")
         sub_vm = RegisterVirtualMachine(bytecode, env)
         outcome = await sub_vm.evaluate_program()
         return None if not outcome else outcome[-1]
+
+    # -- concurrency safety（对应 TS `thunksAreConcurrencySafe`）-------------
+
+    # 只含这些 opcode 的 thunk 才能安全并发；effect/IO/共享状态写入等一律回退
+    # 顺序执行（与 TS 一致，Go 的 PARALLEL_GATHER 本就走顺序路径）。
+    _CONCURRENCY_SAFE_OPCODES = frozenset(
+        {
+            "LOAD_HOST",
+            "LOAD_ENV",
+            "MOVE",
+            "MAKE_FUNCTION",
+            "BUILD_TUPLE",
+            "JUMP",
+            "JUMP_IF_FALSE",
+            "RETURN",
+            "CALL",
+            "TAIL_CALL",
+            "APPLY",
+            "CALL_BUILTIN",
+        }
+    )
+    # 内建 ABI 顺序：8 display、9 echo、10 newline、11 read、12 read-int。
+    _CONCURRENCY_UNSAFE_BUILTINS = frozenset({8, 9, 10, 11, 12})
+    _CONCURRENCY_UNSAFE_SYMBOLS = frozenset(
+        {"print", "echo", "display", "newline", "read", "read-int"}
+    )
+
+    def _collect_reachable_functions(self, start: int, reachable: set[int]) -> None:
+        stack = [start]
+        while stack:
+            index = stack.pop()
+            if index in reachable:
+                continue
+            reachable.add(index)
+            for instruction in self.program.functions[index].instructions:
+                if instruction.opcode != "MAKE_FUNCTION":
+                    continue
+                target = instruction.operands[1]
+                if isinstance(target, int):
+                    stack.append(target)
+
+    def _function_is_concurrency_safe(self, function: BytecodeFunction) -> bool:
+        for instruction in function.instructions:
+            opcode = instruction.opcode
+            if opcode == "CALL_BUILTIN":
+                builtin_id = instruction.operands[1]
+                if (
+                    not isinstance(builtin_id, int)
+                    or builtin_id in self._CONCURRENCY_UNSAFE_BUILTINS
+                ):
+                    return False
+            elif opcode not in self._CONCURRENCY_SAFE_OPCODES:
+                return False
+        for instruction in function.instructions:
+            if instruction.opcode != "LOAD_ENV":
+                continue
+            symbol = instruction.operands[1]
+            if isinstance(symbol, Symbol) and symbol.name in self._CONCURRENCY_UNSAFE_SYMBOLS:
+                return False
+        return True
+
+    def _thunks_are_concurrency_safe(self, thunk_indices: list[int]) -> bool:
+        reachable: set[int] = set()
+        for index in thunk_indices:
+            self._collect_reachable_functions(index, reachable)
+        # 动态 CALL 的保守过近似：任何 MAKE_FUNCTION 目标都可能被调用。
+        for function in self.program.functions:
+            for instruction in function.instructions:
+                if instruction.opcode != "MAKE_FUNCTION":
+                    continue
+                target = instruction.operands[1]
+                if isinstance(target, int):
+                    reachable.add(target)
+        return all(
+            self._function_is_concurrency_safe(self.program.functions[index]) for index in reachable
+        )
 
     async def _parallel_gather(
         self,
@@ -530,7 +643,34 @@ class RegisterVirtualMachine:
         import asyncio
 
         from qy.errors import QyAggregateError
+        from qy.errors import QyEffectSignal
         from qy.errors import QyError
+
+        if not self._thunks_are_concurrency_safe(thunk_indices):
+            # 顺序回退：effect 必须到达外层 handler（不能被聚合成并行错误）；
+            # 其余错误按 aggregate_errors 聚合或抛第一个，与并发路径一致。
+            sequential: list[object] = []
+            errors: list[QyError] = []
+            for idx in thunk_indices:
+                thunk = BytecodeFunctionValue(self.program.functions[idx], env, self.program)
+                try:
+                    sequential.append((await self._run_function(thunk, ())).value)
+                except QyEffectSignal:
+                    raise
+                except BaseException as error:
+                    qy_error = (
+                        error
+                        if isinstance(error, QyError)
+                        else QyRuntimeError(str(error), span=None, cause=error)
+                    )
+                    if not aggregate_errors:
+                        raise qy_error from error
+                    errors.append(qy_error)
+            if errors:
+                raise QyAggregateError(
+                    f"parallel failed with {len(errors)} error(s)", errors=tuple(errors)
+                )
+            return TupleValue(tuple(sequential))
 
         async def run_thunk(idx: int) -> object:
             thunk = BytecodeFunctionValue(self.program.functions[idx], env, self.program)
@@ -562,6 +702,14 @@ class RegisterVirtualMachine:
     ) -> object:
         import asyncio
 
+        if not self._thunks_are_concurrency_safe(thunk_indices):
+            if not thunk_indices:
+                return None
+            first = BytecodeFunctionValue(
+                self.program.functions[thunk_indices[0]], env, self.program
+            )
+            return (await self._run_function(first, ())).value
+
         async def run_thunk(idx: int) -> object:
             thunk = BytecodeFunctionValue(self.program.functions[idx], env, self.program)
             return (await self._run_function(thunk, ())).value
@@ -575,7 +723,9 @@ class RegisterVirtualMachine:
                 await t
             except (asyncio.CancelledError, Exception):
                 pass
-        winner = next(iter(done))
+        # 同一 event-loop tick 内多个 thunk 都完成（纯同步 thunk）时，确定性地取
+        # 最先声明的那个，与 TS `Promise.race` / Go 首个 thunk 的胜者一致。
+        winner = min(done, key=tasks.index)
         exc = winner.exception()
         if exc is not None:
             for t in done:
@@ -663,23 +813,18 @@ class RegisterVirtualMachine:
     async def _from_import(
         self, module_name: Symbol, specs: tuple[object, ...], env: Environment
     ) -> None:
-        from qy.import_.parse import ImportSpec
+        from qy.import_.from_fold import fold_import
         from qy.import_.registry import load_module_async
 
         try:
             module = await load_module_async(module_name.name)
-            for spec in specs:
-                if not isinstance(spec, ImportSpec):
-                    continue
-                if spec.name in module.exports:
-                    env.define_once(spec.alias, module.resolve(spec.name))
-                elif spec.name in module.macro_exports:
-                    continue
-                elif self._is_compile_time_macro_export(module_name.name, spec.name):
-                    # 编译期宏导出：展开已完成，运行期没有绑定可折入。
-                    continue
-                else:
-                    raise KeyError(f"module {module_name.name!r} has no export {spec.name.name!r}")
+            fold_import(
+                env,
+                module_name.name,
+                specs,
+                module,
+                is_compile_time_macro_export=self._is_compile_time_macro_export,
+            )
         except (KeyError, ValueError) as e:
             raise EvaluationError(str(e)) from e
 
@@ -786,14 +931,10 @@ class RegisterVirtualMachine:
         while True:
             try:
                 handler_result = await self._run_function(handler_fn, (arg, continuation))
-                result_value = handler_result.value
-                if isinstance(result_value, QyContinuation):
-                    if not result_value.resumable:
-                        return result_value
-                    continuation = result_value
-                    arg = None
-                else:
-                    return result_value
+                # handler 的返回值就是 handle 表达式的值；即使它是一个 continuation
+                # 值也只是普通 runtime value（不得据此重新 dispatch，否则裸返回 `k`
+                # 会无限循环）。AM 方言同样是直接返回，二者必须一致。
+                return handler_result.value
             except QyEffectSignal as nested:
                 # handler resume 中产生的新 effect, 重新 dispatch
                 signal = nested

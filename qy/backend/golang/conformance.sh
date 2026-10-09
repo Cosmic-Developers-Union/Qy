@@ -22,7 +22,8 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "${HERE}/../../.." && pwd)"
-CORPUS="${ROOT}/tests/qy"
+# 主语料 tests/qy + Qy-in-Qy 解释器用例（覆盖 hygiene / effect / dotted pair 等）。
+CORPORA=("${ROOT}/tests/qy" "${ROOT}/meta-interp/cases")
 
 VERBOSE=0
 KEEP=0
@@ -92,8 +93,15 @@ FAILURES=()
 EXCLUDED=()
 
 cd "${ROOT}" || exit 2
+for CORPUS in "${CORPORA[@]}"; do
+  # 额外语料用目录名做前缀，避免与 tests/qy 同名文件冲突。
+  if [[ "${CORPUS}" == "${ROOT}/tests/qy" ]]; then
+    PREFIX=""
+  else
+    PREFIX="$(basename "${CORPUS}")__"
+  fi
 while IFS= read -r FILE; do
-  NAME="$(basename "${FILE}" .qy)"
+  NAME="${PREFIX}$(basename "${FILE}" .qy)"
   if [[ -n "${FILTER}" && "${NAME}" != *"${FILTER}"* ]]; then
     continue
   fi
@@ -131,6 +139,7 @@ while IFS= read -r FILE; do
     FAILURES+=("${NAME}|输出不一致|${DETAIL}")
   fi
 done < <(find "${CORPUS}" -maxdepth 1 -name '*.qy' | sort)
+done
 
 echo ""
 echo "dialect: ${DIALECT}"

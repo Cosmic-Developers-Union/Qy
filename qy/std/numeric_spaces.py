@@ -22,6 +22,7 @@ from qy.core.syntax import Symbol
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
 from qy.sem.core import IntValue
+from qy.session.number_ops import effect_payload
 from qy.vm.instance.frame import QyContinuation
 
 if TYPE_CHECKING:
@@ -70,13 +71,15 @@ def _make_integer_space(
         if not (min_value <= result <= max_value):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {
-                    "type": type_name,
-                    "operation": operation,
-                    "result": result,
-                    "min": min_value,
-                    "max": max_value,
-                },
+                effect_payload(
+                    {
+                        "type": type_name,
+                        "operation": operation,
+                        "result": result,
+                        "min": min_value,
+                        "max": max_value,
+                    }
+                ),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -109,13 +112,15 @@ def _make_integer_space(
         if not (min_value <= raw <= max_value):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {
-                    "type": type_name,
-                    "operation": "constructor",
-                    "value": raw,
-                    "min": min_value,
-                    "max": max_value,
-                },
+                effect_payload(
+                    {
+                        "type": type_name,
+                        "operation": "constructor",
+                        "value": raw,
+                        "min": min_value,
+                        "max": max_value,
+                    }
+                ),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -155,6 +160,11 @@ def _make_integer_space(
             result *= _ensure_type(arg, "*")
         return cast(Any, value_class)(_check_overflow(result, "*"))
 
+    def _trunc_quotient(a: int, b: int) -> int:
+        """截断整除（向零取整）；Python ``//`` 向 -inf 取整。."""
+        quotient = abs(a) // abs(b)
+        return -quotient if (a < 0) != (b < 0) else quotient
+
     def _div(first: object, *rest: object) -> IntegerValue:
         """Typed integer division (truncating)."""
         first_val = _ensure_type(first, "/")
@@ -162,7 +172,7 @@ def _make_integer_space(
             if first_val == 0:
                 raise QyEffectSignal(
                     "divide-by-zero",
-                    {},
+                    effect_payload({"operator": "/"}),
                     _non_resumable_continuation("divide-by-zero"),
                     resumable=False,
                 )
@@ -173,11 +183,11 @@ def _make_integer_space(
             if divisor == 0:
                 raise QyEffectSignal(
                     "divide-by-zero",
-                    {},
+                    effect_payload({"operator": "/"}),
                     _non_resumable_continuation("divide-by-zero"),
                     resumable=False,
                 )
-            result //= divisor
+            result = _trunc_quotient(result, divisor)
         return cast(Any, value_class)(_check_overflow(result, "/"))
 
     def _mod(a: object, b: object) -> IntegerValue:
@@ -187,7 +197,7 @@ def _make_integer_space(
         if b_val == 0:
             raise QyEffectSignal(
                 "divide-by-zero",
-                {},
+                effect_payload({"operator": "mod"}),
                 _non_resumable_continuation("divide-by-zero"),
                 resumable=False,
             )
@@ -200,11 +210,15 @@ def _make_integer_space(
         if b_val == 0:
             raise QyEffectSignal(
                 "divide-by-zero",
-                {},
+                effect_payload({"operator": "rem"}),
                 _non_resumable_continuation("divide-by-zero"),
                 resumable=False,
             )
-        return cast(Any, value_class)(_check_overflow(a_val % b_val, "rem"))
+        # 截断余数：结果符号跟随被除数（与 `qy.num` 的 `remainder` 一致）。
+        return cast(
+            Any,
+            value_class,
+        )(_check_overflow(a_val - b_val * _trunc_quotient(a_val, b_val), "rem"))
 
     # Comparison operators
     def _lt(a: object, b: object) -> object:
@@ -370,7 +384,7 @@ def _make_float_space(
         if raw != raw or abs(raw) == float("inf"):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {"type": type_name, "operation": "constructor", "value": raw},
+                effect_payload({"type": type_name, "operation": "constructor", "value": raw}),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -392,7 +406,7 @@ def _make_float_space(
         if result != result or abs(result) == float("inf"):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {"type": type_name, "operation": "+"},
+                effect_payload({"type": type_name, "operation": "+"}),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -409,7 +423,7 @@ def _make_float_space(
         if result != result or abs(result) == float("inf"):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {"type": type_name, "operation": "-"},
+                effect_payload({"type": type_name, "operation": "-"}),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -425,7 +439,7 @@ def _make_float_space(
         if result != result or abs(result) == float("inf"):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {"type": type_name, "operation": "*"},
+                effect_payload({"type": type_name, "operation": "*"}),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )
@@ -438,7 +452,7 @@ def _make_float_space(
             if first_val == 0.0:
                 raise QyEffectSignal(
                     "divide-by-zero",
-                    {},
+                    effect_payload({"operator": "/"}),
                     _non_resumable_continuation("divide-by-zero"),
                     resumable=False,
                 )
@@ -450,7 +464,7 @@ def _make_float_space(
                 if divisor == 0.0:
                     raise QyEffectSignal(
                         "divide-by-zero",
-                        {},
+                        effect_payload({"operator": "/"}),
                         _non_resumable_continuation("divide-by-zero"),
                         resumable=False,
                     )
@@ -458,7 +472,7 @@ def _make_float_space(
         if result != result or abs(result) == float("inf"):
             raise QyEffectSignal(
                 "numeric-overflow",
-                {"type": type_name, "operation": "/"},
+                effect_payload({"type": type_name, "operation": "/"}),
                 _non_resumable_continuation("numeric-overflow"),
                 resumable=False,
             )

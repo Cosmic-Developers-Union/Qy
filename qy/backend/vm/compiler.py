@@ -10,8 +10,9 @@
   pipeline 末段调用。任何"从更早 IR 起步"的捷径（compile_bytecode/HIR→bytecode、
   compile_mir_bytecode/MIR→bytecode）都已删除——必须经由 ``qy.build.pipeline``
   提供的 pipeline 入口逐段降级。
-- 仅接受 ``compat`` dialect 的 LIR；``abstract-machine`` dialect 的程序应该走
-  另一条后端路径（VM 抽象机直执行或 LLVM）。
+- 接受 ``compat`` 与 ``abstract-machine`` 两种 dialect 的 LIR；``abstract-machine``
+  的抽象机指令（``SS_*`` / ``SLOT_COMPLETE`` / ``HANDLER_*`` / ``CONT_*`` /
+  ``EFFECT_*``）已经是 VM 可编码、可执行的 opcode 集（见 ``backend/vm/spec/opcode.py``）。
 
 禁止：
 - 不得重新理解 HIR/MIR 语义
@@ -102,6 +103,7 @@ def _compile_function(
         # VM 的 SLOT_COMPLETE 需要按 (space, slot) 找回 symbol；这仍是
         # program-level 的同一份 layout，不是按函数重建的第二份。
         program_layout,
+        rest_param=function.rest_param,
     )
 
 

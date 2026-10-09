@@ -42,6 +42,14 @@ def test_format_value_string():
     assert format_value("hello") == "hello"
 
 
+def test_format_value_char():
+    """测试格式化 CharValue（display 语义：输出原文本，与 string 一致）。."""
+    from qy.sem.core import CharValue
+
+    assert format_value(CharValue("a")) == "a"
+    assert format_value(CharValue(" ")) == " "
+
+
 def test_format_value_bool():
     """测试格式化布尔值。."""
     assert format_value(True) == "true"

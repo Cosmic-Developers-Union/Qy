@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from qy.core.syntax import Symbol
 from qy.core.syntax import chain_to_list
 from qy.core.syntax import is_chain
+from qy.import_.from_fold import iter_selected_exports
 from qy.import_.loader import cache_source_module
 from qy.import_.loader import resolve_known_module
 from qy.import_.module import StandardModule
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
     from qy.session.runtime_space import RuntimeSpace as Environment
 
 __all__ = [
+    "ProvisionalBinding",
     "ProvisionalFunction",
     "build_provisional_module",
     "remember_source_module",
@@ -35,6 +37,17 @@ class ProvisionalFunction:
 
     name: Symbol
     params: tuple[Symbol, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ProvisionalBinding:
+    """编译期命名空间标记：模块里有一个非函数 ``define`` 成员。.
+
+    它**不承载运行期值**——运行期值由执行模块体后得到；标记只用于让同源单元的
+    ``(from ...)`` 在 HIR lowering 解析到该导出名。
+    """
+
+    name: Symbol
 
 
 def remember_source_module(form: object, env: Environment) -> StandardModule | None:
@@ -98,6 +111,23 @@ def build_provisional_module(form: object, env: Environment) -> StandardModule |
                 item_list[1], _parameter_symbols(item_list[2])
             )
             continue
+        if (
+            operator == Symbol("define")
+            and len(item_list) >= 3
+            and isinstance(item_list[1], Symbol)
+        ):
+            define_name = item_list[1]
+            if define_name.name.startswith("'") and len(define_name.name) > 1:
+                define_name = Symbol(define_name.name[1:])
+            value_form = item_list[2]
+            value_items = chain_to_list(value_form) if is_chain(value_form) else []
+            if value_items and value_items[0] == Symbol("lambda") and len(value_items) >= 2:
+                locals_map[define_name] = ProvisionalFunction(
+                    define_name, _parameter_symbols(value_items[1])
+                )
+            else:
+                locals_map[define_name] = ProvisionalBinding(define_name)
+            continue
         if operator == Symbol("macro") and len(item_list) >= 4 and isinstance(item_list[1], Symbol):
             locals_map[item_list[1]] = MacroDefinition(
                 item_list[1],
@@ -150,20 +180,17 @@ def _populate_imported_bindings(
     locals_map: dict[Symbol, object],
 ) -> None:
     for import_form in import_forms:
-        if is_chain(import_form):
-            import_form = tuple(chain_to_list(import_form))
-        if not isinstance(import_form, tuple):
-            continue
+        # raw AST 只有 chain；parse_from_import 也只接受 chain。
         try:
             module_name, specs = parse_from_import(import_form)
             source_module = resolve_known_module(module_name.name, env)
         except (KeyError, ValueError):
             continue
-        for spec in specs:
-            if spec.name in source_module.exports:
-                locals_map[spec.alias] = source_module.resolve(spec.name)
-            elif spec.name in source_module.macro_exports:
-                locals_map[spec.alias] = source_module.resolve_macro(spec.name)
+        # 与运行时 fold / register VM 共用同一 fold primitive（选择逻辑单源）。
+        for alias, binding, _is_macro in iter_selected_exports(
+            module_name.name, specs, source_module, require=False
+        ):
+            locals_map[alias] = binding
 
 
 def _parameter_symbols(params: object) -> tuple[Symbol, ...]:

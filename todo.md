@@ -11,7 +11,7 @@
 - `uv run ty check .`：**0 diagnostics**（本轮清空）
 - `uv run qy check examples/qy/hello.qy`：ok（analyzer 已改为 canonical frontend + HIR verifier）
 - HIR verifier 在 `examples/qy/hello.qy` 与 10 个 validation 样例上 clean（H1–H14）
-- qytest `tests/qy` **54/54**、`examples/qy/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
+- qytest `tests/qy` **56/56**、`examples/qy/validation` 10/10 通过；CLI 6 阶段 dump + run/fmt/export/llvm 全部可跑
 - `make libqy` / `make llvm-gen` 可用；LLVM 原生链路实测可用（`examples/qy/validation` 4/10 走通并与 register VM 一致，其余为常量/未解析符号等已知限制，见 docs/llvm-backend.md）
 - `qy/sem` 已不 import `qy.vm`；`UserFunction` 与 `qy/vm/instance/legacy_eval.py` 已删除，函数值统一为 `BytecodeFunctionValue`
 - `rg QY_DELETE_AFTER qy`：7 处标记（stdlib shim、sem bridge、analysis infer/scope/refs、frontend tuple 兼容层）
@@ -24,7 +24,7 @@
 - `uv run ty check .`：48 diagnostics（`qy/cli/commands/pkg.py` 等既有问题，非本轮引入）
 - 宿主边界：`qy/ext/` 扩展机制落地；`tests/test_extensions.py` 边界测试 7 项通过
 - `meta-interp/cases/` 19 个自举用例与 `qy run` 参考输出逐字节一致；
-  `tests/qy` 行为用例 **54/54**、`examples/qy/validation` 8 个验收样例全部对拍通过
+  `tests/qy` 行为用例 **56/56**、`examples/qy/validation` 8 个验收样例全部对拍通过
 - `meta-interp/main.qy` 已能解释自身源码（阶段 2 自解释），但性能很差（详见 §9½）
 - **本轮语言修复**：H5 允许 let/handle body 尾调用；`type` 返回 Qy 语义类型名；
   dynamic call 允许 `any` 操作位；`qy run` 不再静默吞编译错误且退出码正确；
@@ -404,8 +404,12 @@ source
 - Python `str/int/list/tuple/dict/set/bool/None` 仍大量直接充当 runtime value（host 边界与兼容容错处）；
 - `eq` 仍由 Python `is` 支撑；
 - `cond` / VM truthiness 仍受 Python 假值污染；
-- `pre-symbol-space-chain` 仍更像展平 root + literal resolver；
-- module / fold 存在多条近似实现路径；
+- `pre-symbol-space-chain` 已是带 `(membership, resolver)` 的真实 chain
+  （lisp → number → char → string → stdlib → head，`SymbolSpace.resolve` 逐层回退），
+  但 profile 组合与 fold 计划的显式 API 仍待收口；
+- module / fold 的运行时路径已统一到 `qy/import_/from_fold.py::fold_import` 与
+  `iter_selected_exports`（选择逻辑单源）；provisional module 已共用该 primitive，
+  HIR lowering / macro expand 仍是近似实现；
 - compile-time env 仍只是 runtime env facade；
 - LIR 仍较薄，未完全承担低层职责；
 - register VM 仍承担较多 host-call compatibility；
@@ -421,35 +425,53 @@ source
    `get_span` 的真源是 `qy/core/syntax.py`；`Form = Symbol | Chain | QyNil`；
    `form_to_tuple` / `TupleForm` / `read_tuple` / `write_tuple` / `SpannedTuple` /
    `DottedTuple` 全部删除（含公共导出）；`surface.py` 的 tuple 版实现已删；
-   `macro/hygiene.py` 改为 chain 表示并保留 span。
+   `macro/hygiene.py` 改为 chain 表示并保留 span；
+   `qy/import_/operators.py` 的 `_is_special_form` / `_parse_export_names` / `_from_import`
+   也已 chain-native（此前 `from` 算子把参数拼成 tuple 传给 chain-only 的
+   `parse_from_import`，实际恒抛异常）。
 2. ~~quoted literal 已在 reader 阶段变成 Python `str`（`_decode_string_symbol` 经
-   `ast.literal_eval` 解出），兼容 API 入口。~~ ✅ 兼容入口已删除；
-   仅剩 MIR/HIR 侧 `_quote_data` 的物化尾巴，见第 7 条。
+   `ast.literal_eval` 解出），兼容 API 入口。~~ ✅ 兼容入口已删除；quote 现在一律
+   返回 syntax datum（`Symbol` / `Chain` / `nil`），HIR H11 已收紧为只接受
+   syntax datum，不再有物化尾巴（见第 7 条）。
 3. ~~`qy/sem/core.py` 里的 `ChainValue` 与 `qy/core/syntax.py` 的 syntax `Chain` 并存。~~
    ✅ 已闭合：`qy.sem` 不再定义 datum 或 Qy 自身对象；`NIL` / `NilValue` / `SymbolValue` /
    `ChainValue` / `DatumValue` 删除；`nil` / `T` / `none` 同处 `qy/core/syntax.py`；
    迁移期桥接层 `qy/sem/bridge.py` 已删除。
-4. `literal_resolver` 让 `1` 等 spelling 绕过了真正的 chain / fold 模型；
-5. `(define 1 10)` 的行为尚未由最终 root 模型解释；
+4. `1` 等 spelling 现在通过 number-ss / string-ss / char-ss 的 `(membership, resolver)`
+   参与真实的 chain walk（`SymbolSpace.resolve` 逐层回退）；`literal_resolver` 只是链
+   miss 之后的 profile escape hatch，不再是主解析路径；
+5. `(define 1 10)` 在当前 space 绑定 `1`，按链顺序 shadow number-ss 的字面量
+   （语言允许在符号空间中定义任意符号）；行为已由「`define` = current-space-once +
+   chain lookup」解释；
 6. `qy.core` 仍混入 profile / compat 能力；
-7. 标准数据算子已返回 Qy `TupleValue` / `ListValue` / `DictValue` / `SetValue`，但
-   `mir/normalize._quote_data`、`session/pre_ss.try_default_literal` 仍会把 quoted
-   string / number 物化成 Python `str` / `int` / `float`；reader/string literal 仍有 Python `str` 迁移尾巴；
+7. 标准数据算子已返回 Qy `TupleValue` / `ListValue` / `DictValue` / `SetValue`；
+   `session/pre_ss.try_default_literal` 返回 `IntValue` / `FloatValue` / `StringValue` /
+   `CharValue`（不再是宿主 `str` / `int` / `float`）；HIR H11 只接受
+   `Symbol | Chain | nil`，宿主标量进入 `QuoteExpr.form` 会报错；剩余是 host 边界
+   （扩展注入）按显式 `qy.sem.convert` 转换处理；
 8. `eq` 已脱离 Python identity / interning，后续还需补完整结构相等算子；
 9. `cond` 已是 nil-only truth；标准 profile 的 `truthy` 负责复杂真值；
 10. `truthy` 已有正式 operator，但还需按 profile 层文档继续收口；
 11. `io` 仍只是 `print/echo` 模块，不是 Qy runtime model；
 12. `reify` 已有最小实现（ScopeOperator、partial-failure、无 effect 路径）；
-13. `HostObjectRef` 尚未演化成完整 host reference / runtime identity 容器；
+13. `HostReference` 已由 `(type ...)` 分类为 `host`（不再落成 `any`），`eq`/`is` 按 identity、dict key 命中、`format_value` → `<host>` 已落地（见 §9¾ item 18）；更完整的 runtime identity 容器（跨宿主 adapter）仍待推进；
 14. macro compile-time evaluator 已脱离 bytecode / register VM；compile-time namespace 仍需继续显式化为独立 slot/layout；
-15. `from` 在 stdlib / VM / source-module 路径没有完全共用实现；
+15. `from` 的运行时 fold 已收口到 `qy/import_/from_fold.py::fold_import`，由运行时算子
+    (`qy/import_/operators.py`) 与 register VM (`qy/vm/instance/machine.py`) 共用
+    （冲突按 define-once 原子检查）；编译期 provisional module、HIR lowering 的
+    `(from ...)` 校验与 scope 记账现也共用 `iter_selected_exports` /
+    `missing_export_names`（选择逻辑单源）；只剩 macro expand 因其走 compile-time macro
+    namespace 而非 `StandardModule` 仍独立；子模块从 `fold.py` 改名为 `from_fold.py`
+    （否则会 shadow `qy.import_.fold` 核心算子函数——已修）；
+    （本轮已修：provisional module 现在识别 `(define name value)` 导出，且其 `from` 解析不再把
+    chain 转成 tuple——同源单元 `(from ...)` 导入 `define`/再导出绑定此前会误报 no export；）
 16. ~~`quasiquote` nested 路径仍依赖过时 `list/append` 假设。~~ ✅ 已闭合：
     quasiquote 展开统一到 `qy/core/quasiquote.py`（macro expand 与 HIR lowering 共用一份实现），
     不再有第二份 tuple 版实现；
 17. 默认 LIR 仍以 compat dialect 为主，但主 pipeline 已执行 `mir.validate` / `lir.verify`，bytecode emit 会拒绝非 VM compat opcode；
-18. LIR 已在 abstract-machine dialect 下显式建模 handler frame / continuation frame / symbol-space / binding slot：`lower_effects` + `passes/lir/spaces.py` 产出 `frame_layout` / `handlers` / `continuations` / `symbol_spaces`，并把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`，因此 L5–L12 verifier 在 abstract-machine dialect 下全部有数据（L11/L12 CFG-aware）；仍缺 virtual stack 的运行时语义、HIR 层 `resolve.spaces`（当前 layout 由 LIR 从指令流重建），且 VM 尚不执行抽象机 opcode；
+18. LIR abstract-machine dialect 已闭合：`lower_effects` + `passes/lir/spaces.py` 产出 `frame_layout` / `handlers` / `continuations` / `symbol_spaces`，把 `ENTER_SCOPE`/`DEFINE_ONCE` 降成 `SS_ENTER`/`SS_LEAVE`/`SLOT_COMPLETE`（L5–L12 全部有数据，L11/L12 CFG-aware），HIR 层 `resolve.spaces` 已实现并把 layout 下沉到 MIR/LIR/bytecode，**VM 已执行 abstract-machine opcode**（与 compat 方言在 86 语料上 diffs=0，`tests/test_abstract_machine_vm.py`）；仍缺：continuation `saved_registers` 由保守全集精化为活跃区间，以及 effect frame 从 VM Python 对象上移到 LIR/ABI 模型；
 19. effect frame 仍主要由 VM 中的 Python 对象承担；
-20. pending-binding / incomplete-value effort 尚未实现；
+20. pending-binding / incomplete-value effort 尚未实现；但前置的「define 只提升 binding」已在 pipeline 落地（`(pipeline (define x 1) (+ x 1))`、`(let () (pipeline (define x 1)) x)`、pipeline 内 defun 前后向引用均可解析），运行期读到未完成 slot 目前仍是占位行为，而非 effort；
 21. ✅ 已完成：`UserFunction` / `qy/vm/instance/legacy_eval.py` / `ComponentOperator` 已删除，`lambda`/`defun`/module-local defun 统一编译为 `BytecodeFunctionValue`；module-local defun 采用两阶段预置（compile-time `MacroFunction` 占位 + 管线编译的运行期值），宏体在**编译期调用** module-local defun 会得到明确诊断；
 22. docs 中仍有少量旧说法需要持续清理（本轮已修 `qy FILE` / typer / 管线顺序 / `effect.analyze` 状态）。
 
@@ -476,9 +498,10 @@ source
 
 # 4. 完整推进路径
 
-## Phase A0. 包结构收口（当前最高优先级）
+## Phase A0. 包结构收口（已完成）
 
-当前目标是先保证目录结构和职责边界正确；测试失败可以后续处理，但不能继续让错误结构扩散。
+本阶段目标是先保证目录结构和职责边界正确；测试失败可以后续处理，但不能继续让错误结构扩散。
+§7 的 15 项推进顺序已全部落地，此阶段不再是最前线。
 
 ### A0.1 目标结构真源
 
@@ -1494,6 +1517,12 @@ qy emit main.qy --target=lir
 
 ### M2. number
 
+> 已修：`mod` 的 integer 路径用 Python `%`（结果符号跟随除数），float 路径却用 C `fmod`
+> （截断余数），对负数不一致；现三宿主统一为 Python `%`（floored），
+> `tests/qy/47_number_mod.qy` 覆盖负数 int/float。
+> 已补：`number?` 与 `remainder`（截断余数，符号跟随被除数）在 prelude 与 `qy.num`
+> 三宿主提供；`tests/qy/55_std_primitives.qy` 覆盖。
+
 - 决定 number runtime model；
 - 将 `qy/sem` 的 concrete number type 同步到 analyzer、LIR、libqy、LLVM ABI；
 - 每个数值算子必须声明 concrete type signature；不得把 family membership 当成自动转换许可；
@@ -1727,6 +1756,11 @@ qy emit main.qy --target=lir
 ---
 
 ## Phase P. Performance / optimization / diagnostics
+
+> 维护提示：`benchmarks/baseline.json` 生成于 2026-05，**早于** MIR 优化默认开启
+> （`7b18c98`，2026-09），因此 `make bench-check` 现在会把「基线漂移」报成大量回退
+> （连 `source` 相位都慢数倍，属环境/基线差异）。重新 `make bench-baseline` 之前，
+> 不应把它当作有效回归门禁。
 
 ### P1. front-end
 
@@ -2223,7 +2257,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   二元除法异号复刻 Python 的 `int(a/b)` float 路径；定宽越界 `numeric-overflow`），
   并支持 abstract-machine 方言（`symbol_spaces` layout + `SLOT_COMPLETE`；顺带修掉
   AM 的 `HANDLE` specs 是裸 tuple 导致 6 个 effect 语料 unhandled 的真实缺口）。
-  两方言均 **55/55**、`bigint_conformance.sh` **13/13**（两方言）。
+  两方言均 **56/56**、`bigint_conformance.sh` **13/13**（两方言）。
 - **大整数正式语料**：新增 `tests/qy/53_number_bigint.qy`（2^53 加减乘、30!、负数、
   比较、取模），在 **Python / TypeScript / Go 三宿主 × 两种方言**下输出一致，
   并接入 qytest、TS/Go conformance、`tests/test_bytecode_json.py` 与自举对拍清单。
@@ -2257,7 +2291,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 
 # 9¾. 多宿主计划（新一轮目标）
 
-目标：让 Qy 能作为**嵌入式语言**在 Python 与 TypeScript/JavaScript 中工作；Go 后续跟进。
+目标：让 Qy 能作为**嵌入式语言**在 Python / TypeScript(JS) / Go 三种宿主中工作。
 三种宿主的基础都是「能执行 Qy 字节码的虚拟机」，外加宿主语言扩展（用宿主语言写算子、
 传宿主对象、按 capability 授权），并要求 Qy 自举（解释器能解释自身）。
 
@@ -2266,8 +2300,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 | 宿主 | 解释执行（VM 跑字节码） | 编译后端 | 宿主语言扩展 |
 | --- | --- | --- | --- |
 | Python | ✅ `RegisterVirtualMachine` + `Qy.run_bytecode_json` / `qy run --bytecode` | ✅ Python VM 字节码 / LLVM / WASM | ✅ `qy/ext`（descriptor + registry + capability） |
-| TypeScript / JS | ⛔ 待实现（`qy/backend/typescript/`） | 复用 Python 侧产出的字节码 JSON；WASM 由 Python 侧产出 | ⛔ 待实现 |
-| Go | ⚠️ `qy/backend/golang/` 有 Go 版 VM，但仓库缺 `go.mod`，无法构建/测试，未接入 Makefile/CI | 复用字节码 JSON | ⛔ 待实现 |
+| TypeScript / JS | ✅ `qy/backend/typescript/`（bun + TS，`qyvm` CLI + `src/embed.ts`） | 复用 Python 侧产出的字节码 JSON；WASM 由 Python 侧产出 | ✅ `registerHostFunction`（`src/embed.ts`） |
+| Go | ✅ `qy/backend/golang/`（根 `go.mod`，`go build/vet/test` + conformance 接入 `make test-go`/CI） | 复用字节码 JSON | ✅ `examples/go/qyhost`（宿主算子注册/覆盖） |
 
 **交换格式（三种宿主共享的契约）**：`qy export FILE -o prog.json` 输出的 JSON 字节码。
 它必须 (1) 可表示（每个常量都能编码，不得退化成 `{"type":"unknown"}`）、(2) 可还原
@@ -2283,25 +2317,299 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   变成字符串，运行期报 `+ expects a number, got str`）。
 - **宿主入口**：`Qy.run_bytecode_json` / `AsyncQy.run_bytecode_json`（嵌入 API）与
   `qy run --bytecode FILE`（含 `-` 读 stdin）。
-- **一致性测试**：`tests/test_bytecode_json.py` —— `tests/qy` 全部 54 个程序
+- **一致性测试**：`tests/test_bytecode_json.py` —— `tests/qy` 全部 56 个程序
   「编译 → 导出 → 装载 → 执行」结果一致，导出中无 `unknown` 常量；另覆盖单例往返、
   非法版本/无法编码值的报错、CLI 与嵌入 API。
 - **自举基线**：`QY_META_SELF=1 pytest tests/test_meta_interp.py` 通过（解释器源码
   被自身解释后仍能得到正确结果）；默认 skip 仅因耗时。
 
-## 待办
+## 本轮闭合
 
-1. **TypeScript 宿主**：新建 `qy/backend/typescript/`（bun + TS），实现
-   (a) 字节码 JSON 装载、(b) 值模型 / 符号空间 / 帧、(c) 指令执行（含 `CALL_BUILTIN`）、
-   (d) 标准库算子、(e) 嵌入 API 与宿主扩展、(f) `qyvm` CLI + 一致性测试
-   （对照 Python VM 的输出）。
-2. **Python 宿主补齐**：把宿主扩展（capability / descriptor）文档化并补测试；
-   LLVM 后端补齐已知限制（`Chain` 等常量、未解析符号的 IR 生成），提高原生链路覆盖率（见 docs/llvm-backend.md §限制）。
-3. **Go 宿主**：补 `go.mod`、Go 单测、接入 `Makefile`/CI，打通
-   `qy export` → `qyvm`；补 `CALL_BUILTIN`（当前 Go 侧 opcode 表没有它）。
-4. **自举推进**：把自举测试纳入常规验证（或提供快速子集）；补宏 hygiene
-   （`gensym` / `capture`）。
-5. **跨宿主一致性**：建立「同一 .qy → 三个宿主 VM → 输出逐字节一致」的差分测试。
+1. ✅ **TypeScript 宿主**：`qy/backend/typescript/`（bun + TS）已实现装载 / 值模型 / 帧 /
+   指令（含 `CALL_BUILTIN`）/ 标准库 / 嵌入 API（`src/embed.ts`）/ `qyvm` CLI；
+   `bun test` 49 pass，两方言 conformance 各 **56/56**，bigint **13/13**。
+2. ⏳ **Python 宿主补齐**：宿主扩展（capability / descriptor）已文档化
+   （`docs/extensions.md`）并有 `tests/test_extensions.py` 守卫；LLVM 后端已知限制
+   （`Chain` 等常量、未解析符号的 IR 生成）仍待补齐，归入「后端覆盖」工作项
+   （见 `docs/llvm-backend.md` §限制）。
+3. ✅ **Go 宿主**：根 `go.mod`（零第三方依赖）、Go 单测、`make test-go`/CI，
+   `qy export` → `qyvm` 打通，`CALL_BUILTIN` 已补；两方言 **76/76**，bigint **13/13**。
+4. ✅ **自举推进**：`make test-selfhost` 已纳入 `make ci`；宏 hygiene（`gensym` / `capture`）
+   已在 `meta-interp/main.qy` 实现。
+5. ✅ **跨宿主一致性**：`tests/test_bytecode_json.py`（Python 往返，全新环境执行）+
+   TS/Go 各自 conformance，构成「同一 .qy → 三宿主 → 输出一致」的差分门禁。
+6. ✅ **跨宿主修复（本轮）**：
+   - improper chain（dotted pair）的交换格式：三侧 loader 都误把任意 dict 当链节点，
+     导致 tail 解成 `Chain(None, nil)`；按「有 `head` 才是节点」统一修复
+     （Python / TS / Go），并加三宿主回归测试；
+   - 卫生宏别名解析范围：TS/Go 把别名目标在**当前 env** 解析，调用点 shadow 会污染
+     定义点自由符号（`(let ((+ ...)) (add-one 41))` 得 0 而非 42）；改为与 Python
+     `_install_hygiene_aliases` 一致，从**程序根 env** 解析；
+   - 新增 `tests/qy/54_hygiene_shadow.qy` 作为三宿主共享回归语料（corpus 55 → 56）。
+7. ✅ **跨宿主标准库补齐（本轮）**：TS/Go 之前缺 `string->number`（既不在 prelude，
+   也不在 `qy.num`）与整个 `qy.char` 模块，任何 `(string->number ...)` /
+   `(from qy.char import ...)` 程序在 TS/Go 上都会失败；现补齐（`string->number`、
+   `qy.char` 15 个算子）并加共享语料 `tests/qy/55_std_primitives.qy`（corpus 56 → 57）。
+8. ✅ **conformance 语料扩展（本轮）**：TS/Go conformance 之前只跑 `tests/qy`，导致
+   `meta-interp/cases` 里的 hygiene / dotted-pair 等缺陷长期不在门禁内；现两个脚本
+   同时跑 `tests/qy`（57）+ `meta-interp/cases`（19），各 **76/76**（两种方言）。
+9. ✅ **fold primitive 收口 + 命名冲突修复（本轮）**：`qy/import_/fold.py` 新增
+   `iter_selected_exports`，运行时 `from`（算子 / register VM）与编译期 provisional
+   module 共用同一「选择逻辑」（runtime 导出 / 宏导出 / 缺失 require 语义）；子模块
+   改名为 `qy/import_/from_fold.py`——否则会 shadow `qy.import_.fold` 核心算子函数
+   （`from qy.import_ import fold` 会拿到 module 而不是算子）。
+10. ✅ **formatter 顶层 reader macro 拆分修复（本轮）**：CST 把顶层的 `'` / `` ` `` 前缀
+    与其操作数拆成相邻子节点，`_collect_lines` 之前按子节点逐个成 form，导致 `'(a b)`
+    被格式化成 `'` 与 `(a b)` 两个顶层 form（语义改变，`18_dotted_pairs.qy` 会报
+    unresolved symbol）；现按「前缀 + 紧邻操作数」重新分组，并新增 formatter 全语料幂等
+    + 格式化前后 `qy run` 输出一致的参数化护栏（`tests/test_formatter.py`）。
+11. ✅ **`eq` 对 char 按值比较（本轮）**：`_eq`（Python）/ `eq`（TS）/ `Eq`（Go）都漏了
+    `CharValue` 分支，`(eq #\a #\a)` 在三宿主都返回 nil（与「原子按值比较」矛盾，也影响
+    char 作为 dict key）；现统一按 `value` 比较，并加语料与单测。
+12. ✅ **`(type <char>)` 分类修复（本轮）**：`qy.sem.classify.literal_type` 漏了
+    `CharValue` 分支，`(type #\a)` 在 Python 返回 `any`，而 TS/Go 返回 `char`（跨宿主
+    不一致）；现统一为 `char`，并加单测与语料。
+13. ✅ **`(type <operator/function/effect>)` 分类修复（本轮）**：TS/Go 的 `type` 对
+    算子/函数/effect 值落到兜底 `object`，Python 返回 `operator`/`function`/`effect`；
+    现 TS 按 `PureOperatorValue`/`RawOperatorValue`/`EffectDefinition`/
+    `BytecodeFunctionValue`、Go 按 `*vm.PureOperator`/`*vm.RawOperator`/
+    `*vm.EffectDefinition`/`*vm.FunctionValue` 补齐，三宿主一致。
+    （本轮另用「算子 × 值种类」矩阵对拍：data 126、string/char 158、number 1344、
+    container 156、reify 13 组合，除已修项外 0 mismatch。）
+14. ✅ **TS/Go 具体数值空间 `qy.int8`..`qy.float128`（本轮）**：Python 注册的 12 个
+    具体数值模块 TS/Go 之前完全缺失（`(from qy.int8 import ...)` 报缺模块）。现新增
+    `qy/backend/typescript/src/stdlib/number_spaces.ts` 与 Go `number_spaces.go`：构造器 +
+    谓词 + 类型化算术（floored `/`、`mod`/`rem` 同为 floored）+ 位运算 + `min-value` /
+    `max-value` / `bits`（直接值绑定），并在各自 registry 注册；`tests/qy/55_std_primitives.qy`
+    增加 int8 覆盖。残留模块面差异只剩 `qy.legacy`（已废弃 spawn/await，故意不补）。
+15. ✅ **`component` 编译期宏不再泄漏到运行期（本轮）**：`(define name (component ...))`
+    在 `macro/expand.py` 只注册宏，却仍保留运行期 `define`，导致 `component` 出现在导出
+    bytecode 里（不实现宏运行期的 TS/Go 报 `unresolved symbol 'component'`，标准参考
+    `examples/qy/hello.qy` 都跑不起来）。现注册成功后返回 `nil`（调用方过滤），
+    `hello.qy` 导出中 `component` 出现 0 次；`tests/test_component.py` 加护栏。
+16. ✅ **TS/Go 实现 `this`/`slot`/`bind`（本轮）**：`qy.core` 的 symbol-space 显式建模
+    算子 TS/Go 之前完全缺失（`hello.qy` 接着报 `unresolved symbol 'this'`）。现 TS/Go 用
+    raw operator 实现 `this`（返回当前 env）、`slot`（单例哨兵）、`bind`（按 Python 语义
+    写入当前 symbol-space，slot 仅占位），并在 prelude 与 `qy.core` 注册。
+    `examples/qy/hello.qy` 现可在 TS/Go 完整执行，仅 `(this)` / `(slot)` 的 host 对象
+    repr 行无法逐字节对齐（与 `todo.md` §9½ 记录的 meta-interp 近似一致），故仍不纳入
+    逐字节自动对拍；新增 `tests/test_examples_ts.py::test_typescript_accepts_hello_golden_file`
+    做「行数与 Python 一致」的烟测。
+17. ✅ **Qy artifact 的稳定文本表示（本轮）**：算子 / effect / module / symbol-space /
+    slot 这些 artifact 之前 Python 走 `repr`（泄漏 `PureOperator(name=..., func=<... 0x...>)`
+    与内存地址），而 TS/Go 已是 `<operator x>` / `<symbol-space>` / `<slot>`。现 Python
+    `format_value` 统一为同一套表示（`__qy_format__` hook + 显式分支），三宿主对
+    `+` / `(this)` / `(slot)` / `examples/qy/hello.qy` 输出**逐字节一致**；
+    `tests/test_examples_ts.py` 的 TS/Go golden 测试改为断言逐字节相等。
+18. ✅ **host reference 的 identity 语义与稳定显示（本轮）**：`_eq` 之前没有
+    `HostReference` 分支，`(eq host host)`（同一包装对象）返回 nil，host reference 作为
+    dict key 也永不命中；`format_value` 还泄漏 `HostReference(value=<object ...>)`。
+    现 `_eq` 按 identity 比较（同一包装对象为 T，与 dataclass `eq=False` 一致），
+    `format_value` 输出 `<host>`；`tests/test_basic_operators.py` 加护栏。
+19. ✅ **CLI 调试/后端命令的 error 短路（本轮）**：`qy/cli/_common.py::compile_source_to`
+    之前用默认 `PipelineOptions(error_threshold=10**6)`，于是一个未解析符号会继续
+    lowering 到 LIR，产生误导性的二次内部错误 "LIR main function index 0 is out of
+    range for 0 LIR functions"。现 CLI 调试命令用 `error_threshold=1`（同一 pass 内仍会
+    收集全部诊断），`hir`/`mir`/`lir`/`bytecode`/`wasm`/`llvm` 只报真实诊断；
+    `qy check` / LSP 仍走默认阈值收集全部诊断。`tests/test_cli_commands.py` 加护栏。
+20. ✅ **`qy.io` 的 `display`/`newline` 与 TS/Go head 层（本轮）**：TS/Go 早已在
+    `qy.io` 绑定 `display`/`newline`，Python 却没有（跨宿主模块面缺口），且 TS/Go 的
+    `display` 误等价于 `print`（换行），与后端 `display` 内建（不换行）不一致。现
+    Python 补 `display`（不换行）/`newline`，TS/Go 的 `display` 改为不换行；并给 TS/Go
+    prelude 增加顶层可写 **head** 层（对应 Python `pre-ssc-head`），使
+    `(from qy.io import ...)` 不再与 `qy.io` 空间自身冲突。`hello.qy` 仍逐字节一致。
+21. ✅ **compat handler 裸返回 continuation 的死循环（本轮）**：compat VM 的
+    `_dispatch_effect` 把 handler 返回的 `QyContinuation` 当成「再次 dispatch」信号，
+    于是 `(handle (perform ask 1) ((ask (arg k) k)))` 无限循环（TS/Go 同样）；而
+    abstract-machine 方言与 AM 路径是直接返回。现三宿主 compat 路径改为直接返回
+    handler 结果（continuation 只是普通 runtime value），并给 Python `format_value`
+    补 `<continuation>` 表示；`tests/test_register_vm_semantics.py` 加回归。
+22. ✅ **深非尾递归不得泄漏 Python `RecursionError`（本轮）**：Python 调用栈有限，
+    非尾递归深度约 500 就会抛 `RecursionError` 并在 CLI 打出完整 Python traceback；
+    TS/Go 用显式帧栈可到更深（1e6 尾递归、1e4 非尾都通过）。现 Python VM 的顶层
+    `evaluate_program` 捕获 `RecursionError` 并转为语言级 `QyRuntimeError`
+    （`maximum recursion depth exceeded`，无 traceback）；深度差异记入 `docs/hosts.md` §5。
+23. ✅ **`qy export` 的错误级联 + `docs/op.md` 的 eq 描述（本轮）**：`qy export` 之前用
+    `error_threshold=10**6`，未解析符号会继续 lowering 出 "LIR main function index ...
+    out of range" 二次内部错误（与 item 19 的 CLI 调试命令同类）；现改为
+    `error_threshold=1`（同一 pass 内仍收集全部诊断），cascade 测试纳入 `export`。另修正
+    `docs/op.md` 的 `eq` 描述（原子按值、引用类型按 identity），与实现一致。
+24. ✅ **`race` 确定性 + 文档漂移（本轮）**：Python `RACE_FIRST` 用 `next(iter(done))`
+    在纯同步 thunk 下取集合里任意一个（实测取到第二个），而 TS `Promise.race` / Go 首个
+    thunk 都取第一个；现 Python 改为 `min(done, key=tasks.index)`，三宿主一致返回最先
+    声明的。`tests/qy/28_race_first.qy` 扩展覆盖，`docs/hosts.md` §5 更新。另修正
+    `docs/stdlib-operators.md` 的 `eq` 原则与 IO 表（补 `display`/`newline`）。
+25. ✅ **`CharValue` 的 display 表示（本轮）**：`format_value`/`formatValue`/`FormatValue`
+    都让 char 落到 host repr `CharValue(value='a')`（TS/Go 明确复刻 Python 的遗漏）。现
+    三宿主统一为 **原文本** `a`（display 语义，与 string 一致；`write`/`reify` 仍用 `#\a`），
+    消除最后一处值 repr 泄漏；`tests/test_display.py` 与 `tests/qy/55_std_primitives.qy`
+    加覆盖。
+26. ✅ **文档漂移：abstract-machine 已接通（本轮）**：`qy/backend/vm/compiler.py` 的
+    模块 docstring 仍写「仅接受 compat dialect」，但代码早已接受 `abstract-machine`；
+    `docs/lir-effect-frame-design.md` 的「bytecode compiler 尚未处理 abstract machine
+    ops / VM 尚未消费」也已过时。现更正：AM 指令已是 VM 可编码/可执行 opcode，剩余
+    工作是 layout 字段上移与 compat→AM 默认切换；race 取消行为说明同步。
+27. ✅ **VM 性能：虚拟栈 `replace_top` 移出热路径（本轮）**：`_run_function` 之前
+    **每条指令**都 `stack.replace_top(_function_stack_frame(...))`（一次自举约 1160 万次），
+    纯为保持 trace 顶帧；现只在 `TAIL_CALL` 切换 `frame` 时更新。自举「解释器解释自身」
+    从 **~30.6s 降到 ~21.3s（-30%）**；VM/语义/abstract-machine 差分测试全过。
+28. ✅ **VM 性能：`SymbolSpace.resolve` 迭代化（本轮）**：把「递归 `_resolve`」的链查找
+    改为单次迭代循环、逐层调用 `lookup`（保留唯一 lookup 实现，别名循环语义严格不变，
+    `_resolve` 删除）。实测自举仍在 ~21.2–21.9s（与递归版持平：瓶颈是 dict 命中而非调用
+    开销），但去掉递归，为超长链与后续缓存优化留出空间；相关测试 + 全量 pytest 通过。
+29. ✅ **`Symbol.__hash__`/`__eq__` 显式化（本轮）**：`Symbol` 原为 `@dataclass(frozen,
+    slots)`，`span` 用 `compare=False` 排除；现改为 `eq=False` + 手写 `__eq__`（按 name）
+    与 `__hash__`（`hash(name)`，str 哈希已缓存），避免每次哈希构造 tuple。语义等价
+    （span 不参与相等/哈希），相关测试 + 全量对拍通过。注：本机 load ~10.5/16，自举
+    计时噪声大，不以绝对秒数断言收益。
+30. ✅ **类型化数值空间的 `/` / `rem` 语义修正（本轮）**：`qy.int8`..`qy.float128`
+    的整数 `/` 误用 Python `//`（floored），`rem` 误与 `mod` 同为 floored（`_rem` 的
+    docstring 却写 "truncating"）；与 `qy.num`（`/` 截断、`mod` floored、`remainder`
+    截断）不一致。现三宿主统一：整数 `/` 向零截断、`rem` 截断、`mod` floored——
+    `(/ (int8 -7) (int8 3)) (mod ...) (rem ...)` = `(-2 2 -1)`。补 `tests/test_numeric_spaces.py`
+    与 `tests/qy/55_std_primitives.qy` 覆盖，并在 `docs/stdlib-operators.md` 补类型化数值空间章节。
+31. ✅ **TS 字符串算子的 code point 语义（本轮）**：TS 的 `string-slice`/`string-at` 用
+    UTF-16 `text.length`/`text[i]`，遇到 astral 字符（如 😀）会拆开 surrogate；
+    `string-find` 返回 UTF-16 索引（Python/Go 为 code point 索引）；`string-replace`
+    用 `split/join`，空 pattern 少首尾（`"abc"` → `a-b-c`，Python/Go 为 `-a-b-c-`）。
+    现 TS 统一按 code point（`[...text]`）切片/取字符/换算索引，空 pattern 按 Python
+    `str.replace` 语义插入首尾；新增 `test/strings.test.ts` 与语料 unicode 用例。
+32. ✅ **Go `string-split`/`string-slice` 缺省参数 + 跨宿主错误码（本轮）**：Go `argAt`
+    对缺参返回宿主 nil，而 `optionalString` 只识别 `QyNil`，于是 `(string-split "a b")`、
+    `(string-slice "abc" 1)` 直接报类型错误；现 `optionalString` 同时把宿主 nil 视为未提供。
+    另：TS/Go `string-split` 空 separator 与 Python 的 `empty separator` 对齐；TS/Go CLI
+    错误前缀改为与 Python `qy/errors` 一致的 `QY_*` 码（`QY_TYPE_ERROR`/`QY_RUNTIME_ERROR`
+    /`QY_EVALUATION_ERROR`），`car`/`cdr` 错误消息统一用 Qy display 渲染值（消除 TS
+    `[object Object]` 泄漏、Go 缺值）。Go full case mapping 差异记入 `docs/hosts.md`。
+33. ✅ **随机程序对拍 + 诊断消息归一（本轮）**：新增 `build/fuzz_programs.py`（120 个随机
+    Qy 程序 × 3 宿主，比较 stdout + stderr 首行）驱动收口——从 12 处 mismatch 降到 **0**：
+    Python `_get` 缺参不再泄漏宿主 `TypeError`（改 `QyArityError`）；`get`/`has?` 在 TS/Go
+    先校验 arity；`get`/`len`/`car`/`cdr` 类型错误统一用 Qy display 渲染值；三宿主
+    `typeName` 统一返回 Qy 类型标签（char/string/symbol/chain/…，修 Go 缺 `CharValue`→object）；
+    TS `QyEffectSignal` 消息与 CLI 映射为 `QY_UNHANDLED_EFFECT: unhandled effect 'x'`；
+    Go `string-at` 补 index/length。补 `test/data.test.ts` 与 Python/TS 断言。
+34. ✅ **language-form 随机对拍 + Go 容器类型标签（本轮）**：新增 `build/fuzz_forms.py`
+    （100 个 `let`/`cond`/`if`/`pipeline`/`lambda` 组合程序）；发现 Go `typeNameOf` 对
+    tuple/list/dict/set 返回 `any`（Python/TS 为 `list` 等），已补全；两个 fuzz 现均 **bad 0**。
+    扩展 effect 矩阵（25 例）只余 1 处已记录差异：`(parallel (perform e …) …)` Python 并发
+    分支内 effect 逃逸为 `QY_AGGREGATE_ERROR`，TS/Go 因保守纯度回退顺序执行并由外层 handler
+    处理——已在 `docs/hosts.md` 明确写出。补 `stdlib/diagnostics_test.go`。
+35. ✅ **`parallel`/`all`/`race` 的 effect 与错误聚合跨宿主对齐（本轮）**：
+    - Python `_parallel_gather`/`_race_first` 采用与 TS 相同的「并发安全判定」
+      （`_thunks_are_concurrency_safe`：纯 opcode 白名单 + IO builtin/副作用 symbol），
+      分支含 effect/IO 时顺序回退，effect 由外层 handler 处理；
+    - `parallel` 的非 effect 错误统一聚合为 `QyAggregateError`：TS 顺序回退也聚合、
+      Go `PARALLEL_GATHER` 新增 `vm.AggregateError` 聚合（effect 信号原样上抛），
+      两宿主 CLI 映射 `QY_AGGREGATE_ERROR`；`all` 仍抛首个错误。
+    - 5 个 probe（effect / eval-error / car-error / all-error / pure）三宿主逐字节一致；
+      更新 `docs/hosts.md`、`docs/lir-effect-frame-design.md`。
+36. ✅ **宏在 module body 内首次使用时的卫生别名（本轮）**：`(macro m (x) (quasiquote
+    (tuple (unquote x))))` 只在 module body 内调用时，`_definition_site_alias` 把卫生别名
+    hidden 绑进 module body 的临时子 env，HIR lowering（用顶层 env 做 fallback resolve）看
+    不到，报 `unresolved symbol '__qy_hygiene_def_tuple_1'`（若先在顶层用过同一宏则正常）。
+    现 `RuntimeSpace.define_hidden_root` 把卫生别名装到 chain 根部，任意子 env 都能解析；
+    新增 `tests/test_macroexpand.py` 回归，macro/module/hygiene 矩阵 25 例 0 mismatch。
+37. ✅ **闭包/高阶函数对拍 + 函数 arity 错误码统一（本轮）**：新增 `build/matrix_closures.py`
+    （26 例：闭包捕获、返回 lambda、递归/互递归、apply、compose、higher-order）。发现
+    lambda/defun 参数数量不匹配时 Python/TS 抛 `QY_RUNTIME_ERROR`、Go 抛 `QY_ARITY_ERROR`；
+    现统一为 `QyArityError`（`QY_ARITY_ERROR`）。矩阵 26 例 0 mismatch。
+38. ✅ **宏参数 `&rest` 支持（本轮）**：编译器宏参数解析只识别 `&body`，而 self-host
+    `meta-interp/main.qy` 的宏展开同时识别 `&body` 与 `&rest`——于是 `(macro m (&rest r) …)`
+    把 `&rest` 当普通参数、调用报 arity。现 `qy/macro/expand.py` 把 `&rest` 与 `&body` 等价处理
+    （都绑定剩余参数为 chain），与 self-host 一致；新增 `tests/test_macroexpand.py` 回归，
+    macro/module/hygiene 矩阵仍 0 mismatch。注：`lambda`/`defun` 的 `&rest` 变参语法仍未支持
+    （那是需要跨 MIR/LIR/bytecode/host 的特性，另议）。
+39. ✅ **reify/eval 对拍 + 类型标签与错误泄漏（本轮）**：新增 `build/matrix_reify2.py`
+    （50 例）。修复：①`reify` 失败消息改用 Qy 类型标签（Python 原泄漏 `BytecodeFunctionValue`
+    /`PureOperator`/`SetValue`，TS 的 function/operator 返回 `object`，Go 返回 `any`），现三宿主
+    一致（`function`/`operator`/`set`/`tuple`…）；②`eval` 内层编译失败不再泄漏宿主 `TypeError`
+    （Python traceback），改为语言级错误，未绑定符号报 `QY_UNBOUND_SYMBOL`（与 TS/Go 一致）；
+    ③TS `bytecode call resolved to non-callable [object Object]` 改为 Qy display 的 `1`。
+    50 例剩 2 例为已记录差异：`eval '(1 2)` Python 编译期拒绝、TS/Go 运行期拒绝（错误码不同）。
+40. ✅ **变参函数参数 `&rest` / `&body`（本轮）**：`lambda`/`defun` 参数列表现支持
+    `&rest` / `&body <name>`，把剩余实参绑定为 chain（与宏 rest 参数同义）。跨全栈实现：
+    HIR `LambdaExpr.rest_param`/`DefunExpr.rest_param` → MIR `MIRFunction.rest_param` →
+    LIR `LIRFunction.rest_param` → bytecode `BytecodeFunction.rest_param` + JSON `rest` →
+    三宿主 VM `_make_frame`/`makeFrame`/`makeFrame`（定长 arity 检查退化为 `at least N`）。
+    新增语料 `tests/qy/56_variadic.qy`（conformance 76→**77**）；三宿主对拍 12 例 0 mismatch。
+    `docs/op.md` 记录语法；`docs/hosts.md`/`AGENTS.md` 计数更新。
+41. ✅ **变参函数的后端显式诊断（本轮）**：LLVM / wasm emitter 之前只用 `function.params`、
+    忽略 `rest_param`，变参函数会被静默当作定长编译（错误代码）。现两后端在 function emitter
+    入口检测 `rest_param`，抛 `LLVMUnsupportedError` / `WasmUnsupportedError`（「variadic function」），
+    `qy llvm` / `qy wasm` 干净报错；补 `tests/test_llvm_backend.py` / `tests/test_wasm_backend.py`，
+    更新 `docs/llvm-backend.md` / `docs/wasm-backend.md`。另跑通变参函数与 tail-call / effect /
+    cache / pipeline / parallel / 嵌套函数组合（10 例 0 mismatch）。
+42. ✅ **不可恢复 effect 的 resume 强制 + effect 载荷边界（本轮）**：新增
+    `build/matrix_numeric_effects.py`，发现 ① 对不可恢复 effect（`mod` 的 divide-by-zero、
+    `numeric-overflow`）调用 `resume`：Python 报 `QY_EFFECT_ERROR: ... is not resumable`，
+    TS/Go 却静默成功——现 TS `Continuation.resume` / Go `vm.resume` 补上 `resumable` 检查
+    （新增 `QyEffectError`/`EffectError` 与 CLI 映射）；② effect 载荷是宿主 dict（Python/TS）
+    或 `DictValue`（Go），`(get v 'operation)` 三宿主不一致——现统一为 Qy `DictValue`
+    （symbol 键 + Qy 值）：Python `number_ops.effect_payload` + `numeric_spaces` 显式转换、
+    TS `performEffect` 集中转换、Go 本就 `NewDict`；divide-by-zero 载荷统一带 `operator`。
+    载荷矩阵（`(get v 'operation)`/`(type v)`/`(get v 'result)`）三宿主一致。
+54. ✅ **控制/缓存对拍 + Qy library 机制探索（本轮）**：`assert`/`cache` 矩阵 16 例 0 mismatch；
+    高阶容器算子（`map`/`filter`/`fold`/`reduce`/`sort`/…）当前均未实现（草案未列）。
+    尝试把 draft 的「Qy library」派生数值算子（`inc`/`dec`/`abs`/`zero?`/…）实现为编译期宏
+    （`qy/std/library.py` + 注册进 macro namespace）：展开正确，但宏在符号解析前展开，会**遮蔽**
+    同名 lexical/`defun` 绑定（`(let ((inc …)) (inc 41))`、`(defun abs …)` 命中的是宏），
+    与 Qy 单命名空间语义冲突，已回退；结论写入 `docs/stdlib-operators.md`（Qy library 表格
+    增「现状」列 + 遮蔽约束说明）。LLVM 链常量尝试也因 libqy 无 symbol tag 回退（记于本项）。
+55. ✅ **宏展开尊重 lexical 遮蔽 + Qy library 落地（本轮）**：宏在符号解析前展开，会遮蔽同名
+    lexical/`defun` 绑定。现 `MacroExpansionContext` 增 `shadowed_macros`，宏展开前先查遮蔽：
+    `let` 绑定名（值仍在 outer scope 展开，且绑定名不再被误当宏调用——新增 `_macroexpand_let_form`）、
+    `lambda`/`defun` 参数、同层后续 `defun`/`define`/`module`/`defeffect` 的名字、顶层后续定义；
+    `(define name (component ...))` 是编译期宏注册、不遮蔽。据此把 Qy library 派生算子
+    （`inc`/`dec`/`abs`/`zero?`/`positive?`/`negative?`/`even?`/`odd?`/`min`/`max`）以编译期宏
+    落地（`qy/std/library.py`）：`(inc 41)`→42，而 `(let ((inc …)) (inc 1))`/`(defun abs …)`
+    命中本地绑定。新增语料 `tests/qy/57_library_ops.qy`（conformance 77→**78**）+ 回归测试；
+    `docs/stdlib-operators.md` Qy library 表更新为「已实现」。
+56. ✅ **交叉对拍全量复跑 + Qy library 文档收口（本轮）**：复跑 8 组跨宿主矩阵——
+    `fuzz_programs` 120、`fuzz_forms` 100、`effects2` 25、`macros2` 25、`closures` 26、
+    `variadic` 12、`numeric_effects` 12 全部 **bad 0**；`reify2` 50 例只剩 2 处已记录的
+    `eval '(1 2)` 编译期/运行期差异。round 46–55 的改动无回归。`docs/stdlib-operators.md`
+    的字符串 Qy library 表增「现状」（当前 host operator）；`qy/std/library.py` 记明宏实现的
+    限制（派生算子不是一等值，不能 apply；一等派生函数需运行时 Qy library）。
+57. ✅ **`ChainFrame.has_membership`：pre-ssc 快照标注动态字面量空间（本轮）**：
+    `ChainFrame` 之前只快照固定 `bindings`，`char-ss`/`string-ss`（0 固定绑定、靠
+    `(membership, resolver)` 识别字面量）在快照里看起来是空节点。现新增
+    `has_membership` 字段并在 `chain().frames()` 填充；`Qy().pre_symbol_space_chain`
+    现在能显示 `number-ss`/`char-ss`/`string-ss` 为动态空间（`lisp-ss`/`stdlib`/head 为 False）。
+    补 `tests/test_pre_ss.py` 回归与 `docs/language-core-audit.md` B3 说明。
+58. ✅ **wasm 后端 float 支持 + `display`/`echo` 返回值修复（本轮）**：新增 `TAG_FLOAT=6`
+    （`(data_offset<<3)|6`，f64 存于 linear memory）：常量进数据段（`abi.float_value` +
+    `emit._StringPool.intern_float`），运行时用 bump arena（2 MiB 起）承接运算结果，
+    `runtime.js` 增 `pyFloatRepr`（与 TS 宿主一致）、`+ - * / < > =` 的 f64 语义与 float 格式化。
+    顺带修复 wasm runtime 的 `display`/`echo` 返回 `nil` 的问题（VM 返回被打印值）——
+    现在 `(display (+ 1.5 2.5))` 三处输出与 register VM 一致。探针 `build/probe_wasm_float.py`
+    16 例（11 ok + 4 未支持 + 1 输入笔误）；补 `tests/test_wasm_backend.py` 结构性 + 端到端用例，
+    更新 `docs/wasm-backend.md`（tag 表 + 支持列表）。
+59. ✅ **Go full case mapping（本轮）**：Go 标准库只有 simple case mapping 且 Unicode 版本（17.0）
+    比参考实现 Python 3.12（15.0）新，`string-upper`/`string-lower` 与 Python/JS 不一致
+    （`ß`、`ﬁ`、`İ`、`ǰ`、Final_Sigma……）。新增 `qy/backend/golang/pkg/stdlib/unicase.go`：
+    由「Python `str.upper()/lower()` vs Go simple mapping 的逐码点差集」生成 157+56 条
+    覆盖表 + Final_Sigma 上下文规则，`fullUpper`/`fullLower` 替代 `strings.ToUpper/ToLower`；
+    `char-upcase`/`char-downcase` 改用 full mapping 并校验「恰好一个 scalar」（对齐 Python 的
+    `QY_RUNTIME_ERROR`，TS 侧同步修多字符返回）。矩阵：case 12 例 + 版本差异 10 例 + sigma 10 例 +
+    char 5 例全部三宿主一致；补 Go `unicase_test.go` 与 Python 回归；`docs/hosts.md` 移除该限制。
+60. ✅ **wasm raw-argument 字面量解析（本轮）**：wasm emitter 的 `_load_host` 之前遇到
+    `Symbol` 常量直接报 `LOAD_HOST with unsupported value`，导致 `(display 1)` 等最基本的
+    raw-argument 用法在 wasm 不可用。现在对 literal spelling 用
+    `qy.session.pre_ss.resolve_default_literal` 在编译期折成 value（wasm 没有 symbol 值 tag），
+    非字面量 symbol 仍显式报错。探针 `build/probe_wasm_raw.py`：`(display 1)`→`11`、
+    `(display 3.14)`→`3.143.14`、`(echo 42)`、`(display "hi")`、`(display #\a)` 等 9 例与
+    register VM 一致；补 `tests/test_wasm_backend.py` 端到端用例并更新 `docs/wasm-backend.md`。
+61. ✅ **wasm heap 对象：symbol / chain（本轮）**：新增 `TAG_HEAP=7`（linear memory 对象，
+    首 i32 子 tag：`1` symbol、`2` cons）；`emit._ConstantPool` 增 `intern_bytes/intern_symbol/
+    intern_cons`，`_load_host` 收敛为单一 `_encode_value`（symbol 先按字面量规则折值，其余成
+    heap symbol；chain 递归构建 cons）；`runtime.js` 增共享 bump arena、`cons`/`car`/`cdr` 与
+    heap/symbol/chain 的 `format`（含点对链）。至此 wasm 支持 quote 数据：validation 例子
+    **4→5/10**（`01_quote_chain.qy` 通过），探针 11 例（含 `(cons (car '(alpha beta)) (cdr '(alpha beta gamma)))`、
+    `'(1 . 2)`、嵌套链、`(display 'sym)`）与 register VM 一致；补结构性 + 端到端用例并更新文档。
+
+剩余跨宿主差异（非阻塞，记录于 `docs/hosts.md` §5）：Go `parallel` 顺序执行、
+`read-int` 返回 nil、`RUNTIME_EVAL` 极简；TS `RUNTIME_EVAL` 仅子集、同步 `race`
+胜者可能与 asyncio 不同；TS/Go 模块面暂不含 `qy.legacy`。
 
 # 9½. 自举解释器进展（meta-interp）
 
@@ -2343,7 +2651,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
   `examples/qy/validation/*.qy` 做逐字节对拍。
 - `tests/test_meta_interp.py`：
   - 19 个 `cases/` 用例默认运行，逐字节对比参考；
-  - `tests/qy` 全部 54 个行为用例在一次解释器进程内批量对拍；
+  - `tests/qy` 全部 56 个行为用例在一次解释器进程内批量对拍；
   - `examples/validation` 8 个验收样例默认对拍（03/09 深尾递归压力样例默认跳过，
     含 08_host_interop：py 扩展边界 + triple-quoted reader）；
   - `QY_META_SELF=1` 时额外运行阶段 2 自解释测试（解释器源码被自身解释后仍能把
@@ -2352,8 +2660,8 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 ## 已知差距
 
 - `this`/`slot`/`bind` 为可运行近似（local binding），不建模真正的 symbol-space
-  object / binding slot；`component` 只作为不融合的占位值，host 对象 repr
-  （RuntimeSpace / slot）无法逐字节对齐，因此 `examples/hello.qy` 未纳入自动对拍。
+  object / binding slot；`component` 只作为不融合的占位值。host 对象在文本表示上
+  已统一为 `<symbol-space>` / `<slot>`（见 §9¾ item 17），三宿主对 `hello.qy` 逐字节一致。
 - `reify` 对 host reference 的 partial 语义未实现。
 - 效应的已知简化：`divide-by-zero` 等 host 算术效应按宿主行为使用 identity
   continuation；显式 `perform` 支持 multi-shot（`19_multishot`），但并发结构与
@@ -2389,7 +2697,7 @@ uv run python -m pytest tests/test_cli_commands.py tests/test_lsp.py tests/test_
 - `HostObjectRef` 定义移入 `qy.sem.host.HostReference`，VM instance 只重导出。
 - 字符串字面量解析为 `StringValue`：语言运行时不再以宿主 `str` 定义字符串值；
   Python 扩展在边界显式 `StringValue <-> str` / `NumberValue <-> int|float` 转换。
-- `qy.sem.bridge.to_qy_value` / `from_qy_value`：扩展边界的统一宿主值转换
+- `qy.sem.convert.to_qy_value` / `from_qy_value`：扩展边界的统一宿主值转换
   （未知对象 → `HostReference`）；`string-split`/`string->list` 返回 `TupleValue`。
 - `parallel`/`all` join 结果为 `TupleValue`；`len`/`get`/`has?`/`append`/`chain`
   不再接受裸宿主容器；语义容器补宿主级 permissive `__eq__`。

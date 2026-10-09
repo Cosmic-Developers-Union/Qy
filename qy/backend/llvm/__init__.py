@@ -42,6 +42,7 @@ from qy.backend.llvm.abi import builtin_index
 from qy.backend.llvm.abi import fn_symbol
 from qy.backend.llvm.abi import str_global
 from qy.backend.llvm.abi import sym_global
+from qy.backend.llvm.emit import LLVMUnsupportedError
 from qy.backend.llvm.emit import compile_to_llvm_text
 from qy.backend.llvm.emit import emit
 from qy.backend.llvm.link import CompilationError
@@ -63,6 +64,7 @@ __all__ = [
     "QY_TAG_T",
     "CompilationError",
     "CompileResult",
+    "LLVMUnsupportedError",
     "builtin_index",
     "compile_to_llvm_text",
     # Emit

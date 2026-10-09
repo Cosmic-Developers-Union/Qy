@@ -206,6 +206,10 @@ async def macroexpand_async(
                 context,
                 depth=0,
             )
+            # 顶层后续 form：defun/define 的名字遮蔽同名宏。
+            defined = _defined_names(form)
+            if defined:
+                context = context.shadowed(frozenset(defined))
             # 过滤掉编译时构造（macro, from 等返回 nil）
             if not is_nil(expanded):
                 expanded_forms.append(cast(Form, expanded))
@@ -266,6 +270,9 @@ class MacroExpansionContext:
     active_expansions: list[Symbol] = field(default_factory=list)
     gensym_counter: int = 0
     hygiene_counter: int = 0
+    # 已被 lexical binding（let/lambda/defun/define）遮蔽的宏名：单命名空间下
+    # 本地绑定压过同名宏，宏展开必须跳过它们。
+    shadowed_macros: frozenset[Symbol] = frozenset()
 
     @classmethod
     def create(
@@ -291,6 +298,24 @@ class MacroExpansionContext:
             self.active_expansions,
             self.gensym_counter,
             self.hygiene_counter,
+            self.shadowed_macros,
+        )
+
+    def shadowed(self, names: frozenset[Symbol]) -> MacroExpansionContext:
+        """返回一个额外遮蔽 *names* 的上下文（共享 scope 与可变状态）。."""
+        return MacroExpansionContext(
+            self.env,
+            self.options,
+            self.scope,
+            self.macro_namespace,
+            self.module_macro_namespace,
+            self.diagnostics,
+            self.traces,
+            self.generated_symbols,
+            self.active_expansions,
+            self.gensym_counter,
+            self.hygiene_counter,
+            self.shadowed_macros | names,
         )
 
     def child_scope_with_env(self, env: Environment) -> MacroExpansionContext:
@@ -306,6 +331,7 @@ class MacroExpansionContext:
             self.active_expansions,
             self.gensym_counter,
             self.hygiene_counter,
+            self.shadowed_macros,
         )
 
     def sync_from(self, child: MacroExpansionContext) -> None:
@@ -396,7 +422,7 @@ async def _macroexpand_form(
         _import_macros_from_form(form, context)
         return form
     if operator == Symbol("let"):
-        return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
+        return await _macroexpand_let_form(form, context, depth=depth)
     if operator == Symbol("module"):
         return await _macroexpand_module_form(form, context, depth=depth)
     if operator == Symbol("lambda"):
@@ -404,8 +430,10 @@ async def _macroexpand_form(
     if operator == Symbol("defun"):
         return await _macroexpand_body_form(form, context, depth=depth, body_start=3)
     if operator == Symbol("define"):
-        # 特殊处理 (define name (component ...))
-        # 这样可以在宏展开阶段注册 component 生成的宏
+        # 特殊处理 (define name (component ...))：这是**编译期宏定义**——
+        # 在宏展开阶段注册生成的宏即可，运行期没有绑定可 define。注册成功后返回
+        # nil（调用方会过滤），避免把 `component` 泄漏进运行期 bytecode（否则
+        # 不实现宏的宿主 VM 会报 unresolved symbol 'component'）。
         items = _form_to_list(form)
         if len(items) == 3:
             name, value = items[1], items[2]
@@ -416,14 +444,15 @@ async def _macroexpand_form(
 
                     try:
                         macro_def = await evaluate_compile_time_body((value,), context.env)
-                        if isinstance(macro_def, MacroDefinition):
-                            context.define_macro(name, macro_def)
                     except Exception:
                         # 如果求值失败，继续正常处理
-                        pass
+                        macro_def = None
+                    if isinstance(macro_def, MacroDefinition):
+                        context.define_macro(name, macro_def)
+                        return nil
         return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
 
-    if isinstance(operator, Symbol):
+    if isinstance(operator, Symbol) and operator not in context.shadowed_macros:
         if (value := context.resolve_macro(operator)) is not None:
             context.active_expansions.append(operator)
             try:
@@ -472,7 +501,8 @@ async def _macroexpand_body_form(
     prefix_items = _slice_form(form, 0, body_start)
     prefix = [await _macroexpand_form(item, context, depth=depth) for item in prefix_items]
 
-    body_context = context.child_scope()
+    shadowed = set(_shadowed_names(form, body_start))
+    body_context = context.child_scope().shadowed(frozenset(shadowed))
     body_items = _slice_form(form, body_start)
     body = []
     for item in body_items:
@@ -480,8 +510,104 @@ async def _macroexpand_body_form(
         # 过滤掉编译时构造（macro 定义返回 nil）
         if not is_nil(expanded):
             body.append(expanded)
+        # 同层后续 form：defun/define 的名字遮蔽同名宏（单命名空间）。
+        defined = _defined_names(item)
+        if defined:
+            shadowed |= defined
+            body_context = body_context.shadowed(frozenset(defined))
     context.sync_from(body_context)
     return _list_to_form([*prefix, *body], form)
+
+
+async def _macroexpand_let_form(
+    form: object,
+    context: MacroExpansionContext,
+    *,
+    depth: int,
+) -> object:
+    """展开 `let`：绑定**值**在 outer scope 展开，绑定名不做宏展开（可能同名）。."""
+    items = _form_to_list(form)
+    if len(items) < 2 or not (_is_list_form(items[1]) or is_nil(items[1])):
+        return await _macroexpand_body_form(form, context, depth=depth, body_start=2)
+    bindings = items[1]
+    names: list[Symbol] = []
+    expanded_bindings: list[object] = []
+    for pair in _form_to_list(bindings):
+        pair_items = _form_to_list(pair) if _is_list_form(pair) else []
+        if len(pair_items) == 2 and isinstance(pair_items[0], Symbol):
+            names.append(pair_items[0])
+            value = await _macroexpand_form(pair_items[1], context, depth=depth)
+            expanded_bindings.append(_list_to_form([pair_items[0], value], pair))
+        else:
+            expanded_bindings.append(await _macroexpand_form(pair, context, depth=depth))
+    body_context = context.child_scope().shadowed(frozenset(names))
+    body: list[object] = []
+    for item in items[2:]:
+        expanded = await _macroexpand_form(item, body_context, depth=depth)
+        if not is_nil(expanded):
+            body.append(expanded)
+        defined = _defined_names(item)
+        if defined:
+            body_context = body_context.shadowed(frozenset(defined))
+    context.sync_from(body_context)
+    return _list_to_form([items[0], _list_to_form(expanded_bindings, bindings), *body], form)
+
+
+def _parameter_names(params: object) -> list[Symbol]:
+    """从参数列表收集绑定名（跳过 `&rest` / `&body` 关键字）。."""
+    if not (_is_list_form(params) or is_nil(params)):
+        return []
+    names: list[Symbol] = []
+    for item in _form_to_list(params):
+        if isinstance(item, Symbol) and item.name not in ("&rest", "&body"):
+            names.append(item)
+    return names
+
+
+def _shadowed_names(form: object, body_start: int) -> frozenset[Symbol]:
+    """收集该 body form 自身引入的绑定名（供宏遮蔽判定）。."""
+    items = _form_to_list(form)
+    if body_start == 3:
+        # defun: 函数名 + 参数
+        names: list[Symbol] = []
+        if len(items) >= 2 and isinstance(items[1], Symbol):
+            names.append(items[1])
+        if len(items) >= 3:
+            names.extend(_parameter_names(items[2]))
+        return frozenset(names)
+    if body_start == 2 and len(items) >= 2:
+        spec = items[1]
+        if not (_is_list_form(spec) or is_nil(spec)):
+            return frozenset()
+        spec_items = _form_to_list(spec)
+        # let 绑定：元素是 (name value) pair；lambda 参数：元素是 symbol。
+        if spec_items and _is_list_form(spec_items[0]):
+            names = []
+            for pair in spec_items:
+                pair_items = _form_to_list(pair)
+                if pair_items and isinstance(pair_items[0], Symbol):
+                    names.append(pair_items[0])
+            return frozenset(names)
+        return frozenset(_parameter_names(spec))
+    return frozenset()
+
+
+def _defined_names(form: object) -> frozenset[Symbol]:
+    """若 form 是定义式，返回它引入的名字（供同层后续 form 的宏遮蔽判定）。."""
+    if not _is_list_form(form):
+        return frozenset()
+    items = _form_to_list(form)
+    operator = items[0] if items else None
+    if not isinstance(operator, Symbol) or len(items) < 2 or not isinstance(items[1], Symbol):
+        return frozenset()
+    if operator.name == "define" and len(items) >= 3:
+        value = items[2]
+        # `(define name (component ...))` 注册的是编译期宏，不是值绑定，不能遮蔽宏。
+        if _get_operator(value) == Symbol("component"):
+            return frozenset()
+    if operator.name in ("define", "defun", "defeffect", "module"):
+        return frozenset({items[1]})
+    return frozenset()
 
 
 async def _macroexpand_module_form(
@@ -629,7 +755,7 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
             span=get_span(params),
         )
 
-    # 解析参数列表，支持 &body 和点对语法
+    # 解析参数列表，支持 &body / &rest 和点对语法
     param_symbols = []
     rest_param = None
 
@@ -660,17 +786,18 @@ def _define_macro(form: object, context: MacroExpansionContext) -> None:
                     span=get_span(param),
                 )
 
-            # 检查是否是 &body 关键字
-            if param.name == "&body":
-                # &body 后面必须有且只有一个参数
+            # 检查是否是 &body / &rest 关键字（二者都是 rest 参数别名，语义相同；
+            # self-host `meta-interp/main.qy` 同时识别两者）。
+            if param.name in ("&body", "&rest"):
+                # 后面必须有且只有一个参数
                 if i + 1 >= len(param_items):
                     raise QyArityError(
-                        "macro &body requires a parameter name",
+                        f"macro {param.name} requires a parameter name",
                         span=get_span(param),
                     )
                 if i + 2 < len(param_items):
                     raise QyArityError(
-                        "macro &body must be the last parameter",
+                        f"macro {param.name} must be the last parameter",
                         span=get_span(param),
                     )
 

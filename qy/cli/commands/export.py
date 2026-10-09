@@ -48,15 +48,16 @@ def register(group: click.Group) -> None:
         """Export bytecode in JSON interchange format for external VMs."""
         qy = Qy()
         source, source_name = read_debug_source(target)
-        # 与 `qy/cli/_common.compile_source_to` 等价，只是显式传入
-        # `PipelineOptions(lir_dialect=...)`；error_threshold 保持 10**6 以收集
-        # 全部诊断（`_make_context` 在 options=None 时的默认值）。
+        # 与 `qy/cli/_common.compile_source_to` 一致，只是显式传入
+        # `PipelineOptions(lir_dialect=...)`。error_threshold=1：在第一个出错的 pass
+        # 后短路（同一 pass 内仍收集全部诊断），避免在已 fail 的 HIR 上继续 lowering
+        # 产生 "LIR main function index ... out of range" 这类二次内部错误。
         session = PipelineSession(env=qy.env, source_name=source_name)
         result = compile_source_to_kind(
             source,
             session,
             kind=BYTECODE,
-            options=PipelineOptions(lir_dialect=dialect, error_threshold=10**6),
+            options=PipelineOptions(lir_dialect=dialect, error_threshold=1),
         )
         has_errors = print_debug_diagnostics(source_name, result.diagnostics)
         try:

@@ -274,6 +274,20 @@ def test_pre_ssc_chain_structure():
     assert "pre-ssc-head" in frame_names
 
 
+def test_pre_ssc_chain_marks_dynamic_literal_spaces():
+    """字面量空间（number/char/string-ss）在 chain 快照里必须标出 has_membership。."""
+    stdlib = SymbolSpace({S("stdlib-sym"): "stdlib-val"}, name="stdlib")
+    pre_ssc = create_pre_ssc(stdlib)
+    frames = {frame.name: frame for frame in pre_ssc.chain().frames()}
+
+    assert frames["number-ss"].has_membership is True
+    assert frames["char-ss"].has_membership is True
+    assert frames["string-ss"].has_membership is True
+    assert frames["lisp-ss"].has_membership is False
+    assert frames["stdlib"].has_membership is False
+    assert frames["pre-ssc-head"].has_membership is False
+
+
 def test_literal_ss_with_parent():
     """Test literal-ss creation with custom parent."""
     parent = SymbolSpace({S("parent-sym"): "parent-val"}, name="parent")

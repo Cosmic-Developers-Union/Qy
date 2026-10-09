@@ -5,6 +5,12 @@ from __future__ import annotations
 from qy.core.operators import ScopeOperator
 from qy.core.symbol_utils import ensure_symbol
 from qy.core.syntax import Symbol
+from qy.core.syntax import car
+from qy.core.syntax import cdr
+from qy.core.syntax import chain_to_list
+from qy.core.syntax import is_chain
+from qy.core.syntax import is_nil
+from qy.core.syntax import list_to_chain
 from qy.errors import EvaluationError
 from qy.errors import QyArityError
 from qy.import_.module import StandardModule
@@ -16,13 +22,24 @@ from qy.vm.instance.machine import evaluate_form_async as evaluate_async
 
 
 def _is_special_form(form: object, name: str) -> bool:
-    return isinstance(form, tuple) and len(form) > 0 and form[0] == Symbol(name)
+    """``form`` 是否为 head 是 ``Symbol(name)`` 的 chain。.
+
+    raw AST 只有 symbol / chain / nil；这里不接受宿主 tuple。
+    """
+    if not is_chain(form):
+        return False
+    return car(form) == Symbol(name)
 
 
-def _parse_export_names(items: tuple[object, ...]) -> list[Symbol]:
+def _parse_export_names(items: object) -> list[Symbol]:
+    """把 ``exports`` 的尾部 chain 展平为一组符号名。."""
+    if is_nil(items):
+        return []
+    if not is_chain(items):
+        raise TypeError(f"exports expects a chain, got {type(items).__name__}")
     names: list[Symbol] = []
-    for item in items:
-        if isinstance(item, tuple):
+    for item in chain_to_list(items):
+        if is_chain(item):
             names.extend(_parse_export_names(item))
             continue
         names.append(ensure_symbol(item, "module export"))
@@ -45,8 +62,7 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
 
     for form in body:
         if _is_special_form(form, "exports"):
-            assert isinstance(form, tuple)
-            export_names.extend(_parse_export_names(form[1:]))
+            export_names.extend(_parse_export_names(cdr(form)))
             continue
         await evaluate_async(form, module_env)
 
@@ -71,7 +87,7 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
     provisional = lookup_source_module(name.name, env)
     if provisional is None:
         # 如果没有缓存，尝试从当前 body 构建（可能已经展开，宏定义被移除）
-        provisional = build_provisional_module((Symbol("module"), name, *body), env)
+        provisional = build_provisional_module(list_to_chain([Symbol("module"), name, *body]), env)
     if provisional is not None:
         macro_exports = {**dict(provisional.macro_exports), **macro_exports}
 
@@ -83,22 +99,12 @@ async def _module(args: tuple[object, ...], env: Environment) -> object:
 
 
 async def _from_import(args: tuple[object, ...], env: Environment) -> object:
+    from qy.import_.from_fold import fold_import
+
     try:
-        module_name, specs = parse_from_import((Symbol("from"), *args))
+        module_name, specs = parse_from_import(list_to_chain([Symbol("from"), *args]))
         source_module = await load_module_async(module_name.name)
-        runtime_specs = [spec for spec in specs if spec.name in source_module.exports]
-        macro_only = all(spec.name in source_module.macro_exports for spec in specs)
-        if not runtime_specs and not macro_only:
-            missing = [spec.name.name for spec in specs]
-            raise KeyError(f"module {module_name.name!r} has no export {missing[0]!r}")
-        if runtime_specs:
-            alias_bindings: dict[Symbol, object] = {}
-            for spec in runtime_specs:
-                alias_bindings[spec.alias] = source_module.exports[spec.name]
-            env.fold_from(
-                alias_bindings,
-                [spec.alias for spec in runtime_specs],
-            )
+        fold_import(env, module_name.name, specs, source_module)
     except (KeyError, ValueError) as e:
         raise EvaluationError(str(e)) from e
 

@@ -73,3 +73,9 @@ def test_write_program():
 def test_string_literal_write():
     assert write(S('"abc"')) == '"abc"'
     assert write(S('"hello world"')) == '"hello world"'
+
+
+def test_write_symbol_with_quote_prefix():
+    """引号前缀符号必须裸写（raw 层是 Symbol，不是字符串）。."""
+    assert write(S("'x")) == "'x"
+    assert write(S("a'b")) == "a'b"

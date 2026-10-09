@@ -89,3 +89,30 @@ def test_component_closure():
     """
     result = es(code)
     assert result == 15
+
+
+def test_component_define_does_not_leak_into_bytecode():
+    """`(define name (component ...))` 是编译期宏定义，运行期 bytecode 不得引用 component。."""
+    from qy.backend.vm.bytecode import serialize_bytecode_json
+    from qy.build.pipeline import bytecode_artifact
+    from qy.build.pipeline import compile_source_to_kind
+    from qy.passes.pass_base import PipelineOptions
+    from qy.passes.pass_base import PipelineSession
+    from qy.session.runtime_space import create_standard_runtime_space
+
+    source = (
+        "(define defun-component (component define lambda))\n"
+        "(defun-component add (a b) (+ a b))\n"
+        "(add 1 2)"
+    )
+    env = create_standard_runtime_space()
+    program = bytecode_artifact(
+        compile_source_to_kind(
+            source,
+            PipelineSession(env=env),
+            kind="bytecode",
+            options=PipelineOptions(error_threshold=10**6),
+        )
+    )
+    text = serialize_bytecode_json(program, env=env)
+    assert "component" not in text

@@ -12,7 +12,8 @@
 - 标准库分两层：
   - **host primitive**：标准实现必须提供的最小原语；
   - **Qy library**：用核心 form 与 host primitive 组合出的派生能力。
-- `eq` 始终保留 Lisp identity 语义；数值相等、字符串相等、结构相等必须分别建模。
+- `eq` 对引用类型（chain / 容器 / host reference）保留 Lisp identity 语义，原子
+  （number / string / char / symbol）按值比较；数值相等、字符串相等、结构相等分别建模。
 - 下列名称均为工作草案，可随实现推进调整。
 
 ## 数值库草案
@@ -35,21 +36,28 @@
 
 ### Qy library
 
-| 算子        | 可由哪些原语定义   |
-| ----------- | ------------------ |
-| `<=`        | `<` + `=`          |
-| `>`         | `<`                |
-| `>=`        | `<` + `=`          |
-| `zero?`     | `=`                |
-| `positive?` | `<`                |
-| `negative?` | `<`                |
-| `inc`       | `+`                |
-| `dec`       | `-`                |
-| `abs`       | `<` + `cond` + `-` |
-| `even?`     | `remainder` + `=`  |
-| `odd?`      | `remainder` + `=`  |
-| `min`       | `<` + `cond`       |
-| `max`       | `<` + `cond`       |
+| 算子        | 可由哪些原语定义   | 现状                                                   |
+| ----------- | ------------------ | ------------------------------------------------------ |
+| `<=`        | `<` + `=`          | 已实现（当前是 host operator，待迁到 Qy library）       |
+| `>`         | `<`                | 已实现（同上）                                         |
+| `>=`        | `<` + `=`          | 已实现（同上）                                         |
+| `zero?`     | `=`                | 已实现（Qy library 宏，`qy/std/library.py`）            |
+| `positive?` | `<`                | 已实现（同上）                                          |
+| `negative?` | `<`                | 已实现（同上）                                          |
+| `inc`       | `+`                | 已实现（同上）                                          |
+| `dec`       | `-`                | 已实现（同上）                                          |
+| `abs`       | `<` + `cond` + `-` | 已实现（同上）                                          |
+| `even?`     | `mod` + `=`        | 已实现（同上；用 floored `mod` 以正确处理负数）         |
+| `odd?`      | `mod` + `=`        | 已实现（同上）                                          |
+| `min`       | `<` + `cond`       | 已实现（同上）                                          |
+| `max`       | `<` + `cond`       | 已实现（同上）                                          |
+
+说明：
+
+- 「Qy library」以编译期宏（`MacroDefinition` + quasiquote）实现，注册在标准实例的
+  macro namespace（`qy/std/library.py`）。宏在符号解析前展开，因此宏展开器必须尊重
+  lexical binding 遮蔽（`qy/macro/expand.py::shadowed_macros`）：`(let ((inc …)) (inc 41))`
+  命中本地绑定、`(defun abs …)` 之后的 `(abs …)` 命中本地函数，而不是同名宏。
 
 ### 暂缓
 
@@ -61,6 +69,33 @@
 
 - `=` 只负责 number equality，不替代 `eq`。
 - `==` 不应继续作为正式 Qy 语义扩张点；若保留，只能算兼容层遗留。
+- 当前实现的 `mod` 遵循 Python `%`：结果符号跟随除数（floored），integer 与 float 一致；
+  `remainder` 是截断余数（符号跟随被除数），同样 int/float 一致；`number?` / `mod` /
+  `remainder` 均已在 prelude 与 `qy.num` 提供。
+
+### 类型化数值空间（已实现）
+
+`qy.int8` / `qy.int16` / `qy.int32` / `qy.int64` / `qy.uint8` / `qy.uint16` /
+`qy.uint32` / `qy.uint64` 与 `qy.float16` / `qy.float32` / `qy.float64` /
+`qy.float128` 是独立具名 module，不进入默认 prelude，需显式
+`(from qy.int8 import int8 + ...)`。Python / TS / Go 三宿主均已实现。
+
+整数模块（`qy.int8` 为例）导出：`int8`（构造器，带范围检查）/ `int8?`（谓词）/
+`+ - * /` / `mod` / `rem` / `< > <= >= =` / `bit-and bit-or bit-xor bit-not shl shr` /
+`min-value max-value bits`。
+
+浮点模块（`qy.float32` 为例）导出：`float32` / `float32?` / `+ - * /` /
+`< > <= >= =` / `bits`。
+
+语义与 `qy.num` 对齐：
+
+- 整数 `/` 向零**截断**（与 `qy.num` 的整数 `/` 一致，不是 Python `//` 的 floored）；
+- 整数 `mod` 为 Python `%`（floored，符号跟随除数）；
+- 整数 `rem` 为**截断**余数（符号跟随被除数，与 `qy.num` 的 `remainder` 一致）；
+- 整数溢出触发不可恢复的 `numeric-overflow` effect，载荷为
+  `{type, operation, result, min, max}`；除零触发 `divide-by-zero`。
+- 浮点空间目前是**名义**类型：底层仍存 float64，构造器与算术只做 finite 检查，
+  不按 float16/float32/float128 做舍入或范围裁剪（`bits` 仍报告目标位宽）。
 
 ## 字符串库草案
 
@@ -89,11 +124,11 @@
 
 ### Qy library
 
-| 算子                  | 可由哪些原语定义                             |
-| --------------------- | -------------------------------------------- |
-| `string-empty?`       | `string-length` + `=`                        |
-| `string-starts-with?` | `string-slice` + `string=`                   |
-| `string-ends-with?`   | `string-length` + `string-slice` + `string=` |
+| 算子                  | 可由哪些原语定义                             | 现状                        |
+| --------------------- | -------------------------------------------- | --------------------------- |
+| `string-empty?`       | `string-length` + `=`                        | 已实现（当前是 host operator） |
+| `string-starts-with?` | `string-slice` + `string=`                   | 已实现（当前是 host operator） |
+| `string-ends-with?`   | `string-length` + `string-slice` + `string=` | 已实现（当前是 host operator） |
 
 ### 可选 host extension
 
@@ -114,8 +149,10 @@
 
 | 算子        | 类型     | 说明                                                         |
 | ----------- | -------- | ------------------------------------------------------------ |
-| `print`     | effect   | 打印求值后的值，返回最后一个打印值                           |
+| `print`     | effect   | 打印求值后的值并换行，返回最后一个打印值                     |
 | `echo`      | effect   | `print` 别名                                                 |
+| `display`   | effect   | 打印值但**不**追加换行（与后端 `display` 内建一致）          |
+| `newline`   | effect   | 打印一个换行，返回 `nil`                                     |
 | `read-file` | effect   | 读取文本文件并返回 `string`；参数为路径（symbol 或 string） |
 
 说明：

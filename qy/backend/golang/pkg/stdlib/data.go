@@ -1,6 +1,7 @@
 package stdlib
 
 import (
+	"fmt"
 	"strconv"
 
 	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
@@ -74,6 +75,11 @@ func Eq(left, right vm.Value) (vm.Value, error) {
 			return vm.QyT, nil
 		}
 		return vm.QyNil, nil
+	case *vm.CharValue:
+		if r, ok := right.(*vm.CharValue); ok && l.Value == r.Value {
+			return vm.QyT, nil
+		}
+		return vm.QyNil, nil
 	case *vm.Symbol:
 		if r, ok := right.(*vm.Symbol); ok && l.Name == r.Name {
 			return vm.QyT, nil
@@ -124,7 +130,7 @@ func CarOp(value vm.Value) (vm.Value, error) {
 	if chain, ok := value.(*vm.Chain); ok {
 		return chain.Head, nil
 	}
-	return nil, vm.NewTypeError("car expects a chain")
+	return nil, vm.NewTypeError("car expects a chain, got " + vm.FormatValue(value))
 }
 
 // CdrOp 是 `cdr`。
@@ -135,7 +141,7 @@ func CdrOp(value vm.Value) (vm.Value, error) {
 	if chain, ok := value.(*vm.Chain); ok {
 		return chain.Tail, nil
 	}
-	return nil, vm.NewTypeError("cdr expects a chain")
+	return nil, vm.NewTypeError("cdr expects a chain, got " + vm.FormatValue(value))
 }
 
 // ConsOp 是 `cons`。
@@ -223,7 +229,7 @@ func LenOp(value vm.Value) (vm.Value, error) {
 	case *vm.SetValue:
 		return vm.NewInt(int64(len(v.Items))), nil
 	}
-	return nil, vm.NewTypeError("len expects a collection")
+	return nil, vm.NewTypeError("len expects a collection, got " + vm.FormatValue(value))
 }
 
 func ensureIndex(value vm.Value) (int, error) {
@@ -302,7 +308,7 @@ func GetOp(collection, key vm.Value, defaults ...vm.Value) (vm.Value, error) {
 		}
 		return fallback, nil
 	}
-	return nil, vm.NewTypeError("get expects a chain, tuple, list, or dict")
+	return nil, vm.NewTypeError("get expects a chain, tuple, list, or dict, got " + vm.FormatValue(collection))
 }
 
 // HasOp 是 `has?`。
@@ -517,6 +523,12 @@ func TypeOp(value vm.Value) vm.Value {
 		return vm.NewSymbol("string")
 	case *vm.CharValue:
 		return vm.NewSymbol("char")
+	case *vm.PureOperator, *vm.RawOperator:
+		return vm.NewSymbol("operator")
+	case *vm.EffectDefinition:
+		return vm.NewSymbol("effect")
+	case *vm.FunctionValue:
+		return vm.NewSymbol("function")
 	}
 	return vm.NewSymbol("object")
 }
@@ -625,9 +637,17 @@ func DataBindings() map[string]func(args []vm.Value) (vm.Value, error) {
 		"cons": func(args []vm.Value) (vm.Value, error) { return ConsOp(argAt(args, 0), argAt(args, 1)) },
 		"eq":   func(args []vm.Value) (vm.Value, error) { return Eq(argAt(args, 0), argAt(args, 1)) },
 		"get": func(args []vm.Value) (vm.Value, error) {
-			return GetOp(argAt(args, 0), argAt(args, 1), args[minInt(2, len(args)):]...)
+			if len(args) < 2 || len(args) > 3 {
+				return nil, vm.NewArityError(fmt.Sprintf("get expects two or three arguments, got %d", len(args)))
+			}
+			return GetOp(args[0], args[1], args[2:]...)
 		},
-		"has?":  func(args []vm.Value) (vm.Value, error) { return HasOp(argAt(args, 0), argAt(args, 1)) },
+		"has?": func(args []vm.Value) (vm.Value, error) {
+			if len(args) != 2 {
+				return nil, vm.NewArityError(fmt.Sprintf("has? expects exactly two arguments, got %d", len(args)))
+			}
+			return HasOp(args[0], args[1])
+		},
 		"is":    func(args []vm.Value) (vm.Value, error) { return IsIdentical(argAt(args, 0), argAt(args, 1)), nil },
 		"len":   func(args []vm.Value) (vm.Value, error) { return LenOp(argAt(args, 0)) },
 		"type":  func(args []vm.Value) (vm.Value, error) { return TypeOp(argAt(args, 0)), nil },

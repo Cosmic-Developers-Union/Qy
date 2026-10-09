@@ -417,7 +417,17 @@ def _this(args: object, env: Environment) -> object:
     return env
 
 
-_SLOT_TOKEN = object()
+class _SlotToken:
+    """``(slot)`` 返回的占位符：仅 grammar shape，不携带状态。."""
+
+    def __qy_format__(self) -> str:
+        return "<slot>"
+
+    def __repr__(self) -> str:
+        return "<slot>"
+
+
+_SLOT_TOKEN = _SlotToken()
 """Sentinel returned by the ``(slot)`` operator.
 
 slot 算子是 ``(define name value)`` 的解构形式中可读的占位符——它本身不

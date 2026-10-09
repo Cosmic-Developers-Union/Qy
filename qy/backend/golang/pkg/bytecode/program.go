@@ -67,6 +67,8 @@ type Function struct {
 	Params        []string      `json:"params"`
 	RegisterCount int           `json:"register_count"`
 	Instructions  []Instruction `json:"instructions"`
+	// `&rest` / `&body` 变参名；空串表示定长参数。
+	Rest string `json:"rest"`
 }
 
 // Instruction 是一条指令。Operands 已按操作数对象还原（Type / Class / Value）。

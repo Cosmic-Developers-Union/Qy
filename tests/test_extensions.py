@@ -127,7 +127,12 @@ def test_read_file_lives_in_fs_extension_not_io():
     env = standard_environment()
     for symbol, value in load_module("qy.io").exports.items():
         env.define(symbol, value)
-    assert {symbol.name for symbol in load_module("qy.io").exports} == {"print", "echo"}
+    assert {symbol.name for symbol in load_module("qy.io").exports} == {
+        "print",
+        "echo",
+        "display",
+        "newline",
+    }
 
     from qy.runtime import evaluate_source
 

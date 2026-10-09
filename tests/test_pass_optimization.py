@@ -302,9 +302,23 @@ class TestTailCall:
 
 class TestInline:
     def test_inlines_simple_function(self):
-        mir = _compile_to_mir("(define const5 (lambda () 5))(const5)")
+        # pipeline 不把 defun 值作为顶层结果，因此 callee 可以安全删除。
+        mir = _compile_to_mir("(pipeline (defun const5 () 5) (const5))")
         result = _run_pass(InlinePass(), mir)
         assert len(result.artifact.functions) == 1
+
+    def test_keeps_callee_when_function_value_is_observed(self):
+        """函数值仍被 APPEND_RESULT 读取时，不能删除 MAKE_FUNCTION（否则读到未定义寄存器）。."""
+        mir = _compile_to_mir("(define const5 (lambda () 5))(const5)")
+        result = _run_pass(InlinePass(), mir)
+        assert len(result.artifact.functions) == 2
+        opcodes = [
+            inst.opcode
+            for fn in result.artifact.functions
+            for block in fn.blocks
+            for inst in block.instructions
+        ]
+        assert "MAKE_FUNCTION" in opcodes
 
     def test_no_inline_recursive(self):
         mir = _compile_to_mir("(define f (lambda (x) (cond ((= x 0) 1) (t (f (- x 1))))))(f 5)")

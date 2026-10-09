@@ -30,6 +30,8 @@ from qy.diag import Diagnostic
 from qy.errors import EvaluationError
 from qy.frontend.reader import ReaderSyntaxError
 from qy.frontend.reader import read
+from qy.import_.from_fold import iter_selected_exports
+from qy.import_.from_fold import missing_export_names
 from qy.import_.loader import resolve_known_module
 from qy.import_.parse import parse_from_import
 from qy.ir import AllExpr
@@ -166,7 +168,7 @@ def lower(forms: list[Form], env: Environment | None = None) -> ProgramIR:
     body: list[IRExpr] = []
     for form in forms:
         # Top-level forms are not in tail position; tail propagation starts from
-        # function / lambda / cond / pipeline bodies (see ir-spec.md §3.4 H5).
+        # function / lambda / cond / pipeline bodies (see hir-spec.md §3.4 H5).
         expr = _lower_form(form, scope, context, tail=False)
         body.append(expr)
         scope = _scope_after_form(form, expr, scope, context)
@@ -573,13 +575,15 @@ def _lower_lambda(
         context.diagnostic("lambda expects a parameter list and body", form)
         return LambdaExpr((), (), get_span(form))
     params, *body = args
-    param_symbols = _parameter_symbols(params, "lambda", context)
+    param_symbols, rest_param = _parameter_symbols_and_rest(params, "lambda", context)
     function_scope = _define_parameters(scope.child("lambda"), param_symbols, context)
+    function_scope = _define_rest_parameter(function_scope, rest_param, context)
     return LambdaExpr(
         param_symbols,
         _lower_body(tuple(body), function_scope, context, tail=True),
         get_span(form),
         space=function_scope.symbol_space,
+        rest_param=rest_param,
     )
 
 
@@ -635,13 +639,14 @@ def _lower_defun(
         return DefineExpr(Symbol("<invalid>"), LambdaExpr((), (), get_span(form)), get_span(form))
     _, name, params, *body = items
     name = _ensure_symbol(name, "defun name", context)
-    param_symbols = _parameter_symbols(params, "defun", context)
+    param_symbols, rest_param = _parameter_symbols_and_rest(params, "defun", context)
     function_scope = _define_local(
         scope.child(f"defun:{name.name}"),
         Binding(name, "defun", "function", scope.symbol_space),
         context,
     )
     function_scope = _define_parameters(function_scope, param_symbols, context)
+    function_scope = _define_rest_parameter(function_scope, rest_param, context)
     return DefineExpr(
         name,
         LambdaExpr(
@@ -649,6 +654,7 @@ def _lower_defun(
             _lower_body(tuple(body), function_scope, context, tail=True),
             get_span(form),
             space=function_scope.symbol_space,
+            rest_param=rest_param,
         ),
         get_span(form),
         owner_space=scope.symbol_space,
@@ -742,12 +748,8 @@ def _lower_from(form: object, context: LoweringContext) -> IRExpr:
         context.diagnostic(str(e), form)
         return FromImportExpr(module_name, specs, get_span(form))
 
-    for spec in specs:
-        if spec.name not in source_module.exports and spec.name not in source_module.macro_exports:
-            context.diagnostic(
-                f"module {module_name.name!r} has no export {spec.name.name!r}",
-                spec.name,
-            )
+    for name in missing_export_names(specs, source_module):
+        context.diagnostic(f"module {module_name.name!r} has no export {name.name!r}", name)
     return FromImportExpr(module_name, specs, get_span(form))
 
 
@@ -952,6 +954,8 @@ def _scope_after_form(
     expr: IRExpr,
     scope: Scope,
     context: LoweringContext,
+    *,
+    emit: bool = True,
 ) -> Scope:
     items = _form_to_list(form)
     if len(items) < 2:
@@ -960,6 +964,17 @@ def _scope_after_form(
     operator = items[0]
     name = items[1]
 
+    if operator == Symbol("pipeline") and isinstance(expr, PipelineExpr):
+        # pipeline 是 begin/end 序列，不创建新的 symbol-space；其 body 中
+        # define / defun / defeffect 的 binding 必须泄漏到外层 scope。
+        # 内部 lowering 已经发过诊断，这里只做 scope 记账。
+        pipeline_scope = scope
+        for sub_form, sub_expr in zip(items[1:], expr.body, strict=True):
+            pipeline_scope = _scope_after_form(
+                sub_form, sub_expr, pipeline_scope, context, emit=False
+            )
+        return pipeline_scope
+
     if operator == Symbol("defun") and isinstance(name, Symbol):
         # defun 已经被前向声明，允许覆盖
         return _define_local(
@@ -967,6 +982,7 @@ def _scope_after_form(
             Binding(name, "defun", "function", scope.symbol_space),
             context,
             allow_redefinition=True,
+            emit=emit,
         )
     if operator == Symbol("define") and isinstance(name, Symbol):
         # Strip quoted-symbol prefix for scope registration
@@ -982,6 +998,7 @@ def _scope_after_form(
             Binding(actual_name, "define", inferred, scope.symbol_space),
             context,
             allow_redefinition=allow_redef,
+            emit=emit,
         )
     if operator == Symbol("defeffect") and isinstance(name, Symbol):
         return _define_local(
@@ -998,7 +1015,10 @@ def _scope_after_form(
     ):
         actual_name = Symbol(name.name[1:])
         return _define_local(
-            scope, Binding(actual_name, "define", "any", scope.symbol_space), context
+            scope,
+            Binding(actual_name, "define", "any", scope.symbol_space),
+            context,
+            emit=emit,
         )
     if operator == Symbol("bind") and is_chain(name):
         quote_items = _form_to_list(name)
@@ -1008,7 +1028,10 @@ def _scope_after_form(
             and isinstance(quote_items[1], Symbol)
         ):
             return _define_local(
-                scope, Binding(quote_items[1], "define", "any", scope.symbol_space), context
+                scope,
+                Binding(quote_items[1], "define", "any", scope.symbol_space),
+                context,
+                emit=emit,
             )
     if operator == Symbol("macro") and isinstance(name, Symbol):
         return _define_local(
@@ -1017,10 +1040,13 @@ def _scope_after_form(
                 name, "macro-param", "operator", scope.symbol_space, "meta", eager_arguments=False
             ),
             context,
+            emit=emit,
         )
     if operator == Symbol("module") and isinstance(name, Symbol):
         remember_source_module(form, context.env)
-        return _define_local(scope, Binding(name, "module", "any", scope.symbol_space), context)
+        return _define_local(
+            scope, Binding(name, "module", "any", scope.symbol_space), context, emit=emit
+        )
     if operator != Symbol("from"):
         return scope
 
@@ -1031,17 +1057,14 @@ def _scope_after_form(
         return scope
 
     next_scope = scope
-    for spec in specs:
-        if spec.name in source_module.exports:
-            value = source_module.resolve(spec.name)
-        elif spec.name in source_module.macro_exports:
-            value = source_module.resolve_macro(spec.name)
-        else:
-            continue
+    # 与运行时 fold / provisional module 共用同一选择原语。
+    for alias, value, _is_macro in iter_selected_exports(
+        module_name.name, specs, source_module, require=False
+    ):
         next_scope = _define_local(
             next_scope,
             Binding(
-                spec.alias,
+                alias,
                 "import",
                 value_type(value),
                 next_scope.symbol_space,
@@ -1050,6 +1073,7 @@ def _scope_after_form(
                 value=value,
             ),
             context,
+            emit=emit,
         )
     return next_scope
 
@@ -1092,7 +1116,12 @@ def _is_lambda_form(form: object) -> bool:
 
 
 def _define_local(
-    scope: Scope, binding: Binding, context: LoweringContext, *, allow_redefinition: bool = False
+    scope: Scope,
+    binding: Binding,
+    context: LoweringContext,
+    *,
+    allow_redefinition: bool = False,
+    emit: bool = True,
 ) -> Scope:
     """在当前 scope 定义 binding。.
 
@@ -1101,8 +1130,9 @@ def _define_local(
         binding: 要定义的符号绑定
         context: Lowering 上下文
         allow_redefinition: 如果为 True，允许覆盖已存在的 binding（用于前向声明后的实际定义）
+        emit: 是否发出诊断；pipeline 泄漏 scope 记账时为 False，避免重复诊断
     """
-    if scope.has_local(binding.symbol) and not allow_redefinition:
+    if emit and scope.has_local(binding.symbol) and not allow_redefinition:
         context.diagnostic(
             f"symbol {binding.symbol.name!r} is already bound in this scope", binding.symbol
         )
@@ -1137,6 +1167,60 @@ def _define_parameters(scope: Scope, params: tuple[Symbol, ...], context: Loweri
             context,
         )
     return next_scope
+
+
+def _define_rest_parameter(
+    scope: Scope,
+    rest_param: Symbol | None,
+    context: LoweringContext,
+) -> Scope:
+    if rest_param is None:
+        return scope
+    return _define_local(
+        scope,
+        Binding(rest_param, "lambda-param", "any", scope.symbol_space),
+        context,
+    )
+
+
+def _parameter_symbols_and_rest(
+    params: object,
+    context_name: str,
+    context: LoweringContext,
+) -> tuple[tuple[Symbol, ...], Symbol | None]:
+    """解析参数列表，识别 `&rest` / `&body` 变参名（其余仍要求是 symbol）。."""
+    if is_chain(params) or is_nil(params):
+        params_list = _form_to_list(params) if not is_nil(params) else []
+    else:
+        context.diagnostic(f"{context_name} parameters must be a list, got {params!r}", params)
+        return ((), None)
+
+    fixed: list[Symbol] = []
+    rest_param: Symbol | None = None
+    index = 0
+    while index < len(params_list):
+        param = params_list[index]
+        if not isinstance(param, Symbol):
+            context.diagnostic(f"{context_name} parameter must be a symbol, got {param!r}", param)
+            index += 1
+            continue
+        if param.name in ("&rest", "&body"):
+            if index + 1 >= len(params_list):
+                context.diagnostic(f"{context_name} {param.name} requires a parameter name", param)
+                break
+            if index + 2 < len(params_list):
+                context.diagnostic(f"{context_name} {param.name} must be the last parameter", param)
+            candidate = params_list[index + 1]
+            if not isinstance(candidate, Symbol):
+                context.diagnostic(
+                    f"{context_name} rest parameter must be a symbol, got {candidate!r}", candidate
+                )
+                break
+            rest_param = candidate
+            break
+        fixed.append(param)
+        index += 1
+    return (tuple(fixed), rest_param)
 
 
 def _parameter_symbols(
@@ -1312,11 +1396,15 @@ def _lower_pipeline(
     if not args:
         context.diagnostic("pipeline expects at least one expression", form)
         return LiteralExpr(None, "none", get_span(form))
-    lowered = tuple(
-        _lower_form(arg, scope, context, tail=tail and i == len(args) - 1)
-        for i, arg in enumerate(args)
-    )
-    return PipelineExpr(lowered, get_span(form))
+    # pipeline 是 begin/end 语义的同一 symbol-space 序列：define / defun /
+    # defeffect 的 binding 必须对后续 pipeline 表达式可见（与 body 一致）。
+    body_scope = _predeclare_callable_definitions(args, scope, context)
+    lowered: list[IRExpr] = []
+    for i, arg in enumerate(args):
+        item = _lower_form(arg, body_scope, context, tail=tail and i == len(args) - 1)
+        lowered.append(item)
+        body_scope = _scope_after_form(arg, item, body_scope, context)
+    return PipelineExpr(tuple(lowered), get_span(form))
 
 
 def _lower_parallel(

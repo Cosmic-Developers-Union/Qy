@@ -127,7 +127,7 @@ backend/  只放目标后端输出
 passes/
   pipeline.py
   pass_base.py
-  build.py
+  build.py                      # 兼容 re-export（canonical orchestration 在 qy/build/pipeline.py）
   frontend/cst_parse.py          # 已实现
   frontend/reader_macro.py       # 已实现
   frontend/surface_normalize.py  # 已实现（surface 规约的唯一实现）
@@ -183,10 +183,10 @@ frontend.cst_parse
 -> emit.bytecode
 ```
 
-默认管线包含 `optimize.mir` 接线点，但 `PipelineOptions.optimize` 默认为 **False**，
-因此默认不运行 MIR 优化 pass。`qy/passes/optimize/*` 与 `control/cfg_simplify` /
-`control/tailcall` / `control/loop_opt` 已实现并有隔离测试，顺序真源是
-`qy/passes/optimize/apply.py::OPTIMIZE_PASSES`。
+默认管线包含 `optimize.mir` 接线点，`PipelineOptions.optimize` **默认开启**
+（关闭方式：`PipelineOptions(optimize=False)`）。`qy/passes/optimize/*` 与
+`control/cfg_simplify` / `control/tailcall` / `control/loop_opt` 已实现并有隔离测试，
+顺序真源是 `qy/passes/optimize/apply.py::OPTIMIZE_PASSES`。
 
 **实测证据**：用 `uv run python scripts/optimize_frontier.py`（每个 `.qy` 独立子进程，
 结果做规范化后对比；早期进程内测量因 repr 含内存地址与 pass name 重复而失真，数值不可用）
@@ -249,7 +249,10 @@ frontend.cst_parse
   现在两份实现收口到 `qy/passes/optimize/inline_core.py`（“唯一事实源”）：健全性判定
   （闭包变量 / 空间副作用 / 嵌套 lambda / effect）、形参替换、寄存器位移（走
   `qy.ir.mir` 寄存器表）都在内核里，两个 pass 只保留策略（单调用点 vs 多调用点 +
-  指令预算 + 深度）。
+  指令预算 + 深度）。此后又补了一处健全性守卫：内联会从 caller 摘掉被内联函数的
+  `MAKE_FUNCTION`；若该函数值仍被 `APPEND_RESULT` 等读取，就会留下未定义寄存器
+  （Python VM 读到哨兵、wasm 打印 `0`）。现在 `inline_core._fn_value_used_elsewhere`
+  阻止这种情况，且只在 callee 不再被任何存活 `MAKE_FUNCTION` 引用时才删除它。
 
 默认开启前补齐的两处（否则 14 个测试失败）：
 

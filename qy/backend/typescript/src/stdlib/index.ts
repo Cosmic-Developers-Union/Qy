@@ -13,10 +13,12 @@
 import { QyRuntimeError } from '../errors.ts';
 import { Env } from '../environment.ts';
 import { ModuleValue, PureOperatorValue, RawOperatorValue, QY_NIL, QY_NONE, QY_T, type QyValue } from '../values.ts';
-import { add, div, ge, gt, le, lt, mod, mul, numEq, pyEq, sub } from './arithmetic.ts';
+import { add, div, ge, gt, le, lt, mod, mul, numEq, numberP, pyEq, remainder, stringToNumber, sub } from './arithmetic.ts';
+import { charBindings } from './chars.ts';
 import { carOp, cdrOp, consOp, dataBindings, eq, reifyOp } from './data.ts';
-import { controlBindings, nilPredicate, notOp } from './control.ts';
+import { bindOp, controlBindings, nilPredicate, notOp, slotOp, thisOp } from './control.ts';
 import { ioBindings, newlineOp, printOp } from './io.ts';
+import { numberSpaceModules } from './number_spaces.ts';
 import { stringBindings } from './strings.ts';
 
 // ---------------------------------------------------------------------------
@@ -117,7 +119,9 @@ function installRaw(env: Env, bindings: RawBindings): void {
  * 建立标准运行环境。
  *
  * 链布局（自上而下 = 解析顺序）：
- *   qy.io → qy.core → number-ss → lisp-ss
+ *   head → qy.io → qy.core → number-ss → lisp-ss
+ * `head` 是顶层可写空间（对应 Python 的 `pre-ssc-head`）：顶层 `define` /
+ * `from` fold 落在这一层，不会与 `qy.io` 模块自身的绑定冲突。
  * 全链 miss 之后才走字面量解析（number/char/string/T/nil/none），与
  * `RuntimeSpace.resolve` + `ProfileConfig.resolve_literal` 的行为一致。
  */
@@ -142,17 +146,20 @@ export function createStandardEnvironment(): Env {
     '>': gt,
     '<=': le,
     '>=': ge,
+    'string->number': stringToNumber,
+    'number?': numberP,
+    remainder,
   });
 
   const core = numbers.child();
   installEager(core, dataBindings());
   installEager(core, controlBindings());
-  installRaw(core, { reify: reifyOp });
+  installRaw(core, { reify: reifyOp, this: thisOp, slot: slotOp, bind: bindOp });
 
   const io = core.child();
   installRaw(io, ioBindings());
 
-  return io;
+  return io.child();
 }
 
 // ---------------------------------------------------------------------------
@@ -190,6 +197,9 @@ export function builtinModules(): Map<string, ModuleValue> {
 
   const core = makeModule('qy.core', { ...dataBindings(), ...controlBindings() });
   core.exports.set('reify', new RawOperatorValue('reify', reifyOp));
+  core.exports.set('this', new RawOperatorValue('this', thisOp));
+  core.exports.set('slot', new RawOperatorValue('slot', slotOp));
+  core.exports.set('bind', new RawOperatorValue('bind', bindOp));
   modules.set('qy.core', core);
 
   const io = new ModuleValue('qy.io', new Map(), new Map());
@@ -212,9 +222,24 @@ export function builtinModules(): Map<string, ModuleValue> {
       '>': gt,
       '<=': le,
       '>=': ge,
+      'string->number': stringToNumber,
+      'number?': numberP,
+      remainder,
     }),
   );
 
   modules.set('qy.str', makeModule('qy.str', stringBindings()));
+  modules.set('qy.char', makeModule('qy.char', charBindings()));
+
+  // 具体数值空间（qy.int8..qy.float128）：算子包成 PureOperatorValue，
+  // min-value / max-value / bits 是直接值绑定。
+  for (const space of numberSpaceModules()) {
+    const module = new ModuleValue(`qy.${space.name}`, new Map(), new Map());
+    for (const [key, value] of Object.entries(space.values)) module.exports.set(key, value);
+    for (const [key, fn] of Object.entries(space.operators)) {
+      module.exports.set(key, new PureOperatorValue(key, fn));
+    }
+    modules.set(`qy.${space.name}`, module);
+  }
   return modules;
 }

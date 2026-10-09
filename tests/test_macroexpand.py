@@ -134,6 +134,68 @@ def test_macroexpand_records_binding_hygiene_renames_in_trace_and_source_map():
     assert expansion.traces[0].macro == Symbol("with-temp")
 
 
+def test_macro_rest_parameter_via_amp_rest():
+    """`&rest` 与 `&body` 等价：都绑定剩余参数为 chain（与 self-host 解释器一致）。."""
+    from qy.core.syntax import T as QY_T
+    from qy.runtime import Qy
+
+    result = Qy().evaluate_source(
+        "(macro m (&rest r) (cons (quote tuple) r)) (= (len (m 1 2 3)) 3)"
+    )
+
+    assert result is QY_T
+
+
+def test_lexical_binding_shadows_same_named_macro():
+    """单命名空间：let/lambda/defun 绑定压过同名宏（展开前先看遮蔽）。."""
+    from qy.runtime import Qy
+
+    assert (
+        Qy().evaluate_source(
+            "(macro inc (x) (quasiquote (+ (unquote x) 1))) "
+            "(let ((inc (lambda (y) (* y 2)))) (inc 21))"
+        )
+        == 42
+    )
+    assert (
+        Qy().evaluate_source(
+            "(macro abs (x) (quasiquote (+ 1 (unquote x)))) (defun abs (x) (* x 3)) (abs 5)"
+        )
+        == 15
+    )
+
+
+def test_library_ops_expand_as_macros():
+    """Qy library 派生算子（inc/abs/even?/min…）由编译期宏展开。."""
+    from qy.display import format_value
+    from qy.runtime import Qy
+
+    assert Qy().evaluate_source("(inc 41)") == 42
+    assert Qy().evaluate_source("(abs -5)") == 5
+    assert Qy().evaluate_source("(min 3 7)") == 3
+    assert format_value(Qy().evaluate_source("(even? 4)")) == "T"
+    assert Qy().evaluate_source("(let ((inc (lambda (x) (+ x 100)))) (inc 1)) ") == 101
+
+
+def test_macro_first_used_inside_module_resolves_hygiene_alias():
+    """回归：宏仅在 module body 内首次使用时，卫生别名也必须能被 HIR 解析。.
+
+    历史缺陷：module body 用临时子 env 做宏展开，`_definition_site_alias` 把别名
+    hidden 绑进子 env，HIR lowering（用顶层 env 做 fallback resolve）看不到，
+    报 `unresolved symbol '__qy_hygiene_def_tuple_1'`。
+    """
+    from qy.core.syntax import T as QY_T
+    from qy.runtime import Qy
+
+    result = Qy().evaluate_source(
+        "(macro m (x) (quasiquote (tuple (unquote x)))) "
+        "(module M (exports a) (define a (m 5))) "
+        "(from M import a) (= (get a 0) 5)"
+    )
+
+    assert result is QY_T
+
+
 def test_macroexpand_denies_compile_time_effects_by_default():
     env = standard_environment()
     macroexpand_source('(macro bad () (assert false "bad"))', env)

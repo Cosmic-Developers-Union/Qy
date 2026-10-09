@@ -122,6 +122,57 @@ def test_from_import_supports_same_source_unit_module_definition():
     )
 
 
+def test_from_import_supports_same_source_unit_define_export():
+    env = standard_environment()
+
+    assert (
+        evaluate_source(
+            """
+            (module test.inline.value
+              (define answer 42)
+              (exports answer))
+            (from test.inline.value import answer)
+            answer
+            """,
+            env,
+        )
+        == 42
+    )
+
+
+def test_from_import_supports_same_source_unit_lambda_define_export():
+    env = standard_environment()
+
+    assert (
+        evaluate_source(
+            """
+            (module test.inline.valuefn
+              (define inc (lambda (n) (+ n 1)))
+              (exports inc))
+            (from test.inline.valuefn import inc)
+            (inc 41)
+            """,
+            env,
+        )
+        == 42
+    )
+
+
+def test_module_can_reexport_imported_binding():
+    env = standard_environment()
+
+    assert evaluate_source(
+        """
+            (module test.inline.reexport
+              (from qy.str import string-upper as up)
+              (exports up))
+            (from test.inline.reexport import up)
+            (up "qy")
+            """,
+        env,
+    ) == StringValue("QY")
+
+
 def test_from_import_supports_same_source_unit_module_macro_exports():
     env = standard_environment()
 

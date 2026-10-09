@@ -7,6 +7,7 @@
 import type { BytecodeFunction, BytecodeProgram, HandlerSpec } from './bytecode.ts';
 import type { QyEffectSignal } from './errors.ts';
 import type { Env } from './environment.ts';
+import { listToChain } from './values.ts';
 import type { QyValue } from './values.ts';
 
 /**
@@ -57,11 +58,16 @@ export class FrameResult {
 export function makeFrame(
   functionValue: BytecodeFunctionValue,
   args: QyValue[],
-  onArityError: (fnName: string, expected: number, actual: number) => never,
+  onArityError: (message: string) => never,
 ): Frame {
   const fn = functionValue.fn;
-  if (args.length !== fn.params.length) {
-    onArityError(fn.name, fn.params.length, args.length);
+  const restParam = fn.restParam;
+  const fixedCount = fn.params.length;
+  if (restParam === null && args.length !== fixedCount) {
+    onArityError(`${fn.name} expects ${fixedCount} arguments, got ${args.length}`);
+  }
+  if (restParam !== null && args.length < fixedCount) {
+    onArityError(`${fn.name} expects at least ${fixedCount} arguments, got ${args.length}`);
   }
   let env: Env;
   if (fn.name === '<main>' || fn.name === '<module-body>') {
@@ -69,6 +75,9 @@ export function makeFrame(
   } else {
     const bindings = new Map<string, QyValue>();
     fn.params.forEach((param, index) => bindings.set(param, args[index]));
+    if (restParam !== null) {
+      bindings.set(restParam, listToChain(args.slice(fixedCount)));
+    }
     env = functionValue.closure.child(bindings);
   }
   return {

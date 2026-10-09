@@ -97,17 +97,20 @@ func CreateStandardEnvironment() *vm.Env {
 
 	numbers := vm.NewNamedEnv(lisp, "number-ss")
 	installEager(numbers, map[string]func(args []vm.Value) (vm.Value, error){
-		"=":   func(args []vm.Value) (vm.Value, error) { return NumEq(args[0], args[1]) },
-		"==":  func(args []vm.Value) (vm.Value, error) { return PyEq(args[0], args[1]) },
-		"+":   func(args []vm.Value) (vm.Value, error) { return Add(args...) },
-		"-":   func(args []vm.Value) (vm.Value, error) { return Sub(args...) },
-		"*":   func(args []vm.Value) (vm.Value, error) { return Mul(args...) },
-		"/":   func(args []vm.Value) (vm.Value, error) { return Div(args...) },
-		"mod": func(args []vm.Value) (vm.Value, error) { return Mod(args...) },
-		"<":   func(args []vm.Value) (vm.Value, error) { return Lt(args...) },
-		">":   func(args []vm.Value) (vm.Value, error) { return Gt(args...) },
-		"<=":  func(args []vm.Value) (vm.Value, error) { return Le(args...) },
-		">=":  func(args []vm.Value) (vm.Value, error) { return Ge(args...) },
+		"=":              func(args []vm.Value) (vm.Value, error) { return NumEq(args[0], args[1]) },
+		"==":             func(args []vm.Value) (vm.Value, error) { return PyEq(args[0], args[1]) },
+		"+":              func(args []vm.Value) (vm.Value, error) { return Add(args...) },
+		"-":              func(args []vm.Value) (vm.Value, error) { return Sub(args...) },
+		"*":              func(args []vm.Value) (vm.Value, error) { return Mul(args...) },
+		"/":              func(args []vm.Value) (vm.Value, error) { return Div(args...) },
+		"mod":            func(args []vm.Value) (vm.Value, error) { return Mod(args...) },
+		"<":              func(args []vm.Value) (vm.Value, error) { return Lt(args...) },
+		">":              func(args []vm.Value) (vm.Value, error) { return Gt(args...) },
+		"<=":             func(args []vm.Value) (vm.Value, error) { return Le(args...) },
+		">=":             func(args []vm.Value) (vm.Value, error) { return Ge(args...) },
+		"string->number": func(args []vm.Value) (vm.Value, error) { return StringToNumber(args[0]) },
+		"number?":        func(args []vm.Value) (vm.Value, error) { return NumberP(args[0]), nil },
+		"remainder":      func(args []vm.Value) (vm.Value, error) { return Remainder(args...) },
 	})
 
 	core := vm.NewNamedEnv(numbers, "qy.core")
@@ -115,12 +118,17 @@ func CreateStandardEnvironment() *vm.Env {
 	installEager(core, ControlBindings())
 	installRaw(core, map[string]func(args []vm.Value, env vm.Value) (vm.Value, error){
 		"reify": ReifyOp,
+		"this":  ThisOp,
+		"slot":  SlotOp,
+		"bind":  BindOp,
 	})
 
 	io := vm.NewNamedEnv(core, "qy.io")
 	installRaw(io, IOBindings())
 
-	return io
+	// 顶层可写 head（对应 Python 的 `pre-ssc-head`）：顶层 define / from fold 落在
+	// 这一层，不会与 qy.io 模块自身的绑定冲突。
+	return io.Child()
 }
 
 type eagerBindings = map[string]func(args []vm.Value) (vm.Value, error)
@@ -162,6 +170,9 @@ func BuiltinModules() map[string]*vm.ModuleValue {
 		coreExports[name] = &vm.PureOperator{Name: name, Fn: fn}
 	}
 	coreExports["reify"] = &vm.RawOperator{Name: "reify", Fn: ReifyOp}
+	coreExports["this"] = &vm.RawOperator{Name: "this", Fn: ThisOp}
+	coreExports["slot"] = &vm.RawOperator{Name: "slot", Fn: SlotOp}
+	coreExports["bind"] = &vm.RawOperator{Name: "bind", Fn: BindOp}
 	modules["qy.core"] = vm.NewModuleValue("qy.core", coreExports)
 
 	ioExports := map[string]vm.Value{}
@@ -172,17 +183,20 @@ func BuiltinModules() map[string]*vm.ModuleValue {
 
 	numberExports := map[string]vm.Value{}
 	for name, fn := range map[string]func(args []vm.Value) (vm.Value, error){
-		"=":   func(args []vm.Value) (vm.Value, error) { return NumEq(args[0], args[1]) },
-		"==":  func(args []vm.Value) (vm.Value, error) { return PyEq(args[0], args[1]) },
-		"+":   func(args []vm.Value) (vm.Value, error) { return Add(args...) },
-		"-":   func(args []vm.Value) (vm.Value, error) { return Sub(args...) },
-		"*":   func(args []vm.Value) (vm.Value, error) { return Mul(args...) },
-		"/":   func(args []vm.Value) (vm.Value, error) { return Div(args...) },
-		"mod": func(args []vm.Value) (vm.Value, error) { return Mod(args...) },
-		"<":   func(args []vm.Value) (vm.Value, error) { return Lt(args...) },
-		">":   func(args []vm.Value) (vm.Value, error) { return Gt(args...) },
-		"<=":  func(args []vm.Value) (vm.Value, error) { return Le(args...) },
-		">=":  func(args []vm.Value) (vm.Value, error) { return Ge(args...) },
+		"=":              func(args []vm.Value) (vm.Value, error) { return NumEq(args[0], args[1]) },
+		"==":             func(args []vm.Value) (vm.Value, error) { return PyEq(args[0], args[1]) },
+		"+":              func(args []vm.Value) (vm.Value, error) { return Add(args...) },
+		"-":              func(args []vm.Value) (vm.Value, error) { return Sub(args...) },
+		"*":              func(args []vm.Value) (vm.Value, error) { return Mul(args...) },
+		"/":              func(args []vm.Value) (vm.Value, error) { return Div(args...) },
+		"mod":            func(args []vm.Value) (vm.Value, error) { return Mod(args...) },
+		"<":              func(args []vm.Value) (vm.Value, error) { return Lt(args...) },
+		">":              func(args []vm.Value) (vm.Value, error) { return Gt(args...) },
+		"<=":             func(args []vm.Value) (vm.Value, error) { return Le(args...) },
+		">=":             func(args []vm.Value) (vm.Value, error) { return Ge(args...) },
+		"string->number": func(args []vm.Value) (vm.Value, error) { return StringToNumber(args[0]) },
+		"number?":        func(args []vm.Value) (vm.Value, error) { return NumberP(args[0]), nil },
+		"remainder":      func(args []vm.Value) (vm.Value, error) { return Remainder(args...) },
 	} {
 		numberExports[name] = &vm.PureOperator{Name: name, Fn: fn}
 	}
@@ -193,6 +207,17 @@ func BuiltinModules() map[string]*vm.ModuleValue {
 		stringExports[name] = &vm.PureOperator{Name: name, Fn: fn}
 	}
 	modules["qy.str"] = vm.NewModuleValue("qy.str", stringExports)
+
+	charExports := map[string]vm.Value{}
+	for name, fn := range charBindings() {
+		charExports[name] = &vm.PureOperator{Name: name, Fn: fn}
+	}
+	modules["qy.char"] = vm.NewModuleValue("qy.char", charExports)
+
+	// 具体数值空间（qy.int8..qy.float128）。
+	for name, module := range NumberSpaceModules() {
+		modules[name] = module
+	}
 
 	return modules
 }

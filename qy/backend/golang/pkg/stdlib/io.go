@@ -64,6 +64,23 @@ func PrintOp(args []vm.Value, env vm.Value) (vm.Value, error) {
 	return values[len(values)-1], nil
 }
 
+// DisplayOp 是 `display`：输出但不追加换行（与后端 `display` 内建一致）。
+func DisplayOp(args []vm.Value, env vm.Value) (vm.Value, error) {
+	values := make([]vm.Value, 0, len(args))
+	for _, arg := range args {
+		values = append(values, resolveLiteral(arg, env))
+	}
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		parts = append(parts, vm.FormatValue(value))
+	}
+	currentWriter(strings.Join(parts, " "))
+	if len(values) == 0 {
+		return nil, nil
+	}
+	return values[len(values)-1], nil
+}
+
 // NewlineOp 是 `newline`：只输出换行。
 func NewlineOp() (vm.Value, error) {
 	currentWriter("\n")
@@ -75,7 +92,7 @@ func IOBindings() map[string]func(args []vm.Value, env vm.Value) (vm.Value, erro
 	return map[string]func(args []vm.Value, env vm.Value) (vm.Value, error){
 		"print":   PrintOp,
 		"echo":    PrintOp,
-		"display": PrintOp,
+		"display": DisplayOp,
 		"newline": func(_ []vm.Value, _ vm.Value) (vm.Value, error) { return NewlineOp() },
 	}
 }

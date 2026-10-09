@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sys
+
 from qy.core.operators import EffectOperator
 from qy.core.syntax import Symbol
+from qy.core.syntax import nil as QY_NIL
 from qy.display import format_value
 from qy.errors import EvaluationError
 from qy.import_.module import StandardModule
@@ -19,6 +22,10 @@ def module() -> StandardModule:
             Symbol("echo"): EffectOperator(
                 "echo", _print, "print 的别名；打印值并返回最后一个值。"
             ),
+            Symbol("display"): EffectOperator(
+                "display", _display, "打印值但不追加换行（对应后端 display 内建）。"
+            ),
+            Symbol("newline"): EffectOperator("newline", _newline, "打印一个换行，返回 nil。"),
         },
     )
 
@@ -33,6 +40,21 @@ async def _print(args: tuple[object, ...], env: Environment) -> object:
     if not values:
         return None
     return values[-1]
+
+
+def _display(args: tuple[object, ...], env: Environment) -> object:
+    """`display`：打印值但不追加换行（与后端 `display` 内建一致）。."""
+    values = tuple(_resolve_literal(arg, env) for arg in args)
+    sys.stdout.write(" ".join(format_value(value) for value in values))
+    if not values:
+        return None
+    return values[-1]
+
+
+def _newline(_args: tuple[object, ...], _env: Environment) -> object:
+    """`newline`：打印一个换行（与后端 `newline` 内建一致）。."""
+    sys.stdout.write("\n")
+    return QY_NIL
 
 
 def _resolve_literal(value: object, env: Environment) -> object:

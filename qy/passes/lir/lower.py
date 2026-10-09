@@ -82,6 +82,7 @@ def _lower_function(
         function.params,
         register_count,
         tuple(instructions),
+        rest_param=function.rest_param,
     )
 
 
@@ -129,6 +130,7 @@ def _lower_function_abstract_machine(
         frame_layout=frame_layout,
         continuations=continuations,
         handlers=result.handlers,
+        rest_param=function.rest_param,
     )
 
 

@@ -1,6 +1,10 @@
 package stdlib
 
-import "github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
+import (
+	"strings"
+
+	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
+)
 
 // `qy.core` 的控制算子中属于运行期的部分。
 //
@@ -94,6 +98,39 @@ func ControlBindings() map[string]func(args []vm.Value) (vm.Value, error) {
 		"nil?":   func(args []vm.Value) (vm.Value, error) { return NilPredicate(argAt(args, 0)) },
 		"not":    func(args []vm.Value) (vm.Value, error) { return NotOp(argAt(args, 0)) },
 	}
+}
+
+// -- symbol-space 显式建模算子（raw：需要当前 env） -------------------------
+
+// ThisOp 是 `this`：返回当前 symbol-space。
+func ThisOp(_ []vm.Value, env vm.Value) (vm.Value, error) {
+	return env, nil
+}
+
+// SlotOp 是 `slot`：创建绑定槽位占位符。
+func SlotOp(_ []vm.Value, _ vm.Value) (vm.Value, error) {
+	return vm.SlotToken, nil
+}
+
+// BindOp 是 `bind`：把 symbol 与 value 绑定到指定 slot（slot 仅占位，绑定写入当前空间）。
+func BindOp(args []vm.Value, env vm.Value) (vm.Value, error) {
+	if len(args) != 3 {
+		return nil, vm.NewArityError("bind expects a symbol, value, and slot")
+	}
+	name, ok := args[0].(*vm.Symbol)
+	if !ok {
+		return nil, vm.NewTypeError("bind expects a symbol")
+	}
+	symbolName := name.Name
+	if strings.HasPrefix(symbolName, "'") && len(symbolName) > 1 {
+		symbolName = symbolName[1:]
+	}
+	environment, ok := env.(*vm.Env)
+	if !ok {
+		return nil, vm.NewTypeError("bind expects a symbol-space")
+	}
+	environment.Define(symbolName, args[1])
+	return args[1], nil
 }
 
 // argAt 安全取参（缺参返回 nil，与 TS 的 `args[0]` 为 undefined 对应）。

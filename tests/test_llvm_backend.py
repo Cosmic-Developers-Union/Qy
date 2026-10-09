@@ -31,10 +31,17 @@ RUNTIME_C = ROOT / "qy" / "resources" / "libqy" / "src" / "runtime.c"
 
 _LLC = shutil.which("llc")
 _CLANG = shutil.which("clang")
+_GCC = shutil.which("gcc")
+_LIBQY_A = ROOT / "qy" / "resources" / "libqy" / "libqy.a"
 
 requires_toolchain = pytest.mark.skipif(
     _LLC is None or _CLANG is None,
     reason="needs llc and clang",
+)
+
+requires_link = pytest.mark.skipif(
+    _LLC is None or _GCC is None or not _LIBQY_A.exists(),
+    reason="needs llc, gcc and built libqy.a",
 )
 
 
@@ -66,6 +73,58 @@ def test_llvm_emit_rejects_non_compat_dialect():
         emit(LIRProgram((), dialect="abstract-machine"))
 
 
+def test_llvm_symbol_globals_are_valid_identifiers():
+    from qy.backend.llvm.abi import sym_global
+
+    assert "=" not in sym_global(0, 0, "==")
+    assert '"' not in sym_global(0, 0, '"hello"')
+    assert "(" not in sym_global(0, 0, "(x)")
+
+
+@requires_toolchain
+def test_llvm_ir_with_operator_symbol_assembles(tmp_path):
+    import subprocess
+
+    llc = _LLC
+    assert llc is not None
+    ll_path = tmp_path / "program.ll"
+    ll_path.write_text(emit(_compile_lir("(== 1 1)")), encoding="utf-8")
+    subprocess.run(
+        [
+            llc,
+            "-relocation-model=pic",
+            "-filetype=obj",
+            str(ll_path),
+            "-o",
+            str(tmp_path / "program.o"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_llvm_emit_rejects_unsupported_opcode():
+    from qy.backend.llvm.emit import LLVMUnsupportedError
+
+    with pytest.raises(LLVMUnsupportedError, match="DEFEFFECT"):
+        emit(_compile_lir("(defeffect ask)"))
+
+
+def test_llvm_emit_rejects_variadic_function():
+    from qy.backend.llvm.emit import LLVMUnsupportedError
+
+    with pytest.raises(LLVMUnsupportedError, match="variadic function"):
+        emit(_compile_lir("(defun f (&rest r) (len r)) (f 1 2 3)"))
+
+
+def test_llvm_emit_rejects_chain_constant():
+    from qy.backend.llvm.emit import LLVMUnsupportedError
+
+    with pytest.raises(LLVMUnsupportedError, match="does not support constant"):
+        emit(_compile_lir("'(alpha beta gamma)"))
+
+
 def _run_native(source: str, tmp_path: Path) -> str:
     llc = _LLC
     clang = _CLANG
@@ -82,7 +141,7 @@ def _run_native(source: str, tmp_path: Path) -> str:
     bin_path = tmp_path / "program.bin"
     ll_path.write_text(emit(_compile_lir(source)), encoding="utf-8")
     subprocess.run(
-        [llc, "-filetype=obj", str(ll_path), "-o", str(obj_path)],
+        [llc, "-relocation-model=pic", "-filetype=obj", str(ll_path), "-o", str(obj_path)],
         check=True,
         capture_output=True,
         text=True,
@@ -119,6 +178,15 @@ def _run_native(source: str, tmp_path: Path) -> str:
 )
 def test_llvm_native_matches_register_vm(tmp_path, source, expected):
     assert _run_native(source, tmp_path) == expected
+
+
+@requires_link
+def test_llvm_link_helper_builds_runnable_executable(tmp_path):
+    from qy.backend.llvm import link
+
+    result = link(emit(_compile_lir("(+ 1 2)")), output_dir=tmp_path, output_name="prog")
+    completed = subprocess.run([str(result.executable)], check=True, capture_output=True, text=True)
+    assert completed.stdout == "3\n"
 
 
 @requires_toolchain

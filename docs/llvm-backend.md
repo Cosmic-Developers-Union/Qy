@@ -56,7 +56,8 @@ libqy 的 `qy_main_c` / `qy_call` 依赖：
 已支持：int/nil/T/string、内建算术/比较、无自由变量的 `defun`/`lambda`、
 `let`、`cond`/`pipeline` 控制流、`CALL`/`TAIL_CALL`（尚无 TCO）。
 
-占位：effect / module / macro / 并行 opcode 目前降成 nil，保持 IR 有效；
+未实现：effect / module / macro / 并行 opcode / 变参函数（`&rest`/`&body`）。emitter 遇到这些
+会抛出 `LLVMUnsupportedError`（显式「后端不支持」诊断），而不是降成 nil 或产出非法 IR；
 `cons`/`car`/`cdr` 的 ABI 已声明但未在 emitter 中使用。
 
 ## 当前覆盖与限制（实测）
@@ -70,19 +71,34 @@ libqy 的 `qy_main_c` / `qy_call` 依赖：
 
 - **常量**：`_emit_load_host` 不支持 `Chain`（引用列表）与内嵌宿主代码的字符串
   （如 `"""return py_value + 1"""`），会抛
-  `ValueError: llvm backend does not support constant ...`；标量常量已由
+  `LLVMUnsupportedError: llvm backend does not support constant ...`；标量常量已由
   `qy/backend/scalars.py` 统一分类；
-- **未解析符号**：effect 名、模块名等符号会被发射成引用未定义 SSA 值
-  （`llc: use of undefined value '%reg_ask'` / `'%reg_<module>'`），需要在这些值上
-  给出明确的「后端不支持」诊断，而不是产出非法 IR；
-- `04_macro_hygiene` 在链接阶段报 `ld: failed to set dynamic section sizes`，
-  属当前环境的链接器行为，需进一步确认。
+- **未支持的 opcode**：effect / module / macro / 并行 opcode（如 `DEFEFFECT` /
+  `HANDLE` / `PERFORM` / `RESUME` / `DEFINE_MODULE`）会抛出
+  `LLVMUnsupportedError`，并给出 opcode 名；`qy llvm` 在 CLI 层以
+  `ClickException` 报告。此前这些 opcode 会把 effect 名写成 `%reg_<symbol>`
+  这种非法 SSA 名（`llc: use of undefined value '%reg_ask'`），或静默降成 nil；
+  现在统一为编译期显式失败；
+- **未解析符号**：编译期未解析的符号（`==`、quasiquote / 宏 helper 等）发射为
+  `qy_resolve_sym` 调用，而 libqy 当前对未知名字返回 nil；调用它以
+  `qy_call: expected function, got tag 0` abort。这是 libqy 符号表覆盖不足，不是 IR
+  生成缺陷；
+- **多顶层结果显示**：LLVM 的 `@main` 只打印函数返回值（最后一个顶层结果），而
+  `qy run` 打印所有 `APPEND_RESULT`（过滤 definition artifact）；多顶层程序因此
+  输出行数不同（如 `05_define_once` / `40_eq_value_identity`）；
+- **链接**：`llc` 必须用 `-relocation-model=pic`，否则对只读数据段的引用会生成
+  32-bit 绝对重定位，默认 PIE 链接报 `R_X86_64_32` /
+  `failed to set dynamic section sizes`（此前 `04_macro_hygiene` 的链接失败即此因）。
+  `qy/backend/llvm/link.py` 与测试已固定该选项；
+- **符号全局名**：`sym_global` 对非 `[A-Za-z0-9_.]` 字符做十六进制转义，因此
+  `==`、`"hello"` 这类 spelling 不再生成非法 LLVM 标识符（原文仍存进数据段供
+  `qy_resolve_sym` 解析）。
 
 ## 使用与验证
 
 ```bash
 qy llvm examples/qy/validation/00_host_arithmetic.qy > program.ll
-llc -filetype=obj program.ll -o program.o
+llc -relocation-model=pic -filetype=obj program.ll -o program.o
 clang program.o qy/resources/libqy/src/runtime.o -o program
 ./program
 

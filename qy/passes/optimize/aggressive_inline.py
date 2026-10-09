@@ -26,6 +26,7 @@ from qy.passes.optimize.inline_core import inline_into
 from qy.passes.optimize.inline_core import is_inlinable
 from qy.passes.optimize.inline_core import is_recursive
 from qy.passes.optimize.inline_core import lexical_names
+from qy.passes.optimize.inline_core import referenced_fn_indices
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -85,7 +86,9 @@ def _aggressive_inline(
             break
 
         if inlined_indices:
-            functions, main = drop_functions(functions, inlined_indices, program.main)
+            droppable = inlined_indices - referenced_fn_indices(functions)
+            if droppable:
+                functions, main = drop_functions(functions, droppable, main)
 
     return replace(
         rebuild_program(program, functions=tuple(functions), constants=program.constants),

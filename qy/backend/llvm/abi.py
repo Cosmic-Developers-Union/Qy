@@ -75,7 +75,16 @@ def str_global(fn_idx: int, pc: int) -> str:
     return f"@.str.fn{fn_idx}.pc{pc}"
 
 
+def _sanitize_global_suffix(name: str) -> str:
+    """把任意 symbol 拼写变成合法 LLVM 标识符片段。.
+
+    全局名只是标识符；symbol 原文仍存进数据段（``qy_resolve_sym`` 用它解析）。
+    非 ``[A-Za-z0-9_.]`` 的字符按 ``_xx`` 十六进制转义，避免 ``=`` / ``"`` 等
+    让 LLVM IR 非法，也避免不同符号坍缩到同一标识符。
+    """
+    return "".join(ch if (ch.isalnum() or ch in "_.") else f"_{ord(ch):02x}" for ch in name)
+
+
 def sym_global(fn_idx: int, pc: int, sym: str) -> str:
     """Global name for a symbol string at (fn_idx, pc, sym)."""
-    safe = sym.replace("-", "_").replace("?", "_p")
-    return f"@.sym.fn{fn_idx}.pc{pc}.{safe}"
+    return f"@.sym.fn{fn_idx}.pc{pc}.{_sanitize_global_suffix(sym)}"

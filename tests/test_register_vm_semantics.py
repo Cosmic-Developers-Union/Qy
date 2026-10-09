@@ -168,6 +168,40 @@ async def test_vm_handle_without_resume_behaves_like_catch():
     assert result == 41
 
 
+def test_vm_deep_non_tail_recursion_reports_clean_error():
+    """深非尾递归必须以语言级运行时错误报出，不得泄漏 Python RecursionError/traceback。."""
+    from qy.errors import QyRuntimeError
+
+    source = "(defun sum (n) (cond ((= n 0) 0) (true (+ n (sum (- n 1)))))) (sum 1000000)"
+
+    with pytest.raises(QyRuntimeError, match="recursion depth exceeded"):
+        Qy().evaluate_source(source)
+
+
+async def test_vm_handler_returning_continuation_value_does_not_loop():
+    """回归：handler 裸返回 continuation 值必须直接作为 handle 的值，不得重新 dispatch。.
+
+    历史 bug：compat VM 的 `_dispatch_effect` 把 handler 返回的 `QyContinuation` 当成
+    "再次 dispatch" 信号，导致 `(handle (perform ask 1) ((ask (arg k) k)))` 死循环；
+    abstract-machine 方言与 TS/Go 同步修复。
+    """
+    from qy.vm.instance.frame import QyContinuation
+
+    qy = Qy()
+
+    result = await qy.evaluate_source_async(
+        """
+        (let ()
+          (defeffect ask)
+          (handle
+            (perform ask 1)
+            ((ask (arg k) k))))
+        """
+    )
+
+    assert isinstance(result, QyContinuation)
+
+
 async def test_vm_resume_continues_body_after_perform():
     qy = Qy()
 

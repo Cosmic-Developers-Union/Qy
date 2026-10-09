@@ -3,6 +3,9 @@ package stdlib
 import (
 	"math"
 	"math/big"
+	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
 )
@@ -68,22 +71,41 @@ func CoerceHostNumber(value vm.Value) vm.Value {
 	return value
 }
 
+// typeNameOf 返回与 Python `qy.sem.classify.value_type` 一致的 Qy 类型标签。
 func typeNameOf(value vm.Value) string {
 	switch v := value.(type) {
 	case *vm.Number:
 		return v.TypeName
 	case nil:
-		return "NoneType"
+		return "none"
 	case bool:
 		return "bool"
 	case int, int64, float64, *big.Int:
-		return "int"
+		return "number"
 	case string:
-		return "str"
+		return "string"
 	case *vm.Symbol:
-		return "Symbol"
+		return "symbol"
 	case *vm.StringValue:
-		return "StringValue"
+		return "string"
+	case *vm.CharValue:
+		return "char"
+	case *vm.Chain:
+		return "chain"
+	case *vm.TupleValue:
+		return "tuple"
+	case *vm.ListValue:
+		return "list"
+	case *vm.DictValue:
+		return "dict"
+	case *vm.SetValue:
+		return "set"
+	case *vm.PureOperator, *vm.RawOperator:
+		return "operator"
+	case *vm.FunctionValue:
+		return "function"
+	case *vm.EffectDefinition:
+		return "effect"
 	case vm.NilValue:
 		return "nil"
 	case vm.TValue:
@@ -91,7 +113,7 @@ func typeNameOf(value vm.Value) string {
 	case vm.NoneValue:
 		return "none"
 	}
-	return "object"
+	return "any"
 }
 
 // ensureSameNumberType 要求所有参数是同一个 concrete number 类型
@@ -402,11 +424,96 @@ func floatMod(typeName string, args []*vm.Number) (*vm.Number, error) {
 		payload := vm.NewDict([]vm.DictEntry{{Key: vm.NewSymbol("operator"), Value: vm.NewString("mod")}})
 		return nil, vm.PerformEffect("divide-by-zero", payload, false)
 	}
-	checked, err := checkFloatFinite(a-b*math.Trunc(a/b), typeName, "mod")
+	// 与 integerMod / Python `%` 一致：结果符号跟随除数（floored）；math.Mod 是截断余数。
+	r := math.Mod(a, b)
+	if r != 0 && (r < 0) != (b < 0) {
+		r += b
+	}
+	checked, err := checkFloatFinite(r, typeName, "mod")
 	if err != nil {
 		return nil, err
 	}
 	return vm.NewFloatOfType(typeName, checked), nil
+}
+
+var (
+	intTextPattern   = regexp.MustCompile(`^[+-]?\d(?:_?\d)*$`)
+	floatTextPattern = regexp.MustCompile(`^[+-]?(?:\d(?:_?\d)*\.(?:\d(?:_?\d)*)?|\.\d(?:_?\d)*|\d(?:_?\d)*)(?:[eE][+-]?\d+)?$`)
+)
+
+// StringToNumber 对应 number_ops._string_to_number：字符串 / 符号拼写 → number，
+// 不是合法数字时返回 nil（inf/nan 也返回 nil）。
+func StringToNumber(value vm.Value) (vm.Value, error) {
+	var text string
+	switch v := value.(type) {
+	case *vm.StringValue:
+		text = v.Value
+	case *vm.Symbol:
+		text = v.Name
+	case string:
+		text = v
+	default:
+		return vm.QyNil, nil
+	}
+	trimmed := strings.TrimSpace(text)
+	if intTextPattern.MatchString(trimmed) {
+		if n, ok := new(big.Int).SetString(strings.ReplaceAll(trimmed, "_", ""), 10); ok {
+			return vm.NewBigInt(n), nil
+		}
+	}
+	if floatTextPattern.MatchString(trimmed) {
+		if f, err := strconv.ParseFloat(strings.ReplaceAll(trimmed, "_", ""), 64); err == nil && !math.IsInf(f, 0) && !math.IsNaN(f) {
+			return vm.NewFloat(f), nil
+		}
+	}
+	return vm.QyNil, nil
+}
+
+func integerRemainder(typeName string, args []*vm.Number) (*vm.Number, error) {
+	if len(args) != 2 {
+		return nil, vm.NewTypeError("remainder expects exactly 2 arguments")
+	}
+	a, b := args[0].BigPayload(), args[1].BigPayload()
+	if b.Sign() == 0 {
+		payload := vm.NewDict([]vm.DictEntry{{Key: vm.NewSymbol("operator"), Value: vm.NewString("remainder")}})
+		return nil, vm.PerformEffect("divide-by-zero", payload, false)
+	}
+	// big.Int Rem 是截断余数：结果符号跟随被除数（与 mod 的 floored 相对）。
+	checked, err := checkIntegerRange(new(big.Int).Rem(a, b), typeName, "remainder")
+	if err != nil {
+		return nil, err
+	}
+	return vm.NewIntegerOfType(typeName, checked), nil
+}
+
+func floatRemainder(typeName string, args []*vm.Number) (*vm.Number, error) {
+	if len(args) != 2 {
+		return nil, vm.NewTypeError("remainder expects exactly 2 arguments")
+	}
+	a, b := args[0].FloatPayload(), args[1].FloatPayload()
+	if b == 0 {
+		payload := vm.NewDict([]vm.DictEntry{{Key: vm.NewSymbol("operator"), Value: vm.NewString("remainder")}})
+		return nil, vm.PerformEffect("divide-by-zero", payload, false)
+	}
+	checked, err := checkFloatFinite(math.Mod(a, b), typeName, "remainder")
+	if err != nil {
+		return nil, err
+	}
+	return vm.NewFloatOfType(typeName, checked), nil
+}
+
+// Remainder 是 `remainder`：截断余数，结果符号跟随被除数。
+func Remainder(args ...vm.Value) (vm.Value, error) {
+	return dispatchOp("remainder", args, integerRemainder, floatRemainder)
+}
+
+// NumberP 是 `number?`：值是否为 number（Qy 语义或宿主数字）。
+func NumberP(value vm.Value) vm.Value {
+	switch value.(type) {
+	case *vm.Number, float64, int64, int:
+		return vm.QyT
+	}
+	return vm.QyNil
 }
 
 // -- 公开算子 ---------------------------------------------------------------

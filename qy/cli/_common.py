@@ -16,6 +16,7 @@ import click
 from qy.analysis import Diagnostic
 from qy.async_utils import run_coro
 from qy.build.pipeline import compile_source_to_kind_async
+from qy.passes.pass_base import PipelineOptions
 from qy.passes.pass_base import PipelineSession
 from qy.runtime import Qy
 
@@ -140,7 +141,11 @@ def compile_source_to(qy: Qy, source: str, *, kind: str, source_name: str) -> An
     with the typed artifact extractor.
     """
     session = PipelineSession(env=qy.env, source_name=source_name)
-    return run_coro(compile_source_to_kind_async(source, session, kind=kind))
+    # CLI 调试/后端命令在第一个 error 处短路：避免在已 fail 的 HIR 上继续 lowering，
+    # 产生 "LIR main function index ... out of range" 这类二次内部错误。
+    # `qy check` / LSP 走 `compile_source_to_kind` 默认阈值以收集全部诊断。
+    options = PipelineOptions(error_threshold=1)
+    return run_coro(compile_source_to_kind_async(source, session, kind=kind, options=options))
 
 
 def print_debug_diagnostics(source_name: str, diagnostics: tuple[Diagnostic, ...]) -> bool:

@@ -18,6 +18,8 @@ type BytecodeFunction struct {
 	Params        []string
 	RegisterCount int
 	Instructions  []Instruction
+	// `&rest` / `&body` 变参名；空串表示定长参数。
+	Rest string
 }
 
 // Instruction 是一条已解码指令。
@@ -65,6 +67,7 @@ func decodeFunctions(prog *bytecode.Program) ([]*BytecodeFunction, error) {
 			Params:        append([]string{}, raw.Params...),
 			RegisterCount: raw.RegisterCount,
 			Instructions:  make([]Instruction, 0, len(raw.Instructions)),
+			Rest:          raw.Rest,
 		}
 		for j := range raw.Instructions {
 			rawInstr := &raw.Instructions[j]
@@ -318,6 +321,10 @@ func decodeChainPayload(payload interface{}) Value {
 	}
 	node, ok := payload.(map[string]interface{})
 	if !ok {
+		return decodeValue(payload)
+	}
+	// 链节点一定有 head；improper chain 的 tail 是值载荷，交给 decodeValue。
+	if _, hasHead := node["head"]; !hasHead {
 		return decodeValue(payload)
 	}
 	head := decodeValue(node["head"])

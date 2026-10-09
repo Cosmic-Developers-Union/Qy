@@ -19,6 +19,18 @@ def test_main_entry_point_runs():
     assert "Usage:" in result.stdout or "usage:" in result.stdout.lower()
 
 
+def test_benchmark_module_entry_point_runs():
+    """测试 python -m qy.benchmark（Makefile bench 目标）可用。."""
+    result = subprocess.run(
+        [sys.executable, "-m", "qy.benchmark", "--help"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0
+    assert "benchmark" in result.stdout.lower()
+
+
 def test_main_entry_point_invalid_command():
     """测试 python -m qy 对无效命令返回错误。."""
     result = subprocess.run(

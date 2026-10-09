@@ -46,6 +46,13 @@ export function printOp(args: QyValue[], env: QyValue): QyValue {
   return values.length === 0 ? null : values[values.length - 1];
 }
 
+/** `display`：输出但不追加换行（与后端 `display` 内建一致）。 */
+export function displayOp(args: QyValue[], env: QyValue): QyValue {
+  const values = args.map((arg) => resolveLiteral(arg, env));
+  writer(values.map(formatValue).join(' '));
+  return values.length === 0 ? null : values[values.length - 1];
+}
+
 /** `newline`：只输出换行。 */
 export function newlineOp(_args: QyValue[], _env: QyValue): QyValue {
   writer('\n');
@@ -56,7 +63,7 @@ export function ioBindings(): Record<string, QyValue> {
   return {
     print: printOp,
     echo: printOp,
-    display: printOp,
+    display: displayOp,
     newline: newlineOp,
   };
 }

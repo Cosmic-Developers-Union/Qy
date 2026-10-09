@@ -31,6 +31,11 @@ __all__ = [
 def literal_type(value: object) -> TypeName:
     from qy.core.syntax import NONE
     from qy.core.syntax import NoneValue
+    from qy.sem.host import HostReference
+
+    if isinstance(value, HostReference):
+        return "host"
+    from qy.sem.core import CharValue
     from qy.sem.core import DictValue
     from qy.sem.core import ListValue
     from qy.sem.core import NumberValue
@@ -50,6 +55,8 @@ def literal_type(value: object) -> TypeName:
         return "number"
     if isinstance(value, StringValue):
         return "string"
+    if isinstance(value, CharValue):
+        return "char"
     if isinstance(value, TupleValue):
         return "tuple"
     if isinstance(value, ListValue):

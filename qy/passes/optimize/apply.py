@@ -6,9 +6,9 @@
 - ``qy.passes.build_optimization_pipeline``（隔离测试用的 HIR→MIR→LIR 子管线）；
 - ``OptimizeMIRPass``（默认管线中 ``mir.validate`` 之后的接线点）。
 
-``OptimizeMIRPass`` 默认是 no-op：只有 ``PipelineOptions.optimize`` 为真时才运行
-优化序列。是否默认开启由优化 pass 对 language-level effect / continuation 控制流
-的正确性决定（见 todo.md §Phase P）。
+``OptimizeMIRPass`` 在 ``PipelineOptions.optimize`` 为假时是 no-op；该选项默认
+**开启**。优化正确性由 86 语料 S1–S5 差分（``scripts/optimize_frontier.py``）与
+``docs/package-structure.md`` §3.1 记录的真实缺陷修复守卫。
 """
 
 from __future__ import annotations

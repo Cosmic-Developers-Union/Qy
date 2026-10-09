@@ -66,7 +66,7 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 
 - quote: 返回 syntax datum，不求值。
 - atom: 判断值是否不是非空 chain；因此 `symbol` 与 `nil` 都是 atom。
-- eq: 按 identity 比较两个值；不承担 number/string value equality 或结构相等。
+- eq: 原子（number / string / char / symbol）按值比较，引用类型（chain / 容器 / host reference）按 identity 比较；不承担结构相等（见 `docs/stdlib-operators.md` 的结构相等草案）。
 - car: 取 chain 的首项。
 - cdr: 取 chain 的余项。
 - cons: 构造新的不可变 chain。
@@ -96,8 +96,8 @@ Qy 执行器的 runtime value 由符号求值或者通过算子构造。runtime 
 
 ## Function family operators
 
-- lambda: 构造匿名函数。
-- defun: 定义函数；语义上等价于 `define + lambda`，服从不可重绑定。
+- lambda: 构造匿名函数；参数列表支持 `&rest` / `&body <name>`，把剩余实参绑定为 chain。
+- defun: 定义函数；语义上等价于 `define + lambda`，服从不可重绑定；参数同样支持 `&rest` / `&body`。
 - apply: 以运行时给出的参数序列调用函数。
 
 ## Macro family operators

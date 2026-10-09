@@ -37,7 +37,13 @@ from qy.session.runtime_space import create_standard_runtime_space as standard_e
 from qy.vm.instance.machine import evaluate_bytecode
 
 _QY_TEST_DIR = Path(__file__).resolve().parents[1] / "tests" / "qy"
+_CASE_DIR = Path(__file__).resolve().parents[1] / "meta-interp" / "cases"
 _OPTIONS = PipelineOptions(error_threshold=10**6)
+
+
+def _corpus_programs() -> list[Path]:
+    """交换格式护栏覆盖的两份语料：tests/qy 与 meta-interp/cases。."""
+    return sorted(_QY_TEST_DIR.glob("*.qy")) + sorted(_CASE_DIR.glob("*.qy"))
 
 
 def _compile(source: str, env: object):
@@ -46,13 +52,14 @@ def _compile(source: str, env: object):
     )
 
 
-def test_round_trip_executes_every_qytest_program():
-    """Tests/qy 的全部程序：编译 → 导出 → 装载 → **在全新环境**执行，结果必须一致。.
+def test_round_trip_executes_every_corpus_program():
+    """tests/qy + meta-interp/cases 的全部程序：编译 → 导出 → 装载 → **在全新环境**执行。.
 
     注意必须用全新 env：交换格式必须自带运行所需的一切（hygiene 别名、模块宏导出），
     复用编译期 env 会让缺失的字段被编译期状态掩盖（这正是早期漏掉两个缺陷的原因）。
+    meta-interp/cases 必须纳入本护栏：dotted pair 缺陷正是只在这里的语料里出现。
     """
-    programs = sorted(_QY_TEST_DIR.glob("*.qy"))
+    programs = _corpus_programs()
     assert programs, "expected the qytest corpus"
 
     for path in programs:
@@ -209,6 +216,21 @@ def test_value_singletons_survive_round_trip():
     assert items[2] is NONE
 
 
+def test_dotted_pairs_round_trip_through_json():
+    """Improper chain 的 tail 是值载荷，不能被误当链节点解成 Chain(None, nil)。."""
+    from qy.core.syntax import Chain
+    from qy.core.syntax import car
+    from qy.core.syntax import cdr
+
+    env = standard_environment()
+    program = _compile("'(a . 1)", env)
+    loaded = load_bytecode_json(serialize_bytecode_json(program, env=env))
+    value = evaluate_bytecode(loaded, standard_environment())
+    assert isinstance(value, Chain)
+    assert car(value) == Symbol("a")
+    assert cdr(value) == Symbol("1")
+
+
 def test_hygiene_aliases_are_carried_by_the_exchange_format():
     """卫生宏产物必须能脱离编译期 env 执行（hygiene_bindings 必须被消费）。."""
     source = (_QY_TEST_DIR / "31_macro_hygiene.qy").read_text(encoding="utf-8")
@@ -323,7 +345,7 @@ def test_abstract_machine_dialect_round_trips_through_json():
     from qy.passes.pass_base import PipelineOptions
 
     options = PipelineOptions(error_threshold=10**6, lir_dialect="abstract-machine")
-    for path in sorted(_QY_TEST_DIR.glob("*.qy")):
+    for path in _corpus_programs():
         source = path.read_text(encoding="utf-8")
         compile_env = standard_environment()
         program = bytecode_artifact(

@@ -9,6 +9,9 @@
 - ``tag 3`` char：``(codepoint << 3) | 3``
 - ``tag 4`` callable：``(table_index << 3) | 4``
 - ``tag 5`` string：``(data_offset << 3) | 5``（UTF-8 存于 linear memory）
+- ``tag 6`` float：``(data_offset << 3) | 6``（f64 存于 linear memory）
+- ``tag 7`` heap：``(data_offset << 3) | 7``（linear memory 中的 heap 对象，首 i32 是子 tag：
+  ``1`` symbol（``[i32 sub][i32 string_offset]``）、``2`` cons（``[i32 sub][i32 pad][i64 car][i64 cdr]``））
 
 调用约定：所有可调用目标共享 wasm 类型 ``(param i32 i32) (result i64)``
 （``argc``, ``argv``），``argv`` 指向 linear memory 中连续的 i64 参数区。
@@ -27,6 +30,8 @@ __all__ = [
     "NUM_BUILTINS",
     "TAG_CALLABLE",
     "TAG_CHAR",
+    "TAG_FLOAT",
+    "TAG_HEAP",
     "TAG_INT",
     "TAG_NIL",
     "TAG_STRING",
@@ -36,6 +41,8 @@ __all__ = [
     "builtin_index",
     "callable_value",
     "char_value",
+    "float_value",
+    "heap_value",
     "int_value",
     "string_value",
     "table_index_for_function",
@@ -52,6 +59,12 @@ TAG_T = 2
 TAG_CHAR = 3
 TAG_CALLABLE = 4
 TAG_STRING = 5
+TAG_FLOAT = 6
+TAG_HEAP = 7
+
+#: heap 对象的子 tag（首 i32）。
+HEAP_SYMBOL = 1
+HEAP_CONS = 2
 
 VAL_NIL = TAG_NIL
 VAL_T = TAG_T
@@ -73,6 +86,14 @@ def char_value(codepoint: int) -> int:
 
 def string_value(data_offset: int) -> int:
     return (data_offset << 3) | TAG_STRING
+
+
+def float_value(data_offset: int) -> int:
+    return (data_offset << 3) | TAG_FLOAT
+
+
+def heap_value(data_offset: int) -> int:
+    return (data_offset << 3) | TAG_HEAP
 
 
 def table_index_for_function(fn_idx: int) -> int:

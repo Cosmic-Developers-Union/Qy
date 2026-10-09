@@ -207,8 +207,8 @@ func FormatValue(value Value) string {
 	case *Symbol:
 		return WriteSymbol(v)
 	case *CharValue:
-		// Python `format_value` 没有为 CharValue 分支，落到末尾的 `repr(value)`。
-		return "CharValue(value=" + pyReprString(v.Value) + ")"
+		// display 语义：字符与字符串一样输出原文本（write 才用 `#\a`）。
+		return v.Value
 	case bool:
 		if v {
 			return "true"
@@ -240,6 +240,10 @@ func FormatValue(value Value) string {
 		return "<continuation>"
 	case *ModuleValue:
 		return "<module " + v.Name + ">"
+	case *Env:
+		return "<symbol-space>"
+	case SlotTokenType:
+		return "<slot>"
 	case *HandlerSpec:
 		return "<handler " + v.Effect + ">"
 	}

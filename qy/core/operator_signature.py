@@ -14,6 +14,7 @@ TypeName = Literal[
     "dict",
     "effect",
     "function",
+    "host",
     "list",
     "nil",
     "none",
@@ -34,6 +35,7 @@ __all__ = [
     "Arity",
     "EffectSpec",
     "OperatorSignature",
+    "TypeName",
     "format_arity_message",
     "lookup_operator_signature",
 ]

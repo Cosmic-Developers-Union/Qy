@@ -13,6 +13,8 @@ LIR 的 ``LOAD_HOST`` 携带的是 **Qy 值**（``IntValue`` / ``StringValue`` /
 from __future__ import annotations
 
 from qy.core.syntax import NONE
+from qy.core.syntax import Chain
+from qy.core.syntax import Symbol
 from qy.core.syntax import T as QY_T
 from qy.sem.core import CharValue
 from qy.sem.core import IntValue
@@ -22,7 +24,7 @@ from qy.sem.core import StringValue
 __all__ = ["Constant", "classify_constant"]
 
 #: 分类结果：``(kind, payload)``。
-#: kind ∈ {"nil", "none", "t", "bool", "int", "float", "string", "char", "host"}
+#: kind ∈ {"nil", "none", "t", "bool", "int", "float", "string", "char", "symbol", "chain", "host"}
 Constant = tuple[str, object]
 
 
@@ -52,6 +54,10 @@ def classify_constant(value: object) -> Constant:
         return ("none", None)
     if _is_nil(value):
         return ("nil", None)
+    if isinstance(value, Symbol):
+        return ("symbol", value)
+    if isinstance(value, Chain):
+        return ("chain", value)
     return ("host", value)
 
 

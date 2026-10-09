@@ -3,7 +3,7 @@
 // 真源：`qy/std/strings.py`。字符串输入同时接受 StringValue 与宿主 str
 // （Python 侧 `_extract_str` 的迁移期互操作），但输出一律是 StringValue。
 
-import { EvaluationError, QyTypeError } from '../errors.ts';
+import { EvaluationError, QyRuntimeError, QyTypeError } from '../errors.ts';
 import {
   CharValue,
   IntValue,
@@ -47,31 +47,42 @@ export function stringEq(a: QyValue, b: QyValue): QyValue {
   return extractStr(a, 'string=') === extractStr(b, 'string=') ? QY_T : QY_NIL;
 }
 
+// JS 字符串是 UTF-16 code unit 序列；Qy 的字符串索引是 **code point**（与 Python/Go 一致）。
+function codePoints(text: string): string[] {
+  return [...text];
+}
+
 export function stringSlice(value: QyValue, start: QyValue, end: QyValue = QY_NIL): QyValue {
-  const text = extractStr(value, 'string-slice');
+  const chars = codePoints(extractStr(value, 'string-slice'));
   const i = extractInt(start, 'string-slice');
   const endOptional = optional(end);
-  if (endOptional === null) return new StringValue(text.slice(i));
-  return new StringValue(text.slice(i, extractInt(endOptional, 'string-slice')));
+  if (endOptional === null) return new StringValue(chars.slice(i).join(''));
+  return new StringValue(chars.slice(i, extractInt(endOptional, 'string-slice')).join(''));
 }
 
 export function stringAt(value: QyValue, index: QyValue): QyValue {
-  const text = extractStr(value, 'string-at');
+  const chars = codePoints(extractStr(value, 'string-at'));
   const i = extractInt(index, 'string-at');
-  if (i < 0 || i >= text.length) {
-    throw new EvaluationError(`string-at: index ${i} out of range for string of length ${text.length}`);
+  if (i < 0 || i >= chars.length) {
+    throw new EvaluationError(`string-at: index ${i} out of range for string of length ${chars.length}`);
   }
-  return new CharValue(text[i]);
+  return new CharValue(chars[i]);
 }
 
 export function stringFind(value: QyValue, needle: QyValue): QyValue {
-  const index = extractStr(value, 'string-find').indexOf(extractStr(needle, 'string-find'));
-  return index === -1 ? QY_NIL : new IntValue(index);
+  const text = extractStr(value, 'string-find');
+  const utf16Index = text.indexOf(extractStr(needle, 'string-find'));
+  // 把 UTF-16 code unit 索引转换为 code point 索引。
+  return utf16Index === -1 ? QY_NIL : new IntValue(codePoints(text.slice(0, utf16Index)).length);
 }
 
 export function stringSplit(value: QyValue, separator: QyValue = QY_NIL): QyValue {
   const text = extractStr(value, 'string-split');
   const sep = optional(separator);
+  if (sep !== null && extractStr(sep, 'string-split') === '') {
+    // Python `str.split("")` 抛 `empty separator`：三宿主一致报错。
+    throw new QyRuntimeError('empty separator');
+  }
   const parts = sep === null ? text.split(/\s+/).filter((part) => part !== '') : text.split(extractStr(sep, 'string-split'));
   return new TupleValue(parts.map((part) => new StringValue(part)));
 }
@@ -93,7 +104,13 @@ export function stringJoin(separator: QyValue, ...values: QyValue[]): QyValue {
 
 export function stringReplace(value: QyValue, old: QyValue, replacement: QyValue): QyValue {
   const text = extractStr(value, 'string-replace');
-  return new StringValue(text.split(extractStr(old, 'string-replace')).join(extractStr(replacement, 'string-replace')));
+  const from = extractStr(old, 'string-replace');
+  const to = extractStr(replacement, 'string-replace');
+  if (from === '') {
+    // Python `str.replace("", to)` 在每个 code point 之间（含首尾）插入 to。
+    return new StringValue(['', ...codePoints(text), ''].join(to));
+  }
+  return new StringValue(text.split(from).join(to));
 }
 
 export function stringEmpty(value: QyValue): QyValue {

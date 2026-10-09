@@ -156,6 +156,8 @@ class LIRFunction:
     frame_layout: LIRFrameLayout | None = None
     continuations: tuple[LIRContinuationLayout, ...] = ()
     handlers: tuple[LIRHandlerLayout, ...] = ()
+    # `&rest` / `&body` 变参名；None 表示定长参数。
+    rest_param: Symbol | None = None
 
 
 @dataclass(frozen=True, slots=True)

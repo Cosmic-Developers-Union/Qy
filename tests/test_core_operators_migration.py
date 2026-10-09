@@ -31,6 +31,18 @@ def test_import_operators_from_core():
     assert MetaOperator is not None
 
 
+def test_type_name_and_operator_kind_have_single_source():
+    """TypeName / OperatorKind 只能有一份定义（qy.core 只重导出）。."""
+    from qy.core import OperatorKind
+    from qy.core import TypeName
+    from qy.core.operator_signature import TypeName as SignatureTypeName
+    from qy.core.operators import OperatorKind as OperatorsOperatorKind
+
+    assert TypeName is SignatureTypeName
+    assert OperatorKind is OperatorsOperatorKind
+    assert "host" in getattr(TypeName, "__args__", ())
+
+
 def test_import_operator_signature_from_core():
     """测试可以从 qy.core 导入算子签名相关类型。."""
     assert OperatorSignature is not None

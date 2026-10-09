@@ -1,0 +1,10 @@
+; Macro hygiene: 宏定义点的自由符号不受调用点 shadow 影响；capture 显式选择调用点绑定。
+(macro add-one (value)
+  (cons '+ (cons value (cons 1 '()))))
+
+(macro call-site-plus (value)
+  (cons (capture '+) (cons value (cons 1 '()))))
+
+(pipeline
+  (= (let ((+ (lambda (left right) 0))) (add-one 41)) 42)
+  (= (let ((+ (lambda (left right) 0))) (call-site-plus 41)) 0))

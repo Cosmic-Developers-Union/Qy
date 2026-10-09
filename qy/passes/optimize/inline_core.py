@@ -35,6 +35,7 @@ from qy.ir.mir import MIRProgram
 from qy.ir.mir import MIRTerminator
 from qy.ir.mir import register_operand_positions
 from qy.ir.mir import register_tuple_positions
+from qy.ir.mir import terminator_register_positions
 
 __all__ = [
     "count_calls",
@@ -45,6 +46,7 @@ __all__ = [
     "is_inlinable",
     "is_recursive",
     "lexical_names",
+    "referenced_fn_indices",
     "remap_fn_indices",
 ]
 
@@ -171,6 +173,56 @@ def _same_symbol(a: object, b: object) -> bool:
     return a == b
 
 
+def referenced_fn_indices(functions: list[MIRFunction]) -> set[int]:
+    """返回仍被存活 ``MAKE_FUNCTION`` / ``MAKE_MACRO`` 引用的函数下标。."""
+    indices: set[int] = set()
+    for fn in functions:
+        for block in fn.blocks:
+            for inst in block.instructions:
+                if inst.opcode in ("MAKE_FUNCTION", "MAKE_MACRO") and len(inst.operands) >= 2:
+                    value = inst.operands[1]
+                    if isinstance(value, int):
+                        indices.add(value)
+    return indices
+
+
+def _fn_value_used_elsewhere(
+    caller: MIRFunction, fn_reg: int, call_block_idx: int, call_inst_idx: int
+) -> bool:
+    """``MAKE_FUNCTION`` 结果寄存器是否有除「绑定 + 唯一调用」之外的用途。.
+
+    有额外用途时不能删除 ``MAKE_FUNCTION``：内联会把它从 caller 里摘掉，
+    留下未定义寄存器读取。
+    """
+    for block_idx, block in enumerate(caller.blocks):
+        for inst_idx, inst in enumerate(block.instructions):
+            if block_idx == call_block_idx and inst_idx == call_inst_idx:
+                continue
+            if inst.opcode == "MAKE_FUNCTION":
+                continue
+            if (
+                inst.opcode == "DEFINE_ONCE"
+                and len(inst.operands) >= 2
+                and inst.operands[1] == fn_reg
+            ):
+                continue
+            for position in register_operand_positions(inst):
+                if position < len(inst.operands) and inst.operands[position] == fn_reg:
+                    return True
+            for position in register_tuple_positions(inst):
+                if position < len(inst.operands):
+                    value = inst.operands[position]
+                    if isinstance(value, tuple) and any(item == fn_reg for item in value):
+                        return True
+        for position in terminator_register_positions(block.terminator):
+            if (
+                position < len(block.terminator.operands)
+                and block.terminator.operands[position] == fn_reg
+            ):
+                return True
+    return False
+
+
 def inline_into(
     caller: MIRFunction,
     call_block_idx: int,
@@ -189,6 +241,23 @@ def inline_into(
     call_block = caller.blocks[call_block_idx]
     call_inst = call_block.instructions[call_inst_idx]
     dest_reg, _op_reg, arg_regs = call_inst.operands
+
+    fn_reg: int | None = None
+    for block in caller.blocks:
+        for inst in block.instructions:
+            if (
+                inst.opcode == "MAKE_FUNCTION"
+                and len(inst.operands) >= 2
+                and inst.operands[1] == callee_fn_idx
+            ):
+                fn_reg = cast(int, inst.operands[0])
+                break
+        if fn_reg is not None:
+            break
+    if fn_reg is not None and _fn_value_used_elsewhere(
+        caller, fn_reg, call_block_idx, call_inst_idx
+    ):
+        return None
 
     if not isinstance(arg_regs, tuple):
         return None

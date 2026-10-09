@@ -62,6 +62,7 @@
 **处置方向**：
 
 - 明确 `pre-symbol-space-chain` API：链节点、相对顺序、lazy layer、可写 head、fold 计划、profile 组合都要能表达；reader、analyzer、LSP、lowering、runtime 都从实例读取同一份起点事实。
+- `ChainFrame` 现在带 `has_membership`：`number-ss`/`char-ss`/`string-ss` 这类同时持有动态 `(membership, resolver)` 的字面量空间，不再因为固定 bindings 为空而在快照里看起来是空节点。
 - 明确区分语言核、standard profile、optional stdlib。standard profile 可以预装常用能力，但这不把它们提升为核心 form。
 - 默认 profile 是否加载 arithmetic 由实现策略决定；Python host interop 仍应保持显式 opt-in。
 - `qy.py`、Python container helper、string helper 全部改为显式 import 或显式 host injection。

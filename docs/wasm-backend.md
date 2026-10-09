@@ -27,6 +27,8 @@ source -> ... -> HIR -> MIR -> LIR(compat) -> WAT -> wasm -> Node WebAssembly
 | 3 | char | `(codepoint << 3) \| 3` |
 | 4 | callable | `(table_index << 3) \| 4` |
 | 5 | string | `(data_offset << 3) \| 5`，linear memory 中 `[i32 len][utf8]` |
+| 6 | float | `(data_offset << 3) \| 6`，f64 存于 linear memory（常量在数据段，结果在 bump arena） |
+| 7 | heap | `(data_offset << 3) \| 7`，heap 对象首 i32 是子 tag：`1` symbol、`2` cons |
 
 ## 调用约定
 
@@ -64,13 +66,15 @@ LIR 是扁平 CFG，wasm 需要结构化控制流。emitter 用经典的
 
 ## 支持范围
 
-已支持：int/nil/T/string 值，`+ - * / = eq < >`，无自由变量的
+已支持：int/nil/T/string/float 值，`+ - * / = eq < >`（float 走 f64 语义），symbol 与 chain
+（heap 对象，`cons`/`car`/`cdr`、quote 数据、嵌套/点对链），无自由变量的
 `defun`/`lambda`，`let`，`cond`/`pipeline` 控制流，`CALL` / `TAIL_CALL`
-（尚未做尾调用优化），`display`/`echo`/`newline`（由宿主提供）。
+（尚未做尾调用优化），`display`/`echo`/`newline`（由宿主提供；raw-argument 字面量实参
+如 `(display 1)` 在编译期按实例字面量规则折成 value）。
 
 未支持（遇到即报错）：effect（`defeffect`/`perform`/`handle`/`resume`）、
-module/import、macro、`parallel`/`all`/`race`、`apply`/`build-tuple`、
-`cons`/`car`/`cdr`（宿主暂未实现）、闭包捕获、深尾递归（无 TCO）。
+module/import、macro、`parallel`/`all`/`race`、`apply`/`build-tuple`/`tuple`、
+变参函数（`&rest`/`&body`）、闭包捕获、深尾递归（无 TCO）。
 
 ## 使用
 

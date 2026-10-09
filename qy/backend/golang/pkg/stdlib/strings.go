@@ -1,6 +1,7 @@
 package stdlib
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/Cosmic-Developers-Union/Qy/qy/backend/golang/pkg/vm"
@@ -13,7 +14,8 @@ import (
 // 互操作），但输出一律是 StringValue。
 
 func optionalString(value vm.Value) (vm.Value, bool) {
-	if vm.IsNil(value) {
+	// `argAt` 对缺参返回宿主 nil（不是 QyNil），两者都必须视为「未提供」。
+	if value == nil || vm.IsNil(value) {
 		return nil, false
 	}
 	return value, true
@@ -138,7 +140,7 @@ func StringAt(value, index vm.Value) (vm.Value, error) {
 		return nil, err
 	}
 	if at < 0 || at >= len(runes) {
-		return nil, &vm.EvaluationError{Message: "string-at: index out of range"}
+		return nil, &vm.EvaluationError{Message: fmt.Sprintf("string-at: index %d out of range for string of length %d", at, len(runes))}
 	}
 	return vm.NewChar(string(runes[at])), nil
 }
@@ -177,6 +179,10 @@ func StringSplit(value, separator vm.Value) (vm.Value, error) {
 		sep, err := extractStr(separator, "string-split")
 		if err != nil {
 			return nil, err
+		}
+		if sep == "" {
+			// Python `str.split("")` 抛 `empty separator`：三宿主一致报错。
+			return nil, vm.NewRuntimeError("empty separator")
 		}
 		parts = strings.Split(text, sep)
 	}
@@ -302,7 +308,7 @@ func StringUpper(value vm.Value) (vm.Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vm.NewString(strings.ToUpper(text)), nil
+	return vm.NewString(fullUpper(text)), nil
 }
 
 // StringLower 是 `string-lower`。
@@ -311,7 +317,7 @@ func StringLower(value vm.Value) (vm.Value, error) {
 	if err != nil {
 		return nil, err
 	}
-	return vm.NewString(strings.ToLower(text)), nil
+	return vm.NewString(fullLower(text)), nil
 }
 
 // StringTrim 是 `string-trim`。

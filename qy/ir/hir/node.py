@@ -258,6 +258,8 @@ class LambdaExpr:
     type_name: TypeName = "function"
     # 函数体打开的 lexical symbol-space（参数与 body 内 define 都绑定在这里）。
     space: SymbolSpace | None = None
+    # `&rest` / `&body` 变参名：额外实参绑定为 chain（与宏 rest 参数同义）。
+    rest_param: Symbol | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +269,8 @@ class DefunExpr:
     body: tuple[IRExpr, ...]
     span: SourceSpan | None = None
     type_name: TypeName = "function"
+    # `&rest` / `&body` 变参名（见 LambdaExpr.rest_param）。
+    rest_param: Symbol | None = None
     # Owner symbol-space recorded at lowering time so `resolve.spaces` can
     # build the slot layout without re-deriving scopes.
     owner_space: SymbolSpace | None = None

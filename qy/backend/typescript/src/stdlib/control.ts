@@ -4,13 +4,17 @@
 // `quote` / `macro` 都是编译期形式，不会出现在字节码运行期；
 // 运行期真正被 LOAD_ENV 调用的是 `truthy`。
 
+import { Env } from '../environment.ts';
+import { QyTypeError } from '../errors.ts';
 import {
   DictValue,
   ListValue,
   NoneValue,
   QY_NIL,
   QY_T,
+  SLOT_TOKEN,
   SetValue,
+  Symbol,
   TupleValue,
   isChain,
   isNil,
@@ -64,4 +68,32 @@ export function controlBindings(): Record<string, QyValue> {
     'nil?': (...args: QyValue[]) => nilPredicate(args[0]),
     not: (...args: QyValue[]) => notOp(args[0]),
   };
+}
+
+// -- symbol-space 显式建模算子（raw：需要当前 env） -------------------------
+
+/** `this`：返回当前 symbol-space。 */
+export function thisOp(_args: QyValue[], env: QyValue): QyValue {
+  return env;
+}
+
+/** `slot`：创建绑定槽位占位符。 */
+export function slotOp(): QyValue {
+  return SLOT_TOKEN;
+}
+
+/** `bind`：把 symbol 与 value 绑定到指定 slot（slot 仅占位，绑定写入当前空间）。 */
+export function bindOp(args: QyValue[], env: QyValue): QyValue {
+  const name = args[0];
+  const value = args[1];
+  if (!(name instanceof Symbol)) {
+    throw new QyTypeError('bind expects a symbol');
+  }
+  const symbol =
+    name.name.startsWith("'") && name.name.length > 1 ? new Symbol(name.name.slice(1)) : name;
+  if (!(env instanceof Env)) {
+    throw new QyTypeError('bind expects a symbol-space');
+  }
+  env.define(symbol.name, value);
+  return value;
 }

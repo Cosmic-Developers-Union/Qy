@@ -94,6 +94,16 @@ def test_pipeline_debug_commands_return_nonzero_on_diagnostics(runner, app):
     assert "error:" in result.output
 
 
+@pytest.mark.parametrize("command", ("hir", "mir", "lir", "bytecode", "wasm", "llvm", "export"))
+def test_debug_commands_do_not_cascade_lir_errors(runner, app, command):
+    """未解析符号只报该 HIR 诊断，不得级联出 "LIR main function index ... out of range"。."""
+    result = runner.invoke(app, [command, "-"], input="(nonexistent-op 1)\n")
+
+    assert result.exit_code == 1, (command, result.output)
+    assert "unresolved symbol 'nonexistent-op'" in result.output, command
+    assert "out of range for 0 LIR functions" not in result.output, command
+
+
 def test_operators_command(runner, app):
     result = runner.invoke(app, ["operators"])
 

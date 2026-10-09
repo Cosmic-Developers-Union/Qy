@@ -135,6 +135,8 @@ class MIRFunction:
     # 该函数体所属的 lexical symbol-space id（program-level layout 的 id）。
     # -1 表示没有 program-level layout。
     space_id: int = -1
+    # `&rest` / `&body` 变参名；None 表示定长参数。
+    rest_param: Symbol | None = None
 
 
 @dataclass(frozen=True, slots=True)

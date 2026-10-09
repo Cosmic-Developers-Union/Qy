@@ -44,6 +44,10 @@
   `none` / `chain` / `effect_def` / `reg_tuple` / `handler_specs` / `import_specs` /
   `symbol_tuple` / `list` / `tuple` / `binding_addr`（`{"space","slot"}`，abstract-machine
   方言的 `SLOT_COMPLETE` 用）；
+- `chain` 操作数编码为 `{head, tail}` 递归节点，`tail=null` 表示 nil；**improper
+  chain（dotted pair）的 tail 是值载荷**（如 `{"type":"symbol"}`），装载侧必须
+  按「有 `head` 才是节点」区分，否则会被误解成 `Chain(nil, nil)`（Python / TS / Go
+  三侧同一修复）；
 - Qy 语义值编码为 `{type, class, value}`（`class` 为 `qy/sem/core.py` 中的值类名，
   `value` 是该 dataclass 的字段字典），`nil` / `T` / `none` 保持单例；
 - 无法编码的值必须**显式报错**，不得退化成 `{"type":"unknown"}`（历史上曾把
@@ -64,7 +68,7 @@
 
 1. **可表示**：程序里每个常量都能编码；
 2. **可还原**：装载后执行的结果与直接执行编译产物完全一致
-   （`tests/qy` 全部 55 个程序逐字节一致）。
+   （`tests/qy` 59 个 + `meta-interp/cases` 19 个，共 78 个程序逐字节一致）。
 
 ## 4. 宿主扩展与值转换
 
@@ -87,15 +91,15 @@ qy/resources/wasm/runtime.js`（`tests/test_wasm_backend.py`，缺工具链时�
 零运行时依赖、以 `bun` 运行。入口 `bun bin/qyvm.ts prog.json`；嵌入式 API 在
 `src/embed.ts`（`createVm` / `evalBytecode` / `registerHostFunction`）。
 
-实测（bun 1.3.14）：`bun scripts/conformance.ts` → **55/55**（与 Python 虚拟机逐字节一致）；
-`bun test` → **34 pass / 0 fail**。
+实测（bun 1.3.14）：`bun scripts/conformance.ts` → **78/78**（与 Python 虚拟机逐字节一致）；
+`bun test` → **49 pass / 0 fail**。
 
-实测（bun 1.3.14，语料 `tests/qy` 共 55 个）：
+实测（bun 1.3.14，语料 `tests/qy` 59 个 + `meta-interp/cases` 19 个，共 78 个）：
 
 ```bash
-cd qy/backend/typescript && bun test                                    # 48 pass
-bun qy/backend/typescript/scripts/conformance.ts                        # compat 55/55
-bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine  # 55/55
+cd qy/backend/typescript && bun test                                    # 49 pass
+bun qy/backend/typescript/scripts/conformance.ts                        # compat 78/78
+bun qy/backend/typescript/scripts/conformance.ts --dialect abstract-machine  # 78/78
 bun qy/backend/typescript/scripts/bigint_conformance.ts                 # 13/13
 ```
 
@@ -103,12 +107,21 @@ bun qy/backend/typescript/scripts/bigint_conformance.ts                 # 13/13
   `qy/session/number_ops.py`（含二元除法异号时 Python 的 `int(a/b)` float 路径）；
 - **并发**：`PARALLEL_GATHER`/`ALL_GATHER` 用 `Promise.allSettled`（保序），`RACE_FIRST`
   用 `Promise.race`；前置保守纯度判定，遇 effect/continuation/handler/共享状态写入/IO
-  内建/嵌套 gather 时整批回退顺序执行；宿主函数支持 async；
+  内建/嵌套 gather 时整批回退顺序执行；宿主函数支持 async。Python 采用同一「并发安全
+  判定」（`_thunks_are_concurrency_safe`，见 `qy/vm/instance/machine.py`）——分支含
+  effect / IO / 共享状态写入时也回退顺序执行，因此 `(parallel (perform e …) …)` 三宿主
+  一致地由外层 handler 处理；
 - 已知限制：`RUNTIME_EVAL` 只支持 Symbol 解析 / `quote` / 已解析算子的 eager 调用
   （special form、宏、`define`、`perform` 等需要编译期的形式不支持，不引入第二套语义）；
-  纯同步 thunk 的 `race` 胜者在 JS 与 Python asyncio 下可能不同（有真实 async 调用时
-  两者都是最快者胜）；`tsconfig.json` 声明 `bun-types` 但未安装（零依赖约束，未启用
-  tsc 检查）。
+  内层形式非法时（如 `eval '(1 2)`）Python 走完整 pipeline 在**编译期**报
+  `QY_RUNTIME_ERROR: eval: operator position is number, not callable`，TS/Go 的极简解释器在
+  **运行期**报 `QY_TYPE_ERROR: bytecode call resolved to non-callable 1`——错误码不同但都干净报错；
+  纯同步 thunk 的 `race` 三宿主都取最先声明的那个（有真实 async 调用时最快者胜）；
+  非尾递归深度受宿主限制（TS/Go 用显式帧栈可更深，Python 受
+  Python 调用栈限制，超出时报语言级 `QY_RUNTIME_ERROR: maximum recursion depth exceeded`）；
+  `tsconfig.json` 声明 `bun-types` 但未安装（零依赖约束，未启用
+  tsc 检查）；标准库模块面提供 `qy.core` / `qy.io` / `qy.num` / `qy.str` / `qy.char` /
+  `qy.int8`..`qy.float128`，暂不含 `qy.legacy`（Python 有）。
 
 **Go**：已实现。`go.mod` 在仓库根（module `github.com/Cosmic-Developers-Union/Qy`，
 零第三方依赖），`qy/backend/golang/` 与 `go-reader/` 同属一个 module；入口
@@ -119,29 +132,32 @@ bun qy/backend/typescript/scripts/bigint_conformance.ts                 # 13/13
 语义逐条对齐 `qy/session/number_ops.py`（含二元除法异号时 Python 的 `int(a/b)` float
 路径）；两种 LIR 方言均支持（`SLOT_COMPLETE` 经 `symbol_spaces` layout 还原 symbol）。
 
-实测（go1.27，语料 `tests/qy` 共 55 个）：
+实测（go1.27，语料 `tests/qy` 59 个 + `meta-interp/cases` 19 个，共 78 个）：
 
 ```bash
 export GOCACHE=$(mktemp -d)          # 仅在默认 GOCACHE 只读的环境需要
 go build ./... && go vet ./... && go test ./...
-bash qy/backend/golang/conformance.sh                            # → passed 55/55
-bash qy/backend/golang/conformance.sh --dialect abstract-machine  # → passed 55/55
+bash qy/backend/golang/conformance.sh                            # → passed 78/78
+bash qy/backend/golang/conformance.sh --dialect abstract-machine  # → passed 78/78
 bash qy/backend/golang/bigint_conformance.sh                      # → passed 13/13
 go run ./examples/go/hello                                        # → 42
 ```
 
-已知限制：`PARALLEL_GATHER`/`ALL_GATHER` 顺序执行且只返回首个错误（Python 的
-`PARALLEL_GATHER` 会聚合为 `QyAggregateError`）、`RACE_FIRST` 取第一个 thunk；
+已知限制：`PARALLEL_GATHER`/`ALL_GATHER` 顺序执行；`PARALLEL_GATHER` 按 Python 语义聚合为
+`QyAggregateError`（effect 信号原样上抛给 handler），`ALL_GATHER` 抛首个错误；`RACE_FIRST`
+取第一个 thunk；
 `CACHE_EVAL` 用 VM 全局 map + `FormatValue(key)` 作为键；`EFFECT_UNWIND` 强类型要求
 `*Continuation`（Python 对非 continuation 默认 `resumable=true`）；`read`/`read-int`
 内建返回 nil（未接 stdin）；`CoerceHostNumber` 沿用 TS 的"整数值宿主 float64 → IntValue"
 启发式（Python 对宿主 float 一律 FloatValue）；`RUNTIME_EVAL` 是极简 eager 解释器
-（Go 宿主不含编译器）。
+（Go 宿主不含编译器）；`string-upper` / `string-lower` 用 `unicase.go` 的 full case mapping（多字符展开 + 希腊
+Final_Sigma），与 Python/JS 一致（Go 标准库只有 simple mapping，故内置 Python 3.12 的差集表）；标准库模块面提供 `qy.core` / `qy.io` /
+`qy.num` / `qy.str` / `qy.char` / `qy.int8`..`qy.float128`，暂不含 `qy.legacy`（Python 有）。
 
 ## 6. 验收标准
 
 1. **同源一致**：同一个 `.qy` 文件在任一宿主 VM 上的输出与 Python 虚拟机逐字节一致
-   （语料 `tests/qy/*.qy`，共 55 个；扩展语料 `meta-interp/cases/*.qy`）。Python 侧由
+   （语料 `tests/qy/*.qy` 59 个 + `meta-interp/cases/*.qy` 19 个）。Python 侧由
    `tests/test_bytecode_json.py` 守卫（在**全新环境**执行装载结果，并端到端跑
    `qy export` + `qy run --bytecode`）；TypeScript 侧由
    `bun qy/backend/typescript/scripts/conformance.ts` 守卫；

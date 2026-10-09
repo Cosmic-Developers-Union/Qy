@@ -91,6 +91,29 @@ describe('loadBytecodeJson', () => {
     expect(args).toEqual([0, 0]);
   });
 
+  test('improper chain 的 tail 是值载荷而不是节点', () => {
+    const text = program([
+      {
+        opcode: 'LOAD_HOST',
+        operands: [
+          { type: 'reg', value: 0 },
+          {
+            type: 'chain',
+            value: {
+              head: { type: 'symbol', value: 'a' },
+              tail: { type: 'symbol', value: '1' },
+            },
+          },
+        ],
+      },
+      { opcode: 'RETURN', operands: [{ type: 'reg', value: 0 }] },
+    ]);
+    const parsed = loadBytecodeJson(text);
+    const chain = parsed.functions[0].instructions[0].operands[1] as Chain;
+    expect(chain.tail).toBeInstanceOf(Symbol);
+    expect((chain.tail as Symbol).name).toBe('1');
+  });
+
   test('handler_specs / import_specs / symbol_tuple', () => {
     const text = program([
       {

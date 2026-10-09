@@ -1,5 +1,7 @@
 from qy.core.syntax import Symbol
 from qy.core.syntax import is_chain
+from qy.core.syntax import list_to_chain
+from qy.core.syntax import nil
 from qy.ir import CallExpr
 from qy.ir import CondExpr
 from qy.ir import DefeffectExpr
@@ -60,6 +62,22 @@ def test_quote_lowers_to_raw_ast_boundary():
     items = list(quote.form)
     assert isinstance(items[0], Symbol)
     assert items[0].name == "+"
+
+
+def test_h11_quote_form_accepts_only_syntax_datums():
+    """H11：QuoteExpr.form 只能是 Symbol / Chain / nil。."""
+    from typing import cast
+
+    from qy.core.syntax import Form
+    from qy.ir.hir.predicates import h11_quote_form_is_form
+
+    assert h11_quote_form_is_form(QuoteExpr(Symbol("x"))) == ()
+    assert h11_quote_form_is_form(QuoteExpr(list_to_chain([Symbol("a"), Symbol("b")]))) == ()
+    assert h11_quote_form_is_form(QuoteExpr(nil)) == ()
+    # 宿主标量不是 syntax datum，必须被 H11 拒绝。
+    assert h11_quote_form_is_form(QuoteExpr(cast("Form", 42)))
+    assert h11_quote_form_is_form(QuoteExpr(cast("Form", "abc")))
+    assert h11_quote_form_is_form(QuoteExpr(cast("Form", None)))
 
 
 def test_tail_position_is_marked_inside_function_body():

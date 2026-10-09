@@ -62,6 +62,27 @@ func NewReifyError(message string) *ReifyError {
 	return &ReifyError{EvaluationError: EvaluationError{Message: message}}
 }
 
+// AggregateError 聚合多个并行分支的错误（对应 Python `QyAggregateError`）。
+type AggregateError struct {
+	EvaluationError
+	Errors []error
+}
+
+// NewAggregateError 构造聚合错误。
+func NewAggregateError(message string, errors []error) *AggregateError {
+	return &AggregateError{EvaluationError: EvaluationError{Message: message}, Errors: errors}
+}
+
+// EffectError 是代数效应错误基类（对应 Python `QyEffectError`）。
+type EffectError struct {
+	EvaluationError
+}
+
+// NewEffectError 构造效应错误。
+func NewEffectError(message string) *EffectError {
+	return &EffectError{EvaluationError: EvaluationError{Message: message}}
+}
+
 // RuntimeError 是通用运行时错误。
 type RuntimeError struct {
 	EvaluationError

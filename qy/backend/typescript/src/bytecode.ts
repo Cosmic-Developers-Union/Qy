@@ -58,6 +58,8 @@ export interface BytecodeFunction {
   params: string[];
   registerCount: number;
   instructions: Instruction[];
+  /** `&rest` / `&body` 变参名；null 表示定长参数。 */
+  restParam: string | null;
 }
 
 /** `SLOT_COMPLETE` 的绑定地址（对应 Python 的 `LIRBindingAddr`）。 */
@@ -222,6 +224,8 @@ function decodeChain(payload: unknown): QyValue {
   if (payload === null || payload === undefined) return QY_NIL;
   if (typeof payload !== 'object') return decodeValue(payload);
   const node = payload as Record<string, unknown>;
+  // 链节点一定有 head；improper chain 的 tail 是值载荷，交给 decodeValue。
+  if (!('head' in node)) return decodeValue(payload);
   const tail = decodeChain(node['tail']);
   return new Chain(decodeValue(node['head']), tail);
 }
@@ -331,6 +335,8 @@ export function loadBytecodeJson(text: string): BytecodeProgram {
       params: rawParams.map((param) => String(param)),
       registerCount: asInt(fn['register_count'], 0),
       instructions,
+      restParam:
+        typeof fn['rest'] === 'string' && fn['rest'] !== '' ? String(fn['rest']) : null,
     };
   });
   const hygieneBindings = new Map<string, string>();

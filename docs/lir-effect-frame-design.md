@@ -34,19 +34,19 @@ LIR 指令集已包含抽象机器指令：
 
 ### 剩余工作
 
-1. bytecode compiler（`qy/backend/vm/compiler.py`）当前只做薄映射，尚未处理 abstract machine ops → bytecode 的转换
-2. register VM（`qy/vm/instance/machine.py`）当前仍通过 Python `_EffectFrame` dataclass 实现 effect，尚未消费 LIR lowering 产出的 frame layout
-3. `compat LIR` → `abstract-machine LIR` 的完全切换尚未完成
+1. ~~bytecode compiler 尚未处理 abstract machine ops → bytecode~~ ✅ 已完成：`compile_lir_bytecode` 接受 `compat` 与 `abstract-machine` 两种 dialect，抽象机指令已是 VM 可编码 opcode（`backend/vm/spec/opcode.py`）。
+2. register VM 已在 `abstract-machine` 路径执行 `HANDLER_*` / `CONT_*` / `EFFECT_*` / `SS_*` / `SLOT_COMPLETE`；仍待把 effect frame 从 Python `_EffectFrame` 快照上移到 LIR/ABI 模型，并让 VM 直接消费 `frame_layout` / `continuation_layout` 字段。
+3. `compat LIR` → `abstract-machine LIR` 的**默认**切换尚未完成（默认执行路径仍是 `compat`）。
 
 ## parallel / all / race 与 effect 合流
 
 ### parallel
 
-每个分支在独立 task 中执行。若某分支 perform effect：
-
-- continuation 仅在该分支 task 内有效
-- 其他分支不受影响
-- 当前实现（`asyncio.gather`）正确
+分支先做「并发安全判定」：只含纯 opcode 的 thunk 在独立 task 中真正并发
+（`asyncio.gather`）；一旦分支或其可达函数含 effect / IO builtin / `print` 等副作用
+symbol，整批回退顺序求值，effect 因而由外层 handler 处理。Python
+（`_thunks_are_concurrency_safe`）、TS（`thunksAreConcurrencySafe`）与 Go（顺序路径）
+三宿主一致。
 
 ### all
 
@@ -63,7 +63,7 @@ first-resume-wins——第一个 resume 的分支胜出，其他分支被取消�
 - handler 处理该 effect 并 resume
 - 第一个 resume 的分支使 race 完成
 - 其他分支应被取消
-- 当前实现（`asyncio.wait(FIRST_COMPLETED)`）需要验证取消行为
+- 当前实现（`asyncio.wait(FIRST_COMPLETED)` + cancel pending）会取消其余分支；纯同步 thunk 按最先声明者胜（与 TS `Promise.race` / Go 首个 thunk 一致）。
 
 ## 虚拟栈与尾调用
 
@@ -81,7 +81,6 @@ first-resume-wins——第一个 resume 的分支胜出，其他分支被取消�
 
 ## 下一步
 
-1. bytecode compiler 处理 abstract machine ops → bytecode 的转换
-2. register VM 消费 LIR lowering 产出的 frame layout，替代 Python `_EffectFrame` dataclass
-3. 完成 `compat LIR` → `abstract-machine LIR` 的切换
-4. 实现互递归蹦床化
+1. register VM 消费 LIR lowering 产出的 frame/continuation layout 字段，替代 Python `_EffectFrame` 快照。
+2. 完成 `compat LIR` → `abstract-machine LIR` 的默认切换。
+3. 实现互递归蹦床化与 effect 边界下的尾调用。

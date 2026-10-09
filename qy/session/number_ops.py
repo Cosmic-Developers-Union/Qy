@@ -21,12 +21,13 @@ effect。这三个 effect 都是非可恢复 effect 的标准形态。
 调用方:
 
 - ``qy/session/pre_ss.py::create_number_ss`` 通过 ``number_ss_bindings()`` 注入。
-- ``qy/symbol_space/__init__.py::_load_num_module`` 把同一份 bindings 暴露为 ``qy.num`` 模块。
+- ``qy/std/__init__.py::_load_num_module`` 把同一份 bindings 暴露为 ``qy.num`` 模块。
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
+from collections.abc import Mapping
 from typing import cast
 
 from qy.core.operators import PureOperator
@@ -71,7 +72,39 @@ def _resumable_continuation(effect_name: str) -> QyContinuation:
     return QyContinuation(effect_name, True, resume)
 
 
+def effect_payload(entries: Mapping[str, object]) -> object:
+    """把宿主 level 的 effect 载荷转换成 Qy `DictValue`（symbol 键 + Qy 值）。.
+
+    effect 载荷是 runtime value，必须与三宿主一致（Go 侧本就是 `NewDict` +
+    `NewSymbol` 键）；不能泄漏宿主 dict/object。
+    """
+    from qy.core.syntax import Symbol
+    from qy.core.syntax import T as QY_T
+    from qy.core.syntax import nil as QY_NIL
+    from qy.sem.core import DictValue
+    from qy.sem.core import FloatValue
+    from qy.sem.core import IntValue
+    from qy.sem.core import StringValue
+
+    converted: list[tuple[object, object]] = []
+    for key, value in entries.items():
+        if isinstance(value, bool):
+            item: object = QY_T if value else QY_NIL
+        elif isinstance(value, str):
+            item = StringValue(value)
+        elif isinstance(value, int):
+            item = IntValue(value)
+        elif isinstance(value, float):
+            item = FloatValue(value)
+        else:
+            item = value
+        converted.append((Symbol(key), item))
+    return DictValue(tuple(converted))
+
+
 def _perform_effect(name: str, payload: object, *, resumable: bool = False) -> None:
+    if isinstance(payload, dict):
+        payload = effect_payload({str(key): value for key, value in payload.items()})
     cont = _resumable_continuation(name) if resumable else _non_resumable_continuation(name)
     raise QyEffectSignal(
         name,
@@ -170,12 +203,14 @@ def _coerce_host_number(value: object) -> object:
 
 def _ensure_same_number_type(args: tuple[object, ...], op: str) -> type[NumberValue]:
     """Require every argument to be the same concrete ``NumberValue`` type."""
+    from qy.sem.classify import value_type
+
     if not args:
         raise QyTypeError(f"{op} requires at least one argument")
     head = args[0]
     if not isinstance(head, NumberValue):
         raise QyTypeError(
-            f"{op} expects a number, got {type(head).__name__}",
+            f"{op} expects a number, got {value_type(head)}",
             metadata={"operator": op, "value": head},
         )
     head_type = type(head)
@@ -186,7 +221,7 @@ def _ensure_same_number_type(args: tuple[object, ...], op: str) -> type[NumberVa
                 {
                     "operator": op,
                     "left_type": head_type.type_name,
-                    "right_type": getattr(type(arg), "type_name", type(arg).__name__),
+                    "right_type": value_type(arg),
                     "argument_index": index,
                 },
             )
@@ -320,8 +355,36 @@ def _float_mod(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> 
     b = float(_number_payload(args[1]))
     if b == 0.0:
         _perform_effect("divide-by-zero", {"operator": "mod"}, resumable=False)
+    # 与 integer ``mod`` / Python ``%`` 一致：结果符号跟随除数（floored），
+    # 而不是 C ``fmod`` 的截断余数。
+    return _make_number(value_type, _check_float_finite(a % b, value_type.type_name, "mod"))
+
+
+def _integer_remainder(
+    value_type: type[IntegerValue], args: tuple[IntegerValue, ...]
+) -> IntegerValue:
+    if len(args) != 2:
+        raise QyTypeError("remainder expects exactly 2 arguments")
+    a = _integer_payload(args[0])
+    b = _integer_payload(args[1])
+    if b == 0:
+        _perform_effect("divide-by-zero", {"operator": "remainder"}, resumable=False)
+    # 截断余数：结果符号跟随被除数，与 ``mod`` 的 floored 语义相对。
+    remainder = abs(a) % abs(b)
+    if a < 0:
+        remainder = -remainder
+    return _make_integer(value_type, _check_integer_range(remainder, value_type, "remainder"))
+
+
+def _float_remainder(value_type: type[NumberValue], args: tuple[NumberValue, ...]) -> NumberValue:
+    if len(args) != 2:
+        raise QyTypeError("remainder expects exactly 2 arguments")
+    a = float(_number_payload(args[0]))
+    b = float(_number_payload(args[1]))
+    if b == 0.0:
+        _perform_effect("divide-by-zero", {"operator": "remainder"}, resumable=False)
     return _make_number(
-        value_type, _check_float_finite(a - b * int(a / b), value_type.type_name, "mod")
+        value_type, _check_float_finite(a - b * int(a / b), value_type.type_name, "remainder")
     )
 
 
@@ -346,6 +409,19 @@ def _div(*args: object) -> NumberValue:
 
 def _mod(*args: object) -> NumberValue:
     return _dispatch_op("mod", args, _integer_mod, _float_mod)
+
+
+def _remainder(*args: object) -> NumberValue:
+    return _dispatch_op("remainder", args, _integer_remainder, _float_remainder)
+
+
+def _number_p(value: object) -> object:
+    """判断值是否为 number（Qy 语义数字或宿主互操作 ``int`` / ``float``）。."""
+    if isinstance(value, NumberValue):
+        return QY_T
+    if isinstance(value, bool):
+        return QY_NIL
+    return QY_T if isinstance(value, int | float) else QY_NIL
 
 
 # -- Comparison operators ----------------------------------------------------
@@ -437,7 +513,7 @@ def number_ss_bindings() -> dict[Symbol, object]:
     infinite literal recognition. Used by:
 
     - ``qy/session/pre_ss.py::create_number_ss`` — number-ss 自身。
-    - ``qy/symbol_space/__init__.py::_load_num_module`` — ``qy.num`` 模块导出 (用户脚本
+    - ``qy/std/__init__.py::_load_num_module`` — ``qy.num`` 模块导出 (用户脚本
       可显式 ``(from qy.num import +)``)。
     """
     return {
@@ -454,6 +530,12 @@ def number_ss_bindings() -> dict[Symbol, object]:
             "数字相除；要求所有参数为同一 concrete number 类型；除零触发 divide-by-zero effect。",
         ),
         Symbol("mod"): PureOperator("mod", _mod, "取模；要求所有参数为同一 concrete number 类型。"),
+        Symbol("remainder"): PureOperator(
+            "remainder", _remainder, "截断余数；结果符号跟随被除数（与 mod 相对）。"
+        ),
+        Symbol("number?"): PureOperator(
+            "number?", _number_p, "判断值是否为 number（Qy 语义数字或宿主互操作 int/float）。"
+        ),
         Symbol("string->number"): PureOperator(
             "string->number",
             _string_to_number,

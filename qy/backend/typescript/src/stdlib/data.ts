@@ -5,20 +5,25 @@
 // 以便宿主嵌入时有完整的数据操作面。
 
 import { QyArityError, QyReifyError, QyTypeError } from '../errors.ts';
+import { BytecodeFunctionValue } from '../frame.ts';
 import { defaultLiteralType, tryDefaultLiteral } from '../environment.ts';
+import { formatValue } from '../display.ts';
 import { MISSING } from '../internal.ts';
 import {
   Chain,
   CharValue,
   DictValue,
+  EffectDefinition,
   IntegerValue,
   IntValue,
   ListValue,
   NoneValue,
   NumberValue,
+  PureOperatorValue,
   QY_NIL,
   QY_NONE,
   QY_T,
+  RawOperatorValue,
   SetValue,
   StringValue,
   Symbol,
@@ -69,6 +74,9 @@ export function eq(left: QyValue, right: QyValue): QyValue {
   if (left instanceof StringValue && right instanceof StringValue) {
     return left.value === right.value ? QY_T : QY_NIL;
   }
+  if (left instanceof CharValue && right instanceof CharValue) {
+    return left.value === right.value ? QY_T : QY_NIL;
+  }
   if (typeof left === 'string' && typeof right === 'string') {
     return left === right ? QY_T : QY_NIL;
   }
@@ -97,14 +105,14 @@ export function sameQyKey(left: QyValue, right: QyValue): boolean {
 export function carOp(value: QyValue): QyValue {
   if (isNil(value)) return QY_NIL;
   if (isChain(value)) return value.head;
-  throw new QyTypeError(`car expects a chain, got ${String(value)}`);
+  throw new QyTypeError(`car expects a chain, got ${formatValue(value)}`);
 }
 
 /** `cdr`。 */
 export function cdrOp(value: QyValue): QyValue {
   if (isNil(value)) return QY_NIL;
   if (isChain(value)) return value.tail;
-  throw new QyTypeError(`cdr expects a chain, got ${String(value)}`);
+  throw new QyTypeError(`cdr expects a chain, got ${formatValue(value)}`);
 }
 
 /** `cons`。 */
@@ -154,7 +162,7 @@ export function lenOp(value: QyValue): QyValue {
   ) {
     return new IntValue(value.length);
   }
-  throw new QyTypeError('len expects a collection');
+  throw new QyTypeError(`len expects a collection, got ${formatValue(value)}`);
 }
 
 /** `get`：dict / tuple / list / chain 取项。 */
@@ -181,7 +189,7 @@ export function getOp(collection: QyValue, key: QyValue, ...defaults: QyValue[])
     const items = chainToList(collection);
     return index >= -items.length && index < items.length ? items.at(index) : fallback;
   }
-  throw new QyTypeError('get expects a chain, tuple, list, or dict');
+  throw new QyTypeError(`get expects a chain, tuple, list, or dict, got ${formatValue(collection)}`);
 }
 
 function ensureIndex(value: QyValue): number {
@@ -298,6 +306,11 @@ export function typeOp(value: QyValue): QyValue {
   if (value instanceof NumberValue) return new Symbol('number');
   if (value instanceof StringValue) return new Symbol('string');
   if (value instanceof CharValue) return new Symbol('char');
+  if (value instanceof PureOperatorValue || value instanceof RawOperatorValue) {
+    return new Symbol('operator');
+  }
+  if (value instanceof EffectDefinition) return new Symbol('effect');
+  if (value instanceof BytecodeFunctionValue) return new Symbol('function');
   return new Symbol('object');
 }
 
@@ -337,7 +350,10 @@ export function reifyValue(value: QyValue): QyValue {
     if (isChain(tail) || isNil(tail)) return listToChain([...items, ...chainToList(tail)]);
     return new Chain(items.length > 0 ? listToChain(items) : QY_NIL, tail);
   }
-  throw new QyReifyError(`cannot reify value of type ${(value as { typeName?: string })?.typeName ?? 'object'}`);
+  const label = typeOp(value);
+      throw new QyReifyError(
+        `cannot reify value of type ${label instanceof Symbol ? label.name : 'object'}`,
+      );
 }
 
 /** APPLY / `apply` 的实参归一：字面量拼写（Symbol）在 VM 里还原为字面量值。 */
@@ -359,8 +375,18 @@ export function dataBindings(): Record<string, QyValue> {
     append: (...args: QyValue[]) => appendOp(args[0], args[1]),
     cons: (...args: QyValue[]) => consOp(args[0], args[1]),
     eq: (...args: QyValue[]) => eq(args[0], args[1]),
-    'get': (...args: QyValue[]) => getOp(args[0], args[1], ...args.slice(2)),
-    'has?': (...args: QyValue[]) => hasOp(args[0], args[1]),
+    'get': (...args: QyValue[]) => {
+      if (args.length < 2 || args.length > 3) {
+        throw new QyArityError(`get expects two or three arguments, got ${args.length}`);
+      }
+      return getOp(args[0], args[1], ...args.slice(2));
+    },
+    'has?': (...args: QyValue[]) => {
+      if (args.length !== 2) {
+        throw new QyArityError(`has? expects exactly two arguments, got ${args.length}`);
+      }
+      return hasOp(args[0], args[1]);
+    },
     is: (...args: QyValue[]) => isIdentical(args[0], args[1]),
     len: (...args: QyValue[]) => lenOp(args[0]),
     type: (...args: QyValue[]) => typeOp(args[0]),

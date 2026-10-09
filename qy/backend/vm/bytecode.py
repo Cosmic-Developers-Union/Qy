@@ -87,6 +87,8 @@ class BytecodeFunction:
     # Abstract-machine dialect only: program-level symbol-space layout used by
     # SLOT_COMPLETE to recover the bound symbol from a (space, slot) address.
     symbol_spaces: tuple[SymbolSpaceLayout, ...] = ()
+    # `&rest` / `&body` 变参名；None 表示定长参数。
+    rest_param: Symbol | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -548,14 +550,15 @@ def serialize_bytecode_json(program: BytecodeProgram, *, env=None) -> str:
                     "operands": encode_operands(instr.opcode, instr.operands),
                 }
             )
-        functions_json.append(
-            {
-                "name": func.name.name,
-                "params": [p.name for p in func.params],
-                "register_count": func.register_count,
-                "instructions": instructions_json,
-            }
-        )
+        function_json: dict[str, object] = {
+            "name": func.name.name,
+            "params": [p.name for p in func.params],
+            "register_count": func.register_count,
+            "instructions": instructions_json,
+        }
+        if func.rest_param is not None:
+            function_json["rest"] = func.rest_param.name
+        functions_json.append(function_json)
 
     program_json: dict[str, object] = {
         "version": 1,
@@ -710,7 +713,10 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
     def decode_chain(value: object) -> object:
         if value is None:
             return QY_NIL
-        if not isinstance(value, dict):
+        # 链节点一定是 ``{"head", "tail"}``；improper chain 的 tail 是一个
+        # **值载荷**（如 ``{"type": "symbol"}``），必须交给 decode_value，
+        # 否则会被误当节点解成 ``Chain(None, nil)``。
+        if not isinstance(value, dict) or "head" not in value:
             return decode_value(value)
         tail = decode_chain(value.get("tail"))
         return Chain(decode_value(value.get("head")), tail)
@@ -840,6 +846,7 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
             )
             for raw_instruction in raw_function.get("instructions", [])
         )
+        raw_rest = raw_function.get("rest")
         functions.append(
             BytecodeFunction(
                 Symbol(str(raw_function.get("name", ""))),
@@ -849,6 +856,9 @@ def load_bytecode_json(text: str) -> BytecodeProgram:
                 # VM 的 SLOT_COMPLETE 通过 frame.function.symbol_spaces 找回 symbol
                 # （与 compile_lir_bytecode 的产物同形状），因此每个函数都要带上 layout。
                 symbol_spaces=symbol_spaces,
+                rest_param=Symbol(str(raw_rest))
+                if isinstance(raw_rest, str) and raw_rest
+                else None,
             )
         )
 

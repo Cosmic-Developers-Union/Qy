@@ -8,6 +8,7 @@ Python 宿主示例、`ts/` 是 TypeScript 宿主示例。这些示例是文档�
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -19,15 +20,17 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _EXAMPLES = _REPO_ROOT / "examples"
 
 requires_bun = pytest.mark.skipif(shutil.which("bun") is None, reason="needs bun")
+requires_go = pytest.mark.skipif(shutil.which("go") is None, reason="needs go")
 
 
-def _run(command: list[str]) -> subprocess.CompletedProcess[str]:
+def _run(command: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
 
 
@@ -57,3 +60,40 @@ def test_typescript_examples_run():
 
     assert result.returncode == 0, f"ts examples failed:\n{result.stdout}\n{result.stderr}"
     assert "examples/ts:" in result.stdout
+
+
+@requires_bun
+def test_typescript_accepts_hello_golden_file(tmp_path: Path):
+    """roadmap: TS 宿主必须完整执行 `examples/qy/hello.qy` 且与 Python 逐字节一致。."""
+    bytecode = tmp_path / "hello.json"
+    export = _run(
+        [sys.executable, "-m", "qy", "export", "examples/qy/hello.qy", "-o", str(bytecode)]
+    )
+    assert export.returncode == 0, export.stderr
+
+    from_python = _run([sys.executable, "-m", "qy", "run", "examples/qy/hello.qy"])
+    assert from_python.returncode == 0, from_python.stderr
+
+    from_ts = _run(["bun", "qy/backend/typescript/bin/qyvm.ts", str(bytecode)])
+    assert from_ts.returncode == 0, from_ts.stderr
+    # `(this)` / `(slot)` / 算子值都有稳定的 Qy 文本表示（`<symbol-space>` /
+    # `<slot>` / `<operator x>`），因此 golden file 现在必须逐字节一致。
+    assert from_ts.stdout == from_python.stdout
+
+
+@requires_go
+def test_go_accepts_hello_golden_file(tmp_path: Path):
+    """roadmap: Go 宿主同样必须完整执行 `examples/qy/hello.qy` 且与 Python 逐字节一致。."""
+    bytecode = tmp_path / "hello.json"
+    export = _run(
+        [sys.executable, "-m", "qy", "export", "examples/qy/hello.qy", "-o", str(bytecode)]
+    )
+    assert export.returncode == 0, export.stderr
+
+    from_python = _run([sys.executable, "-m", "qy", "run", "examples/qy/hello.qy"])
+    assert from_python.returncode == 0, from_python.stderr
+
+    env = {**os.environ, "GOCACHE": str(tmp_path / "gocache")}
+    from_go = _run(["go", "run", "./qy/backend/golang/cmd/qyvm", str(bytecode)], env=env)
+    assert from_go.returncode == 0, from_go.stderr
+    assert from_go.stdout == from_python.stdout

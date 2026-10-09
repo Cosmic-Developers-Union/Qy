@@ -311,7 +311,12 @@ def _expand_let_surface_chain(chain: Chain, *, in_quasiquote: bool) -> object:
                     else:
                         expanded_bindings.append(binding)
                 else:
-                    expanded_bindings.append(binding)
+                    # 绑定通常是 (name value) chain；但 formatter 可能把
+                    # (quote x) 形式的绑定压成符号拼写（如 ''x）。这里必须像
+                    # 普通表达式一样展开 surface dialect，否则会读成裸符号而丢结构。
+                    expanded_bindings.append(
+                        _expand_surface_form(binding, in_quasiquote=in_quasiquote)
+                    )
             bindings = list_to_chain(expanded_bindings, span=get_span(bindings))
 
     expanded_body = _expand_surface_sequence(tuple(items[2:]), in_quasiquote=in_quasiquote)

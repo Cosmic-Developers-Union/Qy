@@ -23,6 +23,7 @@ from qy.passes.optimize.inline_core import inline_into
 from qy.passes.optimize.inline_core import is_inlinable
 from qy.passes.optimize.inline_core import is_recursive
 from qy.passes.optimize.inline_core import lexical_names
+from qy.passes.optimize.inline_core import referenced_fn_indices
 from qy.passes.pass_base import Pass
 from qy.passes.pass_base import PassContext
 from qy.passes.pass_base import PassResult
@@ -68,7 +69,12 @@ def _inline_program(program: MIRProgram) -> MIRProgram:
     if not inlined_indices:
         return program
 
-    new_functions, new_main = drop_functions(functions, inlined_indices, program.main)
+    # 只删除不再被任何存活 MAKE_FUNCTION 引用的 callee（否则函数下标会悬空）。
+    droppable = inlined_indices - referenced_fn_indices(functions)
+    if droppable:
+        new_functions, new_main = drop_functions(functions, droppable, program.main)
+    else:
+        new_functions, new_main = functions, program.main
 
     return replace(
         rebuild_program(program, functions=tuple(new_functions), constants=program.constants),

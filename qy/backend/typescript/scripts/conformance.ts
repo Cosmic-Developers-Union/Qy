@@ -23,9 +23,9 @@
 
 import { mkdtempSync, readdirSync, rmSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
-import { CORPUS, parseArgs, runCase, type CaseStatus } from './harness.ts';
+import { CORPORA, CORPUS, parseArgs, runCase, type CaseStatus } from './harness.ts';
 
 const STATUS_REASON: Record<Exclude<CaseStatus, 'pass' | 'exchange-unencodable'>, string> = {
   'python-failed': 'Python `qy run` 失败',
@@ -42,10 +42,17 @@ const EXCLUDED_REASON = '交换格式无法编码（Python 侧 load_bytecode_jso
 
 async function main(): Promise<number> {
   const args = parseArgs(process.argv.slice(2));
-  const files = readdirSync(CORPUS)
-    .filter((name) => name.endsWith('.qy'))
-    .filter((name) => args.filter === null || name.includes(args.filter))
-    .sort();
+  const files: { name: string; source: string }[] = [];
+  for (const dir of CORPORA) {
+    const prefix = dir === CORPUS ? '' : `${basename(dir)}__`;
+    for (const entry of readdirSync(dir)
+      .filter((name) => name.endsWith('.qy'))
+      .sort()) {
+      const name = prefix + entry.replace(/\.qy$/, '');
+      if (args.filter !== null && !name.includes(args.filter)) continue;
+      files.push({ name, source: join(dir, entry) });
+    }
+  }
 
   const workdir = mkdtempSync(join(tmpdir(), 'qy-conformance-'));
   const jsonDir = join(workdir, 'json');
@@ -58,8 +65,8 @@ async function main(): Promise<number> {
 
   for (const file of files) {
     total += 1;
-    const name = file.replace(/\.qy$/, '');
-    const source = join(CORPUS, file);
+    const name = file.name;
+    const source = file.source;
     const outcome = runCase(source, {
       jsonPath: join(jsonDir, `${name}.json`),
       dialect: args.dialect,

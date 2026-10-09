@@ -10,8 +10,10 @@ from qy.core.syntax import T as QY_T
 from qy.core.syntax import nil as QY_NIL
 from qy.errors import QyEffectSignal
 from qy.errors import QyTypeError
+from qy.sem.core import DictValue
 from qy.sem.core import Int32Value
 from qy.sem.core import IntValue
+from qy.sem.core import StringValue
 from qy.sem.core import UInt8Value
 from qy.std.numeric_spaces import make_int32_space
 from qy.std.numeric_spaces import make_uint8_space
@@ -73,7 +75,10 @@ class TestInt32Space:
             constructor.func(IntValue(2**31))
 
         assert exc_info.value.effect == "numeric-overflow"
-        assert exc_info.value.arg["type"] == "int32"  # ty: ignore[not-subscriptable]
+        payload = exc_info.value.arg
+        assert isinstance(payload, DictValue)
+        fields = {key.name: value for key, value in payload.entries if isinstance(key, Symbol)}
+        assert fields["type"] == StringValue("int32")
 
     def test_type_predicate(self):
         """Test int32? type predicate."""
@@ -167,6 +172,27 @@ class TestInt32Space:
         result = mod.func(Int32Value(17), Int32Value(5))
         assert isinstance(result, Int32Value)
         assert result.value == 2
+
+    def test_division_truncates_toward_zero(self):
+        """整数 `/` 向零截断（与 `qy.num` 一致），不是 Python 的 floored `//`。."""
+        module = make_int32_space()
+        div = _op(module.exports, "/")
+
+        assert div.func(Int32Value(-7), Int32Value(3)).value == -2
+        assert div.func(Int32Value(7), Int32Value(-3)).value == -2
+        assert div.func(Int32Value(-7), Int32Value(-3)).value == 2
+
+    def test_rem_is_truncated_not_floored(self):
+        """`rem` 是截断余数（符号跟随被除数），与 `mod`（floored）不同。."""
+        module = make_int32_space()
+        rem = _op(module.exports, "rem")
+        mod = _op(module.exports, "mod")
+
+        assert rem.func(Int32Value(-7), Int32Value(3)).value == -1
+        assert rem.func(Int32Value(7), Int32Value(-3)).value == 1
+        assert rem.func(Int32Value(-7), Int32Value(-3)).value == -1
+        assert mod.func(Int32Value(-7), Int32Value(3)).value == 2
+        assert mod.func(Int32Value(7), Int32Value(-3)).value == -2
 
     def test_comparison_less_than(self):
         """Test less than comparison."""

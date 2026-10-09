@@ -96,6 +96,30 @@ def test_pipeline_single_expr():
     assert result == 42
 
 
+def test_pipeline_define_is_visible_to_later_pipeline_forms():
+    from qy import Qy
+
+    q = Qy()
+    assert q.evaluate_source("(pipeline (define x 1) (+ x 1))") == 2
+
+
+def test_pipeline_define_leaks_to_enclosing_body():
+    from qy import Qy
+
+    q = Qy()
+    assert q.evaluate_source("(let () (pipeline (define x 1)) x)") == 1
+    assert q.evaluate_source("(let () (pipeline (defun f () 7)) (f))") == 7
+
+
+def test_pipeline_duplicate_define_emits_one_diagnostic():
+    program = lower_source("(pipeline (define x 1) (define x 1))")
+    assert not program.ok
+    errors = [
+        d for d in program.diagnostics if d.severity == "error" and "already bound" in d.message
+    ]
+    assert len(errors) == 1
+
+
 def test_define_binds_value():
     from qy import Qy
 

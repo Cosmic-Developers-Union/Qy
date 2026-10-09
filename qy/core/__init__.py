@@ -20,8 +20,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from qy.core.operator_runtime import RuntimeArgumentMode
 from qy.core.operator_runtime import RuntimeDispatchKind
 from qy.core.operator_runtime import RuntimeOperatorSemantics
@@ -34,6 +32,7 @@ from qy.core.operator_signature import ArgumentPolicy
 from qy.core.operator_signature import Arity
 from qy.core.operator_signature import EffectSpec
 from qy.core.operator_signature import OperatorSignature
+from qy.core.operator_signature import TypeName
 from qy.core.operator_signature import format_arity_message
 from qy.core.operator_signature import lookup_operator_signature
 from qy.core.operators import ArgumentEvaluator
@@ -41,6 +40,7 @@ from qy.core.operators import ControlOperator
 from qy.core.operators import EffectOperator
 from qy.core.operators import EvaluationOperator
 from qy.core.operators import MetaOperator
+from qy.core.operators import OperatorKind
 from qy.core.operators import PureOperator
 from qy.core.operators import ScopeOperator
 from qy.core.operators import SyntaxOperator
@@ -103,25 +103,3 @@ __all__ = [
     "validate_operator_arity",
     "value_uses_eager_arguments",
 ]
-
-TypeName = Literal[
-    "any",
-    "bool",
-    "chain",
-    "char",
-    "dict",
-    "effect",
-    "function",
-    "list",
-    "nil",
-    "none",
-    "number",
-    "operator",
-    "set",
-    "string",
-    "symbol",
-    "tuple",
-    "T",
-    "unknown",
-]
-OperatorKind = Literal["pure", "scope", "control", "effect", "meta"]

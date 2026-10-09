@@ -19,7 +19,8 @@
 
 当前支持：int/nil/T/string、内建算术/比较、无自由变量的 defun/lambda、let、
 cond/pipeline 控制流、CALL/TAIL_CALL（无 TCO）。effect / module / macro /
-并行 opcode 降成 nil 占位，保持 IR 有效。
+并行 opcode 尚未实现，会抛出 ``LLVMUnsupportedError``（显式诊断），而不是
+降成 nil 或产出非法 IR。
 """
 
 from __future__ import annotations
@@ -36,7 +37,15 @@ from qy.backend.scalars import classify_constant
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRProgram
 
-__all__ = ["compile_to_llvm_text", "emit"]
+__all__ = ["LLVMUnsupportedError", "compile_to_llvm_text", "emit"]
+
+
+class LLVMUnsupportedError(ValueError):
+    """Raised when compat LIR uses a feature the LLVM validation backend lacks.
+
+    显式报错，而不是静默降成 nil 或产出非法 IR。
+    """
+
 
 _VALUE = "ptr sret(%qy_value) align 8"
 _BYVAL = "ptr byval(%qy_value) align 8"
@@ -77,6 +86,10 @@ def _escape(text: str) -> str:
 
 class _FunctionEmitter:
     def __init__(self, function: LIRFunction, fn_idx: int, constants: dict[str, str]) -> None:
+        if function.rest_param is not None:
+            raise LLVMUnsupportedError(
+                f"llvm backend does not support variadic function {function.name.name!r}"
+            )
         self.function = function
         self.fn_idx = fn_idx
         self.constants = constants
@@ -260,10 +273,13 @@ class _FunctionEmitter:
             case "APPEND_RESULT":
                 pass
             case _:
-                # effect / module / macro / parallel opcodes lower to nil so the
-                # module stays valid IR for the current runtime subset.
-                if ops:
-                    self._store_nil(f"%reg_{ops[0]}")
+                # effect / module / macro / parallel opcode 尚未在本验证后端实现。
+                # 显式报错，避免把非 register 操作数（如 effect 名）写成
+                # ``%reg_<symbol>`` 这种非法 SSA 名，或静默产出 nil。
+                raise LLVMUnsupportedError(
+                    f"llvm backend does not support LIR opcode {opcode!r}; "
+                    "effect / module / macro / parallel lowering is not implemented"
+                )
 
     def _emit_load_host(self, dest: object, value: object) -> None:
         slot = f"%reg_{dest}"
@@ -286,8 +302,8 @@ class _FunctionEmitter:
                 f" i64 {len(text.encode('utf-8'))})"
             )
         else:
-            # llvm 验证后端尚无 char / float 表示：显式报错好过静默产出 nil。
-            raise ValueError(f"llvm backend does not support constant {value!r}")
+            # llvm 验证后端尚无 char / float / chain 表示：显式报错好过静默产出 nil。
+            raise LLVMUnsupportedError(f"llvm backend does not support constant {value!r}")
 
     def _string_constant(self, value: str) -> str:
         name = str_global(self.fn_idx, self.pc)
@@ -345,7 +361,9 @@ class _FunctionEmitter:
 def emit(lir_program: LIRProgram) -> str:
     """Lower a compat LIR program to LLVM IR text."""
     if lir_program.dialect != "compat":
-        raise ValueError(f"LLVM backend expects compat LIR, got dialect={lir_program.dialect!r}")
+        raise LLVMUnsupportedError(
+            f"LLVM backend expects compat LIR, got dialect={lir_program.dialect!r}"
+        )
     constants: dict[str, str] = {}
     functions = [
         _FunctionEmitter(function, fn_idx, constants).emit()
@@ -358,6 +376,10 @@ def emit(lir_program: LIRProgram) -> str:
     main_idx = lir_program.main
     module = [
         _HEADER,
+        # 位置无关代码：否则对字符串/符号数据段的引用会生成 32-bit 绝对重定位，
+        # 在默认 PIE 链接下报 R_X86_64_32 / failed to set dynamic section sizes。
+        "!llvm.module.flags = !{!0}",
+        '!0 = !{i32 7, !"PIC Level", i32 2}',
         f"@qy_fn_table = global [{count} x ptr] [{table_entries}]",
         f"@qy_fn_table_size = constant i64 {count}",
         *constants.values(),

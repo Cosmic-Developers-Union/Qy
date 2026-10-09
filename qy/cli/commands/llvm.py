@@ -20,6 +20,7 @@ def register(group: click.Group) -> None:
     @click.argument("target")
     def llvm_command(target: str) -> None:
         """Compile a Qy source file to LLVM IR (use '-' for stdin)."""
+        from qy.backend.llvm.emit import LLVMUnsupportedError
         from qy.backend.llvm.emit import emit as emit_llvm_module
 
         qy = Qy()
@@ -33,7 +34,10 @@ def register(group: click.Group) -> None:
                 raise click.exceptions.Exit(1) from None
             return
         if lir.ok:
-            ll_text = emit_llvm_module(lir)
+            try:
+                ll_text = emit_llvm_module(lir)
+            except LLVMUnsupportedError as error:
+                raise click.ClickException(str(error)) from error
             click.echo(ll_text, nl=False)
         if has_errors:
             raise click.exceptions.Exit(1)

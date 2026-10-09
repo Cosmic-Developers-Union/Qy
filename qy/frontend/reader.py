@@ -303,9 +303,11 @@ def _encode_symbol(name: str) -> str:
 
 
 def _can_write_bare(name: str) -> bool:
-    if not name:
+    if not name or name == "'":
         return False
-    return not any(char.isspace() or char in """()"';""" for char in name)
+    # "'" 是 reader 的符号字符（raw 层 'x 是 Symbol("'x")），因此含引号前缀的
+    # 符号可以裸写；()" 与 ; 仍必须转义，否则会被读成列表/字符串/注释。
+    return not any(char.isspace() or char in """()";""" for char in name)
 
 
 # ============================================================================

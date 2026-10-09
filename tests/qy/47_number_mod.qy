@@ -1,2 +1,7 @@
-; number-ss: modulus
-(= (mod 17 5) 2)
+; number-ss: modulus 遵循 Python `%`（结果符号跟随除数），integer 与 float 一致。
+(pipeline
+  (= (mod 17 5) 2)
+  (= (mod -7 3) 2)
+  (= (mod 7 -3) -2)
+  (= (mod -7.0 3.0) 2.0)
+  (= (mod 7.0 -3.0) -2.0))

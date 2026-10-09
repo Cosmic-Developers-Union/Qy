@@ -9,7 +9,7 @@
 //   `=` 要求两侧 concrete number 类型相同（`qy/session/number_ops.py`）；
 // - Symbol 不 interning：`=` 对非数值用 identity，`eq` 对 Symbol 用结构比较。
 
-import { QyTypeError } from './errors.ts';
+import { QyEffectError, QyTypeError } from './errors.ts';
 
 /** nil（空链）单例，对应 Python `qy.core.syntax.nil`。 */
 export class NilValue {
@@ -297,6 +297,9 @@ export class Continuation {
     readonly resumeFn: (value: QyValue) => unknown,
   ) {}
   resume(value: QyValue): unknown {
+    if (!this.resumable) {
+      throw new QyEffectError(`effect '${this.effect}' is not resumable`);
+    }
     return this.resumeFn(value);
   }
 }
@@ -319,6 +322,12 @@ export class ModuleValue {
  * 它不会被打印，也不会进入 APPEND_RESULT/RETURN 的结果。
  */
 export const COMPILE_TIME_MACRO = globalThis.Symbol('__compile_time_macro__');
+
+/**
+ * `(slot)` 返回的占位符（对应 Python `_SLOT_TOKEN`）：仅 grammar shape，不携带状态。
+ * Qy artifact 的文本表示为 `<slot>`（见 `display.ts`）。
+ */
+export const SLOT_TOKEN: QyValue = { __qySlotToken: true };
 
 // ---------------------------------------------------------------------------
 // 链工具函数（对应 qy.core.syntax 的 car/cdr/cons/chain_to_list/list_to_chain）

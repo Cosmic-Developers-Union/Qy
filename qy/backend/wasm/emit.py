@@ -24,24 +24,48 @@ macro、并行、闭包捕获与深尾递归未支持。
 
 from __future__ import annotations
 
+import struct
 from dataclasses import dataclass
 from dataclasses import field
 from typing import cast
 
 from qy.backend.scalars import classify_constant
+from qy.backend.wasm.abi import HEAP_CONS
+from qy.backend.wasm.abi import HEAP_SYMBOL
 from qy.backend.wasm.abi import NUM_BUILTINS
 from qy.backend.wasm.abi import VAL_NIL
 from qy.backend.wasm.abi import VAL_T
 from qy.backend.wasm.abi import builtin_index
 from qy.backend.wasm.abi import callable_value
 from qy.backend.wasm.abi import char_value
+from qy.backend.wasm.abi import float_value
+from qy.backend.wasm.abi import heap_value
 from qy.backend.wasm.abi import int_value
 from qy.backend.wasm.abi import string_value
 from qy.backend.wasm.abi import table_index_for_function
+from qy.core.syntax import Symbol
 from qy.ir.lir import LIRFunction
 from qy.ir.lir import LIRProgram
 
 __all__ = ["WasmUnsupportedError", "emit"]
+
+#: tagged int 编码是 ``(value << 3) | tag``，必须落在 signed 61-bit。
+_INT_MIN = -(1 << 60)
+_INT_MAX = (1 << 60) - 1
+
+
+def _tagged_bytes(value: int) -> bytes:
+    return (value & 0xFFFFFFFFFFFFFFFF).to_bytes(8, "little")
+
+
+def _encode_int(value: int) -> int:
+    """Encode an int constant, rejecting values that do not fit the tagged i64 ABI."""
+    if not (_INT_MIN <= value <= _INT_MAX):
+        raise WasmUnsupportedError(
+            f"wasm backend int constant {value} does not fit in 61-bit tagged i64"
+        )
+    return int_value(value)
+
 
 _MEMORY_PAGES = 64  # 4 MiB
 _SCRATCH_BASE = 1 << 20  # 1 MiB，字符串数据段放在其下
@@ -105,6 +129,29 @@ class _StringPool:
         self.offset = (address + 4 + len(encoded) + 7) & ~7
         return address
 
+    def intern_float(self, value: float) -> int:
+        return self.intern_bytes(struct.pack("<d", value))
+
+    def intern_bytes(self, payload: bytes, *, align: int = 8) -> int:
+        address = self.offset
+        self.segments.append((address, payload))
+        self.offset = (address + len(payload) + (align - 1)) & ~(align - 1)
+        return address
+
+    def intern_symbol(self, name: str) -> int:
+        string_offset = self.intern(name)
+        payload = HEAP_SYMBOL.to_bytes(4, "little") + string_offset.to_bytes(4, "little")
+        return self.intern_bytes(payload)
+
+    def intern_cons(self, car: int, cdr: int) -> int:
+        payload = (
+            HEAP_CONS.to_bytes(4, "little")
+            + (0).to_bytes(4, "little")
+            + _tagged_bytes(car)
+            + _tagged_bytes(cdr)
+        )
+        return self.intern_bytes(payload)
+
 
 @dataclass
 class _FunctionEmitter:
@@ -113,6 +160,10 @@ class _FunctionEmitter:
     pool: _StringPool
 
     def __post_init__(self) -> None:
+        if self.function.rest_param is not None:
+            raise WasmUnsupportedError(
+                f"wasm backend does not support variadic function {self.function.name.name!r}"
+            )
         self.lines: list[str] = []
         # 环境绑定必须快照到专用 local：LIR 寄存器会被后续指令复用，
         # 直接把 `LOAD_ENV` 解析成某个寄存器会在覆盖后读到错误的值。
@@ -156,7 +207,7 @@ class _FunctionEmitter:
             integer = int(name)
         except ValueError:
             return None
-        return f"(i64.const {int_value(integer)})"
+        return f"(i64.const {_encode_int(integer)})"
 
     def _call_sequence(
         self,
@@ -195,22 +246,55 @@ class _FunctionEmitter:
         self.out("    (global.set $sp (local.get $sp_save))")
 
     def _load_host(self, dest: object, value: object) -> None:
+        encoded = self._encode_value(value)
+        self.out(f"    (local.set $r{dest} (i64.const {encoded}))")
+
+    def _encode_value(self, value: object) -> int:
+        """把常量值编码成 tagged i64（symbol / chain 走 linear memory 的 heap 对象）。."""
         kind, payload = classify_constant(value)
         if kind in ("nil", "none"):
-            self.out(f"    (local.set $r{dest} (i64.const {VAL_NIL}))")
-        elif kind == "t":
-            self.out(f"    (local.set $r{dest} (i64.const {VAL_T}))")
-        elif kind == "bool":
-            self.out(f"    (local.set $r{dest} (i64.const {VAL_T if payload else VAL_NIL}))")
-        elif kind == "int":
-            self.out(f"    (local.set $r{dest} (i64.const {int_value(cast(int, payload))}))")
-        elif kind == "char":
-            self.out(f"    (local.set $r{dest} (i64.const {char_value(ord(cast(str, payload)))}))")
-        elif kind == "string":
-            address = self.pool.intern(cast(str, payload))
-            self.out(f"    (local.set $r{dest} (i64.const {string_value(address)}))")
-        else:
-            raise WasmUnsupportedError(f"LOAD_HOST with unsupported value {value!r}")
+            return VAL_NIL
+        if kind == "t":
+            return VAL_T
+        if kind == "bool":
+            return VAL_T if payload else VAL_NIL
+        if kind == "int":
+            return _encode_int(cast(int, payload))
+        if kind == "char":
+            return char_value(ord(cast(str, payload)))
+        if kind == "string":
+            return string_value(self.pool.intern(cast(str, payload)))
+        if kind == "float":
+            return float_value(self.pool.intern_float(cast(float, payload)))
+        if kind == "symbol":
+            return self._encode_symbol(cast(Symbol, payload))
+        if kind == "chain":
+            return self._encode_chain(payload)
+        raise WasmUnsupportedError(f"wasm backend does not support constant {value!r}")
+
+    def _encode_symbol(self, symbol: Symbol) -> int:
+        # raw-argument 算子的字面量实参（如 `(display 1)`）：先按实例字面量规则折成 value；
+        # 其余 symbol 折成 heap symbol 值。
+        from qy.session.pre_ss import default_literal_type
+        from qy.session.pre_ss import resolve_default_literal
+
+        if default_literal_type(symbol) is not None:
+            return self._encode_value(resolve_default_literal(symbol))
+        return heap_value(self.pool.intern_symbol(symbol.name))
+
+    def _encode_chain(self, chain: object) -> int:
+        from qy.core.syntax import Chain as _Chain
+        from qy.core.syntax import QyNil
+
+        items: list[object] = []
+        current: object = chain
+        while isinstance(current, _Chain):
+            items.append(current.head)
+            current = current.tail
+        result = VAL_NIL if isinstance(current, QyNil) else self._encode_value(current)
+        for item in reversed(items):
+            result = heap_value(self.pool.intern_cons(self._encode_value(item), result))
+        return result
 
     # -- instruction translation --------------------------------------------
 

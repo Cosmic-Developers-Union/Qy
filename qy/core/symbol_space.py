@@ -82,13 +82,17 @@ class ChainFrame:
     Each frame represents a single layer in the chain, with metadata describing
     its role (name), mutability (writable), and loading strategy (lazy). The
     *bindings* dict is a **read-only snapshot** of that layer's local bindings
-    at the time the frame was materialized.
+    at the time the frame was materialized. ``has_membership`` records whether
+    the layer also has a dynamic ``(membership, resolver)`` pair (e.g. number-ss
+    recognizes every number literal), which a snapshot of fixed bindings alone
+    cannot express.
     """
 
     name: str
     bindings: dict[Symbol, object]
     writable: bool
     lazy: bool
+    has_membership: bool = False
 
 
 class SymbolSpace:
@@ -173,21 +177,25 @@ class SymbolSpace:
     def resolve(self, symbol: Symbol) -> object:
         """沿 symbol-space-chain 查找 symbol; 全链 miss 返回 ``MISSING``.
 
-        本层 ``lookup`` 命中则直接返回; 否则递归 parent。若命中的是
+        本层命中则直接返回; 否则沿 parent 迭代（不递归）。若命中的是
         :class:`SymbolAlias`，则改为解析其 ``target``（循环别名视为未绑定）。
         """
-        return self._resolve(symbol, set())
-
-    def _resolve(self, symbol: Symbol, seen: set[Symbol]) -> object:
-        if symbol in seen:
-            return MISSING
-        value = self.lookup(symbol)
-        if value is MISSING and self._parent is not None:
-            value = self._parent._resolve(symbol, seen)
-        if isinstance(value, SymbolAlias):
-            seen.add(symbol)
-            return self._resolve(value.target, seen)
-        return value
+        seen: set[Symbol] = set()
+        space: SymbolSpace | None = self
+        while space is not None:
+            if symbol in seen:
+                return MISSING
+            value = space.lookup(symbol)
+            if value is MISSING:
+                space = space._parent
+                continue
+            if isinstance(value, SymbolAlias):
+                seen.add(symbol)
+                symbol = value.target
+                # 从发现别名的这一层重新查找 target（与旧递归版一致）。
+                continue
+            return value
+        return MISSING
 
     # -- 兼容旧 API：has_local_binding -------------------------------------
 
@@ -356,6 +364,7 @@ class SymbolSpaceChain:
                 bindings=dict(current._bindings),
                 writable=current.writable,
                 lazy=current.lazy,
+                has_membership=current._membership is not None,
             )
             frames.append(frame)
             current = current.parent

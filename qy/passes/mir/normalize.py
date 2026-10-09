@@ -94,10 +94,17 @@ class _MutableBlock:
 
 
 class _FunctionLowerer:
-    def __init__(self, owner: _MIRLowerer, name: Symbol, params: tuple[Symbol, ...]) -> None:
+    def __init__(
+        self,
+        owner: _MIRLowerer,
+        name: Symbol,
+        params: tuple[Symbol, ...],
+        rest_param: Symbol | None = None,
+    ) -> None:
         self.owner = owner
         self.name = name
         self.params = params
+        self.rest_param = rest_param
         self.space_id = ANONYMOUS_SPACE_ID
         self.blocks: list[_MutableBlock] = []
         self.current = self.new_block()
@@ -146,6 +153,7 @@ class _FunctionLowerer:
                 expression.params,
                 expression.body,
                 space=expression.space,
+                rest_param=expression.rest_param,
             )
             register = self.register()
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
@@ -157,6 +165,7 @@ class _FunctionLowerer:
                 expression.params,
                 expression.body,
                 space=expression.space,
+                rest_param=expression.rest_param,
             )
             register = self.register()
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
@@ -520,6 +529,7 @@ class _FunctionLowerer:
                 expression.value.params,
                 expression.value.body,
                 space=expression.value.space,
+                rest_param=expression.value.rest_param,
             )
             self.emit("MAKE_FUNCTION", register, function_index, span=expression.span)
         else:
@@ -581,6 +591,7 @@ class _FunctionLowerer:
             tuple(block.finish() for block in self.blocks),
             0,
             self.space_id,
+            self.rest_param,
         )
 
 
@@ -634,9 +645,10 @@ class _MIRLowerer:
         body: tuple[IRExpr, ...],
         *,
         space: object | None = None,
+        rest_param: Symbol | None = None,
     ) -> int:
         function_index = self.reserve_function()
-        function = _FunctionLowerer(self, name, params)
+        function = _FunctionLowerer(self, name, params, rest_param)
         if space is not None:
             function.space_id = self.space_ids.get(id(space), ANONYMOUS_SPACE_ID)
         result = function.lower_body(body, tail=True)

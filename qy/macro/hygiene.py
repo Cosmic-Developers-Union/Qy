@@ -637,7 +637,8 @@ def _definition_site_alias(
     if key in aliases:
         return aliases[key]
     alias = context.fresh_hygienic_symbol(symbol.name, category="def")
-    context.env.define_hidden(alias, value)
+    # 装到 chain 根部：module body 的临时子 env 里创建的别名，HIR lowering 也要能解析。
+    context.env.define_hidden_root(alias, value)
     aliases[key] = alias
     return alias
 

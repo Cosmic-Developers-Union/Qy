@@ -24,6 +24,7 @@ import {
   QY_NONE,
   QY_T,
   RawOperatorValue,
+  SLOT_TOKEN,
   SetValue,
   StringValue,
   Symbol,
@@ -31,6 +32,7 @@ import {
   type QyValue,
 } from './values.ts';
 import { BytecodeFunctionValue } from './frame.ts';
+import { Env } from './environment.ts';
 
 /**
  * Python `str(float)` / `repr(float)` 的近似实现。
@@ -150,8 +152,8 @@ export function formatValue(value: QyValue): string {
     return `[${value.items.map(formatValue).join(' ')}]`;
   }
   if (value instanceof Symbol) return writeSymbol(value);
-  // Python `format_value` 没有为 CharValue 分支，落到末尾的 `repr(value)`。
-  if (value instanceof CharValue) return `CharValue(value=${pyReprString(value.value)})`;
+  // display 语义：字符与字符串一样输出原文本（write 才用 `#\a`）。
+  if (value instanceof CharValue) return value.value;
   if (typeof value === 'boolean') return value ? 'true' : 'false';
   if (value === null || value === undefined) return 'none';
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : pyFloatRepr(value);
@@ -165,6 +167,8 @@ export function formatValue(value: QyValue): string {
   if (value instanceof EffectDefinition) return `<effect ${value.name}>`;
   if (value instanceof Continuation) return '<continuation>';
   if (value instanceof ModuleValue) return `<module ${value.name}>`;
+  if (value instanceof Env) return '<symbol-space>';
+  if (value === SLOT_TOKEN) return '<slot>';
   return String(value);
 }
 

@@ -16,6 +16,12 @@ import { join, resolve } from 'node:path';
 export const HERE = import.meta.dir;
 export const ROOT = resolve(HERE, '..', '..', '..', '..');
 export const CORPUS = join(ROOT, 'tests', 'qy');
+/**
+ * 额外语料：Qy-in-Qy 解释器用例，覆盖 hygiene / effect / dotted pair 等
+ * `tests/qy` 未覆盖的行为。conformance 把两者合并为一个门禁。
+ */
+export const CASE_CORPUS = join(ROOT, 'meta-interp', 'cases');
+export const CORPORA = [CORPUS, CASE_CORPUS] as const;
 export const VM = join(ROOT, 'qy', 'backend', 'typescript', 'bin', 'qyvm.ts');
 
 /** 允许的 LIR dialect，与 `qy/cli/commands/export.py` 的 choice 保持一致。 */
